@@ -1,0 +1,35 @@
+{
+  "name": "KCMPS",
+  "palette": {
+    "hue": 215,
+    "band": "light",
+    "scheme": "duo",
+    "sat": 0.6,
+    "pin": {
+      "accent": "#f2882e",
+      "accent2": "#1d3f72"
+    },
+    "bg": "#f6f7f9",
+    "surface": "#eceef2",
+    "text": "#1a2b42",
+    "accent": "#f2882e",
+    "accent2": "#1d3f72"
+  },
+  "fonts": {
+    "heading": {
+      "family": "Plus Jakarta Sans",
+      "class": "sans-geo",
+      "weights": [600, 700, 800]
+    },
+    "body": {
+      "family": "Inter",
+      "class": "sans-grot",
+      "weights": [400, 500, 600]
+    }
+  },
+  "density": 1.0,
+  "radius": 12,
+  "layoutStyle": "left",
+  "imageTreatment": "duotone",
+  "iconSet": "phosphor-duotone"
+}

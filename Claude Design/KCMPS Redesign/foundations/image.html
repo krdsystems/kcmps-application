@@ -1,0 +1,40 @@
+<!-- @dsCard group="Foundations" name="Imagery" subtitle="Duotone wash — navy shadows, orange highlights — over real studio/product photography." viewport="640x480" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KCMPS — Imagery</title>
+<link rel="stylesheet" href="../styles.css" />
+<style>
+.demo { max-width: 620px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
+.demo-head {
+  font-family: var(--font-body); font-size: 11px; font-weight: inherit;
+  letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55;
+  margin: var(--space-6) 0 var(--space-3);
+}
+.demo-head:first-child { margin-top: 0; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.note { font-size: 12px; opacity: 0.6; max-width: 60ch; }
+code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.92em; }
+.frame { aspect-ratio: 4/3; }
+.frame img { width: 100%; height: 100%; }
+.codeblock { padding: var(--space-3); background: var(--color-surface); border-radius: var(--radius-sm); font-size: 12px; overflow: auto; }
+</style>
+</head>
+<body>
+<main class="demo">
+<div class="demo-head">Photography</div>
+<div class="grid-2">
+  <figure class="frame duotone"><img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/7bdb4ff19_generated_image.png" alt="Studio workspace" /></figure>
+  <figure class="frame"><img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/b808ffe8e_generated_image.png" alt="Production floor, untreated" style="border-radius:var(--radius-lg);object-fit:cover;height:100%" /></figure>
+</div>
+<p class="note">Editorial and marketing photography takes <code>.duotone</code> — navy in the shadows, the orange spot warming the highlights, one soft wash instead of a literal press effect. Interface screenshots and product thumbnails stay untreated, just rounded to <code>--radius-lg</code>.</p>
+<pre class="codeblock"><code>&lt;figure class="duotone"&gt;
+  &lt;img src="…" alt="…" /&gt;
+&lt;/figure&gt;</code></pre>
+<div class="demo-head">Usage</div>
+<p class="note">Use <code>.duotone</code> on hero and section imagery to keep the studio's real photography feeling like one brand, not a stock grab-bag. Never stack it on icons, diagrams or screenshots.</p>
+</main>
+</body>
+</html>

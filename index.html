@@ -5,7 +5,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>KCMPS — Kaalyados Creatives</title>
-<script src="./ds-base.js"></script>
+<link rel="stylesheet" href="styles.css" />
 <style>
 :root { --edge: clamp(20px, 5vw, 72px); --measure: 62ch; }
 html { scroll-behavior: smooth; }
@@ -18,6 +18,7 @@ body { margin: 0; text-wrap: pretty; }
 .nav-links { display: flex; align-items: center; gap: var(--space-4); }
 .nav-links a { font-weight: 500; white-space: nowrap; }
 .nav-links { flex-wrap: nowrap; }
+@media (max-width: 1000px) { .brand-sep, .brand-long { display: none; } }
 @media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
 
 .kicker-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
@@ -109,7 +110,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 </head>
 <body>
 <nav class="nav">
-  <a href="#top" class="nav-brand"><img src="../../assets/logo-mark.png" alt="" /><span class="nav-brand" style="margin:0;color:var(--color-accent-2)">KCMPS</span></a>
+  <a href="#top" class="nav-brand" style="text-decoration:none">
+    <img src="assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
   <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
     <a href="#top">Index</a>
     <a href="#catalog">Catalog</a>
@@ -142,6 +148,25 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <span class="tag tag-accent-2">Bookbinding &amp; editorial design</span>
     <span class="tag tag-accent-2">Packaging &amp; lamination</span>
     <span class="tag tag-accent-2">Commercial branding</span>
+  </section>
+
+  <section class="mission-vision">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>01 · Who we are</span>
+      <h2>Vision &amp; mission</h2>
+    </div>
+    <div class="mv-grid">
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M128,56a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Z" opacity="0.2"/><path d="M247.4,116.5c-.6-1.4-15.4-33.8-48.5-56.9C165.4,36.4,120.2,26.7,128,26.7s-37.4,9.7-70.9,32.9C24,82.7,9.2,115.1,8.6,116.5a8,8,0,0,0,0,7c.6,1.4,15.4,33.8,48.5,56.9,33.5,23.2,78.7,32.9,70.9,32.9s37.4-9.7,70.9-32.9c33.1-23.1,47.9-55.5,48.5-56.9A8,8,0,0,0,247.4,116.5ZM128,184a64,64,0,1,1,64-64A64.07,64.07,0,0,1,128,184Z"/></svg></div>
+        <h3>Vision</h3>
+        <p>To be the premier creative hub that seamlessly bridges digital art, custom merchandise, and technology, empowering individuals and businesses to bring their unique visions to life.</p>
+      </div>
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M232,64,168,40,128,64,64,40,24,64V216l40-24,64,24,40-24,64,24Z" opacity="0.2"/><path d="M235.71,58.13a8,8,0,0,0-7.35-.89l-60.71,23-62.63-23.5a8,8,0,0,0-5.6.05l-64,24A8,8,0,0,0,30.05,74a8,8,0,0,0-2.06,5.42v152a8,8,0,0,0,7.36,7.98,7.9,7.9,0,0,0,5.96-2.15L120,213l62.34,23.38A8,8,0,0,0,192,232l64-24a8,8,0,0,0,5.29-7.53V63.55A8,8,0,0,0,235.71,58.13ZM48,84.94l48-18v133.9l-48,18Zm64-18,48,18v133.9l-48-18ZM224,196.14l-48,18V80.24l48-18Z"/></svg></div>
+        <h3>Mission</h3>
+        <p>At KCMPS, our mission is to deliver exceptional printing services, innovative digital artistry, high-quality custom apparel, and curated tech gadgets. We are committed to fostering lasting partnerships with our clients by providing reliable solutions, creative excellence, and accessible technology that inspires connection and celebrates every milestone.</p>
+      </div>
+    </div>
   </section>
 
   <section class="pillars">
@@ -188,13 +213,102 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       <h2>Offerings directory</h2>
       <p>A working set of what we produce most often — every order is finalized after a spec review.</p>
     </div>
-    <div class="offer-grid">
-      <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Catalogs &amp; booklets</h3><p class="card-body">Saddle-stitch or perfect-bound, laminated or matte.</p><span class="price">From ₱180 / copy</span></div>
-      <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Custom packaging</h3><p class="card-body">Die-cut boxes and sleeves, brand-ready finishes.</p><span class="price">From ₱65 / unit</span></div>
-      <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Apparel &amp; textiles</h3><p class="card-body">Silkscreen and DTF on tees, totes and caps.</p><span class="price">From ₱220 / piece</span></div>
-      <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Flash drives &amp; SSDs</h3><p class="card-body">Custom-bodied storage, laser-etched branding.</p><span class="price">From ₱450 / unit</span></div>
-      <div class="card offer"><span class="card-kicker">Studio</span><h3 class="card-title">3D prototypes</h3><p class="card-body">PLA/PETG prints for product and packaging mockups.</p><span class="price">From ₱90 / hr</span></div>
-      <div class="card offer"><span class="card-kicker">Studio</span><h3 class="card-title">Branding packages</h3><p class="card-body">Identity, pre-press setup, and print-ready files.</p><span class="price">From ₱8,000 / project</span></div>
+    <div class="tabs" data-tabs>
+      <div class="tab-list" role="tablist">
+        <button type="button" class="tab-btn" data-tab-target="panel-print-office" aria-selected="true">Printing &amp; Office Supplies</button>
+        <button type="button" class="tab-btn" data-tab-target="panel-design" aria-selected="false">Design</button>
+        <button type="button" class="tab-btn" data-tab-target="panel-merch" aria-selected="false">Merch</button>
+      </div>
+      <div class="tab-panels">
+
+        <div class="tab-panel is-active" id="panel-print-office">
+          <div class="offer-grid">
+            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">B/W Printing &amp; Copying</h3><p class="card-body">Documents, handouts and office copying — B/W output combined into a single service.</p><span class="badge-soon">Coming soon</span></div>
+            <div class="card offer"><span class="card-kicker">Office Supplies</span><h3 class="card-title">Office Supplies</h3><p class="card-body">Everyday office and school supplies, curated for walk-in and bulk orders.</p><span class="badge-soon">Coming soon</span></div>
+            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Catalogs &amp; booklets</h3><p class="card-body">Saddle-stitch or perfect-bound, laminated or matte.</p><span class="price">From ₱180 / copy</span></div>
+            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Custom packaging</h3><p class="card-body">Die-cut boxes and sleeves, brand-ready finishes.</p><span class="price">From ₱65 / unit</span></div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="panel-design">
+          <div class="tabs" data-tabs>
+            <div class="tab-list" role="tablist">
+              <button type="button" class="tab-btn" data-tab-target="panel-apparel" aria-selected="true">Apparel</button>
+              <button type="button" class="tab-btn" data-tab-target="panel-3dprint" aria-selected="false">3D Print</button>
+              <button type="button" class="tab-btn" data-tab-target="panel-souvenir" aria-selected="false">Souvenir</button>
+            </div>
+            <div class="tab-panels">
+
+              <div class="tab-panel is-active" id="panel-apparel">
+                <div class="tabs" data-tabs>
+                  <div class="tab-list" role="tablist">
+                    <button type="button" class="tab-btn" data-tab-target="panel-dtf" aria-selected="true">DTF</button>
+                    <button type="button" class="tab-btn" data-tab-target="panel-subli" aria-selected="false">Subli</button>
+                    <button type="button" class="tab-btn" data-tab-target="panel-hotmelt" aria-selected="false">Hotmelt</button>
+                  </div>
+                  <div class="tab-panels">
+
+                    <div class="tab-panel is-active" id="panel-dtf">
+                      <div class="card offer">
+                        <span class="card-kicker">Apparel · DTF</span>
+                        <h3 class="card-title">DTF Printing</h3>
+                        <p class="card-body">Direct-to-film transfers, priced by size. Add tshirt application to have it pressed on for you.</p>
+                        <table class="table">
+                          <thead><tr><th>Size</th><th>Price</th></tr></thead>
+                          <tbody>
+                            <tr><td>2×3</td><td>₱50</td></tr>
+                            <tr><td>A4</td><td>₱80</td></tr>
+                            <tr><td>A3</td><td>₱120</td></tr>
+                            <tr><td>+ With tshirt</td><td>+₱120</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div class="tab-panel" id="panel-subli">
+                      <div class="card offer"><span class="card-kicker">Apparel · Subli</span><h3 class="card-title">Sublimation printing</h3><p class="card-body">Full-color, all-over prints on light-colored and poly fabrics.</p><span class="badge-soon">Coming soon</span></div>
+                    </div>
+                    <div class="tab-panel" id="panel-hotmelt">
+                      <div class="card offer"><span class="card-kicker">Apparel · Hotmelt</span><h3 class="card-title">Hotmelt vinyl</h3><p class="card-body">Durable heat-applied vinyl lettering and designs.</p><span class="badge-soon">Coming soon</span></div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              <div class="tab-panel" id="panel-3dprint">
+                <div class="card offer"><span class="card-kicker">Studio</span><h3 class="card-title">3D prototypes</h3><p class="card-body">PLA/PETG prints for product and packaging mockups.</p><span class="badge-soon">Coming soon</span></div>
+              </div>
+
+              <div class="tab-panel" id="panel-souvenir">
+                <div class="card offer"><span class="card-kicker">Design</span><h3 class="card-title">Souvenirs</h3><p class="card-body">Custom keepsakes and giveaways for events and milestones.</p><span class="badge-soon">Coming soon</span></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="panel-merch">
+          <div class="tabs" data-tabs>
+            <div class="tab-list" role="tablist">
+              <button type="button" class="tab-btn" data-tab-target="panel-network" aria-selected="true">Network</button>
+              <button type="button" class="tab-btn" data-tab-target="panel-storage" aria-selected="false">Storage</button>
+              <button type="button" class="tab-btn" data-tab-target="panel-entertainment" aria-selected="false">Entertainment</button>
+            </div>
+            <div class="tab-panels">
+              <div class="tab-panel is-active" id="panel-network">
+                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Networking gear</h3><p class="card-body">Routers, cables and networking accessories.</p><span class="badge-soon">Coming soon</span></div>
+              </div>
+              <div class="tab-panel" id="panel-storage">
+                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Flash drives &amp; SSDs</h3><p class="card-body">Custom-bodied storage, laser-etched branding.</p><span class="badge-soon">Coming soon</span></div>
+              </div>
+              <div class="tab-panel" id="panel-entertainment">
+                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Entertainment gadgets</h3><p class="card-body">Audio, gaming and everyday tech accessories.</p><span class="badge-soon">Coming soon</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </section>
 
@@ -270,7 +384,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <div class="wrap">
     <div class="foot-top">
       <div>
-        <div class="foot-brand"><img src="../../assets/logo-mark.png" alt="" /><span>KCMPS</span></div>
+        <div class="foot-brand"><img src="assets/logo-mark.png" alt="" /><span>KCMPS</span></div>
         <p class="tagline">Kaalyados Creatives — merchandise and printing services. High-fidelity print, pre-press drafting, precision 3D fabrication and curated hardware storage, made in Manila.</p>
       </div>
       <div class="foot-links">
@@ -317,6 +431,23 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     navigator.clipboard?.writeText(spec);
     copyBtn.textContent = 'Copied';
     setTimeout(() => copyBtn.textContent = 'Copy spec to clipboard', 1500);
+  });
+})();
+
+(() => {
+  document.querySelectorAll('[data-tabs]').forEach((group) => {
+    const tabList = group.querySelector(':scope > .tab-list');
+    const panelWrap = group.querySelector(':scope > .tab-panels');
+    if (!tabList || !panelWrap) return;
+    tabList.querySelectorAll(':scope > .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tabList.querySelectorAll(':scope > .tab-btn').forEach((b) => b.setAttribute('aria-selected', 'false'));
+        panelWrap.querySelectorAll(':scope > .tab-panel').forEach((p) => p.classList.remove('is-active'));
+        btn.setAttribute('aria-selected', 'true');
+        const target = document.getElementById(btn.dataset.tabTarget);
+        if (target) target.classList.add('is-active');
+      });
+    });
   });
 })();
 </script>

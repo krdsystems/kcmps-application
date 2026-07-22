@@ -1,10 +1,10 @@
 # kcmps-application
 
-## Login flow test (`login-test.html`)
+## Login flow test (`website/login-test.html`)
 
 Standalone proof-of-concept for the Cognito Hosted UI login flow, built before
-wiring auth into the real storefront (`index.html`). Vanilla HTML5 + Tailwind
-(CDN) + ES6, no build step, matching the rest of this project.
+wiring auth into the real storefront (`website/index.html`). Vanilla HTML5 +
+Tailwind (CDN) + ES6, no build step, matching the rest of this project.
 
 ### What it proves out
 
@@ -24,15 +24,18 @@ wiring auth into the real storefront (`index.html`). Vanilla HTML5 + Tailwind
 ### Running it locally
 
 Cognito's OAuth redirect needs an `http(s)://` origin — opening the file
-directly (`file://`) won't work. Serve it with anything simple, e.g.:
+directly (`file://`) won't work. Serve it from the `website/` folder with
+anything simple, e.g.:
 
 ```bash
+cd website
 python3 -m http.server 5500
 ```
 
-Then open `http://localhost:5500/login-test.html`. `http://localhost:5500/`
-(and the trailing-path variant) must be registered as allowed callback/sign-out
-URLs on the Cognito app client for this to work — see below.
+Then open `http://localhost:5500/login-test.html`. That exact URL
+(`http://localhost:5500/login-test.html`) must be registered as an allowed
+callback URL and sign-out URL on the Cognito app client for this to work —
+see below.
 
 ### Cognito app client requirements
 

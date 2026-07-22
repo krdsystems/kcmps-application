@@ -107,8 +107,65 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 @media (max-width: 760px) { .foot-top { grid-template-columns: 1fr; gap: var(--space-3); } }
 .foot-bottom { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding-top: var(--space-4); border-top: 1px solid var(--color-divider); font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 </style>
+
+<!-- ============================================================
+     AUTH POPUP DETECTION — runs BEFORE the body is parsed.
+     When this page load is actually one of our auth popups landing
+     back (a login redirect carrying ?code=, or the logout popup
+     identified by its window.name), we tag <html> so the CSS below
+     hides the normal storefront chrome and shows a small status
+     screen instead — otherwise the popup briefly paints the whole
+     homepage before our script closes it.
+     ============================================================ -->
+<script>
+  (function () {
+    var isLoginRedirect = /[?&](code|error)=/.test(location.search);
+    var isAuthPopup = window.name === "kcmps-login" || window.name === "kcmps-logout";
+    if (isLoginRedirect || isAuthPopup) {
+      document.documentElement.classList.add("auth-popup");
+    }
+  })();
+</script>
+<style>
+  /* In auth-popup mode, hide everything except the status screen. */
+  html.auth-popup body > *:not(#auth-status) { display: none !important; }
+  #auth-status { display: none; }
+  html.auth-popup #auth-status {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--space-2); position: fixed; inset: 0; text-align: center; padding: var(--space-4);
+    font-family: var(--font-body); background: var(--color-bg); color: var(--color-text);
+  }
+  #auth-status .spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid var(--color-divider); border-top-color: var(--color-accent);
+    animation: auth-spin 0.8s linear infinite;
+  }
+  @keyframes auth-spin { to { transform: rotate(360deg); } }
+  #auth-status .msg { font-size: 15px; font-weight: 600; font-family: var(--font-heading); }
+
+  /* Auth nav bits */
+  .is-hidden { display: none !important; }
+  .auth-user { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .auth-user-name { font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--color-accent-2); white-space: nowrap; }
+  #cart-btn { position: relative; }
+  #cart-badge {
+    position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; line-height: 1; color: #fff;
+    background: var(--color-accent); border-radius: 999px; font-family: var(--font-heading);
+  }
+</style>
 </head>
 <body>
+
+<!-- Status screen shown ONLY inside the auth popups (see head script/CSS).
+     Default state is a "working" spinner; the auth script swaps in the final
+     success/error message before the popup closes. -->
+<div id="auth-status">
+  <div class="spinner" id="auth-status-spinner"></div>
+  <div class="msg" id="auth-status-msg">Signing you in&hellip;</div>
+</div>
+
 <nav class="nav">
   <a href="#top" class="nav-brand" style="text-decoration:none">
     <img src="assets/logo-mark.png" alt="" />
@@ -122,6 +179,23 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <a href="#estimator">Estimator</a>
     <a href="#contact">Contact</a>
     <a href="#estimator" class="btn btn-primary">Get quote</a>
+
+    <!-- Dashboard link — shown only for users in the "Staff" Cognito group.
+         Real routing to /dashboard/* doesn't exist yet, so it just logs. -->
+    <a href="#" id="dashboard-link" class="btn btn-ghost is-hidden">Dashboard</a>
+
+    <!-- Cart button — stubbed. See CART INTEGRATION POINT in the auth script
+         for where real (DynamoDB-backed) cart data plugs in later. -->
+    <button type="button" id="cart-btn" class="btn btn-icon btn-secondary" aria-label="Cart" title="Cart">
+      <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M222.14,58.87A8,8,0,0,0,216,56H54.68L49.79,29.14A16,16,0,0,0,34.05,16H16a8,8,0,0,0,0,16h18l25.16,138.28A24,24,0,0,0,82.76,190H197.2a24,24,0,0,0,23.6-19.71l12.16-66.86A8,8,0,0,0,222.14,58.87ZM96,224a16,16,0,1,1-16-16A16,16,0,0,1,96,224Zm104,0a16,16,0,1,1-16-16A16,16,0,0,1,200,224Z"/></svg>
+      <span id="cart-badge" class="is-hidden">0</span>
+    </button>
+
+    <!-- Auth area: swaps between the "Login / Sign-up" button and the
+         logged-in user's name + logout. Populated by the auth script. -->
+    <span id="auth-area">
+      <button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>
+    </span>
   </div>
 </nav>
 
@@ -449,6 +523,351 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       });
     });
   });
+})();
+</script>
+
+<!-- ============================================================
+     COGNITO AUTH — Hosted UI popup login (Authorization Code + PKCE)
+     Ported from the standalone login-test.html proof-of-concept. The
+     OAuth logic is unchanged; only the UI-rendering functions were
+     restyled to the site's design system. See README for the full
+     write-up of the flow, config requirements, and security notes.
+     ============================================================ -->
+<script>
+/* ---- Cognito config (specific to this User Pool / App Client) ---- */
+const COGNITO_CONFIG = {
+  userPoolId:  "ap-southeast-1_iDvAEumNp",
+  region:      "ap-southeast-1",
+  domain:      "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
+  clientId:    "95rrk0mflffentqdiomg1fipc",
+  // Must EXACTLY match an allowed callback/sign-out URL on the app client.
+  // We use origin + "/" (not origin + pathname) so it resolves to the
+  // registered root URL — https://site.kcmps.com/ in prod, http://localhost:5500/
+  // locally — regardless of whether the page was opened as "/" or "/index.html".
+  redirectUri: window.location.origin + "/",
+  scopes:      "email openid profile phone",
+  // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
+  staffGroupName: "Staff",
+};
+
+function log(...args) { console.log("[auth]", ...args); }
+
+/* ---- PKCE helpers (public client, no secret) ---- */
+function base64UrlEncode(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomString(length = 64) {
+  const arr = new Uint8Array(length);
+  crypto.getRandomValues(arr);
+  return base64UrlEncode(arr.buffer);
+}
+async function sha256(plain) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(plain));
+}
+async function createPkcePair() {
+  const codeVerifier = randomString(64);
+  const codeChallenge = base64UrlEncode(await sha256(codeVerifier));
+  return { codeVerifier, codeChallenge };
+}
+
+/* ---- JWT decode (read-only, NOT signature verification) ----
+   Decodes the ID token payload to read claims (name, cognito:groups) for
+   UI purposes only. Any backend that receives this token later MUST verify
+   its signature against Cognito's JWKS — never trust client-decoded claims
+   server-side. ---- */
+function decodeJwt(token) {
+  const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+  const json = decodeURIComponent(
+    atob(base64).split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")
+  );
+  return JSON.parse(json);
+}
+
+/* ---- Token storage ----
+   sessionStorage (survives refresh, cleared on tab close). Deliberately NOT
+   localStorage for the tokens themselves (which persists indefinitely,
+   maximizing XSS exposure). The strictly safer option — refresh token in an
+   httpOnly cookie via a Backend-for-Frontend — needs a server we don't have
+   as a static site. Revisit once API Gateway/Lambda exist. ---- */
+const TOKEN_STORAGE_KEY = "kcmps_tokens";
+function saveTokens(tokens) { sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens)); }
+function loadTokens() { const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
+function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+
+/* ---- Build the Hosted UI authorize URL ----
+   response_type=code (Authorization Code flow). The Hosted UI page shows both
+   the email/password form AND "Continue with Google" (Google is configured as
+   a federated IdP on the app client — nothing extra needed here). ---- */
+async function buildAuthorizeUrl() {
+  const { codeVerifier, codeChallenge } = await createPkcePair();
+  const state = randomString(32);
+  // localStorage (not sessionStorage): the popup is a SEPARATE window and
+  // needs to read these back to complete the flow.
+  localStorage.setItem("pkce_code_verifier", codeVerifier);
+  localStorage.setItem("oauth_state", state);
+  const params = new URLSearchParams({
+    client_id: COGNITO_CONFIG.clientId,
+    response_type: "code",
+    scope: COGNITO_CONFIG.scopes,
+    redirect_uri: COGNITO_CONFIG.redirectUri,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+  return `${COGNITO_CONFIG.domain}/oauth2/authorize?${params.toString()}`;
+}
+
+const AUTH_RESULT_KEY = "kcmps_auth_result";
+
+// Update the popup's status screen. state: "working" | "success" | "error".
+function showAuthStatus(message, state = "working") {
+  const spinner = document.getElementById("auth-status-spinner");
+  const msg = document.getElementById("auth-status-msg");
+  if (!msg) return;
+  msg.textContent = message;
+  if (state === "success") {
+    msg.style.color = "var(--color-green)";
+    if (spinner) spinner.outerHTML = '<div style="font-size:32px;line-height:1">✅</div>';
+  } else if (state === "error") {
+    msg.style.color = "#c0392b";
+    if (spinner) spinner.outerHTML = '<div style="font-size:32px;line-height:1">⚠️</div>';
+  }
+}
+
+function isAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  return params.has("code") || params.has("error");
+}
+
+/* ---- Popup landing: exchange the code for tokens, hand result to the
+   main window via localStorage, show a message, then close. ---- */
+async function handleAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  let result;
+  if (params.has("error")) {
+    result = { type: "error", error: params.get("error_description") || params.get("error") };
+  } else if (params.get("state") !== localStorage.getItem("oauth_state")) {
+    result = { type: "error", error: "OAuth state mismatch — possible CSRF, aborting." };
+  } else {
+    try {
+      const tokens = await exchangeCodeForTokens(params.get("code"));
+      result = { type: "success", tokens };
+    } catch (err) {
+      result = { type: "error", error: err.message };
+    }
+  }
+  // Writing this key fires a `storage` event in the main window (that's how
+  // it learns the outcome — see openLoginPopup).
+  localStorage.setItem(AUTH_RESULT_KEY, JSON.stringify(result));
+  localStorage.removeItem("pkce_code_verifier");
+  localStorage.removeItem("oauth_state");
+  showAuthStatus(
+    result.type === "success" ? "Login successful!" : "Sign-in failed. You can close this window.",
+    result.type === "success" ? "success" : "error"
+  );
+  setTimeout(() => window.close(), 1300);
+}
+
+/* ---- Open the login popup and wait for its result ----
+   We learn the outcome from the `storage` event (fires here when the popup
+   writes its result), NOT from popup.closed — Cognito's Cross-Origin-Opener-
+   Policy header severs the opener link and can make popup.closed spuriously
+   report `true` mid-login. See README / login-test.html comments. ---- */
+function openLoginPopup() {
+  return new Promise(async (resolve, reject) => {
+    // Open synchronously (before any await) so the browser treats it as a
+    // user-initiated popup and doesn't block it.
+    const width = 480, height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const popup = window.open("about:blank", "kcmps-login",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top}`);
+    if (!popup) {
+      reject(new Error("Popup was blocked by the browser. Please allow popups for this site."));
+      return;
+    }
+    try { popup.focus(); } catch {}
+    localStorage.removeItem(AUTH_RESULT_KEY);
+
+    const authorizeUrl = await buildAuthorizeUrl();
+    log("Opening Hosted UI popup:", authorizeUrl);
+    popup.location.href = authorizeUrl;
+    try { popup.focus(); } catch {}
+
+    let done = false;
+    function finish(fn, arg) {
+      if (done) return;
+      done = true;
+      window.removeEventListener("storage", onStorage);
+      clearInterval(fallbackPoll);
+      clearTimeout(timeoutId);
+      fn(arg);
+    }
+    function consumeResult() {
+      const raw = localStorage.getItem(AUTH_RESULT_KEY);
+      if (!raw) return;
+      localStorage.removeItem(AUTH_RESULT_KEY);
+      const result = JSON.parse(raw);
+      if (result.type === "success") finish(resolve, result.tokens);
+      else finish(reject, new Error(result.error || "Unknown error from Hosted UI."));
+    }
+    function onStorage(event) {
+      if (event.key === AUTH_RESULT_KEY && event.newValue) consumeResult();
+    }
+    window.addEventListener("storage", onStorage);
+    const fallbackPoll = setInterval(consumeResult, 500); // backup if the event is missed
+    const timeoutId = setTimeout(() => {
+      finish(reject, new Error("Login timed out or was cancelled. Please try again."));
+    }, 3 * 60 * 1000);
+  });
+}
+
+/* ---- Exchange the authorization code for tokens (public client + PKCE) ---- */
+async function exchangeCodeForTokens(code) {
+  const codeVerifier = localStorage.getItem("pkce_code_verifier"); // read in the popup
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: COGNITO_CONFIG.clientId,
+    code,
+    redirect_uri: COGNITO_CONFIG.redirectUri,
+    code_verifier: codeVerifier,
+  });
+  const res = await fetch(`${COGNITO_CONFIG.domain}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange failed (${res.status}): ${await res.text()}`);
+  return res.json(); // { id_token, access_token, refresh_token, expires_in, token_type }
+}
+
+/* ---- UI updates (site design system) ---- */
+function renderLoggedOut() {
+  document.getElementById("auth-area").innerHTML =
+    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
+  document.getElementById("auth-btn").addEventListener("click", startLogin);
+  document.getElementById("dashboard-link").classList.add("is-hidden");
+}
+
+function renderLoggedIn(claims) {
+  const name = claims.name || claims.email || "Account";
+  const area = document.getElementById("auth-area");
+  area.innerHTML =
+    '<span class="auth-user">' +
+      '<span class="auth-user-name"></span>' +
+      '<button type="button" id="logout-btn" class="btn btn-ghost">Logout</button>' +
+    '</span>';
+  area.querySelector(".auth-user-name").textContent = name; // textContent = safe, no escaping
+  document.getElementById("logout-btn").addEventListener("click", logout);
+
+  // Group-based UI branching: Staff group => show the Dashboard link.
+  const groups = claims["cognito:groups"] || [];
+  const dashboardLink = document.getElementById("dashboard-link");
+  if (groups.includes(COGNITO_CONFIG.staffGroupName)) {
+    dashboardLink.classList.remove("is-hidden");
+    dashboardLink.onclick = (e) => {
+      e.preventDefault();
+      // Real /dashboard/* route doesn't exist yet — proves the branching works.
+      console.log("Navigate to /dashboard (not implemented yet). Groups:", groups);
+      alert("Staff detected — would navigate to /dashboard here.");
+    };
+  } else {
+    dashboardLink.classList.add("is-hidden");
+  }
+}
+
+/* ---- Cart stub ----
+   CART INTEGRATION POINT: once the real cart backend exists (e.g. API Gateway
+   + Lambda over a DynamoDB table keyed by the user's `sub` claim), replace
+   this stub with a fetch to that API using the access token in the
+   Authorization header, and render the real item count / contents here. ---- */
+function initCartStub() {
+  document.getElementById("cart-btn").addEventListener("click", () => {
+    alert(loadTokens()
+      ? "Cart preview — placeholder only. Real cart data would load here from the backend."
+      : "Cart preview (guest, not logged in) — placeholder only.");
+  });
+}
+function setCartBadge(count) {
+  const badge = document.getElementById("cart-badge");
+  if (count > 0) { badge.textContent = count; badge.classList.remove("is-hidden"); }
+  else { badge.classList.add("is-hidden"); }
+}
+
+/* ---- Login orchestration ---- */
+async function startLogin() {
+  const btn = document.getElementById("auth-btn");
+  btn.disabled = true;
+  btn.textContent = "Signing in…";
+  try {
+    const tokens = await openLoginPopup(); // resolves with tokens (popup does the exchange)
+    log("Token exchange succeeded.");
+    saveTokens(tokens);
+    const claims = decodeJwt(tokens.id_token);
+    log("Decoded ID token claims:", claims);
+    renderLoggedIn(claims);
+    // Stub: pretend 2 items in cart post-login. Replace once the cart backend
+    // exists (see CART INTEGRATION POINT above).
+    setCartBadge(2);
+  } catch (err) {
+    console.error(err);
+    alert("Login failed: " + err.message);
+    renderLoggedOut();
+  }
+}
+
+/* ---- Logout ----
+   Clears the local session AND ends the Cognito Hosted UI session via a small
+   popup, so the next login shows the form instead of silently re-using the
+   old session. (Cognito's /logout blocks iframe embedding — confirmed by
+   testing — hence a popup, identified on return by window.name.) ---- */
+function logout() {
+  clearTokens();
+  setCartBadge(0);
+  renderLoggedOut();
+  const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
+    client_id: COGNITO_CONFIG.clientId,
+    logout_uri: COGNITO_CONFIG.redirectUri,
+  }).toString()}`;
+  const popup = window.open("", "kcmps-logout", "width=300,height=140");
+  if (popup) {
+    popup.document.write(
+      '<div style="font:15px system-ui,sans-serif;display:flex;height:100%;' +
+      'align-items:center;justify-content:center;color:#374151;text-align:center;">' +
+      "Logging you out&hellip;</div>"
+    );
+    popup.location.href = logoutUrl;
+  }
+}
+
+/* ---- Entry point ---- */
+(function initAuth() {
+  // Case 1: this load is the login popup redirected back with a code/error.
+  if (isAuthRedirect()) { handleAuthRedirect(); return; }
+
+  // Case 2: this load is the logout popup returning from Cognito (identified
+  // by window.name, since COOP may have severed window.opener).
+  if (window.name === "kcmps-logout") {
+    showAuthStatus("You've been logged out.", "success");
+    setTimeout(() => window.close(), 1800);
+    return;
+  }
+
+  // Case 3: normal page load — restore any existing session.
+  const tokens = loadTokens();
+  if (tokens) {
+    try {
+      renderLoggedIn(decodeJwt(tokens.id_token));
+      setCartBadge(2); // stub — see CART INTEGRATION POINT
+      log("Restored session from sessionStorage.");
+    } catch { clearTokens(); renderLoggedOut(); }
+  } else {
+    renderLoggedOut();
+  }
+  initCartStub();
 })();
 </script>
 </body>

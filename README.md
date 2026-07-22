@@ -12,9 +12,10 @@ future work (and future contributors) don't have to reconstruct that history fro
 
 ```
 website/
-├── index.html                  Deployed storefront (nav, hero, vision/mission, tabbed catalog)
+├── index.html                  Deployed storefront (nav + Cognito login, hero, vision/mission, tabbed catalog)
 ├── styles.css                  Design-system stylesheet (tokens + components) used by index.html
-├── login-test.html             Standalone Cognito Hosted UI login proof-of-concept
+├── login-test.html             Standalone Cognito Hosted UI login proof-of-concept (kept as a reference —
+│                                see "Development history" for why the auth logic was validated here first)
 ├── assets/                     Production images referenced by index.html
 └── Claude Design/              Design-system reference docs (not deployed) — see its own readme.md
 ```
@@ -84,12 +85,26 @@ its docs describing a layout that no longer existed.
 The merge (`b9ec0bd`) then combined both tracks cleanly: `main`'s repo reorg and the
 feature branch's login POC, both already speaking the same directory layout.
 
-### 5. Where things stand now
+### 5. Wiring the validated login flow into the real storefront (2026-07-22)
 
-`website/index.html` is the deployed storefront. `website/login-test.html` is a working,
-manually-verified Cognito login flow that has *not* yet been wired into `index.html` — the
-storefront's "Login / Sign-up" button, `Dashboard` nav link for `Staff`-group users, and cart
-icon are still stubs pending that integration.
+With the auth flow manually verified end-to-end in `login-test.html` (see the errors and
+fixes documented below), the same OAuth logic was ported into `website/index.html` — deliberately
+copied as-is rather than rewritten, since it had already been debugged against the real
+Cognito app client and every fix along the way addressed a genuine, hard-to-reproduce
+browser quirk (see next section).
+
+The only changes made during the port were to the UI-rendering functions: `login-test.html`
+was styled with Tailwind (loaded via CDN) as a fast way to build the isolated test page, but
+the real site has its own design system (`styles.css` — CSS custom properties + component
+classes, no utility framework). `renderLoggedIn`/`renderLoggedOut`, the cart badge, and the
+popup status screen were rewritten against that system so the logged-in nav (user name,
+Logout, the Staff-only `Dashboard` link, cart badge) looks native to the site rather than
+visibly bolted on.
+
+`website/index.html` now has a real, working "Login / Sign-up" flow, group-based `Dashboard`
+visibility, session restore on reload, and logout that also ends the Cognito Hosted UI
+session. `website/login-test.html` is kept in the repo as the original isolated reference —
+useful if the auth flow ever needs debugging again without redeploying the full site.
 
 ## Errors encountered during the Cognito login POC, and what fixed them
 
@@ -150,25 +165,31 @@ be trusted server-side just because the UI already displayed them.
 
 ## Running the storefront locally
 
+Cognito's OAuth redirect needs an `http(s)://` origin — opening `index.html` directly
+(`file://`) will not work for the login button.
+
 ```bash
 cd website
 python3 -m http.server 5500
 ```
 
-Then open `http://localhost:5500/`.
+Then open `http://localhost:5500/` — this is the full storefront, including the working
+"Login / Sign-up" flow. `http://localhost:5500/` must be registered as an allowed callback
+URL and sign-out URL on the Cognito app client (see below).
 
 ## Running the login proof-of-concept locally
 
-Cognito's OAuth redirect needs an `http(s)://` origin — opening the file directly
-(`file://`) will not work.
+`website/login-test.html` still works standalone, for debugging the auth flow in isolation
+without touching the full storefront:
 
 ```bash
 cd website
 python3 -m http.server 5500
 ```
 
-Then open `http://localhost:5500/login-test.html`. That exact URL must be registered as an
-allowed callback URL and sign-out URL on the Cognito app client (see below).
+Then open `http://localhost:5500/login-test.html`. That exact URL must *also* be registered
+as an allowed callback URL and sign-out URL on the Cognito app client, alongside the root URL
+above.
 
 ### Cognito app client requirements
 
@@ -187,9 +208,10 @@ variables rather than hard-coding colors, fonts, or spacing.
 
 ## Known gaps / next steps
 
-- Wire the validated Cognito login flow from `login-test.html` into `index.html`'s
-  "Login / Sign-up" button, `Dashboard` link, and session handling.
-- Cart icon in `index.html` is a stub with a marked integration point for a future
-  DynamoDB-backed cart.
+- Cart icon in `index.html` is a stub with a marked integration point (`CART INTEGRATION
+  POINT` comment in the auth `<script>`) for a future DynamoDB-backed cart, keyed by the
+  logged-in user's `sub` claim.
+- The `Dashboard` nav link (shown to `Staff`-group users) currently just logs to the console
+  and shows an alert — the real `/dashboard/*` route doesn't exist yet.
 - Sub-categories beyond DTF pricing (Subli, Hotmelt, and the rest of the catalog) currently
   ship as "coming soon" placeholders.

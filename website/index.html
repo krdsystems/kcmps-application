@@ -4,6 +4,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- ============================================================
+     SECURITY HEADERS (static-site enforceable subset)
+     Content-Security-Policy limits where scripts/styles/images may
+     load from and — importantly — where the page may SEND data
+     (connect-src), so an injected script cannot exfiltrate tokens to
+     an attacker-controlled host. Origins are the exact ones this page
+     already uses: Cognito (token exchange), Google Fonts, and the
+     base44 image CDN. Referrer-Policy keeps the OAuth ?code=/&state=
+     in the redirect URL from leaking to third parties via Referer.
+     NOTE: frame-ancestors and X-Frame-Options are ignored in a <meta>
+     tag — set them as real response headers at CloudFront for full
+     clickjacking protection.
+     ============================================================ -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+
 <title>KCMPS — Kaalyados Creatives</title>
 <link rel="stylesheet" href="styles.css" />
 <style>
@@ -594,7 +611,11 @@ function decodeJwt(token) {
    as a static site. Revisit once API Gateway/Lambda exist. ---- */
 const TOKEN_STORAGE_KEY = "kcmps_tokens";
 function saveTokens(tokens) { sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens)); }
-function loadTokens() { const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
+function loadTokens() {
+  const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { clearTokens(); return null; }
+}
 function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
 
 /* ---- Build the Hosted UI authorize URL ----
@@ -646,6 +667,11 @@ function isAuthRedirect() {
    main window via localStorage, show a message, then close. ---- */
 async function handleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
+  // Scrub the authorization code/state out of the address bar and history
+  // immediately after reading them. A one-time-use `code` in the URL can
+  // otherwise linger in the popup's history and be sent as a same-origin
+  // Referer on subsequent subresource loads. We keep the pathname only.
+  try { history.replaceState(null, "", window.location.pathname); } catch {}
   let result;
   if (params.has("error")) {
     result = { type: "error", error: params.get("error_description") || params.get("error") };
@@ -710,9 +736,16 @@ function openLoginPopup() {
       const raw = localStorage.getItem(AUTH_RESULT_KEY);
       if (!raw) return;
       localStorage.removeItem(AUTH_RESULT_KEY);
-      const result = JSON.parse(raw);
-      if (result.type === "success") finish(resolve, result.tokens);
-      else finish(reject, new Error(result.error || "Unknown error from Hosted UI."));
+      let result;
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        // Malformed value on the relay key — ignore rather than let the
+        // exception escape the storage-event handler and wedge the flow.
+        return;
+      }
+      if (result && result.type === "success") finish(resolve, result.tokens);
+      else finish(reject, new Error((result && result.error) || "Unknown error from Hosted UI."));
     }
     function onStorage(event) {
       if (event.key === AUTH_RESULT_KEY && event.newValue) consumeResult();

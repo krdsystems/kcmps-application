@@ -177,6 +177,38 @@ under `prefers-reduced-motion` (manual controls still work).
 No other code changes are expected to be needed — the data shape, cart logic, and UI were
 built against this swap from the start.
 
+### 7. Mobile layout optimization (2026-07-23)
+
+Three responsive issues were fixed via CSS-only changes to ensure the site works seamlessly
+on narrow viewports without any horizontal scrolling or element overlap:
+
+1. **Navbar overlap on mobile** — The nav was forcing all items (CTA button, Dashboard link,
+   cart button, auth area) onto a single line with `flex-wrap: nowrap` even on narrow screens.
+   On mobile, this caused nav elements to overlap and overflow the viewport.
+
+   **Fix:** At `@media (max-width: 760px)`, hid the redundant "Start your order" CTA button
+   (which is already available in the sticky bottom bar) and the Dashboard button (only shown
+   for staff anyway). Reduced nav gaps and added `max-width: 80px` with ellipsis truncation
+   to the user's display name so long names won't trigger overflow.
+
+2. **Post-login horizontal bleed** — After login, the auth area swaps from a button to the
+   user's name + logout button. If the name was long, it wouldn't wrap due to `white-space:
+   nowrap`, causing the entire page to scroll horizontally.
+
+   **Fix:** Added global `overflow-x: hidden` to `html, body` to prevent any element from
+   causing a rightward page scroll, regardless of width. This caps all overflow at the viewport
+   edge.
+
+3. **Cart drawer on very small screens** — The cart drawer used `width: min(420px, 100%)`,
+   which should work but sometimes left room for scrolling on extremely narrow phones due to
+   mobile browser chrome not being accounted for.
+
+   **Fix:** Added `@media (max-width: 480px) { .cart-drawer { width: 100vw; } }` to force the
+   drawer to the full viewport width on phones under 480px.
+
+All changes were CSS-only; no JavaScript logic or cart behavior was affected. The site now
+passes a mobile-viewport smoke test without horizontal scrolling.
+
 ## Errors encountered during the Cognito login POC, and what fixed them
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

@@ -396,6 +396,7 @@ textarea.input { min-height: 90px; resize: vertical; }
   transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); }
 .cart-drawer.is-open { transform: translateX(0); }
 @media (prefers-reduced-motion: reduce) { .cart-drawer, .cart-overlay { transition: none; } }
+@media (max-width: 480px) { .cart-drawer { width: 100vw; } }
 .cart-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4);
   border-bottom: 1px solid var(--color-divider); }
 .cart-head h3 { margin: 0; font-size: 18px; color: var(--color-accent-2-800); }

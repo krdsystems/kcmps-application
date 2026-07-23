@@ -28,6 +28,7 @@
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body { margin: 0; text-wrap: pretty; }
+html, body { overflow-x: hidden; }
 .wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
 .nav { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(10px); background: color-mix(in srgb, var(--color-bg) 88%, transparent); padding-inline: max(var(--edge), calc((100% - 1240px) / 2 + var(--edge))); }
 .nav-brand { display: flex; align-items: center; gap: 10px; }
@@ -36,7 +37,14 @@ body { margin: 0; text-wrap: pretty; }
 .nav-links a { font-weight: 500; white-space: nowrap; }
 .nav-links { flex-wrap: nowrap; }
 @media (max-width: 1000px) { .brand-sep, .brand-long { display: none; } }
-@media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
+@media (max-width: 760px) {
+  .nav-links a:not(.btn) { display: none; }
+  .nav-links .btn-primary { display: none; }
+  #dashboard-link { display: none !important; }
+  .nav { gap: var(--space-2); }
+  .nav-links { gap: var(--space-2); }
+  .auth-user-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+}
 
 .kicker-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
   letter-spacing: 0.03em; color: var(--color-accent-2-700); background: var(--color-accent-2-100);

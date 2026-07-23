@@ -66,10 +66,6 @@ body { margin: 0; text-wrap: pretty; }
 .pillar p { font-size: 14.5px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 78%, transparent); }
 @media (max-width: 900px) { .pillar-grid { grid-template-columns: 1fr; } }
 
-.cta-band { margin: var(--space-8) 0; padding: var(--space-6); border-radius: var(--radius-lg); background: var(--color-accent-2-800); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
-.cta-band h3 { color: #fff; margin: 0 0 6px; font-size: 22px; }
-.cta-band p { margin: 0; color: color-mix(in srgb, #fff 78%, transparent); font-size: 14.5px; }
-
 .catalog { padding: var(--space-8) 0; }
 .offer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
 .offer .card-title { margin-top: 2px; }
@@ -191,11 +187,11 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </span>
   </a>
   <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
-    <a href="#top">Index</a>
-    <a href="#catalog">Catalog</a>
-    <a href="#estimator">Estimator</a>
+    <a href="#storefront">Shop</a>
+    <a href="#how">How it works</a>
+    <a href="#faq">FAQ</a>
     <a href="#contact">Contact</a>
-    <a href="#estimator" class="btn btn-primary">Get quote</a>
+    <a href="#storefront" class="btn btn-primary">Start your order</a>
 
     <!-- Dashboard link — shown only for users in the "Staff" Cognito group.
          Real routing to /dashboard/* doesn't exist yet, so it just logs. -->
@@ -219,17 +215,47 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <div class="wrap" id="top">
   <section class="hero">
     <div>
-      <span class="kicker-pill"><span class="dot"></span>Est. 2026 · Manila studio</span>
-      <h1><span>Print, design</span><span class="warm">and merch</span><span>under one roof.</span></h1>
-      <p class="sub">Kaalyados Creatives bridges tactile print precision with next-generation digital hardware manufacturing — from custom catalog publishing to physical merchandise, made and finished in-house.</p>
+      <span class="kicker-pill"><span class="dot"></span>Custom shirts &amp; prints · made in Manila</span>
+      <h1><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
+      <div class="price-anchor">
+        <span class="from">From</span><span class="amount">₱170</span><span class="was">design + shirt, all-in</span>
+      </div>
+      <p class="sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
+      <ul class="hero-checklist">
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Free design file check &amp; prep — we fix it before we print</li>
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Reprint-free guarantee if the print isn't right</li>
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Made in-house — no middleman, no long waits</li>
+      </ul>
       <div class="row">
-        <a href="#catalog" class="btn btn-primary">Explore catalog</a>
-        <a href="#estimator" class="btn btn-secondary">Start an estimate</a>
+        <a href="#storefront" class="btn btn-primary">Shop designs</a>
+        <a href="#how" class="btn btn-secondary">How it works</a>
+      </div>
+      <div class="trust-row">
+        <span class="trust-chip"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z"/></svg>Reprint guarantee</span>
+        <span class="trust-chip">No minimum order</span>
+        <span class="trust-chip">Custom: pay after approval</span>
       </div>
     </div>
-    <figure class="hero-figure duotone">
-      <img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/7bdb4ff19_generated_image.png" alt="KCMPS creative studio workspace" />
-    </figure>
+    <div class="hero-figure hero-carousel duotone" id="hero-carousel" aria-roledescription="carousel" aria-label="KCMPS studio photos">
+      <div class="carousel-track" id="carousel-track">
+        <figure class="carousel-slide"><img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/7bdb4ff19_generated_image.png" alt="KCMPS creative studio workspace" /></figure>
+        <figure class="carousel-slide"><img src="assets/hero-2.png" alt="Heat press applying a colorful DTF transfer onto a t-shirt" /></figure>
+        <figure class="carousel-slide"><img src="assets/hero-3.png" alt="Customer holding up a freshly printed custom t-shirt" /></figure>
+        <figure class="carousel-slide"><img src="assets/hero-4.png" alt="Designer's desk with a laptop, DTF film and folded shirts" /></figure>
+      </div>
+      <button type="button" class="carousel-arrow prev" id="carousel-prev" aria-label="Previous photo">
+        <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>
+      </button>
+      <button type="button" class="carousel-arrow next" id="carousel-next" aria-label="Next photo">
+        <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>
+      </button>
+      <div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Choose photo">
+        <button type="button" class="carousel-dot" data-slide="0" aria-label="Photo 1"></button>
+        <button type="button" class="carousel-dot" data-slide="1" aria-label="Photo 2"></button>
+        <button type="button" class="carousel-dot" data-slide="2" aria-label="Photo 3"></button>
+        <button type="button" class="carousel-dot" data-slide="3" aria-label="Photo 4"></button>
+      </div>
+    </div>
   </section>
 
   <section class="capstrip" aria-label="Capabilities">
@@ -241,68 +267,69 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <span class="tag tag-accent-2">Commercial branding</span>
   </section>
 
-  <section class="mission-vision">
+  <!-- ============ VALUE STACK — makes the ₱170 feel small ============
+       OWNER: the peso "value" amounts below are editable placeholders meant to
+       reflect what each inclusion is really worth. Adjust to your real numbers. -->
+  <section class="valuestack" id="value">
     <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>01 · Who we are</span>
-      <h2>Vision &amp; mission</h2>
+      <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
+      <h2>One low price. Everything included.</h2>
+      <p>Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
     </div>
-    <div class="mv-grid">
-      <div class="card pillar">
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M128,56a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Z" opacity="0.2"/><path d="M247.4,116.5c-.6-1.4-15.4-33.8-48.5-56.9C165.4,36.4,120.2,26.7,128,26.7s-37.4,9.7-70.9,32.9C24,82.7,9.2,115.1,8.6,116.5a8,8,0,0,0,0,7c.6,1.4,15.4,33.8,48.5,56.9,33.5,23.2,78.7,32.9,70.9,32.9s37.4-9.7,70.9-32.9c33.1-23.1,47.9-55.5,48.5-56.9A8,8,0,0,0,247.4,116.5ZM128,184a64,64,0,1,1,64-64A64.07,64.07,0,0,1,128,184Z"/></svg></div>
-        <h3>Vision</h3>
-        <p>To be the premier creative hub that seamlessly bridges digital art, custom merchandise, and technology, empowering individuals and businesses to bring their unique visions to life.</p>
-      </div>
-      <div class="card pillar">
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M232,64,168,40,128,64,64,40,24,64V216l40-24,64,24,40-24,64,24Z" opacity="0.2"/><path d="M235.71,58.13a8,8,0,0,0-7.35-.89l-60.71,23-62.63-23.5a8,8,0,0,0-5.6.05l-64,24A8,8,0,0,0,30.05,74a8,8,0,0,0-2.06,5.42v152a8,8,0,0,0,7.36,7.98,7.9,7.9,0,0,0,5.96-2.15L120,213l62.34,23.38A8,8,0,0,0,192,232l64-24a8,8,0,0,0,5.29-7.53V63.55A8,8,0,0,0,235.71,58.13ZM48,84.94l48-18v133.9l-48,18Zm64-18,48,18v133.9l-48-18ZM224,196.14l-48,18V80.24l48-18Z"/></svg></div>
-        <h3>Mission</h3>
-        <p>At KCMPS, our mission is to deliver exceptional printing services, innovative digital artistry, high-quality custom apparel, and curated tech gadgets. We are committed to fostering lasting partnerships with our clients by providing reliable solutions, creative excellence, and accessible technology that inspires connection and celebrates every milestone.</p>
-      </div>
+    <div class="card vstack-card">
+      <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
+      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱120</span></div>
+      <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Color &amp; placement layout assistance <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
+      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱170</span></div>
     </div>
   </section>
 
-  <section class="pillars">
-    <div class="section-head">
-      <h2>Built for physical craft, run like a studio</h2>
-      <p>Each pillar is powered by its own equipment and materials — engineering standards applied to physical production.</p>
+  <!-- ============ GUARANTEE — removes the risk ============
+       OWNER: confirm the exact guarantee terms you want to stand behind. -->
+  <div class="guarantee">
+    <div class="g-icon"><svg width="30" height="30" viewBox="0 0 256 256" fill="currentColor"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z" opacity="0.25"/><path d="M208,32H48A24,24,0,0,0,24,56v58.77c0,89.61,75.82,119.34,91,124.39a16,16,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A24,24,0,0,0,208,32Zm0,82.77c0,78.42-66.35,104.62-80,109.18-13.53-4.51-80-30.69-80-109.18V56a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8ZM173.66,98.34a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32,0l-20-20a8,8,0,0,1,11.32-11.32L128,132.69l34.34-34.35A8,8,0,0,1,173.66,98.34Z"/></svg></div>
+    <div class="g-body">
+      <h3>Love it, or we reprint it — free.</h3>
+      <p>If your print comes out wrong on our end, we redo it at no cost until it's right. No stress, no runaround — that's our promise on every order.</p>
     </div>
-    <div class="pillar-grid">
-      <div class="card pillar">
-        <span class="num">01 / Print</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M214,84H196V40a14,14,0,0,0-14-14H74A14,14,0,0,0,60,40V84H42A22,22,0,0,0,20,106v70a14,14,0,0,0,14,14H60v26a14,14,0,0,0,14,14H182a14,14,0,0,0,14-14V190h26a14,14,0,0,0,14-14V106A22,22,0,0,0,214,84Z" opacity="0.2"/><path d="M214,84H196V40a14,14,0,0,0-14-14H74A14,14,0,0,0,60,40V84H42A22,22,0,0,0,20,106v70a14,14,0,0,0,14,14H60v26a14,14,0,0,0,14,14H182a14,14,0,0,0,14-14V190h26a14,14,0,0,0,14-14V106A22,22,0,0,0,214,84ZM74,40H182V84H74Zm108,176H74V152H182Zm34-40H196V148a14,14,0,0,0-14-14H74a14,14,0,0,0-14,14v28H42V106a6,6,0,0,1,6-6H214a6,6,0,0,1,6,6Z"/></svg></div>
-        <h3>Print production</h3>
-        <p>Offset and digital print for catalogs, custom packaging and premium textured laminations.</p>
-        <a href="#catalog" class="btn btn-ghost">View print services</a>
-      </div>
-      <div class="card pillar">
-        <span class="num">02 / Studio</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M226.76,69.51,186.49,29.24a20,20,0,0,0-28.28,0L36.69,150.76a19.86,19.86,0,0,0-5.86,14.14V208a16,16,0,0,0,16,16h68.7a13.9,13.9,0,0,0,2-.14,20,20,0,0,0,12.12-5.72L226.76,97.79A20,20,0,0,0,226.76,69.51Z" opacity="0.2"/><path d="M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-19,19-.1.1L36.69,155.51a15.86,15.86,0,0,0-4.69,11.32V208a16,16,0,0,0,16,16H80a15.86,15.86,0,0,0,11.31-4.69L226.76,84.34l.1-.11,2.8-2.79A8,8,0,0,0,229.66,58.34ZM48,208V166.83l104-104L180.68,91,76.69,195H48Zm144-19.31L156.66,155.31,192,120l19.31,19.31Z"/></svg></div>
-        <h3>Studio design</h3>
-        <p>In-house pre-press, CAD drafting for 3D prints, and branding packages built for material reality.</p>
-        <a href="#catalog" class="btn btn-ghost">View design lab</a>
-      </div>
-      <div class="card pillar">
-        <span class="num">03 / Merch</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
-        <h3>Hardware merch</h3>
-        <p>Custom flash drives, high-capacity SSDs, and durable apparel with premium finishes.</p>
-        <a href="#catalog" class="btn btn-ghost">View merchandise</a>
-      </div>
-    </div>
-  </section>
-
-  <div class="cta-band">
-    <div>
-      <h3>Ready to produce?</h3>
-      <p>Get an instant cost estimate with our real-time calculator. No sign-up required.</p>
-    </div>
-    <a href="#estimator" class="btn btn-primary">Start estimate</a>
   </div>
 
-  <section class="catalog" id="catalog">
+  <!-- ============ HOW IT WORKS — reduces effort/time ============ -->
+  <section class="how" id="how">
     <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>02 · Catalog</span>
-      <h2>Offerings directory</h2>
-      <p>A working set of what we produce most often — every order is finalized after a spec review.</p>
+      <span class="kicker-pill"><span class="dot"></span>How it works</span>
+      <h2>Three steps to done.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="card how-step">
+        <span class="step-num">STEP 01</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M164.44,105.34,152.05,80.61a8,8,0,0,0-7.16-4.61H111.11a8,8,0,0,0-7.16,4.61L91.56,105.34Z" opacity="0.2"/><path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Zm8,120a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80a8,8,0,0,0,7.16-4.42L99.22,60h57.56l12.06,23.58A8,8,0,0,0,176,88h40a8,8,0,0,1,8,8ZM128,100a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,100Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,172Z"/></svg></div>
+        <h3>Pick or upload a design</h3>
+        <p>Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 02</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M96,120a80,80,0,1,1,80,80A80,80,0,0,1,96,120Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg></div>
+        <h3>We produce in-house</h3>
+        <p>We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 03</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
+        <h3>Pick up or get it delivered</h3>
+        <p>Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="catalog" id="storefront">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Shop</span>
+      <h2>Pick a design — or start a custom order</h2>
+      <p>Buy a ready-made design at a fixed price, or add a <strong>custom design request</strong> to your cart. Custom items are ₱0 now — you're only billed after we review and you approve.</p>
     </div>
     <div class="tabs" data-tabs>
       <div class="tab-list" role="tablist">
@@ -313,12 +340,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       <div class="tab-panels">
 
         <div class="tab-panel is-active" id="panel-print-office">
-          <div class="offer-grid">
-            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">B/W Printing &amp; Copying</h3><p class="card-body">Documents, handouts and office copying — B/W output combined into a single service.</p><span class="badge-soon">Coming soon</span></div>
-            <div class="card offer"><span class="card-kicker">Office Supplies</span><h3 class="card-title">Office Supplies</h3><p class="card-body">Everyday office and school supplies, curated for walk-in and bulk orders.</p><span class="badge-soon">Coming soon</span></div>
-            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Catalogs &amp; booklets</h3><p class="card-body">Saddle-stitch or perfect-bound, laminated or matte.</p><span class="price">From ₱180 / copy</span></div>
-            <div class="card offer"><span class="card-kicker">Print</span><h3 class="card-title">Custom packaging</h3><p class="card-body">Die-cut boxes and sleeves, brand-ready finishes.</p><span class="price">From ₱65 / unit</span></div>
-          </div>
+          <div data-products-leaf="print-office"></div>
         </div>
 
         <div class="tab-panel" id="panel-design">
@@ -340,26 +362,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
                   <div class="tab-panels">
 
                     <div class="tab-panel is-active" id="panel-dtf">
-                      <div class="card offer">
-                        <span class="card-kicker">Apparel · DTF</span>
-                        <h3 class="card-title">DTF Printing</h3>
-                        <p class="card-body">Direct-to-film transfers, priced by size. Add tshirt application to have it pressed on for you.</p>
-                        <table class="table">
-                          <thead><tr><th>Size</th><th>Price</th></tr></thead>
-                          <tbody>
-                            <tr><td>2×3</td><td>₱50</td></tr>
-                            <tr><td>A4</td><td>₱80</td></tr>
-                            <tr><td>A3</td><td>₱120</td></tr>
-                            <tr><td>+ With tshirt</td><td>+₱120</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
+                      <div data-products-leaf="dtf"></div>
                     </div>
                     <div class="tab-panel" id="panel-subli">
-                      <div class="card offer"><span class="card-kicker">Apparel · Subli</span><h3 class="card-title">Sublimation printing</h3><p class="card-body">Full-color, all-over prints on light-colored and poly fabrics.</p><span class="badge-soon">Coming soon</span></div>
+                      <div data-products-leaf="subli"></div>
                     </div>
                     <div class="tab-panel" id="panel-hotmelt">
-                      <div class="card offer"><span class="card-kicker">Apparel · Hotmelt</span><h3 class="card-title">Hotmelt vinyl</h3><p class="card-body">Durable heat-applied vinyl lettering and designs.</p><span class="badge-soon">Coming soon</span></div>
+                      <div data-products-leaf="hotmelt"></div>
                     </div>
 
                   </div>
@@ -367,11 +376,11 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
               </div>
 
               <div class="tab-panel" id="panel-3dprint">
-                <div class="card offer"><span class="card-kicker">Studio</span><h3 class="card-title">3D prototypes</h3><p class="card-body">PLA/PETG prints for product and packaging mockups.</p><span class="badge-soon">Coming soon</span></div>
+                <div data-products-leaf="3dprint"></div>
               </div>
 
               <div class="tab-panel" id="panel-souvenir">
-                <div class="card offer"><span class="card-kicker">Design</span><h3 class="card-title">Souvenirs</h3><p class="card-body">Custom keepsakes and giveaways for events and milestones.</p><span class="badge-soon">Coming soon</span></div>
+                <div data-products-leaf="souvenir"></div>
               </div>
 
             </div>
@@ -387,13 +396,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
             </div>
             <div class="tab-panels">
               <div class="tab-panel is-active" id="panel-network">
-                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Networking gear</h3><p class="card-body">Routers, cables and networking accessories.</p><span class="badge-soon">Coming soon</span></div>
+                <div data-products-leaf="network"></div>
               </div>
               <div class="tab-panel" id="panel-storage">
-                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Flash drives &amp; SSDs</h3><p class="card-body">Custom-bodied storage, laser-etched branding.</p><span class="badge-soon">Coming soon</span></div>
+                <div data-products-leaf="storage"></div>
               </div>
               <div class="tab-panel" id="panel-entertainment">
-                <div class="card offer"><span class="card-kicker">Merch</span><h3 class="card-title">Entertainment gadgets</h3><p class="card-body">Audio, gaming and everyday tech accessories.</p><span class="badge-soon">Coming soon</span></div>
+                <div data-products-leaf="entertainment"></div>
               </div>
             </div>
           </div>
@@ -403,11 +412,43 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </section>
 
+  <!-- ============ FAQ — kills the last hesitation ============ -->
+  <section class="faq" id="faq">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Questions</span>
+      <h2>Everything you might be wondering</h2>
+    </div>
+    <details class="faq-item" open>
+      <summary>How does a custom design request work?</summary>
+      <p>Add “Custom design request” to your cart and check out — it's ₱0 up front. We review your idea, send you a quote, and only once you approve do you pay. No commitment, no surprise charges.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What files do you accept for my design?</summary>
+      <p>PNG, JPG, PDF, SVG or AI — the higher resolution the better. Not sure if your file is print-ready? Send it anyway. We check and prep every file for free before we print.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Is there a minimum order?</summary>
+      <p>No minimum on ready-made shirts and prints — order a single piece if that's all you need. For bulk runs, use the estimator below for a directional quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How fast will I get it?</summary>
+      <p>Ready-made designs are typically produced within the same or next business day. Custom work depends on the design — we'll tell you the turnaround when we send your quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How and when do I pay?</summary>
+      <p>Ready-made priced items are settled when you place the order. Custom items are billed only after you approve the quote — we coordinate payment with you right after checkout.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Pickup or delivery?</summary>
+      <p>Both. Pick up at our Manila studio, or ask for delivery at checkout and we'll arrange it.</p>
+    </details>
+  </section>
+
   <section class="estimator" id="estimator">
     <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>03 · Estimator</span>
-      <h2>Real-time cost wizard</h2>
-      <p>A quick directional estimate — final pricing is confirmed after a physical spec review.</p>
+      <span class="kicker-pill"><span class="dot"></span>Bulk &amp; custom</span>
+      <h2>Estimating a bigger run?</h2>
+      <p>Get a quick directional estimate for bulk or custom jobs — final pricing is confirmed after a spec review. For single shirts and prints, just shop above.</p>
     </div>
     <div class="est-grid">
       <div>
@@ -446,6 +487,25 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </section>
 
+  <section class="mission-vision">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Who we are</span>
+      <h2>Vision &amp; mission</h2>
+    </div>
+    <div class="mv-grid">
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M128,56a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Z" opacity="0.2"/><path d="M247.4,116.5c-.6-1.4-15.4-33.8-48.5-56.9C165.4,36.4,120.2,26.7,128,26.7s-37.4,9.7-70.9,32.9C24,82.7,9.2,115.1,8.6,116.5a8,8,0,0,0,0,7c.6,1.4,15.4,33.8,48.5,56.9,33.5,23.2,78.7,32.9,70.9,32.9s37.4-9.7,70.9-32.9c33.1-23.1,47.9-55.5,48.5-56.9A8,8,0,0,0,247.4,116.5ZM128,184a64,64,0,1,1,64-64A64.07,64.07,0,0,1,128,184Z"/></svg></div>
+        <h3>Vision</h3>
+        <p>To be the premier creative hub that seamlessly bridges digital art, custom merchandise, and technology, empowering individuals and businesses to bring their unique visions to life.</p>
+      </div>
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M232,64,168,40,128,64,64,40,24,64V216l40-24,64,24,40-24,64,24Z" opacity="0.2"/><path d="M235.71,58.13a8,8,0,0,0-7.35-.89l-60.71,23-62.63-23.5a8,8,0,0,0-5.6.05l-64,24A8,8,0,0,0,30.05,74a8,8,0,0,0-2.06,5.42v152a8,8,0,0,0,7.36,7.98,7.9,7.9,0,0,0,5.96-2.15L120,213l62.34,23.38A8,8,0,0,0,192,232l64-24a8,8,0,0,0,5.29-7.53V63.55A8,8,0,0,0,235.71,58.13ZM48,84.94l48-18v133.9l-48,18Zm64-18,48,18v133.9l-48-18ZM224,196.14l-48,18V80.24l48-18Z"/></svg></div>
+        <h3>Mission</h3>
+        <p>At KCMPS, our mission is to deliver exceptional printing services, innovative digital artistry, high-quality custom apparel, and curated tech gadgets. We are committed to fostering lasting partnerships with our clients by providing reliable solutions, creative excellence, and accessible technology that inspires connection and celebrates every milestone.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="contact" id="contact">
     <div class="contact-grid">
       <div>
@@ -479,9 +539,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         <p class="tagline">Kaalyados Creatives — merchandise and printing services. High-fidelity print, pre-press drafting, precision 3D fabrication and curated hardware storage, made in Manila.</p>
       </div>
       <div class="foot-links">
-        <a href="#top">Index</a>
-        <a href="#catalog">Catalog</a>
-        <a href="#estimator">Estimator</a>
+        <a href="#storefront">Shop</a>
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
         <a href="#contact">Contact</a>
       </div>
     </div>
@@ -491,6 +551,18 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </div>
 </footer>
+
+<!-- Persistent mobile buy bar — hidden on desktop and inside auth popups. -->
+<div class="sticky-cta">
+  <a href="#storefront" class="btn btn-secondary">Shop</a>
+  <button type="button" class="btn btn-primary" id="sticky-cart">View cart</button>
+</div>
+
+<!-- Storefront data + cart logic (static, front-end only). Loaded before the
+     auth script so window.KCMPS_STORE exists when the auth flow refreshes the
+     cart badge (see the CART INTEGRATION POINT in the auth script below). -->
+<script src="products.js"></script>
+<script src="store.js"></script>
 
 <script>
 (() => {
@@ -540,6 +612,74 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       });
     });
   });
+})();
+
+/* Hero carousel — continuously, slowly drifts right-to-left: each slide
+   glides into the next over ~2.5s (matches the CSS transition duration in
+   styles.css) so the motion never sits static, then immediately glides on
+   to the following slide. Prev/next arrows, dot indicators, and touch/swipe
+   are layered on top; any manual interaction pauses autoplay briefly so it
+   doesn't fight the user, then resumes the drift. */
+(() => {
+  const root = document.getElementById('hero-carousel');
+  const track = document.getElementById('carousel-track');
+  if (!root || !track) return;
+  const slides = [...track.children];
+  const dots = [...document.querySelectorAll('#carousel-dots .carousel-dot')];
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const count = slides.length;
+  const AUTO_MS = 5500; // 4s slide + ~1.5s pause; keep slide duration in sync with styles.css .carousel-track transition
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let index = 0;
+  let timer = null;
+
+  function render() {
+    track.style.transform = `translateX(-${index * 100}%)`;
+    dots.forEach((d, i) => d.classList.toggle('is-active', i === index));
+  }
+  function goTo(i) { index = (i + count) % count; render(); }
+  function next() { goTo(index + 1); }
+  function prev() { goTo(index - 1); }
+
+  function stopAuto() { if (timer) { clearInterval(timer); timer = null; } }
+  function startAuto() {
+    if (reduceMotion) return; // respect reduced-motion: no autoplay, manual controls still work
+    stopAuto();
+    timer = setInterval(next, AUTO_MS);
+  }
+  // Manual interaction pauses autoplay, then resumes after a breather.
+  function restartAuto() { stopAuto(); startAuto(); }
+
+  nextBtn.addEventListener('click', () => { next(); restartAuto(); });
+  prevBtn.addEventListener('click', () => { prev(); restartAuto(); });
+  dots.forEach((d) => d.addEventListener('click', () => { goTo(Number(d.dataset.slide)); restartAuto(); }));
+
+  // Pause on hover/focus so it doesn't move while a visitor is reading it.
+  root.addEventListener('mouseenter', stopAuto);
+  root.addEventListener('mouseleave', startAuto);
+  root.addEventListener('focusin', stopAuto);
+  root.addEventListener('focusout', startAuto);
+
+  // Touch swipe (right-to-left swipe = next, left-to-right = previous).
+  let touchStartX = null;
+  root.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    stopAuto();
+    root.classList.add('is-dragging');
+  }, { passive: true });
+  root.addEventListener('touchend', (e) => {
+    root.classList.remove('is-dragging');
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx < -40) next();
+    else if (dx > 40) prev();
+    touchStartX = null;
+    startAuto();
+  });
+
+  render();
+  startAuto();
 })();
 </script>
 
@@ -812,23 +952,17 @@ function renderLoggedIn(claims) {
   }
 }
 
-/* ---- Cart stub ----
-   CART INTEGRATION POINT: once the real cart backend exists (e.g. API Gateway
-   + Lambda over a DynamoDB table keyed by the user's `sub` claim), replace
-   this stub with a fetch to that API using the access token in the
-   Authorization header, and render the real item count / contents here. ---- */
-function initCartStub() {
-  document.getElementById("cart-btn").addEventListener("click", () => {
-    alert(loadTokens()
-      ? "Cart preview — placeholder only. Real cart data would load here from the backend."
-      : "Cart preview (guest, not logged in) — placeholder only.");
-  });
-}
-function setCartBadge(count) {
-  const badge = document.getElementById("cart-badge");
-  if (count > 0) { badge.textContent = count; badge.classList.remove("is-hidden"); }
-  else { badge.classList.add("is-hidden"); }
-}
+/* ---- Cart ----
+   The cart button + badge are now driven by store.js (a real, static,
+   localStorage-backed cart shared by guests and logged-in users alike — see
+   products.js/store.js). store.js binds the click listener itself and exposes
+   window.KCMPS_STORE.refreshBadge() so auth events below can re-sync the badge.
+
+   CART INTEGRATION POINT (future backend phase): once a real cart backend
+   exists (e.g. API Gateway + Lambda over a DynamoDB table keyed by the user's
+   `sub` claim), have store.js fetch from that API using the access token in
+   the Authorization header instead of localStorage — nothing here changes. ---- */
+function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
 
 /* ---- Login orchestration ---- */
 async function startLogin() {
@@ -842,9 +976,7 @@ async function startLogin() {
     const claims = decodeJwt(tokens.id_token);
     log("Decoded ID token claims:", claims);
     renderLoggedIn(claims);
-    // Stub: pretend 2 items in cart post-login. Replace once the cart backend
-    // exists (see CART INTEGRATION POINT above).
-    setCartBadge(2);
+    refreshCartBadge();
   } catch (err) {
     console.error(err);
     alert("Login failed: " + err.message);
@@ -859,7 +991,6 @@ async function startLogin() {
    testing — hence a popup, identified on return by window.name.) ---- */
 function logout() {
   clearTokens();
-  setCartBadge(0);
   renderLoggedOut();
   const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
     client_id: COGNITO_CONFIG.clientId,
@@ -894,13 +1025,12 @@ function logout() {
   if (tokens) {
     try {
       renderLoggedIn(decodeJwt(tokens.id_token));
-      setCartBadge(2); // stub — see CART INTEGRATION POINT
       log("Restored session from sessionStorage.");
     } catch { clearTokens(); renderLoggedOut(); }
   } else {
     renderLoggedOut();
   }
-  initCartStub();
+  refreshCartBadge();
 })();
 </script>
 </body>

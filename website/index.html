@@ -58,7 +58,7 @@ html, body { overflow-x: hidden; }
 .hero p.sub { font-size: 17px; line-height: 1.6; max-width: 46ch; color: color-mix(in srgb, var(--color-text) 80%, transparent); margin: 0 0 var(--space-4); }
 .hero .row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
 .hero-figure { aspect-ratio: 4/5; }
-@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-figure { aspect-ratio: 16/10; } }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-figure { aspect-ratio: 16/10; order: -1; } }
 
 .capstrip { padding: var(--space-4) 0 var(--space-6); display: flex; gap: 10px; flex-wrap: wrap; }
 

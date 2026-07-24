@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Jobs — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>All job tickets</h2>
+          <span class="hint">The wizard/checkout submission is the ticket — nothing here is retyped</span>
+        </div>
+        <div class="card" style="margin-bottom:var(--space-3)">
+          <div class="dash-form-grid">
+            <div class="field"><label for="f-search">Search</label><input class="input" id="f-search" placeholder="Client, description, order ID…" /></div>
+            <div class="field"><label for="f-status">Status</label><select class="input" id="f-status"><option value="">All statuses</option></select></div>
+          </div>
+        </div>
+        <div class="card" id="job-list-card">
+          <div class="job-row" style="font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);font-weight:700">
+            <span>Job</span><span>Client</span><span>Status</span><span>Due</span><span></span>
+          </div>
+          <div id="job-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("jobs");
+  if (!claims) return;
+  const { fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+
+  function statusTone(status) {
+    if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
+    if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
+    if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
+    if (status === "In Production" || status === "QC") return "st-info";
+    return "st-neutral";
+  }
+
+  function allRows() {
+    const orders = KCMPS_DASH.getAllOrders();
+    const rows = [];
+    orders.forEach((o) => o.lineItems.forEach((li) => rows.push({ order: o, li })));
+    return rows.sort((a, b) => new Date(b.li.enteredStatusAt) - new Date(a.li.enteredStatusAt));
+  }
+
+  const rows = allRows();
+  const statuses = [...new Set(rows.map((r) => r.li.status))].sort();
+  document.getElementById("f-status").innerHTML += statuses.map((s) => `<option value="${s}">${s}</option>`).join("");
+
+  function render() {
+    const q = document.getElementById("f-search").value.trim().toLowerCase();
+    const statusFilter = document.getElementById("f-status").value;
+    const filtered = rows.filter((r) => {
+      if (statusFilter && r.li.status !== statusFilter) return false;
+      if (!q) return true;
+      const hay = [r.li.description, r.order.client?.name, r.order.orderId].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+    const list = document.getElementById("job-list");
+    if (!filtered.length) { list.innerHTML = '<div class="empty-state">No jobs match.</div>'; return; }
+    list.innerHTML = filtered.map(({ order, li }) => (
+      `<a class="job-row" style="text-decoration:none;color:inherit" href="job-detail.html?order=${encodeURIComponent(order.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
+      `<span>${escapeHtml(li.description)}</span>` +
+      `<span>${escapeHtml(order.client ? order.client.name : "—")}</span>` +
+      `<span class="status-pill ${statusTone(li.status)}">${li.status}</span>` +
+      `<span>${fmtDate(order.originalPromisedDate)}</span>` +
+      `<span class="text-muted" style="font-size:12px">${order.orderId} / ${li.lineItemId}</span>` +
+      `</a>`
+    )).join("");
+  }
+  document.getElementById("f-search").addEventListener("input", render);
+  document.getElementById("f-status").addEventListener("change", render);
+  render();
+})();
+</script>
+</body>
+</html>

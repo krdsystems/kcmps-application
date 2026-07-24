@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Job ticket — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content" id="detail-root">
+      <a href="jobs.html" class="checkout-back" style="display:inline-block">&larr; All jobs</a>
+      <div id="detail-body"></div>
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("jobs");
+  if (!claims) return;
+  const { fmtPeso, fmtDateTime, fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+
+  const params = new URLSearchParams(location.search);
+  const orderId = params.get("order");
+  const lineId = params.get("line");
+
+  function statusTone(status) {
+    if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
+    if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
+    if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
+    if (status === "In Production" || status === "QC") return "st-info";
+    return "st-neutral";
+  }
+
+  function actionsFor(status) {
+    switch (status) {
+      case "Pending Payment Verification": return [
+        { label: "Verify payment", to: "__verifypayment__", tone: "btn-primary" },
+        { label: "Reject payment", to: "__rejectpayment__", tone: "btn-secondary" },
+      ];
+      case "Quoted": return [{ label: "Send price to customer", to: "Priced", tone: "btn-primary" }];
+      case "Priced": return [{ label: "Mark payment received", to: "Confirmed", tone: "btn-primary" }];
+      case "Confirmed": return [{ label: "Schedule", to: "Scheduled", tone: "btn-primary", needsStation: true }];
+      case "Scheduled": return [{ label: "Start production", to: "In Production", tone: "btn-primary", needsStation: true, needsSetup: true }];
+      case "In Production": return [{ label: "Send to QC", to: "QC", tone: "btn-primary" }];
+      case "QC": return [
+        { label: "Pass QC → Ready for Dispatch", to: "Ready for Dispatch", tone: "btn-primary" },
+        { label: "Fail QC → Rework", to: "__rework__", tone: "btn-secondary" },
+      ];
+      case "Rework": return [{ label: "Back to Production", to: "In Production", tone: "btn-primary" }];
+      case "Ready for Dispatch": return [{ label: "Dispatch", to: "Dispatched", tone: "btn-primary" }];
+      case "Dispatched": return [{ label: "Mark Delivered", to: "Delivered", tone: "btn-primary" }];
+      default: return [];
+    }
+  }
+
+  function render() {
+    const order = KCMPS_DASH.getOrder(orderId);
+    const body = document.getElementById("detail-body");
+    if (!order) { body.innerHTML = '<div class="empty-state">Ticket not found. It may have been reset — try re-seeding from Settings.</div>'; return; }
+    const li = order.lineItems.find((x) => x.lineItemId === lineId) || order.lineItems[0];
+    const events = KCMPS_DASH.getEventsFor(orderId).filter((e) => e.lineItemId === li.lineItemId);
+    const stations = KCMPS_DASH.getStations();
+    const reasons = KCMPS_DASH.getSpoilageReasons();
+    const actions = actionsFor(li.status);
+
+    body.innerHTML =
+      `<div class="ticket-head"><div><h1 style="margin:0 0 4px">${escapeHtml(li.description)}</h1>` +
+      `<span class="status-pill ${statusTone(li.status)}">${li.status}</span></div>` +
+      `<div class="text-muted" style="text-align:right;font-size:12px">Order ${order.orderId}<br/>Line ${li.lineItemId}</div></div>` +
+
+      `<div class="card ticket-meta">` +
+      `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +
+      `<div class="m-block"><h4>Type</h4><p>${li.type === "custom" ? "Custom request" : "Quick-buy SKU"}</p></div>` +
+      `<div class="m-block"><h4>Qty</h4><p>${li.qty || "—"}</p></div>` +
+      `<div class="m-block"><h4>Amount</h4><p>${li.amount ? fmtPeso(li.amount) : "—"}</p></div>` +
+      `<div class="m-block"><h4>Original promise date</h4><p>${fmtDate(order.originalPromisedDate)}</p></div>` +
+      `<div class="m-block"><h4>Station</h4><p>${li.station ? escapeHtml(li.station) : "Unassigned"}</p></div>` +
+      `<div class="m-block"><h4>Setup minutes</h4><p>${li.setupMinutes != null ? li.setupMinutes + " min" : "Not logged"}</p></div>` +
+      (li.notes ? `<div class="m-block" style="flex-basis:100%"><h4>Notes</h4><p style="font-weight:400">${escapeHtml(li.notes)}</p></div>` : "") +
+      `</div>` +
+
+      // GCash bridge proof — per the Payment System file's staff-dashboard
+      // spec: "shows screenshot, reference number, claimed amount, order
+      // ID, timestamp." Lives on order.payment, shown for the lifetime of
+      // the order (not just while Pending) so a verified/rejected decision
+      // stays auditable from the ticket.
+      (order.payment ? `<div class="card ticket-meta" style="margin-bottom:var(--space-4)">` +
+        `<div class="m-block"><h4>GCash reference</h4><p>${escapeHtml(order.payment.gcashRefNumber)}</p></div>` +
+        `<div class="m-block"><h4>Claimed amount</h4><p>${fmtPeso(order.payment.claimedAmount)}</p></div>` +
+        `<div class="m-block"><h4>Screenshot</h4><p style="font-weight:400;font-size:12.5px">${escapeHtml(order.payment.screenshotRef)}</p></div>` +
+        `<div class="m-block"><h4>Submitted</h4><p>${fmtDateTime(order.payment.submittedAt)}</p></div>` +
+        (order.payment.verifiedAt ? `<div class="m-block"><h4>Verified</h4><p>${fmtDateTime(order.payment.verifiedAt)} by ${escapeHtml(order.payment.verifiedBy || "—")}</p></div>` : "") +
+        (order.payment.rejectionReason ? `<div class="m-block" style="flex-basis:100%"><h4>Rejection reason</h4><p style="font-weight:400">${escapeHtml(order.payment.rejectionReason)}</p></div>` : "") +
+        `</div>` : "") +
+
+      (li.spoilage && li.spoilage.length ? `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Spoilage on this line</h3>` +
+        li.spoilage.map((s) => `<p style="margin:4px 0;font-size:13.5px">${s.units} unit(s) — ${escapeHtml(s.reasonCode)} — ${fmtPeso(s.valuePhp)} — ${fmtDateTime(s.at)}</p>`).join("") +
+        `</div>` : "") +
+
+      `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Advance this job</h3>` +
+      `<div id="action-form"></div>` +
+      `<div class="action-bar" id="action-bar">` +
+      actions.map((a, i) => `<button type="button" class="btn ${a.tone}" data-idx="${i}">${a.label}</button>`).join("") +
+      (actions.length ? "" : '<span class="text-muted" style="font-size:13px">This line is in a terminal state — no further action.</span>') +
+      `</div></div>` +
+
+      `<div class="card"><h3 style="margin-top:0">Event timeline</h3><div class="timeline">` +
+      (events.length ? events.map((e) => (
+        `<div class="timeline-row"><span class="tl-time">${fmtDateTime(e.at)}</span>` +
+        `<span class="tl-transition">${e.from || "—"} → ${e.to}</span>` +
+        `<span class="text-muted">${e.station ? "station " + escapeHtml(e.station) + " · " : ""}${escapeHtml(e.actorName || "")}</span></div>`
+      )).join("") : '<p class="q-empty">No recorded transitions yet.</p>') +
+      `</div></div>`;
+
+    const formHost = document.getElementById("action-form");
+    document.querySelectorAll("#action-bar [data-idx]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = actions[Number(btn.dataset.idx)];
+        if (action.to === "__verifypayment__") {
+          formHost.innerHTML =
+            `<p style="font-size:13px;margin:0 0 var(--space-2)">This confirms the GCash payment covering every sku item on order ${escapeHtml(order.orderId)} still awaiting verification — not just this line.</p>` +
+            `<button type="button" class="btn btn-primary" id="verify-confirm">Confirm — verify payment</button>`;
+          document.getElementById("verify-confirm").addEventListener("click", () => {
+            try { KCMPS_DASH.verifyPayment(order.orderId, claims.name || claims.email); }
+            catch (err) { alert(err.message); }
+            render();
+          });
+          return;
+        }
+        if (action.to === "__rejectpayment__") {
+          formHost.innerHTML =
+            `<div class="field" style="margin-bottom:var(--space-3)"><label for="rej-reason">Rejection reason (sent to the customer)</label>` +
+            `<textarea class="input" id="rej-reason" rows="2" placeholder="e.g. reference number doesn't match any GCash transaction on file"></textarea></div>` +
+            `<button type="button" class="btn btn-secondary" id="reject-confirm">Confirm — reject payment</button>`;
+          document.getElementById("reject-confirm").addEventListener("click", () => {
+            const reason = document.getElementById("rej-reason").value.trim();
+            if (!reason) { alert("A rejection reason is required."); return; }
+            try { KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email); }
+            catch (err) { alert(err.message); }
+            render();
+          });
+          return;
+        }
+        if (action.to === "__rework__") {
+          formHost.innerHTML =
+            `<div class="dash-form-grid" style="margin-bottom:var(--space-3)">` +
+            `<div class="field"><label>Spoiled units</label><input class="input" id="rw-units" type="number" min="0" value="1" /></div>` +
+            `<div class="field"><label>Reason</label><select class="input" id="rw-reason">${reasons.map((r) => `<option value="${r.code}">${r.label}</option>`).join("")}</select></div>` +
+            `<div class="field"><label>Value (₱)</label><input class="input" id="rw-value" type="number" min="0" value="0" /></div>` +
+            `</div><button type="button" class="btn btn-primary" id="rw-confirm">Confirm — send to Rework</button>`;
+          document.getElementById("rw-confirm").addEventListener("click", () => {
+            const units = parseInt(document.getElementById("rw-units").value, 10) || 0;
+            const reasonCode = document.getElementById("rw-reason").value;
+            const valuePhp = parseFloat(document.getElementById("rw-value").value) || 0;
+            KCMPS_DASH.sendToRework(order.orderId, li.lineItemId, { units, reasonCode, valuePhp });
+            render();
+          });
+          return;
+        }
+        if (action.needsStation || action.needsSetup) {
+          formHost.innerHTML =
+            `<div class="dash-form-grid" style="margin-bottom:var(--space-3)">` +
+            (action.needsStation ? `<div class="field"><label>Station</label><select class="input" id="adv-station">${stations.map((s) => `<option value="${s.id}"${li.station === s.id ? " selected" : ""}>${s.label}</option>`).join("")}</select></div>` : "") +
+            (action.needsSetup ? `<div class="field"><label>Setup minutes (start-setup → start-run tap)</label><input class="input" id="adv-setup" type="number" min="0" placeholder="e.g. 15" /></div>` : "") +
+            `</div><button type="button" class="btn btn-primary" id="adv-confirm">Confirm — ${action.label}</button>`;
+          document.getElementById("adv-confirm").addEventListener("click", () => {
+            const station = action.needsStation ? document.getElementById("adv-station").value : undefined;
+            const setupMinutes = action.needsSetup ? parseInt(document.getElementById("adv-setup").value, 10) || 0 : undefined;
+            KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes });
+            render();
+          });
+          return;
+        }
+        KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to });
+        render();
+      });
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

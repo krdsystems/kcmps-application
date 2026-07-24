@@ -10,8 +10,13 @@ future work (and future contributors) don't have to reconstruct that history fro
 
 ## Repository layout
 
+**`website/` is the only folder that gets deployed** — it's synced directly to the S3 bucket
+as-is, no build step, no bundler, so it must contain nothing except what the live site needs.
+Everything else (design references, backend infra-as-code, test scripts, planning docs) lives
+in its own top-level folder so a `sync website/ → S3` deploy never uploads dev-only material.
+
 ```
-website/
+website/                        ← DEPLOYED — synced directly to S3, nothing else should be
 ├── index.html                  Deployed storefront (conversion-first layout, Cognito login, cart, catalog)
 ├── styles.css                  Design-system stylesheet (tokens + components) used by index.html
 ├── products.js                 Catalog data — single source of truth, shaped like a future API response
@@ -19,7 +24,21 @@ website/
 ├── login-test.html             Standalone Cognito Hosted UI login proof-of-concept (kept as a reference —
 │                                see "Development history" for why the auth logic was validated here first)
 ├── assets/                     Production images referenced by index.html (incl. hero carousel, bg texture)
-└── Claude Design/              Design-system reference docs (not deployed) — see its own readme.md
+└── dashboard/                  Staff-only ops dashboard (Today/Week/Month/Jobs/Clients/Inventory/Settings) —
+                                 see "Ops dashboard frontend..." in Development history below
+
+design-system/                  NOT deployed — design-system reference docs (tokens, component library,
+                                 foundations). See its own readme.md. Was nested inside website/ until it
+                                 got separated out so an S3 sync of website/ can't accidentally upload it.
+
+ops-dashboard/                  NOT deployed — build-time tooling for website/dashboard/, kept out of the
+                                 synced folder for the same reason:
+├── infra/                      AWS architecture + Lambda code to make the dashboard real (see its own
+│                                backend-infra-to-deploy.md and logic-inputs/)
+└── user-test/                  Manual QA script for the dashboard's design logic
+
+project_knowledge/              NOT deployed — planning/design docs referenced by the build (e.g. the
+                                 Payment System file the mixed-cart/GCash logic is built against)
 ```
 
 The site is deployed by syncing `website/` directly to an S3 bucket — no build step, no
@@ -43,7 +62,8 @@ This established the visual language still in use: navy as the dominant brand co
 orange accent reserved for a single call-to-action per screen, rounded/friendly geometry
 over "industrial" styling. See
 [`website/Claude Design/KCMPS Redesign/readme.md`](website/Claude%20Design/KCMPS%20Redesign/readme.md)
-for the full system reference.
+for the full system reference (moved to `design-system/` in step 9 below — this link
+describes the layout as it was at the time).
 
 ### 3. Building the real site, and the first structural mistake (2026-07-21)
 
@@ -305,14 +325,14 @@ above.
 ## Design system
 
 The visual language (tokens, components, do/don't guidance) lives in
-[`website/Claude Design/KCMPS Redesign/readme.md`](website/Claude%20Design/KCMPS%20Redesign/readme.md).
+[`design-system/KCMPS Redesign/readme.md`](design-system/KCMPS%20Redesign/readme.md).
 Any new page should link `website/styles.css` and build from its existing classes and CSS
 variables rather than hard-coding colors, fonts, or spacing.
 
 ## Editing the storefront
 
 - **Design tokens or component styles** — edit `website/styles.css` directly, then sync the
-  same file to `website/Claude Design/KCMPS Redesign/styles.css` so the design-system
+  same file to `design-system/KCMPS Redesign/styles.css` so the design-system
   reference docs stay current.
 - **Cart/checkout logic** — edit `website/store.js`.
 - **Catalog/product data** — edit `website/products.js` (see "Conversion-first redesign"
@@ -340,13 +360,119 @@ All changes are immediate — there's no build step.
 - Resize to mobile (375px): sticky CTA bar, drawer scroll, no horizontal overflow.
 - Check the console for JS errors and the Network tab for anything the CSP blocks.
 
+### 8. Ops dashboard frontend, mock-data layer, and backend deployment plan (2026-07-24)
+
+Built out `website/dashboard/*` from the Operations Dashboard Project Knowledge file: the
+`Staff`-only internal dashboard, deployable at the same S3 root as the storefront
+(`website/dashboard/today.html` etc.). The `Dashboard` nav link in `index.html` now navigates
+there for real instead of showing a placeholder alert.
+
+**Pages** (all share `dashboard.css` + `dashboard-shell.js` for the sidebar/topbar/auth gate):
+`today.html` (daily action queues, today's numbers, blockers board, low-stock alerts),
+`week.html` (station capacity/utilization/WIP triplet, batching suggestions, quote
+conversion), `month.html` (12-metric-capped KPIs, margin by pillar, quiet-client detection),
+`jobs.html` + `job-detail.html` (ticket list and the state-machine-driven ticket itself —
+advance/QC-pass/QC-fail-with-spoilage/setup-minutes actions), `clients.html`, `inventory.html`,
+`settings.html` (SLA reference table + a "reset demo data" control).
+
+**No backend exists yet**, so `dashboard-data.js` is a mock data layer: it seeds a realistic
+shop's worth of orders/events/metrics/blockers/inventory/clients into `localStorage` and
+exposes functions (`getQueues`, `advanceLineItem`, `getWeekData`, etc.) whose *return shapes
+already match the future API*. Every `.html` page only ever calls `window.KCMPS_DASH.*`, never
+`localStorage` directly — the same "one seam" pattern `store.js`/`KCMPS_STORE` already
+established for the cart, so swapping mock for real `fetch()` calls later is a body-only change
+per function (see `ops-dashboard/infra/backend-infra-to-deploy.md` §6). Auth reuses the
+exact Cognito config and `sessionStorage` token key already validated in `index.html`'s auth
+script, so a logged-in Staff session carries straight over with no second login.
+
+**New directories:**
+
+- `ops-dashboard/infra/backend-infra-to-deploy.md` — the AWS architecture (DynamoDB
+  single-table schema + GSI1 sparse status index, Lambda functions, API Gateway routes,
+  EventBridge cron, SES digest, IAM, cost impact, phased deployment checklist) needed to make
+  the dashboard real. No new AWS services — layers on the existing S3 + CloudFront + Cognito +
+  API Gateway + Lambda + DynamoDB + SES stack, per the Project Knowledge file's Part 8.
+- `ops-dashboard/infra/logic-inputs/` — the actual Lambda code to deploy:
+  `streams-handler.js` (DynamoDB Streams → derives `orderStatus`, maintains the GSI1 index,
+  rolls up METRIC# counters), `expire-pending-orders.js` (48h verification / 7-day quote
+  expiry sweep), `daily-digest.js` (SES digest, twice daily), `api-get-orders.js` /
+  `api-advance-line-item.js` (role-filtered reads and state-machine-validated writes, JWT
+  verified server-side — never trust the client-decoded claims per the existing auth doc).
+- `ops-dashboard/user-test/README.md` — a 13-step manual test script for a non-technical
+  user to verify the dashboard's *design logic* (not just that it renders): SLA aging order,
+  required owner/due-date on blockers, recurring-blocker promotion to the weekly view, OTIF
+  measured against the original (never revised) promise date, illegal state transitions being
+  blocked, spoilage reason-code capture on QC fail, the >85%-capacity rush-surcharge note, and
+  the monthly view's hard 12-metric cap.
+
+### 9. Local test-staff bypass, and reconciling the mixed-cart/GCash payment logic (2026-07-24)
+
+**Bug fix — auth redirect loop:** `dashboard/index.html` was blindly redirecting to
+`today.html`, which then found no Cognito session and immediately bounced back to the
+storefront — two instant redirects on every load, visible as a flickering URL bar. Fixed by
+making `dashboard/index.html` decide once and stop: on `localhost` (never on the real domain —
+gated by `KCMPS_DASH_SHELL.isLocalHost()`), it now offers a **"Continue as test Staff user
+(local only)"** button that seeds a fake, unsigned session token, letting the dashboard be
+tested without a real AWS/Cognito Staff account. `user-test/README.md`'s Test 1 was rewritten
+around this bypass instead of assuming a real Cognito account.
+
+**Payment logic reconciliation:** brought in `project_knowledge/Payment_System_Project_Knowledge.md`
+(mixed-cart checkout + manual GCash bridge design, previously not cross-referenced) and revised
+the dashboard to match it exactly rather than the looser shape it shipped with:
+
+- `dashboard-data.js` orders now carry an order-level `payment` object (`method`,
+  `claimedAmount`, `gcashRefNumber`, `screenshotRef`, `submittedAt`, `verifiedBy`, `verifiedAt`,
+  `rejectionReason`) — copied verbatim from the Payment System file's data model, since one
+  GCash transaction covers every `sku` line item on an order together, not one proof per line.
+  New `verifyPayment()`/`rejectPayment()` functions act at the order level accordingly (reject
+  requires a reason, matching the file's customer-resubmission flow).
+- Seed data gained a **mixed-cart example order** (a paid-and-delivered `sku` item plus an
+  in-progress `custom` item, same order ID) — the exact worked example from the Payment System
+  file's "Core Design: One Cart, Two Item Types" section, proving `orderStatus` correctly
+  derives to `Partially Fulfilled`.
+- `today.html`'s Pending Payment Verification queue and `job-detail.html`'s ticket view now
+  surface the GCash reference number, claimed amount, screenshot ref, and verify/reject audit
+  trail inline, per the Payment System file's staff-dashboard spec.
+- `infra/backend-infra-to-deploy.md` now cites both source files explicitly, documents the
+  `payment` sub-object's exact shape, and explains why line items are separate DynamoDB items
+  (for the GSI1 sparse index) rather than the array the Payment System file's schema sketch
+  uses. Added `infra/logic-inputs/api-verify-payment.js` (the real Lambda for order-level
+  verify/reject) and a note that `submitPaymentProof`/`payCustomItem` are storefront/checkout
+  Lambdas, out of scope for this dashboard build.
+- `user-test/README.md` gained Test 7a (verify/reject) and Test 7b (mixed-cart rollup), and
+  Test 2 now checks that the reference number/claimed amount show inline in the queue.
+
+### 10. Repo cleanup: only deployable files live under `website/` (2026-07-24)
+
+**Problem:** the deploy process syncs `website/` straight to S3 with no filtering, but the
+folder had accumulated non-deployed material alongside the real site — `website/Claude
+Design/` (design-system reference docs, already flagged "not deployed" since step 2) and, as
+of step 8 above, `website/dashboard/infra/` and `website/dashboard/user-test/` (AWS
+architecture docs, Lambda source, and a manual QA script — none of it meant to be served to
+browsers). Every one of those would have been silently uploaded to the production bucket on
+the next sync.
+
+**Fix:** moved all three out to their own top-level folders, sibling to `website/`, matching
+the pattern `project_knowledge/` already used:
+- `website/Claude Design/` → `design-system/`
+- `website/dashboard/infra/` → `ops-dashboard/infra/`
+- `website/dashboard/user-test/` → `ops-dashboard/user-test/`
+
+`website/dashboard/*.html` + `dashboard.css`/`dashboard-data.js`/`dashboard-shell.js` stay put —
+those *are* deployed, staff-only pages. Every relative path in the moved files, plus every
+mention in `dashboard-data.js`, `dashboard-shell.js`, `settings.html`, and this README, was
+recomputed and updated to match (see the "Repository layout" section at the top of this file
+for the resulting tree). No functional code changed — this was a pure file-location fix, and
+`website/` now contains nothing that isn't meant to go live.
+
 ## Known gaps / next steps
 
 - Cart icon in `index.html` is a stub with a marked integration point (`CART INTEGRATION
   POINT` comment in the auth `<script>`) for a future DynamoDB-backed cart, keyed by the
   logged-in user's `sub` claim.
-- The `Dashboard` nav link (shown to `Staff`-group users) currently just logs to the console
-  and shows an alert — the real `/dashboard/*` route doesn't exist yet.
+- The ops dashboard (`website/dashboard/*`) runs entirely on mock/localStorage data — see
+  "Ops dashboard frontend..." above and `ops-dashboard/infra/backend-infra-to-deploy.md`
+  for what's needed to wire it to a real backend.
 - Sub-categories beyond DTF pricing (Subli, Hotmelt, and the rest of the catalog) currently
   ship as "coming soon" placeholders.
 - Checkout is `mailto:`-based with no real payment processing; the cart lives in

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Settings — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>SLA windows &amp; thresholds</h2>
+          <span class="hint">Read-only preview in this mock build — wire to a Settings API once the backend exists (see infra doc)</span>
+        </div>
+        <div class="card" style="overflow-x:auto">
+          <table class="table">
+            <thead><tr><th>Rule</th><th>Threshold</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>Payment verification SLA</td><td>4 working hours (red at 2h warn)</td><td>Dashboard turns red; SES digest to staff</td></tr>
+              <tr><td>Payment verification expiry</td><td>48 hours, no resubmission</td><td>Auto-cancel, release inventory hold, notify customer</td></tr>
+              <tr><td>Quote response SLA</td><td>18 hours (matches 24h customer promise)</td><td>Dashboard red</td></tr>
+              <tr><td>Quote expiry</td><td>Priced + no payment &gt; 7 days</td><td>Status → Quote Expired, price released, SES notice</td></tr>
+              <tr><td>Due-date risk</td><td>Due ≤ 48h and not yet In Production</td><td>Dashboard red</td></tr>
+              <tr><td>Station capacity threshold</td><td>&gt;85% committed for the week</td><td>Estimator turnaround extends; rush multiplier engages</td></tr>
+              <tr><td>Recurring blocker</td><td>Same tag 3+ times / 30 days</td><td>Auto-promote to weekly agenda</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head"><h2>Spoilage reason codes</h2></div>
+        <div class="card">
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="reason-tags"></div>
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head"><h2>Stations</h2></div>
+        <div class="card">
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="station-tags"></div>
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Demo data</h2>
+          <span class="hint">This build runs entirely on mock data in your browser's localStorage — nothing is sent anywhere</span>
+        </div>
+        <div class="card">
+          <p style="margin-top:0;font-size:13.5px">Use this to reset the dashboard back to its seeded demo state — handy after testing job-advance actions, blockers, or inventory edits. See <code>ops-dashboard/user-test/README.md</code> (repo root) for the full test script.</p>
+          <button type="button" class="btn btn-secondary" id="reset-btn">Reset demo data</button>
+          <span id="reset-msg" style="margin-left:10px;font-size:13px;color:var(--color-green)"></span>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("settings");
+  if (!claims) return;
+  const { escapeHtml } = KCMPS_DASH_SHELL;
+
+  document.getElementById("reason-tags").innerHTML = KCMPS_DASH.getSpoilageReasons()
+    .map((r) => `<span class="tag tag-accent-2">${escapeHtml(r.label)}</span>`).join("");
+  document.getElementById("station-tags").innerHTML = KCMPS_DASH.getStations()
+    .map((s) => `<span class="tag tag-neutral">${escapeHtml(s.label)} (${s.id})</span>`).join("");
+
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    KCMPS_DASH.resetSeed();
+    document.getElementById("reset-msg").textContent = "Demo data reset. Reload any open dashboard tab to see it.";
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Inventory — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Consumables &amp; stock</h2>
+          <span class="hint">Wired to the estimator (per Part 1) — wrong material cost here means quotes that lose money</span>
+        </div>
+        <div class="card" style="overflow-x:auto">
+          <table class="table">
+            <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Reorder point</th><th class="num">Days of cover</th><th></th><th></th></tr></thead>
+            <tbody id="inv-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("inventory");
+  if (!claims) return;
+  const { escapeHtml } = KCMPS_DASH_SHELL;
+
+  function render() {
+    const items = KCMPS_DASH.getInventoryAll();
+    document.getElementById("inv-body").innerHTML = items.map((i) => {
+      const low = i.qty <= i.reorderPoint;
+      const cover = i.avgDailyUse > 0 ? Math.floor(i.qty / i.avgDailyUse) : null;
+      return (
+        `<tr><td>${escapeHtml(i.name)}</td>` +
+        `<td class="num">${i.qty} ${i.unit}</td>` +
+        `<td class="num">${i.reorderPoint} ${i.unit}</td>` +
+        `<td class="num">${cover != null ? cover + "d" : "—"}</td>` +
+        `<td>${low ? '<span class="client-flag">low stock</span>' : ""}</td>` +
+        `<td><button type="button" class="btn btn-secondary btn-adjust" data-sku="${i.sku}" data-qty="${i.qty}">Adjust</button></td></tr>`
+      );
+    }).join("");
+    document.querySelectorAll(".btn-adjust").forEach((btn) => btn.addEventListener("click", () => {
+      const val = prompt("New on-hand quantity for this item:", btn.dataset.qty);
+      if (val === null) return;
+      const n = parseFloat(val);
+      if (Number.isNaN(n) || n < 0) return;
+      KCMPS_DASH.adjustInventory(btn.dataset.sku, n);
+      render();
+    }));
+  }
+  render();
+})();
+</script>
+</body>
+</html>

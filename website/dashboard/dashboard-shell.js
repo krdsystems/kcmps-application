@@ -1,0 +1,184 @@
+/* ============================================================
+   KCMPS Ops Dashboard — SHELL (auth gate + sidebar/topbar chrome)
+   ============================================================
+   Reuses the exact Cognito config, JWT-decode, and sessionStorage
+   token keys already validated in ../index.html so a logged-in
+   staff session carries straight over when the user clicks
+   "Dashboard" — no second login. See ../../README.md for the full
+   auth write-up.
+
+   Every dashboard page loads this script and calls
+   KCMPS_DASH_SHELL.mount("today") once, near the bottom of <body>.
+   mount() gates the page (redirects non-staff back to the
+   storefront), then paints the sidebar + topbar chrome.
+   ============================================================ */
+
+(function (global) {
+  const COGNITO_CONFIG = {
+    domain: "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
+    clientId: "95rrk0mflffentqdiomg1fipc",
+    redirectUri: window.location.origin + "/",
+    staffGroupName: "Staff",
+  };
+  const TOKEN_STORAGE_KEY = "kcmps_tokens";
+
+  function decodeJwt(token) {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(base64).split("").map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")
+    );
+    return JSON.parse(json);
+  }
+  function loadTokens() {
+    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+
+  /* ---- local-only test bypass ----
+     No backend/Cognito Staff account is needed to test this mock-data
+     build (see ../../ops-dashboard/infra/backend-infra-to-deploy.md — the dashboard runs
+     entirely on localStorage right now). Real Cognito auth is unchanged
+     and still enforced everywhere except when both of these hold:
+       1. The page is being served from localhost/127.0.0.1/::1/file: —
+          this can NEVER be true on the deployed CloudFront domain, so
+          there is no way to trigger this path in production.
+       2. The tester explicitly clicks the bypass button on
+          dashboard/index.html — it is never triggered automatically. ---- */
+  function isLocalHost() {
+    return ["localhost", "127.0.0.1", "::1", ""].includes(window.location.hostname) || window.location.protocol === "file:";
+  }
+  function base64UrlEncodeString(str) {
+    return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function seedLocalStaffSession(name) {
+    if (!isLocalHost()) throw new Error("The local test-staff bypass only works when running on localhost — it is disabled on any real domain.");
+    const header = base64UrlEncodeString(JSON.stringify({ alg: "none", typ: "JWT" }));
+    const payload = base64UrlEncodeString(JSON.stringify({
+      name: name || "Test Staff", email: "test-staff@local.dev", sub: "local-dev-sub",
+      "cognito:groups": [COGNITO_CONFIG.staffGroupName],
+    }));
+    const fakeIdToken = header + "." + payload + ".devsig";
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ id_token: fakeIdToken, access_token: "local-dev-token", expires_in: 3600 }));
+  }
+
+  const NAV_ITEMS = [
+    { key: "today", href: "today.html", label: "Today", hint: "Daily control" },
+    { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling" },
+    { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin" },
+    { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
+    { key: "clients", href: "clients.html", label: "Clients", hint: "CRM" },
+    { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels" },
+    { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs" },
+  ];
+
+  function svgIcon(key) {
+    const icons = {
+      today: '<path d="M128,24a104,104,0,1,0,104,104A104.11,104.11,0,0,0,128,24Zm8,104a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h40V72a8,8,0,0,1,16,0Z"/>',
+      week: '<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/>',
+      month: '<path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Z"/>',
+      jobs: '<path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Z"/>',
+      clients: '<path d="M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92Z"/>',
+      inventory: '<path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.35"/>',
+      settings: '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Z" opacity="0.35"/><path d="M128,176a48,48,0,1,1,48-48A48.05,48.05,0,0,1,128,176Zm0-80a32,32,0,1,0,32,32A32,32,0,0,0,128,96Z"/>',
+    };
+    return icons[key] || "";
+  }
+
+  function requireStaffAuth() {
+    const tokens = loadTokens();
+    if (!tokens) {
+      // On localhost, send them to the dashboard's own landing page — it
+      // offers the local test-staff bypass instead of just bouncing them
+      // to the storefront with nothing they can do about it.
+      window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
+      return null;
+    }
+    let claims;
+    try { claims = decodeJwt(tokens.id_token); } catch { clearTokens(); window.location.replace("../index.html?login=required"); return null; }
+    const groups = claims["cognito:groups"] || [];
+    if (!groups.includes(COGNITO_CONFIG.staffGroupName)) {
+      window.location.replace("../index.html?dashboard=forbidden");
+      return null;
+    }
+    return claims;
+  }
+
+  function logout() {
+    clearTokens();
+    const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
+      client_id: COGNITO_CONFIG.clientId,
+      logout_uri: COGNITO_CONFIG.redirectUri,
+    }).toString()}`;
+    window.location.href = logoutUrl;
+  }
+
+  function mount(activeKey) {
+    const claims = requireStaffAuth();
+    if (!claims) return null; // redirecting away
+
+    document.documentElement.classList.add("dash-ready");
+
+    const navMount = document.getElementById("dash-nav");
+    const topbarMount = document.getElementById("dash-topbar-content");
+    const active = NAV_ITEMS.find((n) => n.key === activeKey);
+
+    if (navMount) {
+      navMount.innerHTML =
+        '<div class="dash-brand"><img src="../assets/logo-mark.png" alt="" /><span>KCMPS <em>Ops</em></span></div>' +
+        '<nav class="dash-navlinks">' +
+        NAV_ITEMS.map((n) =>
+          `<a href="${n.href}" class="dash-navlink${n.key === activeKey ? " is-active" : ""}">` +
+          `<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">${svgIcon(n.key)}</svg>` +
+          `<span class="lbl">${n.label}</span></a>`
+        ).join("") +
+        '</nav>' +
+        '<a href="../index.html" class="dash-navlink dash-back"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg><span class="lbl">Back to site</span></a>';
+    }
+
+    if (topbarMount) {
+      const name = claims.name || claims.email || "Staff";
+      topbarMount.innerHTML =
+        `<div class="dash-topbar-title"><h1>${active ? active.label : "Dashboard"}</h1>` +
+        `<p>${active ? active.hint : ""}</p></div>` +
+        '<div class="dash-topbar-user">' +
+        `<span class="dash-user-name">${escapeHtml(name)}</span>` +
+        '<button type="button" class="btn btn-ghost" id="dash-logout-btn">Logout</button>' +
+        '</div>';
+      const logoutBtn = document.getElementById("dash-logout-btn");
+      if (logoutBtn) logoutBtn.addEventListener("click", logout);
+    }
+
+    // mobile nav toggle
+    const toggle = document.getElementById("dash-nav-toggle");
+    const sidebar = document.getElementById("dash-sidebar");
+    if (toggle && sidebar) {
+      toggle.addEventListener("click", () => sidebar.classList.toggle("is-open"));
+    }
+
+    return claims;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function fmtPeso(n) {
+    return "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+  }
+  function fmtDateTime(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function fmtHours(h) {
+    if (h < 1) return Math.round(h * 60) + "m";
+    return (Math.round(h * 10) / 10) + "h";
+  }
+
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession };
+})(window);

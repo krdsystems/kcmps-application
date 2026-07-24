@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>KCMPS Ops Dashboard</title>
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { display: grid; place-items: center; min-height: 100vh; margin: 0; padding: var(--space-4); }
+  .gate-card { max-width: 440px; padding: var(--space-4); text-align: center; }
+  .gate-card h1 { font-size: 20px; margin: 0 0 var(--space-2); color: var(--color-accent-2-800); }
+  .gate-card p { font-size: 14px; margin: 0 0 var(--space-3); }
+  .gate-card .btn { width: 100%; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<!-- This page decides ONCE, synchronously, which of three things to do —
+     it never redirects blindly and then lets another page redirect again,
+     which is what caused the earlier "blinking URL" bug (index.html ->
+     today.html -> back to index.html?login=required, each hop instant). -->
+<div id="gate-root" class="card gate-card" style="display:none">
+  <h1>No staff session found</h1>
+  <p>This dashboard build has no backend yet — it runs on mock data in your
+     browser. You're seeing this because there's no logged-in Cognito
+     session with the <code>Staff</code> group, which is expected unless
+     you've configured a real test account.</p>
+  <p style="font-size:12.5px;color:color-mix(in srgb, var(--color-text) 60%, transparent)">
+    Detected localhost — you can bypass real Cognito login for testing:
+  </p>
+  <button type="button" class="btn btn-primary" id="local-bypass-btn">Continue as test Staff user (local only)</button>
+  <a class="btn btn-secondary" href="../index.html">Go log in for real instead</a>
+</div>
+
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const hasSession = !!sessionStorage.getItem("kcmps_tokens");
+  if (hasSession) {
+    // A session already exists (real Cognito login OR a previously-seeded
+    // local bypass) — let today.html do the real Staff-group check.
+    location.replace("today.html");
+    return;
+  }
+  if (!KCMPS_DASH_SHELL.isLocalHost()) {
+    // Production: no session, nothing to offer here — go log in.
+    location.replace("../index.html?login=required");
+    return;
+  }
+  // Local dev with no session: stop and show the bypass option instead of
+  // ping-ponging between pages.
+  document.getElementById("gate-root").style.display = "flex";
+  document.getElementById("gate-root").style.flexDirection = "column";
+  document.getElementById("local-bypass-btn").addEventListener("click", () => {
+    KCMPS_DASH_SHELL.seedLocalStaffSession("Test Staff");
+    location.href = "today.html";
+  });
+})();
+</script>
+</body>
+</html>

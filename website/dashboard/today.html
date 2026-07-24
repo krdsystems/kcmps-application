@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Today — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Action queues</h2>
+          <span class="hint">Sorted oldest-first — that's the aging order that matters</span>
+        </div>
+        <div class="queue-grid" id="queue-grid"><!-- queues render here --></div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Today's numbers</h2>
+          <span class="hint">Control metrics only — trends live on the Month view</span>
+        </div>
+        <div class="tile-grid" id="today-tiles"><!-- tiles render here --></div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Blockers board</h2>
+          <span class="hint">Every blocker needs a named owner and due date to save</span>
+        </div>
+        <div class="card">
+          <div class="blocker-list" id="blocker-list"><!-- rows render here --></div>
+          <form class="blocker-form" id="blocker-form">
+            <div class="field" style="grid-column:1/2"><label for="b-text">What's blocking?</label><input class="input" id="b-text" placeholder="e.g. white DTF ink ran out" required /></div>
+            <div class="field"><label for="b-owner">Owner</label><input class="input" id="b-owner" placeholder="Name" required /></div>
+            <div class="field"><label for="b-due">Due date</label><input class="input" id="b-due" type="date" required /></div>
+            <div class="field"><label for="b-tag">Tag (optional)</label><input class="input" id="b-tag" placeholder="e.g. ink-supply" /></div>
+            <button type="submit" class="btn btn-primary">Log it</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Low stock alerts</h2>
+          <span class="hint">Below reorder point, with days-of-cover from trailing use</span>
+        </div>
+        <div class="card">
+          <div class="stock-list" id="stock-list"><!-- rows render here --></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("today");
+  if (!claims) return;
+  const { fmtPeso, fmtHours, fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+
+  const QUEUE_DEFS = [
+    { key: "pendingPaymentVerification", title: "Pending Payment Verification", empty: "Nothing waiting on verification." },
+    { key: "awaitingQuote", title: "Awaiting Quote", empty: "No custom items waiting on a quote." },
+    { key: "awaitingCustomerPayment", title: "Awaiting Customer Payment", empty: "Nothing waiting on the customer." },
+    { key: "readyToProduce", title: "Ready to Produce", empty: "Nothing queued to start." },
+    { key: "inProduction", title: "In Production", empty: "Nothing on the floor right now." },
+    { key: "qcHoldRework", title: "QC Hold / Rework", empty: "No rework in progress." },
+    { key: "readyForDispatch", title: "Ready for Dispatch", empty: "Nothing waiting on handoff." },
+  ];
+
+  function renderQueues() {
+    const queues = KCMPS_DASH.getQueues();
+    const grid = document.getElementById("queue-grid");
+    grid.innerHTML = QUEUE_DEFS.map((def) => {
+      const items = queues[def.key] || [];
+      const hasRed = items.some((i) => i.slaState === "red");
+      const rows = items.length
+        ? items.map((li) => {
+            const cls = "q-item" + (li.slaState === "red" ? " sla-red" : li.slaState === "warn" ? " sla-warn" : "");
+            const client = li.order.client ? escapeHtml(li.order.client.name) : "—";
+            // Payment System file's staff-dashboard spec: the verification
+            // queue must show the GCash reference number and claimed amount
+            // inline, not just aging — that's what lets staff cross-check
+            // against actual GCash transaction history without opening the
+            // ticket first.
+            const paymentLine = li.payment
+              ? `<div class="q-line2"><span>Ref ${escapeHtml(li.payment.gcashRefNumber)} · claimed ${fmtPeso(li.payment.claimedAmount)}</span></div>`
+              : "";
+            return (
+              `<a class="${cls}" href="job-detail.html?order=${encodeURIComponent(li.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
+              `<div class="q-line1"><span>${escapeHtml(li.description)}</span><span class="q-age">${fmtHours(li.agingHours)}</span></div>` +
+              `<div class="q-line2"><span>${client}${li.dueDate ? " · due " + fmtDate(li.dueDate) : ""}</span>${li.dueRisk ? '<span style="color:#c0392b;font-weight:700">at risk</span>' : ""}</div>` +
+              paymentLine +
+              `</a>`
+            );
+          }).join("")
+        : `<p class="q-empty">${def.empty}</p>`;
+      return (
+        `<div class="card queue-card">` +
+        `<div class="q-head"><span class="q-title">${def.title}</span><span class="queue-count${hasRed ? " has-red" : ""}">${items.length}</span></div>` +
+        `<div class="q-list">${rows}</div></div>`
+      );
+    }).join("");
+  }
+
+  function tile(label, value, sub, tone) {
+    return `<div class="card tile${tone ? " " + tone : ""}"><div class="t-label">${label}</div><div class="t-value">${value}</div>${sub ? `<div class="t-sub">${sub}</div>` : ""}</div>`;
+  }
+
+  function renderTiles() {
+    const n = KCMPS_DASH.getTodayNumbers();
+    const tiles = [
+      tile("Jobs due today", n.dueToday, `${n.dueTodayAtRisk} not yet in production`, n.dueTodayAtRisk > 0 ? "bad" : "good"),
+      tile("Output yesterday", n.outputYesterdayUnits + " units", n.outputYesterdayJobs + " jobs completed"),
+      tile("Spoilage yesterday", n.spoilageYesterdayUnits + " units", fmtPeso(n.spoilageYesterdayValue), n.spoilageYesterdayValue > 0 ? "warn" : "good"),
+      tile("Rework opened yesterday", n.reworkOpenedYesterday, null, n.reworkOpenedYesterday > 0 ? "warn" : "good"),
+      tile("Cash collected yesterday", fmtPeso(n.cashCollectedYesterday), "Verified GCash only", "good"),
+      tile("WIP count", n.wipCount, "Confirmed → QC · pair with utilization on Week"),
+    ];
+    document.getElementById("today-tiles").innerHTML = tiles.join("");
+  }
+
+  function renderBlockers() {
+    const blockers = KCMPS_DASH.getBlockers();
+    const list = document.getElementById("blocker-list");
+    if (!blockers.length) { list.innerHTML = '<p class="q-empty">No open blockers. Nice.</p>'; return; }
+    list.innerHTML = blockers.map((b) => (
+      `<div class="blocker-row${b.recurring ? " recurring" : ""}">` +
+      `<span class="b-text">${escapeHtml(b.text)}${b.recurring ? ' <span class="tag tag-accent">Recurring — promote to weekly</span>' : ""}</span>` +
+      `<span class="b-owner">${escapeHtml(b.owner)}</span>` +
+      `<span class="b-due">Due ${fmtDate(b.dueDate)}</span>` +
+      `<button type="button" class="btn btn-secondary btn-resolve" data-id="${b.id}">Resolve</button>` +
+      `</div>`
+    )).join("");
+    list.querySelectorAll(".btn-resolve").forEach((btn) => btn.addEventListener("click", () => {
+      KCMPS_DASH.resolveBlocker(btn.dataset.id);
+      renderBlockers();
+    }));
+  }
+
+  document.getElementById("blocker-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = document.getElementById("b-text").value.trim();
+    const owner = document.getElementById("b-owner").value.trim();
+    const dueDate = document.getElementById("b-due").value;
+    const tag = document.getElementById("b-tag").value.trim();
+    if (!text || !owner || !dueDate) return;
+    KCMPS_DASH.addBlocker({ text, owner, dueDate, tag });
+    e.target.reset();
+    renderBlockers();
+  });
+
+  function renderStock() {
+    const low = KCMPS_DASH.getLowStock();
+    const list = document.getElementById("stock-list");
+    if (!low.length) { list.innerHTML = '<p class="q-empty">Everything is above its reorder point.</p>'; return; }
+    list.innerHTML = low.map((i) => (
+      `<div class="stock-row"><div><div class="s-name">${escapeHtml(i.name)}</div>` +
+      `<div class="s-meta">${i.qty} ${i.unit} on hand · reorder at ${i.reorderPoint} ${i.unit}</div></div>` +
+      `<span class="s-cover">${i.daysOfCover != null ? i.daysOfCover + "d cover" : "—"}</span></div>`
+    )).join("");
+  }
+
+  renderQueues();
+  renderTiles();
+  renderBlockers();
+  renderStock();
+})();
+</script>
+</body>
+</html>

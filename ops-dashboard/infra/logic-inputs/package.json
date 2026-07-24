@@ -1,0 +1,12 @@
+{
+  "name": "kcmps-ops-dashboard-lambdas",
+  "private": true,
+  "description": "Dependencies shared by every Lambda in this folder. Deploy each .js file as its own function (or bundle with esbuild/Lambda layers) — this package.json is a single reference for `npm install` before zipping/uploading.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/util-dynamodb": "^3.600.0",
+    "@aws-sdk/client-ses": "^3.600.0",
+    "aws-jwt-verify": "^4.0.1"
+  }
+}

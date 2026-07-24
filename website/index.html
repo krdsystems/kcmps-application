@@ -950,12 +950,8 @@ function renderLoggedIn(claims) {
   const dashboardLink = document.getElementById("dashboard-link");
   if (groups.includes(COGNITO_CONFIG.staffGroupName)) {
     dashboardLink.classList.remove("is-hidden");
-    dashboardLink.onclick = (e) => {
-      e.preventDefault();
-      // Real /dashboard/* route doesn't exist yet — proves the branching works.
-      console.log("Navigate to /dashboard (not implemented yet). Groups:", groups);
-      alert("Staff detected — would navigate to /dashboard here.");
-    };
+    dashboardLink.href = "dashboard/today.html";
+    dashboardLink.onclick = null; // real navigation now — the dashboard re-checks the Staff group itself on load
   } else {
     dashboardLink.classList.add("is-hidden");
   }

@@ -1,40 +1,34 @@
 {
-  "generatedAt": "2026-07-25T00:00:00Z",
+  "generatedAt": "2026-07-25T03:00:00Z",
   "categories": {
     "printing-office-supplies": [
       {
-        "sku": "creative-studio-workspace",
+        "sku": "print-office-production",
         "featured": true,
-        "primary": "assets/photo.jpg",
-        "images": ["assets/photo.jpg"]
+        "primary": "assets/leaves/print-office.jpg",
+        "images": ["assets/leaves/print-office.jpg"]
       }
     ],
     "design": [
       {
-        "sku": "designer-desk-setup",
+        "sku": "dtf-heat-press-transfer",
         "featured": true,
-        "primary": "assets/hero-4.png",
-        "images": ["assets/hero-4.png"]
+        "primary": "assets/leaves/dtf.jpg",
+        "images": ["assets/leaves/dtf.jpg"]
+      },
+      {
+        "sku": "3d-printing-prototype",
+        "featured": true,
+        "primary": "assets/leaves/3dprint.jpg",
+        "images": ["assets/leaves/3dprint.jpg"]
       }
     ],
     "merch": [
       {
-        "sku": "dtf-heat-press-transfer",
+        "sku": "custom-storage-devices",
         "featured": true,
-        "primary": "assets/hero-2.png",
-        "images": ["assets/hero-2.png"]
-      },
-      {
-        "sku": "printed-shirt-reveal",
-        "featured": true,
-        "primary": "assets/hero-3.png",
-        "images": ["assets/hero-3.png"]
-      },
-      {
-        "sku": "color-print-sample",
-        "featured": false,
-        "primary": "assets/photo-color.jpg",
-        "images": ["assets/photo-color.jpg"]
+        "primary": "assets/leaves/storage.jpg",
+        "images": ["assets/leaves/storage.jpg"]
       }
     ]
   }

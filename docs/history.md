@@ -364,6 +364,16 @@ them into `store.js` via `thumbImage()`/`buildThumb()` — a product's own `imag
 back to its leaf's photo, falling back to the original initials placeholder only if neither
 exists.
 
+**Hero carousel photo pool cleanup.** The hero carousel's 4-photo pool (`assets/manifest.json`
++ the static `<figure>` fallback slides in `index.html`) was a mismatched grab-bag left over
+from early prototyping: two generic stock photos (`photo.jpg`, `photo-color.jpg`), two
+externally-hosted images on the base44 CDN, and — worse — the manifest had the DTF heat-press
+photos filed under the `merch` category instead of `design`. Replaced the whole pool with 4 of
+the leaf photos above (print-office, dtf, 3dprint, storage), one per business pillar, correctly
+categorized, all served locally instead of from an external CDN. Deleted the now-unused stock
+images (`hero-2.png`, `hero-3.png`, `hero-4.png`, `photo.jpg`, `photo-color.jpg`) after
+confirming nothing else referenced them.
+
 **Bulk & custom estimator rewrite.** The old estimator (`#estimator`) had drifted badly from
 the real catalog: hardcoded prices (₱180/₱90/₱450) that didn't match `products.js`, a "3D
 print" category priced as if ₱90 were a per-unit price when it was actually copied from a

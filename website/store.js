@@ -107,6 +107,129 @@
     return thumb;
   }
 
+  /* ---------- multi-image gallery thumb + lightbox ----------
+     Any product with a real `images` array (products.js) gets left/right arrows
+     over its thumb to browse designs in-card, and clicking the image opens the
+     shared lightbox (enlarged on desktop, true fullscreen on mobile — see
+     buildLightbox()). Generic by design — it only reads p.images/p.name, so any
+     future leaf can opt in just by adding the array; today only the 3 DTF SKUs
+     (see products.js) have one, sourced from website/assets/design/apparel/dtf/. */
+  var lightboxOverlay, lightboxImg, lightboxCounter, lightboxPrevBtn, lightboxNextBtn;
+  var lightboxImages = [], lightboxIndex = 0;
+
+  function buildLightbox() {
+    lightboxOverlay = document.createElement("div");
+    lightboxOverlay.className = "lightbox-overlay";
+    lightboxOverlay.setAttribute("aria-hidden", "true");
+    lightboxOverlay.innerHTML =
+      '<button type="button" class="lightbox-close" aria-label="Close full-size view">' +
+        '<span class="lightbox-close-icon" aria-hidden="true">&times;</span>' +
+        '<span class="lightbox-close-text">Exit Fullscreen view</span>' +
+      '</button>' +
+      '<button type="button" class="lightbox-arrow prev" aria-label="Previous design">' +
+        '<svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>' +
+      '</button>' +
+      '<div class="lightbox-stage"><img alt="" /></div>' +
+      '<button type="button" class="lightbox-arrow next" aria-label="Next design">' +
+        '<svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>' +
+      '</button>' +
+      '<div class="lightbox-counter"></div>';
+    document.body.appendChild(lightboxOverlay);
+
+    lightboxImg = lightboxOverlay.querySelector(".lightbox-stage img");
+    lightboxCounter = lightboxOverlay.querySelector(".lightbox-counter");
+    lightboxPrevBtn = lightboxOverlay.querySelector(".lightbox-arrow.prev");
+    lightboxNextBtn = lightboxOverlay.querySelector(".lightbox-arrow.next");
+
+    lightboxOverlay.querySelector(".lightbox-close").addEventListener("click", closeLightbox);
+    lightboxOverlay.addEventListener("click", function (e) { if (e.target === lightboxOverlay) closeLightbox(); });
+    lightboxPrevBtn.addEventListener("click", function () { stepLightbox(-1); });
+    lightboxNextBtn.addEventListener("click", function () { stepLightbox(1); });
+    document.addEventListener("keydown", function (e) {
+      if (!lightboxOverlay.classList.contains("is-open")) return;
+      if (e.key === "Escape") closeLightbox();
+      else if (e.key === "ArrowLeft") stepLightbox(-1);
+      else if (e.key === "ArrowRight") stepLightbox(1);
+    });
+  }
+
+  function renderLightbox() {
+    var item = lightboxImages[lightboxIndex];
+    lightboxImg.src = item.src;
+    lightboxImg.alt = item.alt;
+    var multi = lightboxImages.length > 1;
+    lightboxCounter.style.display = multi ? "" : "none";
+    lightboxPrevBtn.style.display = multi ? "" : "none";
+    lightboxNextBtn.style.display = multi ? "" : "none";
+    lightboxCounter.textContent = (lightboxIndex + 1) + " / " + lightboxImages.length;
+  }
+
+  function stepLightbox(delta) {
+    lightboxIndex = (lightboxIndex + delta + lightboxImages.length) % lightboxImages.length;
+    renderLightbox();
+  }
+
+  function openLightbox(images, startIndex) {
+    if (!lightboxOverlay) buildLightbox();
+    lightboxImages = images;
+    lightboxIndex = startIndex || 0;
+    renderLightbox();
+    lightboxOverlay.classList.add("is-open");
+    lightboxOverlay.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeLightbox() {
+    if (!lightboxOverlay) return;
+    lightboxOverlay.classList.remove("is-open");
+    lightboxOverlay.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function buildGalleryThumb(p) {
+    var images = p.images && p.images.length ? p.images : null;
+    if (!images) return buildThumb(thumbImage(p), p.name);
+
+    var idx = 0;
+    var thumb = document.createElement("div");
+    thumb.className = "product-thumb product-gallery";
+
+    var img = document.createElement("img");
+    img.loading = "lazy";
+    thumb.appendChild(img);
+
+    var counter = document.createElement("span");
+    counter.className = "gallery-counter";
+    thumb.appendChild(counter);
+
+    function render() {
+      img.src = images[idx];
+      img.alt = p.name + " — design " + (idx + 1) + " of " + images.length;
+      counter.textContent = (idx + 1) + " / " + images.length;
+    }
+    render();
+
+    img.addEventListener("click", function () {
+      openLightbox(images.map(function (src) { return { src: src, alt: p.name }; }), idx);
+    });
+
+    if (images.length > 1) {
+      var prev = document.createElement("button");
+      prev.type = "button"; prev.className = "gallery-arrow prev"; prev.setAttribute("aria-label", "Previous design");
+      prev.innerHTML = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>';
+      var next = document.createElement("button");
+      next.type = "button"; next.className = "gallery-arrow next"; next.setAttribute("aria-label", "Next design");
+      next.innerHTML = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>';
+      prev.addEventListener("click", function (e) { e.stopPropagation(); idx = (idx - 1 + images.length) % images.length; render(); });
+      next.addEventListener("click", function (e) { e.stopPropagation(); idx = (idx + 1) % images.length; render(); });
+      thumb.appendChild(prev); thumb.appendChild(next);
+    } else {
+      counter.style.display = "none";
+    }
+
+    return thumb;
+  }
+
   function skuCard(p) {
     var card = document.createElement("div");
     card.className = "card offer product";
@@ -119,7 +242,7 @@
     function unitPrice() { return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0); }
 
     // thumb
-    card.appendChild(buildThumb(thumbImage(p), p.name));
+    card.appendChild(buildGalleryThumb(p));
 
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = p.kicker || ""; card.appendChild(kick);
     var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);

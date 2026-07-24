@@ -1,0 +1,11 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Claude Code personal settings (machine-specific permission grants)
+.claude/settings.local.json
+
+# Claude Code parallel-session worktrees — these are full repo checkouts.
+# Remove stale/merged ones with `git worktree remove .claude/worktrees/<name>`
+# instead of leaving them tracked or committed.
+.claude/worktrees/

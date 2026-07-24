@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-07-25T00:00:00Z",
+  "categories": {
+    "printing-office-supplies": [
+      {
+        "sku": "creative-studio-workspace",
+        "featured": true,
+        "primary": "assets/photo.jpg",
+        "images": ["assets/photo.jpg"]
+      }
+    ],
+    "design": [
+      {
+        "sku": "designer-desk-setup",
+        "featured": true,
+        "primary": "assets/hero-4.png",
+        "images": ["assets/hero-4.png"]
+      }
+    ],
+    "merch": [
+      {
+        "sku": "dtf-heat-press-transfer",
+        "featured": true,
+        "primary": "assets/hero-2.png",
+        "images": ["assets/hero-2.png"]
+      },
+      {
+        "sku": "printed-shirt-reveal",
+        "featured": true,
+        "primary": "assets/hero-3.png",
+        "images": ["assets/hero-3.png"]
+      },
+      {
+        "sku": "color-print-sample",
+        "featured": false,
+        "primary": "assets/photo-color.jpg",
+        "images": ["assets/photo-color.jpg"]
+      }
+    ]
+  }
+}

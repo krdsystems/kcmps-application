@@ -328,6 +328,61 @@ a `.nav.is-scrolled` class (toggled by a small `scroll` listener in `index.html`
 solid `color-mix` background, `backdrop-filter: blur`, and a drop shadow once the page scrolls
 past an 8px threshold.
 
+### 13. Hero category priming, catalog cleanup, generated leaf images, and a bulk estimator rewrite (2026-07-25)
+
+**Hero/page category priming.** Rather than one fixed hero pitch, the whole page (hero
+headline/subhead/CTA, the "Everything you get" value stack, "How it works" steps, and which
+shop tab is pre-selected) now has one Hormozi-style "no-brainer offer" copy variant per
+top-level category — `print-office` / `design` / `merch` — defined in `PAGE_VARIANTS` in
+`index.html`. On first visit one is picked uniformly at random and kept consistent so the
+visitor isn't shown three different pitches in one session (this is a priming/consistency
+mechanic, not personalization — the pick has nothing to do with who the visitor is).
+
+State lives under one `localStorage`/`sessionStorage` key, `kcmps_hero_category`, read in
+priority order: a non-expired `localStorage` "sticky" entry (written the moment the visitor
+adds anything to cart — `store.js`'s `addToCart` dispatches a `kcmps:cart-add` DOM event for
+this, since custom-request items already are the site's quote flow) beats a same-tab
+`sessionStorage` entry (keeps the pick stable across reloads *within one tab* — a genuinely new
+tab/session, or sticky expiry after 7 days, rolls fresh) beats rolling a fresh random pick.
+Cross-device sync (a returning logged-in customer seeing their primed category on a different
+device) was explicitly deferred — no `CUSTOMER#<sub>` backend attribute exists yet, and per
+this project's manual-first approach it's not worth building until there's usage data to
+justify it. Analytics is a stubbed `kcmps:hero-metric` DOM event (no backend exists to receive
+it yet) shaped to map onto the ops dashboard's existing `METRIC#DAY#` / `PILLAR#` rollup
+pattern for a later one-line swap.
+
+**Catalog fixes.** Pulled two real print products (Catalogs & Booklets, Custom Packaging) out
+of an early prototype draft into `products.js` under the `print-office` leaf, which previously
+only ever showed the generic custom-request card. Removed the `entertainment` merch sub-leaf
+entirely (KCMPS doesn't sell audio/gaming gadgets) and corrected the `storage` leaf's copy,
+which had claimed "laser-etched branding" — a service KCMPS doesn't offer.
+
+**Generated leaf images.** Every catalog leaf's product cards showed only CSS-initials
+placeholders (`p.image` was never actually rendered). Generated one representative photo per
+leaf with `nano-banana-pro`, downsized to ~80-110KB JPGs in `website/assets/leaves/`, and wired
+them into `store.js` via `thumbImage()`/`buildThumb()` — a product's own `image` wins, falling
+back to its leaf's photo, falling back to the original initials placeholder only if neither
+exists.
+
+**Bulk & custom estimator rewrite.** The old estimator (`#estimator`) had drifted badly from
+the real catalog: hardcoded prices (₱180/₱90/₱450) that didn't match `products.js`, a "3D
+print" category priced as if ₱90 were a per-unit price when it was actually copied from a
+₱90/hour rate in the prototype draft, zero volume discount despite the value-stack copy above
+it promising one, finish add-ons (lamination, foil/emboss) applied identically to categories
+they don't make sense for, and a `mailto:` submit path completely disconnected from the cart —
+so using it never touched the cart badge, checkout, or the category-priming sticky state above.
+Rebuilt it to flatten every priced SKU+variant directly out of `products.js` into the product
+picker (so it can't drift from the real catalog again), added real tiered volume discounts
+(5%/10%/15% at 25/100/250+ units), made add-ons leaf-aware, added a type-in quantity field
+alongside the range slider (typing was the only way to hit precise bulk quantities; dragging a
+1–1000 range slider one unit at a time was impractical), and pointed "Add to cart" at the same
+`window.KCMPS_STORE.addToCart()` the shop cards use — now exposed publicly for this — instead
+of a separate mailto, so it participates in checkout and the priming sticky state like any other
+purchase. Leaves with no priced SKUs yet (network, storage) are excluded from the calculator
+entirely rather than showing a fabricated number, with a note pointing at the existing
+custom-request flow instead. The estimator also defaults its product picker to match whichever
+category is currently primed for that visitor, read directly from `kcmps_hero_category`.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

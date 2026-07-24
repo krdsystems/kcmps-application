@@ -36,26 +36,49 @@ window.KCMPS_STORE_DATA = {
   /* Every terminal catalog category ("leaf") that should show a
      "Custom design request" card. `comingSoon:true` adds a small note that
      pre-made designs aren't listed yet (only the custom-request card shows).
-     The leaf keys match the tab-panel ids in index.html (panel-<leaf>). */
+     The leaf keys match the tab-panel ids in index.html (panel-<leaf>).
+     `image` is a representative photo for the leaf (shown on its custom-
+     request card, and as the fallback thumb for any priced product in this
+     leaf that doesn't set its own `image`) — see assets/leaves/. */
   leaves: {
     "print-office": {
       customLabel: "Custom print request",
       customBlurb: "Send your file or specs (catalogs, packaging, documents) and we'll quote it. Add to cart now — you only pay once we confirm.",
+      image: "assets/leaves/print-office.jpg",
     },
-    "dtf":   { customLabel: "Custom design request", customBlurb: "Have your own artwork? Upload it at checkout. We'll review, quote, and only bill you after you approve." },
-    "subli": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Full-color sublimation on light/poly fabrics. Send your design — approved and billed before we print." },
-    "hotmelt": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Durable heat-applied vinyl lettering and designs. Tell us what you need and we'll quote it." },
-    "3dprint": { comingSoon: true, customLabel: "Custom 3D print request", customBlurb: "PLA/PETG prints for products and mockups. Share your model or idea for a quote." },
-    "souvenir": { comingSoon: true, customLabel: "Custom souvenir request", customBlurb: "Keepsakes and giveaways for events and milestones. Describe your event and quantity." },
-    "network": { comingSoon: true, customLabel: "Request networking gear", customBlurb: "Routers, cables and accessories. Tell us your setup and we'll source and quote it." },
-    "storage": { comingSoon: true, customLabel: "Request custom storage", customBlurb: "Custom-bodied flash drives and SSDs with laser-etched branding. Request a quote." },
-    "entertainment": { comingSoon: true, customLabel: "Request a gadget", customBlurb: "Audio, gaming and everyday tech. Tell us what you're after for a quote." },
+    "dtf":   { customLabel: "Custom design request", customBlurb: "Have your own artwork? Upload it at checkout. We'll review, quote, and only bill you after you approve.", image: "assets/leaves/dtf.jpg" },
+    "subli": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Full-color sublimation on light/poly fabrics. Send your design — approved and billed before we print.", image: "assets/leaves/subli.jpg" },
+    "hotmelt": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Durable heat-applied vinyl lettering and designs. Tell us what you need and we'll quote it.", image: "assets/leaves/hotmelt.jpg" },
+    "3dprint": { comingSoon: true, customLabel: "Custom 3D print request", customBlurb: "PLA/PETG prints for products and mockups. Share your model or idea for a quote.", image: "assets/leaves/3dprint.jpg" },
+    "souvenir": { comingSoon: true, customLabel: "Custom souvenir request", customBlurb: "Keepsakes and giveaways for events and milestones. Describe your event and quantity.", image: "assets/leaves/souvenir.jpg" },
+    "network": { comingSoon: true, customLabel: "Request networking gear", customBlurb: "Routers, cables and accessories. Tell us your setup and we'll source and quote it.", image: "assets/leaves/network.jpg" },
+    "storage": { comingSoon: true, customLabel: "Request custom storage", customBlurb: "Flash drives and SSDs in the capacity you need. Request a quote.", image: "assets/leaves/storage.jpg" },
   },
 
   /* Priced, buy-now products. Today only DTF pre-made transfers carry fixed
      prices (the real DTF size pricing). `variants` = size choices; `shirtAddon`
      opts the card into the "+ shirt" toggle. `image:null` → CSS placeholder. */
   products: [
+    {
+      id: "print-catalogs-booklets",
+      leaf: "print-office",
+      type: "sku",
+      kicker: "Print · Catalogs & booklets",
+      name: "Catalogs & Booklets",
+      blurb: "Saddle-stitch or perfect-bound, laminated or matte. Priced per copy.",
+      image: null,
+      price: 180,
+    },
+    {
+      id: "print-custom-packaging",
+      leaf: "print-office",
+      type: "sku",
+      kicker: "Print · Custom packaging",
+      name: "Custom Packaging",
+      blurb: "Die-cut boxes and sleeves, brand-ready finishes. Priced per unit.",
+      image: null,
+      price: 65,
+    },
     {
       id: "dtf-street-statement",
       leaf: "dtf",

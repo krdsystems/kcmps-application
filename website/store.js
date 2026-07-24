@@ -58,6 +58,9 @@
     var existing = cart.find(function (i) { return i.key === item.key; });
     if (existing) existing.qty += item.qty; else cart.push(item);
     saveCart(cart); syncUI();
+    // Covers both instant-buy (sku) and the site's quote flow (custom items
+    // ARE the quote/custom-request action here — see hero-priming script).
+    document.dispatchEvent(new CustomEvent("kcmps:cart-add", { detail: { leaf: item.leaf, type: item.type } }));
   }
   function setQty(key, qty) {
     var it = cart.find(function (i) { return i.key === key; });
@@ -84,6 +87,26 @@
     return name.split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join("").toUpperCase();
   }
 
+  // A product's own `image` wins; otherwise fall back to its leaf's representative
+  // photo (products.js DATA.leaves[leaf].image); no image at all → initials placeholder.
+  function thumbImage(p) {
+    var leafCfg = DATA.leaves[p.leaf];
+    return p.image || (leafCfg && leafCfg.image) || null;
+  }
+
+  function buildThumb(imageSrc, alt) {
+    var thumb = document.createElement("div");
+    thumb.className = "product-thumb";
+    if (imageSrc) {
+      var img = document.createElement("img");
+      img.src = imageSrc; img.alt = alt; img.loading = "lazy";
+      thumb.appendChild(img);
+    } else {
+      thumb.innerHTML = '<span class="mono">' + initials(alt) + '</span>';
+    }
+    return thumb;
+  }
+
   function skuCard(p) {
     var card = document.createElement("div");
     card.className = "card offer product";
@@ -96,10 +119,7 @@
     function unitPrice() { return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0); }
 
     // thumb
-    var thumb = document.createElement("div");
-    thumb.className = "product-thumb";
-    thumb.innerHTML = '<span class="mono">' + initials(p.name) + '</span>';
-    card.appendChild(thumb);
+    card.appendChild(buildThumb(thumbImage(p), p.name));
 
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = p.kicker || ""; card.appendChild(kick);
     var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);
@@ -168,7 +188,7 @@
   function customCard(leafKey, cfg) {
     var card = document.createElement("div");
     card.className = "card offer product product-custom";
-    var thumb = document.createElement("div"); thumb.className = "product-thumb"; card.appendChild(thumb);
+    card.appendChild(buildThumb(cfg.image || null, cfg.customLabel || leafKey));
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = "Custom · pay after approval"; card.appendChild(kick);
     var h = document.createElement("h3"); h.className = "card-title"; h.textContent = cfg.customLabel || "Custom design request"; card.appendChild(h);
     var body = document.createElement("p"); body.className = "card-body"; body.textContent = cfg.customBlurb || "Send us your idea — we'll review, quote, and only bill you once you approve."; card.appendChild(body);
@@ -381,5 +401,5 @@
 
   // Public hooks for the auth script (login/logout/session-restore) to refresh
   // the badge and open the drawer without knowing cart internals.
-  window.KCMPS_STORE = { open: openDrawer, close: closeDrawer, refreshBadge: updateBadge };
+  window.KCMPS_STORE = { open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart };
 })();

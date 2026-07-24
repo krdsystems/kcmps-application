@@ -433,6 +433,46 @@ already-removed `entertainment` leaf. Updated `generate-asset-manifest.js`'s pri
 regex (`PRIMARY_RE`) from an exact `01-main.<ext>` match to a `01-main` *prefix* match so the
 reference Lambda logic stays consistent with the new naming convention.
 
+### 15. DTF design gallery: classify 33 designs, in-card carousel, click-to-enlarge lightbox (2026-07-25)
+
+**Reclassifying the 33 designs.** Entry 14's flat `website/assets/design/<slug>/` layout was
+restructured to `website/assets/design/apparel/dtf/<subcategory>/` with images grouped and
+renumbered under the 3 real DTF product identities, matching each design's actual content
+against the 3 SKUs' own descriptions (bold graphic vs. clean single logo vs. lettered quote):
+- `street-statment/` (20) — character/franchise fan art (anime, K-pop, mobile games)
+- `clean-logo-transfer/` (4) — wordmark-style/brand-name/personalized designs
+- `typographic-quoteprint/` (9) — quote/phrase/lettering-forward pieces, incl. Baybayin script
+
+Files were renumbered `01-`, `02-`, ... within each subcategory, keeping the original
+filename as a suffix (per the standing "keep it traceable" requirement from entry 14) —
+e.g. `01-BLACK PINK SHIRT.jpg`. `manifest.json`'s design-category entries were regenerated
+from the new paths (the 2 curated featured pillar photos from entry 13 untouched).
+
+**In-card gallery + lightbox.** `products.js`'s 3 DTF SKUs each got an `images[]` array
+pointing at their subcategory folder. `store.js` gained a generic (leaf-agnostic — reads
+only `p.images`/`p.name`, works for any future product that sets the array) gallery/lightbox
+system:
+- `buildGalleryThumb()` — replaces the plain thumb for any product with `images.length`: shows
+  the current image with small left/right arrow buttons overlaid (only rendered when there's
+  more than one image) to browse in place on the card, plus a "3 / 20"-style counter badge.
+- `openLightbox()`/`buildLightbox()`/`closeLightbox()` — one shared lightbox instance appended
+  to `<body>` (same self-injected-singleton pattern as the cart drawer, including the same
+  `document.body.style.overflow = "hidden"` scroll-lock while open). Clicking the thumb image
+  opens it at the currently-browsed index. Desktop: centered enlarged image over a dimmed
+  backdrop with a small icon-only close button and left/right arrows to keep browsing the same
+  design set. Mobile (≤760px): the image fills the viewport edge-to-edge against a fully
+  opaque backdrop, and the close control switches from the icon to an explicit, clearly
+  legible text button — "Exit Fullscreen view" — pinned top-right with a 44px tap target,
+  since there's no leftover chrome once the image covers the whole screen to hint how to
+  leave. Escape/←/→ keys work while open; clicking the backdrop also closes it.
+
+Verified end-to-end in a real browser: in-card arrows cycle correctly (counter and image both
+update), clicking the image opens the lightbox at the right index, lightbox arrows/keyboard/
+backdrop-click/close-button all work, scroll un-locks on close, and the mobile/desktop close
+button swap (icon vs. text, and the tap-target-size fix) behaves exactly as specified at both
+viewport sizes — confirmed via `getComputedStyle`/`getBoundingClientRect`, not just visually
+assumed.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

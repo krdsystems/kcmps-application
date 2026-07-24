@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-25T04:00:00Z",
+  "generatedAt": "2026-07-25T05:00:00Z",
   "categories": {
     "printing-office-supplies": [
       {
@@ -29,267 +29,267 @@
         ]
       },
       {
-        "sku": "baybayin-babaero",
+        "sku": "street-statment-black-pink-shirt",
         "featured": false,
-        "primary": "assets/design/baybayin-babaero/01-main-baybayin BABAERO shirt.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/01-BLACK PINK SHIRT.jpg",
         "images": [
-          "assets/design/baybayin-babaero/01-main-baybayin BABAERO shirt.jpg"
+          "assets/design/apparel/dtf/street-statment/01-BLACK PINK SHIRT.jpg"
         ]
       },
       {
-        "sku": "baybayin-mahal-kita",
+        "sku": "street-statment-brawlstar-shirt",
         "featured": false,
-        "primary": "assets/design/baybayin-mahal-kita/01-main-baybayin MAHAL KITA shirt.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/02-BRAWLSTAR SHIRT.jpg",
         "images": [
-          "assets/design/baybayin-mahal-kita/01-main-baybayin MAHAL KITA shirt.jpg"
+          "assets/design/apparel/dtf/street-statment/02-BRAWLSTAR SHIRT.jpg"
         ]
       },
       {
-        "sku": "baybayin-maharlika",
+        "sku": "street-statment-bts-shirt",
         "featured": false,
-        "primary": "assets/design/baybayin-maharlika/01-main-baybayin MAHARLIKA shirt.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/03-BTS SHIRT.jpg",
         "images": [
-          "assets/design/baybayin-maharlika/01-main-baybayin MAHARLIKA shirt.jpg"
+          "assets/design/apparel/dtf/street-statment/03-BTS SHIRT.jpg"
         ]
       },
       {
-        "sku": "black-pink",
+        "sku": "street-statment-bts-shirt-1",
         "featured": false,
-        "primary": "assets/design/black-pink/01-main-BLACK PINK SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/04-BTS SHIRT 1.jpg",
         "images": [
-          "assets/design/black-pink/01-main-BLACK PINK SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/04-BTS SHIRT 1.jpg"
         ]
       },
       {
-        "sku": "brawlstar",
+        "sku": "street-statment-dishenyo-moba-assassin",
         "featured": false,
-        "primary": "assets/design/brawlstar/01-main-BRAWLSTAR SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/05-DISHENYO MOBA ASSASSIN.jpg",
         "images": [
-          "assets/design/brawlstar/01-main-BRAWLSTAR SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/05-DISHENYO MOBA ASSASSIN.jpg"
         ]
       },
       {
-        "sku": "bts",
+        "sku": "street-statment-feitan-shirt",
         "featured": false,
-        "primary": "assets/design/bts/01-main-BTS SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/06-FEITAN SHIRT.jpg",
         "images": [
-          "assets/design/bts/01-main-BTS SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/06-FEITAN SHIRT.jpg"
         ]
       },
       {
-        "sku": "bts-1",
+        "sku": "street-statment-gusion-shirt",
         "featured": false,
-        "primary": "assets/design/bts-1/01-main-BTS SHIRT 1.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/07-GUSION SHIRT.jpg",
         "images": [
-          "assets/design/bts-1/01-main-BTS SHIRT 1.jpg"
+          "assets/design/apparel/dtf/street-statment/07-GUSION SHIRT.jpg"
         ]
       },
       {
-        "sku": "couple-love-you-forever",
+        "sku": "street-statment-miku",
         "featured": false,
-        "primary": "assets/design/couple-love-you-forever/01-main-COUPLE LOVE YOU FOREVER SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/08-MIKU.jpg",
         "images": [
-          "assets/design/couple-love-you-forever/01-main-COUPLE LOVE YOU FOREVER SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/08-MIKU.jpg"
         ]
       },
       {
-        "sku": "dethrose-loral",
+        "sku": "street-statment-miya-shirt",
         "featured": false,
-        "primary": "assets/design/dethrose-loral/01-main-DETHROSE LORAL.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/09-MIYA SHIRT.jpg",
         "images": [
-          "assets/design/dethrose-loral/01-main-DETHROSE LORAL.jpg"
+          "assets/design/apparel/dtf/street-statment/09-MIYA SHIRT.jpg"
         ]
       },
       {
-        "sku": "dishenyo-logo",
+        "sku": "street-statment-mobile-legends-shirt",
         "featured": false,
-        "primary": "assets/design/dishenyo-logo/01-main-dishenyo logo.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/10-MOBILE LEGENDS SHIRT.jpg",
         "images": [
-          "assets/design/dishenyo-logo/01-main-dishenyo logo.jpg"
+          "assets/design/apparel/dtf/street-statment/10-MOBILE LEGENDS SHIRT.jpg"
         ]
       },
       {
-        "sku": "dishenyo-moba-assassin",
+        "sku": "street-statment-native-gold-shirt",
         "featured": false,
-        "primary": "assets/design/dishenyo-moba-assassin/01-main-DISHENYO MOBA ASSASSIN.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/11-native gold shirt.jpg",
         "images": [
-          "assets/design/dishenyo-moba-assassin/01-main-DISHENYO MOBA ASSASSIN.jpg"
+          "assets/design/apparel/dtf/street-statment/11-native gold shirt.jpg"
         ]
       },
       {
-        "sku": "elf-fafmily",
+        "sku": "street-statment-ningguang-shirt",
         "featured": false,
-        "primary": "assets/design/elf-fafmily/01-main-ELF SHIRT FAFMILY.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/12-NINGGUANG SHIRT.jpg",
         "images": [
-          "assets/design/elf-fafmily/01-main-ELF SHIRT FAFMILY.jpg"
+          "assets/design/apparel/dtf/street-statment/12-NINGGUANG SHIRT.jpg"
         ]
       },
       {
-        "sku": "eugene",
+        "sku": "street-statment-one-piece-luffy-shirt",
         "featured": false,
-        "primary": "assets/design/eugene/01-main-EUGENE SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/13-ONE PIECE LUFFY SHIRT.jpg",
         "images": [
-          "assets/design/eugene/01-main-EUGENE SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/13-ONE PIECE LUFFY SHIRT.jpg"
         ]
       },
       {
-        "sku": "feitan",
+        "sku": "street-statment-one-piece-zoro-shirt",
         "featured": false,
-        "primary": "assets/design/feitan/01-main-FEITAN SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/14-ONE PIECE ZORO SHIRT.jpg",
         "images": [
-          "assets/design/feitan/01-main-FEITAN SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/14-ONE PIECE ZORO SHIRT.jpg"
         ]
       },
       {
-        "sku": "gusion",
+        "sku": "street-statment-raiden-shogun-shirt",
         "featured": false,
-        "primary": "assets/design/gusion/01-main-GUSION SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/15-RAIDEN SHOGUN SHIRT.jpg",
         "images": [
-          "assets/design/gusion/01-main-GUSION SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/15-RAIDEN SHOGUN SHIRT.jpg"
         ]
       },
       {
-        "sku": "kindness",
+        "sku": "street-statment-rubix-cubez-shirt",
         "featured": false,
-        "primary": "assets/design/kindness/01-main-kindness.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/16-RUBIX CUBEZ SHIRT.jpg",
         "images": [
-          "assets/design/kindness/01-main-kindness.jpg"
+          "assets/design/apparel/dtf/street-statment/16-RUBIX CUBEZ SHIRT.jpg"
         ]
       },
       {
-        "sku": "legends",
+        "sku": "street-statment-run-mario-run",
         "featured": false,
-        "primary": "assets/design/legends/01-main-LEGENDS SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/17-run mario run.jpg",
         "images": [
-          "assets/design/legends/01-main-LEGENDS SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/17-run mario run.jpg"
         ]
       },
       {
-        "sku": "miku",
+        "sku": "street-statment-sukuna-itadori",
         "featured": false,
-        "primary": "assets/design/miku/01-main-MIKU.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/18-SUKUNA ITADORI.jpg",
         "images": [
-          "assets/design/miku/01-main-MIKU.jpg"
+          "assets/design/apparel/dtf/street-statment/18-SUKUNA ITADORI.jpg"
         ]
       },
       {
-        "sku": "miya",
+        "sku": "street-statment-twice-shirt-2",
         "featured": false,
-        "primary": "assets/design/miya/01-main-MIYA SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/19-TWICE SHIRT 2.jpg",
         "images": [
-          "assets/design/miya/01-main-MIYA SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/19-TWICE SHIRT 2.jpg"
         ]
       },
       {
-        "sku": "mobile-legends",
+        "sku": "street-statment-witch-shirt",
         "featured": false,
-        "primary": "assets/design/mobile-legends/01-main-MOBILE LEGENDS SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/street-statment/20-WITCH SHIRT.jpg",
         "images": [
-          "assets/design/mobile-legends/01-main-MOBILE LEGENDS SHIRT.jpg"
+          "assets/design/apparel/dtf/street-statment/20-WITCH SHIRT.jpg"
         ]
       },
       {
-        "sku": "native-gold",
+        "sku": "clean-logo-transfer-dethrose-loral",
         "featured": false,
-        "primary": "assets/design/native-gold/01-main-native gold shirt.jpg",
+        "primary": "assets/design/apparel/dtf/clean-logo-transfer/01-DETHROSE LORAL.jpg",
         "images": [
-          "assets/design/native-gold/01-main-native gold shirt.jpg"
+          "assets/design/apparel/dtf/clean-logo-transfer/01-DETHROSE LORAL.jpg"
         ]
       },
       {
-        "sku": "never-stop-hustle",
+        "sku": "clean-logo-transfer-dishenyo-logo",
         "featured": false,
-        "primary": "assets/design/never-stop-hustle/01-main-NEVER STOP HUSTLE.jpg",
+        "primary": "assets/design/apparel/dtf/clean-logo-transfer/02-dishenyo logo.jpg",
         "images": [
-          "assets/design/never-stop-hustle/01-main-NEVER STOP HUSTLE.jpg"
+          "assets/design/apparel/dtf/clean-logo-transfer/02-dishenyo logo.jpg"
         ]
       },
       {
-        "sku": "ningguang",
+        "sku": "clean-logo-transfer-eugene-shirt",
         "featured": false,
-        "primary": "assets/design/ningguang/01-main-NINGGUANG SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/clean-logo-transfer/03-EUGENE SHIRT.jpg",
         "images": [
-          "assets/design/ningguang/01-main-NINGGUANG SHIRT.jpg"
+          "assets/design/apparel/dtf/clean-logo-transfer/03-EUGENE SHIRT.jpg"
         ]
       },
       {
-        "sku": "one-piece-luffy",
+        "sku": "clean-logo-transfer-legends-shirt",
         "featured": false,
-        "primary": "assets/design/one-piece-luffy/01-main-ONE PIECE LUFFY SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg",
         "images": [
-          "assets/design/one-piece-luffy/01-main-ONE PIECE LUFFY SHIRT.jpg"
+          "assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg"
         ]
       },
       {
-        "sku": "one-piece-zoro",
+        "sku": "typographic-quoteprint-baybayin-babaero-shirt",
         "featured": false,
-        "primary": "assets/design/one-piece-zoro/01-main-ONE PIECE ZORO SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/01-baybayin BABAERO shirt.jpg",
         "images": [
-          "assets/design/one-piece-zoro/01-main-ONE PIECE ZORO SHIRT.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/01-baybayin BABAERO shirt.jpg"
         ]
       },
       {
-        "sku": "raiden-shogun",
+        "sku": "typographic-quoteprint-baybayin-mahal-kita-shirt",
         "featured": false,
-        "primary": "assets/design/raiden-shogun/01-main-RAIDEN SHOGUN SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/02-baybayin MAHAL KITA shirt.jpg",
         "images": [
-          "assets/design/raiden-shogun/01-main-RAIDEN SHOGUN SHIRT.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/02-baybayin MAHAL KITA shirt.jpg"
         ]
       },
       {
-        "sku": "rubix-cubez",
+        "sku": "typographic-quoteprint-baybayin-maharlika-shirt",
         "featured": false,
-        "primary": "assets/design/rubix-cubez/01-main-RUBIX CUBEZ SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg",
         "images": [
-          "assets/design/rubix-cubez/01-main-RUBIX CUBEZ SHIRT.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg"
         ]
       },
       {
-        "sku": "run-mario-run",
+        "sku": "typographic-quoteprint-couple-love-you-forever-shirt",
         "featured": false,
-        "primary": "assets/design/run-mario-run/01-main-run mario run.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/04-COUPLE LOVE YOU FOREVER SHIRT.jpg",
         "images": [
-          "assets/design/run-mario-run/01-main-run mario run.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/04-COUPLE LOVE YOU FOREVER SHIRT.jpg"
         ]
       },
       {
-        "sku": "sukuna-itadori",
+        "sku": "typographic-quoteprint-elf-shirt-fafmily",
         "featured": false,
-        "primary": "assets/design/sukuna-itadori/01-main-SUKUNA ITADORI.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/05-ELF SHIRT FAFMILY.jpg",
         "images": [
-          "assets/design/sukuna-itadori/01-main-SUKUNA ITADORI.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/05-ELF SHIRT FAFMILY.jpg"
         ]
       },
       {
-        "sku": "the-more-you-learn",
+        "sku": "typographic-quoteprint-kindness",
         "featured": false,
-        "primary": "assets/design/the-more-you-learn/01-main-THE MORE YOU LEARN SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/06-kindness.jpg",
         "images": [
-          "assets/design/the-more-you-learn/01-main-THE MORE YOU LEARN SHIRT.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/06-kindness.jpg"
         ]
       },
       {
-        "sku": "twice-2",
+        "sku": "typographic-quoteprint-never-stop-hustle",
         "featured": false,
-        "primary": "assets/design/twice-2/01-main-TWICE SHIRT 2.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/07-NEVER STOP HUSTLE.jpg",
         "images": [
-          "assets/design/twice-2/01-main-TWICE SHIRT 2.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/07-NEVER STOP HUSTLE.jpg"
         ]
       },
       {
-        "sku": "winner",
+        "sku": "typographic-quoteprint-the-more-you-learn-shirt",
         "featured": false,
-        "primary": "assets/design/winner/01-main-Winner Shirt.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/08-THE MORE YOU LEARN SHIRT.jpg",
         "images": [
-          "assets/design/winner/01-main-Winner Shirt.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/08-THE MORE YOU LEARN SHIRT.jpg"
         ]
       },
       {
-        "sku": "witch",
+        "sku": "typographic-quoteprint-winner-shirt",
         "featured": false,
-        "primary": "assets/design/witch/01-main-WITCH SHIRT.jpg",
+        "primary": "assets/design/apparel/dtf/typographic-quoteprint/09-Winner Shirt.jpg",
         "images": [
-          "assets/design/witch/01-main-WITCH SHIRT.jpg"
+          "assets/design/apparel/dtf/typographic-quoteprint/09-Winner Shirt.jpg"
         ]
       }
     ],

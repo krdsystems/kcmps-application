@@ -473,6 +473,31 @@ button swap (icon vs. text, and the tap-target-size fix) behaves exactly as spec
 viewport sizes — confirmed via `getComputedStyle`/`getBoundingClientRect`, not just visually
 assumed.
 
+### 16. Hero carousel now sources real studio designs instead of stock/leaf photos (2026-07-25)
+
+The hero's featured-image pool (`website/assets/manifest.json`, read by
+`buildPoolFromManifest()` in `index.html`) previously featured 4 generic per-pillar leaf
+photos (`print-office`, `dtf`, `3dprint`, `storage`). Per request, swapped 3 of the 4 for real
+designs out of entry 15's `website/assets/design/apparel/dtf/` catalog — one per subcategory,
+picked at random for even coverage of the 3 DTF product lines — keeping the 4th slot on a
+leaf photo, also picked at random (landed on `subli`, sublimation). Un-featured the 4 old
+leaf entries (`print-office-production`, `dtf-heat-press-transfer`, `3d-printing-prototype`,
+`custom-storage-devices`) and added/flagged the new 4:
+`street-statment-bts-shirt-1`, `clean-logo-transfer-legends-shirt`,
+`typographic-quoteprint-baybayin-maharlika-shirt`, `sublimation-printing`
+(new manifest entry → `assets/leaves/subli.jpg`, mirroring how `dtf`/`3dprint` were already
+represented as leaf-photo entries under the `design` category).
+
+`index.html`'s static `<figure>` fallback slides (used only if the manifest fetch fails)
+were updated to the same 4 images so the no-JS/no-manifest path matches what most visitors
+actually see. The existing shuffle/no-repeat/session-persistence carousel mechanism
+(entry 13) needed no changes — it already treats the featured pool as opaque data.
+
+Verified via `fetch('assets/manifest.json')` in-browser (exactly the intended 4 entries
+`featured:true`) and by reading `#hero-carousel img[src]` after `init()` ran (all 4 designed/
+leaf paths present, shuffled), plus a network-request check confirming every image resolves
+`200 OK`.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

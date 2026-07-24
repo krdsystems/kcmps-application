@@ -4,7 +4,7 @@
     "printing-office-supplies": [
       {
         "sku": "print-office-production",
-        "featured": true,
+        "featured": false,
         "primary": "assets/leaves/print-office.jpg",
         "images": [
           "assets/leaves/print-office.jpg"
@@ -14,7 +14,7 @@
     "design": [
       {
         "sku": "dtf-heat-press-transfer",
-        "featured": true,
+        "featured": false,
         "primary": "assets/leaves/dtf.jpg",
         "images": [
           "assets/leaves/dtf.jpg"
@@ -22,7 +22,7 @@
       },
       {
         "sku": "3d-printing-prototype",
-        "featured": true,
+        "featured": false,
         "primary": "assets/leaves/3dprint.jpg",
         "images": [
           "assets/leaves/3dprint.jpg"
@@ -54,7 +54,7 @@
       },
       {
         "sku": "street-statment-bts-shirt-1",
-        "featured": false,
+        "featured": true,
         "primary": "assets/design/apparel/dtf/street-statment/04-BTS SHIRT 1.jpg",
         "images": [
           "assets/design/apparel/dtf/street-statment/04-BTS SHIRT 1.jpg"
@@ -214,7 +214,7 @@
       },
       {
         "sku": "clean-logo-transfer-legends-shirt",
-        "featured": false,
+        "featured": true,
         "primary": "assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg",
         "images": [
           "assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg"
@@ -238,7 +238,7 @@
       },
       {
         "sku": "typographic-quoteprint-baybayin-maharlika-shirt",
-        "featured": false,
+        "featured": true,
         "primary": "assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg",
         "images": [
           "assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg"
@@ -291,12 +291,17 @@
         "images": [
           "assets/design/apparel/dtf/typographic-quoteprint/09-Winner Shirt.jpg"
         ]
+      },
+      {
+        "sku": "sublimation-printing",
+        "primary": "assets/leaves/subli.jpg",
+        "featured": true
       }
     ],
     "merch": [
       {
         "sku": "custom-storage-devices",
-        "featured": true,
+        "featured": false,
         "primary": "assets/leaves/storage.jpg",
         "images": [
           "assets/leaves/storage.jpg"

@@ -119,6 +119,9 @@ All changes are immediate — there's no build step.
 - Add a custom request, open the drawer, confirm it reads "₱0 now / Pending approval".
 - Run checkout end-to-end and confirm the order summary reaches `mailto:` (or the configured
   endpoint).
+- Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
+  from transparent to a solid blurred background + shadow past ~8px of scroll — see
+  `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
 - Resize to mobile (375px): sticky CTA bar, drawer scroll, no horizontal overflow.
 - Check the console for JS errors and the Network tab for anything the CSP blocks.
 

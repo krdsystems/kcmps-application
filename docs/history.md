@@ -178,7 +178,8 @@ on narrow viewports without any horizontal scrolling or element overlap:
 
    **Fix:** Added global `overflow-x: hidden` to `html, body` to prevent any element from
    causing a rightward page scroll, regardless of width. This caps all overflow at the viewport
-   edge.
+   edge. (Later scoped to `html` only — see entry 12 — because pairing it with `body` broke
+   `position: sticky` on the nav.)
 
 3. **Cart drawer on very small screens** — The cart drawer used `width: min(420px, 100%)`,
    which should work but sometimes left room for scrolling on extremely narrow phones due to
@@ -304,6 +305,28 @@ already merged into `main` (`kcmps-login-frontend-d718f1`, `comprehensive-readme
 `kcmps-storefront-redesign`, `security-vulnerabilities-audit-75a87f`) — each was a full
 checked-out copy of the repo (~100+ files, several MB) left behind after merge instead of
 being removed with `git worktree remove`.
+
+### 12. Sticky nav scroll-state, and an `overflow-x` bug that silently broke `position: sticky` (2026-07-25)
+
+The nav bar had been `position: sticky; top: 0` since entry 6, but it didn't actually stick —
+it scrolled away with the page. Root cause: entry 7's `html, body { overflow-x: hidden; }` fix
+for the post-login horizontal-bleed bug. Per the CSS Overflow spec, when one axis is `hidden`
+and the other is left at its default `visible`, the `visible` axis's *used value* is silently
+promoted to `auto`. So `body`'s `overflow-y` computed to `auto`, turning `body` into its own
+scroll container — even though `html` (`document.scrollingElement`) is what actually scrolls.
+`position: sticky` anchors to the nearest ancestor scroll container, which resolved to that
+inert `body` context instead of the real viewport, so the offset never applied.
+
+**Fix:** scoped `overflow-x: hidden` to `html` only (`website/index.html`) — `html` is already
+the document's real scrolling element, so it still clips horizontal overflow without turning
+`body` into a second, non-scrolling scroll container. Verified no regression in the mobile
+horizontal-overflow fix at 375px, or in the cart drawer, after the change.
+
+Also added scroll-state styling to the nav: it starts fully transparent (no background, no
+blur, no shadow) at scroll position 0 so it doesn't visually clash with the hero behind it, then
+a `.nav.is-scrolled` class (toggled by a small `scroll` listener in `index.html`) fades in a
+solid `color-mix` background, `backdrop-filter: blur`, and a drop shadow once the page scrolls
+past an 8px threshold.
 
 ## Auth implementation notes
 

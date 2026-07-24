@@ -8,8 +8,11 @@
      1. List every object under each category prefix (see
         ../assets-bucket-structure.md §1 for the prefix convention).
      2. Group keys by <category>/<sku>/, pick the primary image per
-        sku (the "01-main.*" file; alphabetically-first as a
-        fallback so a missing 01-main doesn't drop the sku).
+        sku (any file whose name STARTS WITH "01-main" — e.g. plain
+        "01-main.jpg" or "01-main-original-filename.jpg", the latter
+        used to keep a human-readable trace back to the source art
+        file; see assets-bucket-structure.md §1). Alphabetically-first
+        as a fallback so a missing 01-main doesn't drop the sku.
      3. Write assets/manifest.json back to the same bucket.
 
    This is the ONLY place that writes manifest.json. The frontend
@@ -25,7 +28,7 @@ const { S3Client, ListObjectsV2Command, PutObjectCommand } = require("@aws-sdk/c
 const BUCKET = process.env.ASSETS_BUCKET;
 const CATEGORIES = ["printing-office-supplies", "design", "merch"];
 const MANIFEST_KEY = "manifest.json";
-const PRIMARY_RE = /^01-main\.(jpe?g|png)$/i;
+const PRIMARY_RE = /^01-main.*\.(jpe?g|png)$/i;
 
 const s3 = new S3Client({});
 

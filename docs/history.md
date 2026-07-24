@@ -393,6 +393,46 @@ entirely rather than showing a fabricated number, with a note pointing at the ex
 custom-request flow instead. The estimator also defaults its product picker to match whichever
 category is currently primed for that visitor, read directly from `kcmps_hero_category`.
 
+### 14. Hero carousel photo pool fix, and organizing 33 DTF design files into the bucket convention (2026-07-25)
+
+**Hero carousel photo pool.** The pool in `assets/manifest.json` (and the static `<figure>`
+fallback slides in `index.html`) was a mismatched leftover from prototyping: two generic
+stock photos, two externally-hosted images on the base44 CDN, and — worse — the manifest had
+the DTF heat-press photos filed under the `merch` category instead of `design`. Replaced with
+4 of the leaf photos from entry 13 (print-office, dtf, 3dprint, storage) — one per business
+pillar, correctly categorized, served locally. Deleted the now fully-unused stock images.
+Confirmed the underlying rotation mechanism this sits on top of (`HERO_MANIFEST_URL` fetch,
+Fisher-Yates shuffle with no repeats until the pool is exhausted, `sessionStorage`-persisted
+shuffle order, featured-image preference, preload-next-2) was untouched — that system, and
+the `storefront-infra/assets-bucket-structure.md` + `logic-inputs/generate-asset-manifest.js`
+S3 bucket/manifest plan it's written against, were both already built in an earlier session;
+only the manifest's *content* needed fixing.
+
+**Organizing the DTF design archive.** 33 real DTF design files (character/franchise fan art,
+Baybayin/Filipino heritage designs, motivational quotes, K-pop/gaming references — the studio's
+actual print-ready archive) landed loose in `website/assets/design-dtf/` at full print
+resolution (300 DPI, up to 14MB each, ~143MB total). Moved each into its own slug folder under
+`website/assets/design/<slug>/` per the bucket convention from entry (13)'s infra doc, named
+`01-main-<original filename>.<ext>` — the `01-main` prefix so the manifest generator's
+primary-image detection still finds it, the original filename kept as a suffix (rather than
+discarded) specifically so it stays traceable back to the source art file. Slugs were derived
+from filenames programmatically (strip the redundant word "shirt", slugify the rest) — all 33
+produced unique slugs, no manual collision resolution needed. Compressed each from print
+resolution down to ~900px/JPEG-82 (2 files were CMYK-encoded and needed an explicit
+`-colorspace sRGB` pass — ImageMagick's default resize doesn't shrink CMYK file size the way
+it does sRGB, so those two stayed at ~2MB until converted) — 143MB down to ~4.3MB total.
+Indexed all 33 into `manifest.json` under `design` with `featured: false`, so they're part of
+the catalog's asset index (satisfying the "every uploaded image becomes eligible with zero
+frontend changes" plan from entry 13) without flooding the hero carousel's curated featured
+pool or the storefront's product cards — `products.js` still lists exactly the same 3 DTF SKUs
++ 1 custom-request card as before; these are a browsable asset pool, not new checkout items.
+Also fixed `assets-bucket-structure.md`'s pillar mapping table, which had wrongly assigned the
+`dtf`/`subli`/`hotmelt`/`3dprint`/`souvenir` leaves to the `printing-office-supplies` prefix
+instead of `design` (predates the taxonomy actually built in entry 13), and still listed the
+already-removed `entertainment` leaf. Updated `generate-asset-manifest.js`'s primary-image
+regex (`PRIMARY_RE`) from an exact `01-main.<ext>` match to a `01-main` *prefix* match so the
+reference Lambda logic stays consistent with the new naming convention.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

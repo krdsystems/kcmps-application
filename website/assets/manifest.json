@@ -1,12 +1,14 @@
 {
-  "generatedAt": "2026-07-25T03:00:00Z",
+  "generatedAt": "2026-07-25T04:00:00Z",
   "categories": {
     "printing-office-supplies": [
       {
         "sku": "print-office-production",
         "featured": true,
         "primary": "assets/leaves/print-office.jpg",
-        "images": ["assets/leaves/print-office.jpg"]
+        "images": [
+          "assets/leaves/print-office.jpg"
+        ]
       }
     ],
     "design": [
@@ -14,13 +16,281 @@
         "sku": "dtf-heat-press-transfer",
         "featured": true,
         "primary": "assets/leaves/dtf.jpg",
-        "images": ["assets/leaves/dtf.jpg"]
+        "images": [
+          "assets/leaves/dtf.jpg"
+        ]
       },
       {
         "sku": "3d-printing-prototype",
         "featured": true,
         "primary": "assets/leaves/3dprint.jpg",
-        "images": ["assets/leaves/3dprint.jpg"]
+        "images": [
+          "assets/leaves/3dprint.jpg"
+        ]
+      },
+      {
+        "sku": "baybayin-babaero",
+        "featured": false,
+        "primary": "assets/design/baybayin-babaero/01-main-baybayin BABAERO shirt.jpg",
+        "images": [
+          "assets/design/baybayin-babaero/01-main-baybayin BABAERO shirt.jpg"
+        ]
+      },
+      {
+        "sku": "baybayin-mahal-kita",
+        "featured": false,
+        "primary": "assets/design/baybayin-mahal-kita/01-main-baybayin MAHAL KITA shirt.jpg",
+        "images": [
+          "assets/design/baybayin-mahal-kita/01-main-baybayin MAHAL KITA shirt.jpg"
+        ]
+      },
+      {
+        "sku": "baybayin-maharlika",
+        "featured": false,
+        "primary": "assets/design/baybayin-maharlika/01-main-baybayin MAHARLIKA shirt.jpg",
+        "images": [
+          "assets/design/baybayin-maharlika/01-main-baybayin MAHARLIKA shirt.jpg"
+        ]
+      },
+      {
+        "sku": "black-pink",
+        "featured": false,
+        "primary": "assets/design/black-pink/01-main-BLACK PINK SHIRT.jpg",
+        "images": [
+          "assets/design/black-pink/01-main-BLACK PINK SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "brawlstar",
+        "featured": false,
+        "primary": "assets/design/brawlstar/01-main-BRAWLSTAR SHIRT.jpg",
+        "images": [
+          "assets/design/brawlstar/01-main-BRAWLSTAR SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "bts",
+        "featured": false,
+        "primary": "assets/design/bts/01-main-BTS SHIRT.jpg",
+        "images": [
+          "assets/design/bts/01-main-BTS SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "bts-1",
+        "featured": false,
+        "primary": "assets/design/bts-1/01-main-BTS SHIRT 1.jpg",
+        "images": [
+          "assets/design/bts-1/01-main-BTS SHIRT 1.jpg"
+        ]
+      },
+      {
+        "sku": "couple-love-you-forever",
+        "featured": false,
+        "primary": "assets/design/couple-love-you-forever/01-main-COUPLE LOVE YOU FOREVER SHIRT.jpg",
+        "images": [
+          "assets/design/couple-love-you-forever/01-main-COUPLE LOVE YOU FOREVER SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "dethrose-loral",
+        "featured": false,
+        "primary": "assets/design/dethrose-loral/01-main-DETHROSE LORAL.jpg",
+        "images": [
+          "assets/design/dethrose-loral/01-main-DETHROSE LORAL.jpg"
+        ]
+      },
+      {
+        "sku": "dishenyo-logo",
+        "featured": false,
+        "primary": "assets/design/dishenyo-logo/01-main-dishenyo logo.jpg",
+        "images": [
+          "assets/design/dishenyo-logo/01-main-dishenyo logo.jpg"
+        ]
+      },
+      {
+        "sku": "dishenyo-moba-assassin",
+        "featured": false,
+        "primary": "assets/design/dishenyo-moba-assassin/01-main-DISHENYO MOBA ASSASSIN.jpg",
+        "images": [
+          "assets/design/dishenyo-moba-assassin/01-main-DISHENYO MOBA ASSASSIN.jpg"
+        ]
+      },
+      {
+        "sku": "elf-fafmily",
+        "featured": false,
+        "primary": "assets/design/elf-fafmily/01-main-ELF SHIRT FAFMILY.jpg",
+        "images": [
+          "assets/design/elf-fafmily/01-main-ELF SHIRT FAFMILY.jpg"
+        ]
+      },
+      {
+        "sku": "eugene",
+        "featured": false,
+        "primary": "assets/design/eugene/01-main-EUGENE SHIRT.jpg",
+        "images": [
+          "assets/design/eugene/01-main-EUGENE SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "feitan",
+        "featured": false,
+        "primary": "assets/design/feitan/01-main-FEITAN SHIRT.jpg",
+        "images": [
+          "assets/design/feitan/01-main-FEITAN SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "gusion",
+        "featured": false,
+        "primary": "assets/design/gusion/01-main-GUSION SHIRT.jpg",
+        "images": [
+          "assets/design/gusion/01-main-GUSION SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "kindness",
+        "featured": false,
+        "primary": "assets/design/kindness/01-main-kindness.jpg",
+        "images": [
+          "assets/design/kindness/01-main-kindness.jpg"
+        ]
+      },
+      {
+        "sku": "legends",
+        "featured": false,
+        "primary": "assets/design/legends/01-main-LEGENDS SHIRT.jpg",
+        "images": [
+          "assets/design/legends/01-main-LEGENDS SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "miku",
+        "featured": false,
+        "primary": "assets/design/miku/01-main-MIKU.jpg",
+        "images": [
+          "assets/design/miku/01-main-MIKU.jpg"
+        ]
+      },
+      {
+        "sku": "miya",
+        "featured": false,
+        "primary": "assets/design/miya/01-main-MIYA SHIRT.jpg",
+        "images": [
+          "assets/design/miya/01-main-MIYA SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "mobile-legends",
+        "featured": false,
+        "primary": "assets/design/mobile-legends/01-main-MOBILE LEGENDS SHIRT.jpg",
+        "images": [
+          "assets/design/mobile-legends/01-main-MOBILE LEGENDS SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "native-gold",
+        "featured": false,
+        "primary": "assets/design/native-gold/01-main-native gold shirt.jpg",
+        "images": [
+          "assets/design/native-gold/01-main-native gold shirt.jpg"
+        ]
+      },
+      {
+        "sku": "never-stop-hustle",
+        "featured": false,
+        "primary": "assets/design/never-stop-hustle/01-main-NEVER STOP HUSTLE.jpg",
+        "images": [
+          "assets/design/never-stop-hustle/01-main-NEVER STOP HUSTLE.jpg"
+        ]
+      },
+      {
+        "sku": "ningguang",
+        "featured": false,
+        "primary": "assets/design/ningguang/01-main-NINGGUANG SHIRT.jpg",
+        "images": [
+          "assets/design/ningguang/01-main-NINGGUANG SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "one-piece-luffy",
+        "featured": false,
+        "primary": "assets/design/one-piece-luffy/01-main-ONE PIECE LUFFY SHIRT.jpg",
+        "images": [
+          "assets/design/one-piece-luffy/01-main-ONE PIECE LUFFY SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "one-piece-zoro",
+        "featured": false,
+        "primary": "assets/design/one-piece-zoro/01-main-ONE PIECE ZORO SHIRT.jpg",
+        "images": [
+          "assets/design/one-piece-zoro/01-main-ONE PIECE ZORO SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "raiden-shogun",
+        "featured": false,
+        "primary": "assets/design/raiden-shogun/01-main-RAIDEN SHOGUN SHIRT.jpg",
+        "images": [
+          "assets/design/raiden-shogun/01-main-RAIDEN SHOGUN SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "rubix-cubez",
+        "featured": false,
+        "primary": "assets/design/rubix-cubez/01-main-RUBIX CUBEZ SHIRT.jpg",
+        "images": [
+          "assets/design/rubix-cubez/01-main-RUBIX CUBEZ SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "run-mario-run",
+        "featured": false,
+        "primary": "assets/design/run-mario-run/01-main-run mario run.jpg",
+        "images": [
+          "assets/design/run-mario-run/01-main-run mario run.jpg"
+        ]
+      },
+      {
+        "sku": "sukuna-itadori",
+        "featured": false,
+        "primary": "assets/design/sukuna-itadori/01-main-SUKUNA ITADORI.jpg",
+        "images": [
+          "assets/design/sukuna-itadori/01-main-SUKUNA ITADORI.jpg"
+        ]
+      },
+      {
+        "sku": "the-more-you-learn",
+        "featured": false,
+        "primary": "assets/design/the-more-you-learn/01-main-THE MORE YOU LEARN SHIRT.jpg",
+        "images": [
+          "assets/design/the-more-you-learn/01-main-THE MORE YOU LEARN SHIRT.jpg"
+        ]
+      },
+      {
+        "sku": "twice-2",
+        "featured": false,
+        "primary": "assets/design/twice-2/01-main-TWICE SHIRT 2.jpg",
+        "images": [
+          "assets/design/twice-2/01-main-TWICE SHIRT 2.jpg"
+        ]
+      },
+      {
+        "sku": "winner",
+        "featured": false,
+        "primary": "assets/design/winner/01-main-Winner Shirt.jpg",
+        "images": [
+          "assets/design/winner/01-main-Winner Shirt.jpg"
+        ]
+      },
+      {
+        "sku": "witch",
+        "featured": false,
+        "primary": "assets/design/witch/01-main-WITCH SHIRT.jpg",
+        "images": [
+          "assets/design/witch/01-main-WITCH SHIRT.jpg"
+        ]
       }
     ],
     "merch": [
@@ -28,7 +298,9 @@
         "sku": "custom-storage-devices",
         "featured": true,
         "primary": "assets/leaves/storage.jpg",
-        "images": ["assets/leaves/storage.jpg"]
+        "images": [
+          "assets/leaves/storage.jpg"
+        ]
       }
     ]
   }

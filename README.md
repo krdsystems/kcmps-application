@@ -24,6 +24,8 @@ website/                        ← DEPLOYED — synced directly to S3, nothing 
 ├── login-test.html             Standalone Cognito Hosted UI login proof-of-concept (kept as a reference —
 │                                see docs/history.md step 5 for why the auth logic was validated here first)
 ├── assets/                     Production images referenced by index.html (incl. hero carousel, bg texture)
+│   └── leaves/                 One AI-generated representative photo per catalog leaf, used as the
+│                                product-thumb fallback (see products.js `leaves.*.image` and store.js `thumbImage()`)
 └── dashboard/                  Staff-only ops dashboard (Today/Week/Month/Jobs/Clients/Inventory/Settings) —
                                  see docs/history.md step 8
 
@@ -34,6 +36,9 @@ ops-dashboard/                  NOT deployed — build-time tooling for website/
 ├── infra/                      AWS architecture + Lambda code to make the dashboard real (see its own
 │                                backend-infra-to-deploy.md and logic-inputs/)
 └── user-test/                  Manual QA script for the dashboard's design logic
+
+storefront-infra/               NOT deployed — real product-image bucket plan (assets-bucket-structure.md)
+                                 and the Lambda that generates the hero carousel's manifest.json
 
 project_knowledge/              NOT deployed — planning/design docs referenced by the build (e.g. the
                                  Payment System file the mixed-cart/GCash logic is built against)
@@ -101,6 +106,14 @@ variables rather than hard-coding colors, fonts, or spacing.
   the shape).
 - **Page structure or copy** — edit `website/index.html`. Value-stack amounts and the
   guarantee wording are marked inline as owner-editable.
+- **Hero/page category priming copy** — `PAGE_VARIANTS` in `index.html` (one Hormozi-style
+  headline/value-stack/how-it-works variant per `print-office` / `design` / `merch`
+  category). State/expiry logic lives in the same script, keyed on `kcmps_hero_category`
+  — see docs/history.md step 13 before changing the persistence rules.
+- **Bulk & custom estimator** — `#estimator` in `index.html`. Pricing is sourced live from
+  `products.js` (no hardcoded numbers) — add a priced SKU there and it appears in the
+  estimator's product picker automatically. Volume-discount tiers and leaf-specific add-ons
+  are defined in the same script block.
 - **Carousel timing** — slide duration lives in `styles.css` (`.carousel-track`
   `transition`), the total interval (`AUTO_MS`) in `index.html`.
 - **Checkout endpoint** — the `CHECKOUT_ENDPOINT` constant near the top of `website/store.js`.
@@ -112,13 +125,20 @@ All changes are immediate — there's no build step.
 - Open in a real browser (Chrome, Firefox, Safari) — Cognito login needs an `http(s)://`
   origin, so `file://` won't exercise the auth flow.
 - Hero carousel: confirm the slow drift, arrows, dots, and swipe-on-mobile all work.
-- Click through all 9 catalog leaves; confirm each shows product cards plus a custom-request
-  card.
+- Click through all 8 catalog leaves; confirm each shows product cards (with a real photo, not
+  the initials placeholder) plus a custom-request card.
 - Add a priced SKU, toggle "press onto shirt", confirm the live price update (target ₱170 for
   the anchor offer).
 - Add a custom request, open the drawer, confirm it reads "₱0 now / Pending approval".
 - Run checkout end-to-end and confirm the order summary reaches `mailto:` (or the configured
   endpoint).
+- Hero priming: in a fresh incognito window, confirm the hero/value-stack/how-it-works copy and
+  the pre-selected shop tab all match one of the three categories consistently; reload the same
+  tab a few times and confirm it *doesn't* change (that's the point — see docs/history.md step
+  13); add anything to cart and confirm the pick survives closing and reopening the tab.
+- Bulk estimator (`#estimator`): confirm the product dropdown only lists real priced SKUs, the
+  quantity number field and range slider stay in sync in both directions, volume discount lines
+  appear at 25/100/250+ units, and "Add to cart" shows up in the cart drawer (not a `mailto:`).
 - Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
@@ -133,7 +153,11 @@ All changes are immediate — there's no build step.
 - The ops dashboard (`website/dashboard/*`) runs entirely on mock/localStorage data — see
   `docs/history.md` step 8 and `ops-dashboard/infra/backend-infra-to-deploy.md`
   for what's needed to wire it to a real backend.
-- Sub-categories beyond DTF pricing (Subli, Hotmelt, and the rest of the catalog) currently
-  ship as "coming soon" placeholders.
+- Sub-categories beyond DTF and print-office pricing (Subli, Hotmelt, 3D Print, Souvenir,
+  Network, Storage) currently ship as "coming soon" placeholders — custom-request only, no
+  priced SKUs, so they're excluded from the bulk estimator's calculator.
 - Checkout is `mailto:`-based with no real payment processing; the cart lives in
   `localStorage` only, so it doesn't survive across devices or browsers.
+- Hero category priming is client-side only (`localStorage`/`sessionStorage`) — a logged-in
+  customer's primed category doesn't sync across devices. Deferred pending a real backend;
+  see docs/history.md step 13.

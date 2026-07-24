@@ -106,6 +106,8 @@ html { overflow-x: hidden; }
 .est-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
 .est-row input[type=range] { accent-color: var(--color-accent); width: 100%; }
 .est-row .val { font-weight: 700; font-family: var(--font-heading); min-width: 2.5ch; text-align: right; }
+.est-qty-num { width: 5.5ch; padding: 6px 8px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); background: var(--color-bg); color: var(--color-text); }
+.est-qty-num:focus { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .finish-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
 .finish { cursor: pointer; }
 .finish input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -248,19 +250,19 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <div class="wrap" id="top">
   <section class="hero">
     <div>
-      <span class="kicker-pill"><span class="dot"></span>Custom shirts &amp; prints · made in Manila</span>
-      <h1><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
+      <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
+      <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
       <div class="price-anchor">
-        <span class="from">From</span><span class="amount">₱170</span><span class="was">design + shirt, all-in</span>
+        <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱170</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
       </div>
-      <p class="sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
+      <p class="sub" id="hero-sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
       <ul class="hero-checklist">
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Free design file check &amp; prep — we fix it before we print</li>
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Reprint-free guarantee if the print isn't right</li>
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Made in-house — no middleman, no long waits</li>
       </ul>
       <div class="row">
-        <a href="#storefront" class="btn btn-primary">Shop designs</a>
+        <a href="#storefront" class="btn btn-primary" id="hero-cta">Shop designs</a>
         <a href="#how" class="btn btn-secondary">How it works</a>
       </div>
       <div class="trust-row">
@@ -306,10 +308,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <section class="valuestack" id="value">
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
-      <h2>One low price. Everything included.</h2>
-      <p>Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
+      <h2 id="vs-h2">One low price. Everything included.</h2>
+      <p id="vs-p">Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
     </div>
-    <div class="card vstack-card">
+    <div class="card vstack-card" id="vstack-card">
       <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
       <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱120</span></div>
       <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
@@ -340,20 +342,20 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       <div class="card how-step">
         <span class="step-num">STEP 01</span>
         <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M164.44,105.34,152.05,80.61a8,8,0,0,0-7.16-4.61H111.11a8,8,0,0,0-7.16,4.61L91.56,105.34Z" opacity="0.2"/><path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Zm8,120a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80a8,8,0,0,0,7.16-4.42L99.22,60h57.56l12.06,23.58A8,8,0,0,0,176,88h40a8,8,0,0,1,8,8ZM128,100a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,100Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,172Z"/></svg></div>
-        <h3>Pick or upload a design</h3>
-        <p>Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
+        <h3 id="how-1-h3">Pick or upload a design</h3>
+        <p id="how-1-p">Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
       </div>
       <div class="card how-step">
         <span class="step-num">STEP 02</span>
         <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M96,120a80,80,0,1,1,80,80A80,80,0,0,1,96,120Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg></div>
-        <h3>We produce in-house</h3>
-        <p>We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
+        <h3 id="how-2-h3">We produce in-house</h3>
+        <p id="how-2-p">We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
       </div>
       <div class="card how-step">
         <span class="step-num">STEP 03</span>
         <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
-        <h3>Pick up or get it delivered</h3>
-        <p>Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
+        <h3 id="how-3-h3">Pick up or get it delivered</h3>
+        <p id="how-3-p">Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
       </div>
     </div>
   </section>
@@ -425,7 +427,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
             <div class="tab-list" role="tablist">
               <button type="button" class="tab-btn" data-tab-target="panel-network" aria-selected="true">Network</button>
               <button type="button" class="tab-btn" data-tab-target="panel-storage" aria-selected="false">Storage</button>
-              <button type="button" class="tab-btn" data-tab-target="panel-entertainment" aria-selected="false">Entertainment</button>
             </div>
             <div class="tab-panels">
               <div class="tab-panel is-active" id="panel-network">
@@ -433,9 +434,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
               </div>
               <div class="tab-panel" id="panel-storage">
                 <div data-products-leaf="storage"></div>
-              </div>
-              <div class="tab-panel" id="panel-entertainment">
-                <div data-products-leaf="entertainment"></div>
               </div>
             </div>
           </div>
@@ -480,42 +478,37 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <section class="estimator" id="estimator">
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Bulk &amp; custom</span>
-      <h2>Estimating a bigger run?</h2>
-      <p>Get a quick directional estimate for bulk or custom jobs — final pricing is confirmed after a spec review. For single shirts and prints, just shop above.</p>
+      <h2 id="est-h2">Ordering in bulk?</h2>
+      <p id="est-p">Pick a real product, set your quantity, and see exact catalog pricing — automatic bulk discounts kick in at 25+ units. Add it straight to your cart, no back-and-forth required.</p>
     </div>
     <div class="est-grid">
       <div>
         <div class="card est-panel">
-          <p class="est-step">Step 01 · Category</p>
-          <div class="seg" role="radiogroup" aria-label="Product category">
-            <label class="seg-opt"><input type="radio" name="cat" value="180" checked /><span>Print</span></label>
-            <label class="seg-opt"><input type="radio" name="cat" value="90" /><span>3D print</span></label>
-            <label class="seg-opt"><input type="radio" name="cat" value="450" /><span>Merch</span></label>
-          </div>
+          <p class="est-step">Step 01 · Product</p>
+          <select id="est-product" class="input" style="width:100%"></select>
         </div>
         <div class="card est-panel">
-          <p class="est-step">Step 02 · Configuration</p>
+          <p class="est-step">Step 02 · Quantity &amp; add-ons</p>
           <div class="est-row">
-            <label for="qty" style="font-size:14px">Quantity</label>
-            <span class="val" id="qty-val">50</span>
+            <label for="qty-num" style="font-size:14px">Quantity</label>
+            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="1000" step="1" value="50" aria-label="Quantity (type a number)" />
           </div>
-          <input id="qty" type="range" min="1" max="500" value="50" style="width:100%;margin-top:6px" />
-          <div class="finish-grid">
-            <label class="finish"><input type="checkbox" value="0.15" /><span>Lamination</span></label>
-            <label class="finish"><input type="checkbox" value="0.25" /><span>Foil / emboss</span></label>
-            <label class="finish"><input type="checkbox" value="0.10" /><span>Rush delivery</span></label>
-          </div>
+          <input id="qty" type="range" min="1" max="1000" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
+          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0">Bulk discount applies automatically: 5% at 25+, 10% at 100+, 15% at 250+ units.</p>
+          <div class="finish-grid" id="est-addons"></div>
         </div>
       </div>
       <div class="quote-card">
         <h4>Quotation · PHP (₱)</h4>
-        <div class="quote-line"><span>Base price</span><span id="q-base">₱180.00</span></div>
-        <div class="quote-line"><span>Quantity multiplier</span><span id="q-mult">× 50</span></div>
-        <div class="quote-line"><span>Additional finishes</span><span id="q-fin">₱0.00</span></div>
-        <div class="quote-total"><span>Total</span><span id="q-total">₱9,000.00</span></div>
-        <p class="quote-note">Calculated from current regional production metrics. Final physical review required.</p>
-        <a href="mailto:ken.rodulfo.dungca+kcmps@gmail.com" class="btn btn-block">Email this inquiry</a>
+        <div class="quote-line"><span>Unit price</span><span id="q-base">₱0.00</span></div>
+        <div class="quote-line"><span>Quantity</span><span id="q-mult">× 0</span></div>
+        <div class="quote-line"><span>Add-ons</span><span id="q-fin">₱0.00</span></div>
+        <div class="quote-line" id="q-discount-row" style="display:none"><span id="q-discount-label">Bulk discount</span><span id="q-discount">−₱0.00</span></div>
+        <div class="quote-total"><span>Total</span><span id="q-total">₱0.00</span></div>
+        <p class="quote-note">Exact pricing from our real catalog — no hidden fees. Reprint-free guarantee applies; pay when you check out.</p>
+        <button type="button" class="btn btn-block" id="est-add-cart">Add to cart</button>
         <button type="button" class="btn btn-secondary btn-block" id="copy-spec">Copy spec to clipboard</button>
+        <p class="quote-note" id="est-merch-note" style="display:none">Need bulk networking gear or storage? <a href="#storefront" id="est-merch-link">Request a custom quote</a> — priced individually after we review your specs.</p>
       </div>
     </div>
   </section>
@@ -598,35 +591,201 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <script src="store.js"></script>
 
 <script>
+/* Bulk & custom estimator — sources every product/price from
+   window.KCMPS_STORE_DATA (products.js) instead of hardcoded numbers, so it
+   can't drift from the real catalog. Only leaves with actual priced SKUs
+   (today: print-office, dtf) get a calculator; leaves that are still
+   comingSoon (network, storage, etc.) have no real price to show, so they're
+   pointed at the shop's existing custom-request flow instead of a fabricated
+   number. "Add to cart" goes through the SAME cart as the shop cards
+   (window.KCMPS_STORE.addToCart) — not a separate mailto — so it participates
+   in checkout, the cart badge, and the hero category-priming sticky state
+   (see the priming script below) exactly like any other purchase. */
 (() => {
+  const DATA = window.KCMPS_STORE_DATA;
+  const productSel = document.getElementById('est-product');
   const qty = document.getElementById('qty');
-  const qtyVal = document.getElementById('qty-val');
-  const cats = document.querySelectorAll('input[name="cat"]');
-  const finishes = document.querySelectorAll('.finish input');
-  const fmt = (n) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  function recalc() {
-    const base = parseFloat([...cats].find(c => c.checked)?.value || 0);
-    const q = parseInt(qty.value, 10);
-    const finishPct = [...finishes].filter(f => f.checked).reduce((s, f) => s + parseFloat(f.value), 0);
-    const subtotal = base * q;
-    const finishAmt = subtotal * finishPct;
-    const total = subtotal + finishAmt;
-    qtyVal.textContent = q;
-    document.getElementById('q-base').textContent = fmt(base);
-    document.getElementById('q-mult').textContent = '× ' + q;
-    document.getElementById('q-fin').textContent = fmt(finishAmt);
-    document.getElementById('q-total').textContent = fmt(total);
-  }
-  qty.addEventListener('input', recalc);
-  cats.forEach(c => c.addEventListener('change', recalc));
-  finishes.forEach(f => f.addEventListener('change', recalc));
-  recalc();
+  const qtyNum = document.getElementById('qty-num');
+  const addonsWrap = document.getElementById('est-addons');
+  const q_base = document.getElementById('q-base');
+  const q_mult = document.getElementById('q-mult');
+  const q_fin = document.getElementById('q-fin');
+  const q_discountRow = document.getElementById('q-discount-row');
+  const q_discountLabel = document.getElementById('q-discount-label');
+  const q_discount = document.getElementById('q-discount');
+  const q_total = document.getElementById('q-total');
+  const addCartBtn = document.getElementById('est-add-cart');
   const copyBtn = document.getElementById('copy-spec');
+  const merchNote = document.getElementById('est-merch-note');
+  const merchLink = document.getElementById('est-merch-link');
+  if (!DATA || !productSel || !qty || !qtyNum) return;
+
+  const LEAF_LABEL = { 'print-office': 'Printing & Office', dtf: 'Apparel · DTF' };
+  const fmt = (n) => DATA.currency + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Flatten every priced SKU (and each of its variants) into one option list —
+  // this is the literal same data the shop product cards render from.
+  const options = [];
+  DATA.products.forEach((p) => {
+    (p.variants || [{ label: '', price: p.price || 0 }]).forEach((v) => {
+      options.push({
+        id: p.id + (v.label ? '|' + v.label : ''),
+        leaf: p.leaf,
+        name: p.name + (v.label ? ' — ' + v.label : ''),
+        unitPrice: v.price,
+        shirtAddon: !!p.shirtAddon,
+      });
+    });
+  });
+
+  if (!options.length) {
+    // No priced SKUs anywhere in the catalog yet — nothing honest to calculate.
+    document.querySelector('.est-grid').style.display = 'none';
+    if (merchNote) { merchNote.textContent = 'Every category is custom-quote right now — add a request from the shop above.'; merchNote.style.display = ''; }
+    return;
+  }
+
+  const groups = {};
+  options.forEach((o) => { (groups[o.leaf] = groups[o.leaf] || []).push(o); });
+  productSel.innerHTML = Object.keys(groups).map((leaf) =>
+    `<optgroup label="${LEAF_LABEL[leaf] || leaf}">` +
+    groups[leaf].map((o) => `<option value="${o.id}">${o.name} — ${fmt(o.unitPrice)}</option>`).join('') +
+    `</optgroup>`
+  ).join('');
+
+  // Default to whichever product matches the category already primed for this
+  // visitor (see the hero-priming script below) — same storage key, read
+  // directly since this script runs before that one defines it. Falls back to
+  // the first available option if nothing's primed yet (first-ever pageview).
+  function readPrimedCategory() {
+    try {
+      const local = JSON.parse(localStorage.getItem('kcmps_hero_category') || 'null');
+      if (local && local.sticky && local.category) return local.category;
+    } catch { /* corrupt value — ignore */ }
+    try {
+      const sess = JSON.parse(sessionStorage.getItem('kcmps_hero_category') || 'null');
+      if (sess && sess.category) return sess.category;
+    } catch { /* corrupt value — ignore */ }
+    return null;
+  }
+  const CATEGORY_TO_LEAF = { 'print-office': 'print-office', design: 'dtf' };
+  const primed = readPrimedCategory();
+  const primedLeaf = primed && CATEGORY_TO_LEAF[primed];
+  if (primedLeaf && groups[primedLeaf]) productSel.value = groups[primedLeaf][0].id;
+  if (primed === 'merch' && merchNote) merchNote.style.display = '';
+
+  if (merchLink) {
+    merchLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tabBtn = document.querySelector('.tab-btn[data-tab-target="panel-merch"]');
+      if (tabBtn) tabBtn.click();
+      document.getElementById('storefront')?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  function currentOption() { return options.find((o) => o.id === productSel.value) || options[0]; }
+
+  function buildAddons() {
+    const opt = currentOption();
+    addonsWrap.innerHTML = '';
+    const defs = [];
+    if (opt.leaf === 'print-office') {
+      defs.push({ key: 'lamination', label: 'Lamination', kind: 'pct', value: 0.15 });
+      defs.push({ key: 'foil', label: 'Foil / emboss', kind: 'pct', value: 0.25 });
+    }
+    if (opt.shirtAddon) {
+      defs.push({ key: 'shirt', label: `Press onto shirts (+${fmt(DATA.shirtAddon.price)}/pc)`, kind: 'flat', value: DATA.shirtAddon.price });
+    }
+    defs.push({ key: 'rush', label: 'Rush delivery', kind: 'pct', value: 0.10 });
+    defs.forEach((d) => {
+      const lab = document.createElement('label'); lab.className = 'finish';
+      const inp = document.createElement('input');
+      inp.type = 'checkbox'; inp.dataset.kind = d.kind; inp.dataset.value = String(d.value); inp.dataset.key = d.key;
+      const sp = document.createElement('span'); sp.textContent = d.label;
+      inp.addEventListener('change', recalc);
+      lab.appendChild(inp); lab.appendChild(sp); addonsWrap.appendChild(lab);
+    });
+  }
+
+  function bulkDiscountPct(q) {
+    if (q >= 250) return 0.15;
+    if (q >= 100) return 0.10;
+    if (q >= 25) return 0.05;
+    return 0;
+  }
+
+  function computeQuote() {
+    const opt = currentOption();
+    const q = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    const base = opt.unitPrice;
+    const subtotal = base * q;
+    let addonAmt = 0;
+    [...addonsWrap.querySelectorAll('input:checked')].forEach((inp) => {
+      addonAmt += inp.dataset.kind === 'pct' ? subtotal * parseFloat(inp.dataset.value) : parseFloat(inp.dataset.value) * q;
+    });
+    const preDiscount = subtotal + addonAmt;
+    const discountPct = bulkDiscountPct(q);
+    const discountAmt = preDiscount * discountPct;
+    const total = preDiscount - discountAmt;
+    return { opt, q, base, addonAmt, discountPct, discountAmt, total };
+  }
+
+  function recalc() {
+    const r = computeQuote();
+    q_base.textContent = fmt(r.base);
+    q_mult.textContent = '× ' + r.q;
+    q_fin.textContent = fmt(r.addonAmt);
+    if (r.discountPct > 0) {
+      q_discountRow.style.display = '';
+      q_discountLabel.textContent = `Bulk discount (${Math.round(r.discountPct * 100)}%)`;
+      q_discount.textContent = '−' + fmt(r.discountAmt);
+    } else {
+      q_discountRow.style.display = 'none';
+    }
+    q_total.textContent = fmt(r.total);
+  }
+
+  // Range slider and number input drive the same value, kept in sync both ways.
+  function syncQty(value) {
+    const clamped = Math.min(1000, Math.max(1, parseInt(value, 10) || 1));
+    qty.value = String(clamped);
+    qtyNum.value = String(clamped);
+    recalc();
+  }
+  qty.addEventListener('input', () => syncQty(qty.value));
+  qtyNum.addEventListener('input', () => syncQty(qtyNum.value));
+  productSel.addEventListener('change', () => { buildAddons(); recalc(); });
+
+  buildAddons();
+  recalc();
+
   copyBtn.addEventListener('click', () => {
-    const spec = `KCMPS estimate — ${document.getElementById('q-total').textContent} total (qty ${qty.value})`;
+    const r = computeQuote();
+    const spec = `KCMPS bulk estimate — ${r.opt.name} × ${r.q} — ${fmt(r.total)} total`;
     navigator.clipboard?.writeText(spec);
     copyBtn.textContent = 'Copied';
-    setTimeout(() => copyBtn.textContent = 'Copy spec to clipboard', 1500);
+    setTimeout(() => { copyBtn.textContent = 'Copy spec to clipboard'; }, 1500);
+  });
+
+  addCartBtn.addEventListener('click', () => {
+    const r = computeQuote();
+    const addonKeys = [...addonsWrap.querySelectorAll('input:checked')].map((i) => i.dataset.key);
+    const unitAfter = Math.round(r.total / r.q);
+    window.KCMPS_STORE?.addToCart({
+      key: 'bulk|' + r.opt.id + '|' + r.q + '|' + addonKeys.join(','),
+      id: 'bulk-' + r.opt.id,
+      name: 'Bulk: ' + r.opt.name,
+      leaf: r.opt.leaf,
+      type: 'sku',
+      variantLabel: addonKeys.length ? addonKeys.join(', ') : '',
+      shirt: addonKeys.includes('shirt'),
+      unitPrice: unitAfter,
+      qty: r.q,
+    });
+    window.KCMPS_STORE?.open();
+    const orig = addCartBtn.textContent;
+    addCartBtn.textContent = 'Added ✓'; addCartBtn.disabled = true;
+    setTimeout(() => { addCartBtn.textContent = orig; addCartBtn.disabled = false; }, 1100);
   });
 })();
 
@@ -646,34 +805,354 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     });
   });
 })();
+</script>
 
+<script>
+/* Page-wide category priming — Hormozi "no-brainer offer" copy, one variant
+   per top-level catalog category (print-office / design / merch), selected
+   once and kept consistent across the ENTIRE page (hero, value stack, how-it-
+   works, and which shop tab is pre-selected) so the customer isn't shown
+   three different pitches (this is priming/consistency, not personalization
+   — selection is random, not based on who the visitor is).
+
+   State machine (source of truth: STORAGE_KEY, read in this priority order):
+     1. localStorage[STORAGE_KEY] — "sticky" state. Written the moment the
+        customer adds ANY item to cart or submits a custom/quote request
+        (store.js's addToCart covers both — custom items ARE the quote flow
+        here, see the "custom" item type). Survives closed tabs, expires
+        after STICKY_MS.
+     2. sessionStorage[STORAGE_KEY] — pre-commitment state. Keeps the same
+        category consistent for the lifetime of this tab (so a visitor
+        scrolling/reading isn't shown a different pitch mid-visit), but a
+        genuinely new visit (new tab/session, or after sticky expiry) rolls a
+        fresh random category. To see the randomization, open a new tab/
+        incognito window per roll — reloading THIS tab intentionally keeps
+        the same category, that consistency is the point of the feature.
+     3. Neither present/valid — roll uniformly at random.
+
+   Cross-device sync decision (v1): NOT implemented. A logged-in customer on
+   a second device would get a fresh roll rather than their primed category,
+   even within the 7-day window. Doing this properly needs a server-side
+   CUSTOMER#<sub> attribute (see ops-dashboard/infra/backend-infra-to-deploy.md),
+   which doesn't exist yet — per this project's "manual-first, automate on
+   signal" approach, ship client-side-only for v1 and only build server sync
+   if usage data justifies it.
+
+   Analytics: dispatches DOM CustomEvents ('kcmps:hero-metric') rather than
+   calling a real endpoint — there's no backend yet. Event shape is chosen to
+   map 1:1 onto the ops dashboard's existing METRIC# rollup pattern
+   (METRIC#DAY#<date> / PILLAR#<PRINT|STUDIO|HARDWARE>, see
+   ops-dashboard/infra/logic-inputs/streams-handler.js) so wiring a real
+   beacon later is a one-line swap of logMetric(), not a redesign. */
+(() => {
+  const STORAGE_KEY = 'kcmps_hero_category';
+  const STICKY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  const PAGE_VARIANTS = {
+    'print-office': {
+      hero: {
+        kicker: 'Bulk printing & office supplies · 2–3 day turnaround',
+        headline: ['Your bulk print job,', 'done in days', '— not weeks.'],
+        anchor: { from: 'Turnaround', amount: '2–3 days', was: 'no minimum quantity, no back-and-forth' },
+        sub: "Send your file, get a quote back in minutes, and pick up in 2–3 business days. No minimum order, no back-and-forth — just documents, forms, and office essentials printed right the first time.",
+        cta: 'Get an instant quote',
+        tabTarget: 'panel-print-office',
+      },
+      valuestack: {
+        h2: 'One flat quote. Nothing hidden.',
+        p: 'Most print shops charge extra for rush jobs and file fixes. Every KCMPS bulk print job already includes:',
+        lines: [
+          { label: 'File check &amp; print-ready prep', free: true },
+          { label: 'Color-accurate proof before the full run', free: true },
+          { label: 'Bulk-quantity discount, applied automatically', free: true },
+        ],
+        totalLabel: 'Rush + prep fees elsewhere',
+        totalVal: '₱500',
+        payLabel: 'You pay, all-in',
+        payAmt: 'Just your quote',
+      },
+      how: [
+        { h3: 'Send your file or specs', p: 'Documents, forms, packaging — upload what you need printed, digital file or physical copy.' },
+        { h3: 'We prep, proof and print in-house', p: 'File checked, proof approved, then printed at bulk-run pricing — no rush fees.' },
+        { h3: 'Pick up or get it delivered in 2–3 days', p: 'Grab it at our Manila studio or have it delivered — no minimum order.' },
+      ],
+    },
+    design: {
+      hero: {
+        kicker: 'Design + print, one team · Launch Kit',
+        headline: ['One decision,', 'not three quotes.', 'Your brand, launched.'],
+        anchor: { from: 'From', amount: '₱170', was: 'design + shirt, all-in' },
+        sub: "Stop collecting quotes from three different shops. One team designs it, prints it, and hands you a finished piece — logo, layout and production all under one roof.",
+        cta: 'Start my design',
+        tabTarget: 'panel-design',
+      },
+      valuestack: {
+        h2: 'One low price. Everything included.',
+        p: 'Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:',
+        lines: [
+          { label: 'Premium DTF transfer of your design', val: '₱80' },
+          { label: 'Heat-pressed onto a quality shirt', val: '₱120' },
+          { label: 'Design file check &amp; print-prep', free: true },
+          { label: 'Color &amp; placement layout assistance', free: true },
+          { label: "Reprint-free guarantee if it's not right", free: true },
+        ],
+        totalLabel: 'Typical value elsewhere',
+        totalVal: '₱450',
+        payLabel: 'You pay, all-in from',
+        payAmt: '₱170',
+      },
+      how: [
+        { h3: 'Tell us your idea', p: 'Pick a ready-made design or send us yours — one form covers it.' },
+        { h3: 'One team designs, prints and finishes it', p: 'No juggling three vendors — we prep the file, print premium DTF, and press it onto your shirt in-house.' },
+        { h3: 'Pick up or get it delivered', p: 'Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.' },
+      ],
+    },
+    merch: {
+      hero: {
+        kicker: 'Networking gear & storage hardware · sourced & ready',
+        headline: ['Hold your hardware', 'in your hands', '— this week.'],
+        anchor: { from: 'From', amount: '1 piece', was: 'no minimum, no bulk lock-in' },
+        sub: "Flash drives, SSDs and networking gear — sourced, checked, and ready faster than a factory minimum-order run. See and hold the real thing before you commit to a bulk buy.",
+        cta: 'Get my hardware',
+        tabTarget: 'panel-merch',
+      },
+      valuestack: {
+        h2: 'One piece. Everything checked.',
+        p: 'Most hardware shops just drop-ship it. Every KCMPS order already includes:',
+        lines: [
+          { label: 'Spec &amp; capacity match to your needs', free: true },
+          { label: 'Functionality check before pickup', free: true },
+          { label: 'Quality check before pickup', free: true },
+        ],
+        totalLabel: 'Typical setup fee elsewhere',
+        totalVal: '₱300',
+        payLabel: 'You pay, no bulk minimum',
+        payAmt: 'From 1 piece',
+      },
+      how: [
+        { h3: 'Tell us your setup or capacity needs', p: 'Networking gear, flash drives, or SSDs — tell us what you need and how much.' },
+        { h3: 'We source and check it in-house', p: 'Every piece is sourced, tested and inspected before it ships — no factory minimums.' },
+        { h3: 'Hold it or get it delivered', p: 'Pick it up at our Manila studio or have it delivered — see the real thing before committing to bulk.' },
+      ],
+    },
+  };
+  const CATEGORIES = Object.keys(PAGE_VARIANTS);
+
+  function pickRandom() { return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)]; }
+
+  function readValid(storage, wantSticky) {
+    try {
+      const raw = storage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      if (v && CATEGORIES.includes(v.category) && !!v.sticky === wantSticky &&
+          (!wantSticky || (typeof v.expiresAt === 'number' && v.expiresAt > Date.now()))) {
+        return v;
+      }
+      if (wantSticky && v) storage.removeItem(STORAGE_KEY); // expired/invalid sticky state — clean up
+    } catch { /* corrupt value — ignore, treat as absent */ }
+    return null;
+  }
+
+  let state = readValid(localStorage, true) || readValid(sessionStorage, false);
+  let isFreshRoll = false;
+  if (!state) {
+    state = { category: pickRandom(), primedAt: Date.now(), expiresAt: null, sticky: false };
+    isFreshRoll = true;
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* private browsing/quota — priming still holds for this pageview */ }
+  }
+
+  function logMetric(event) {
+    document.dispatchEvent(new CustomEvent('kcmps:hero-metric', { detail: { category: state.category, event } }));
+  }
+
+  function promoteToSticky() {
+    if (state.sticky) return; // already committed this window
+    state = { category: state.category, primedAt: state.primedAt, expiresAt: Date.now() + STICKY_MS, sticky: true };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch { /* private browsing/quota — priming still holds for this pageview, just won't survive reopening */ }
+    logMetric('cart-add');
+  }
+
+  function activateTab(tabTarget) {
+    const tabBtn = document.querySelector(`.tab-btn[data-tab-target="${tabTarget}"]`);
+    if (tabBtn) tabBtn.click(); // reuses the existing tab-switch listener (see the [data-tabs] IIFE above)
+  }
+
+  function applyVariant(category) {
+    const variant = PAGE_VARIANTS[category];
+
+    /* ---- hero ---- */
+    const v = variant.hero;
+    const kicker = document.getElementById('hero-kicker-text');
+    const h1 = document.getElementById('hero-h1');
+    const from = document.getElementById('hero-anchor-from');
+    const amount = document.getElementById('hero-anchor-amount');
+    const was = document.getElementById('hero-anchor-was');
+    const sub = document.getElementById('hero-sub');
+    const cta = document.getElementById('hero-cta');
+    if (kicker && h1 && from && amount && was && sub && cta) {
+      kicker.textContent = v.kicker;
+      h1.innerHTML = '';
+      v.headline.forEach((text, i) => {
+        const span = document.createElement('span');
+        if (i === 1) span.className = 'warm';
+        span.textContent = text;
+        h1.appendChild(span);
+      });
+      from.textContent = v.anchor.from;
+      amount.textContent = v.anchor.amount;
+      was.textContent = v.anchor.was;
+      sub.textContent = v.sub;
+      cta.textContent = v.cta;
+      cta.onclick = () => activateTab(v.tabTarget); // .onclick, not addEventListener — applyVariant can re-run (test button)
+    }
+
+    /* ---- value stack ("Everything you get") ---- */
+    const vs = variant.valuestack;
+    const vsH2 = document.getElementById('vs-h2');
+    const vsP = document.getElementById('vs-p');
+    const vsCard = document.getElementById('vstack-card');
+    if (vsH2 && vsP && vsCard) {
+      vsH2.textContent = vs.h2;
+      vsP.textContent = vs.p;
+      vsCard.innerHTML =
+        vs.lines.map((line) =>
+          `<div class="vstack-line"><span class="label">${line.label}</span><span class="val${line.free ? ' free' : ''}">${line.free ? 'FREE' : line.val}</span></div>`
+        ).join('') +
+        `<div class="vstack-total"><span>${vs.totalLabel}</span><span class="val">${vs.totalVal}</span></div>` +
+        `<div class="vstack-pay"><span class="lbl">${vs.payLabel}</span><span class="amt">${vs.payAmt}</span></div>`;
+    }
+
+    /* ---- how it works ---- */
+    variant.how.forEach((step, i) => {
+      const h3 = document.getElementById(`how-${i + 1}-h3`);
+      const p = document.getElementById(`how-${i + 1}-p`);
+      if (h3) h3.textContent = step.h3;
+      if (p) p.textContent = step.p;
+    });
+
+    /* ---- shop pre-selection: activate this category's top-level tab (and,
+       for print-office, that's the whole leaf — design/merch already default
+       to a sensible sub-tab — apparel/DTF, network — in the markup) ---- */
+    activateTab(v.tabTarget);
+  }
+
+  applyVariant(state.category);
+  logMetric(isFreshRoll ? 'primed' : 'primed-restored');
+  document.addEventListener('kcmps:cart-add', promoteToSticky);
+})();
+</script>
+
+<script>
 /* Hero carousel — continuously, slowly drifts right-to-left: each slide
    glides into the next over ~2.5s (matches the CSS transition duration in
    styles.css) so the motion never sits static, then immediately glides on
    to the following slide. Prev/next arrows, dot indicators, and touch/swipe
    are layered on top; any manual interaction pauses autoplay briefly so it
-   doesn't fight the user, then resumes the drift. */
+   doesn't fight the user, then resumes the drift.
+
+   Image pool: loaded from HERO_MANIFEST_URL (see
+   storefront-infra/assets-bucket-structure.md for the real bucket/manifest
+   plan — until that Lambda is deployed this reads the hand-maintained
+   sample at website/assets/manifest.json). The pool prefers featured:true
+   images across ALL categories (cross-category product exposure, not
+   locked to any one primed category — kept decoupled from any headline/copy
+   personalization elsewhere on the page), falling back to every image if
+   none are flagged featured. If the manifest can't be loaded at all, this
+   falls back to the four <figure> slides already in the markup below, so
+   the carousel still works with zero JS network dependency. */
 (() => {
   const root = document.getElementById('hero-carousel');
   const track = document.getElementById('carousel-track');
-  if (!root || !track) return;
-  const slides = [...track.children];
-  const dots = [...document.querySelectorAll('#carousel-dots .carousel-dot')];
+  const dotsWrap = document.getElementById('carousel-dots');
+  if (!root || !track || !dotsWrap) return;
   const prevBtn = document.getElementById('carousel-prev');
   const nextBtn = document.getElementById('carousel-next');
-  const count = slides.length;
   const AUTO_MS = 5500; // 4s slide + ~1.5s pause; keep slide duration in sync with styles.css .carousel-track transition
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const HERO_MANIFEST_URL = 'assets/manifest.json';
+  const SESSION_KEY = 'kcmps_hero_pool_v1';
+
+  // Captured before any DOM rebuild — the ultimate fallback pool.
+  const fallbackPool = [...track.children].map((fig) => {
+    const img = fig.querySelector('img');
+    return { src: img.getAttribute('src'), alt: img.getAttribute('alt') || '' };
+  });
+
+  let basePool = fallbackPool; // the full (unordered) set of eligible images
+  let order = fallbackPool;    // current shuffled viewing sequence
   let index = 0;
   let timer = null;
 
+  function persist() {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ order: order.map((s) => s.src), index }));
+    } catch { /* sessionStorage unavailable (private browsing, quota) — just skip persistence */ }
+  }
+
+  function shuffle(pool) {
+    const a = pool.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildDom() {
+    track.innerHTML = '';
+    dotsWrap.innerHTML = '';
+    order.forEach((slide, i) => {
+      const fig = document.createElement('figure');
+      fig.className = 'carousel-slide';
+      const img = document.createElement('img');
+      img.src = slide.src;
+      img.alt = slide.alt;
+      img.loading = i === 0 ? 'eager' : 'lazy'; // eager for the current slide, lazy for the rest (preloadNext tops up the next 1-2)
+      fig.appendChild(img);
+      track.appendChild(fig);
+
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'carousel-dot';
+      dot.dataset.slide = String(i);
+      dot.setAttribute('aria-label', `Photo ${i + 1}`);
+      dot.addEventListener('click', () => { goTo(i); restartAuto(); });
+      dotsWrap.appendChild(dot);
+    });
+  }
+
+  function preloadNext() {
+    [1, 2].forEach((ahead) => {
+      const slide = order[(index + ahead) % order.length];
+      if (slide) { const im = new Image(); im.src = slide.src; }
+    });
+  }
+
   function render() {
     track.style.transform = `translateX(-${index * 100}%)`;
-    dots.forEach((d, i) => d.classList.toggle('is-active', i === index));
+    [...dotsWrap.children].forEach((d, i) => d.classList.toggle('is-active', i === index));
   }
-  function goTo(i) { index = (i + count) % count; render(); }
-  function next() { goTo(index + 1); }
-  function prev() { goTo(index - 1); }
+
+  // Advance sequentially through the current shuffle; only reshuffle once the
+  // pool is fully exhausted (wrapping past the last slide), so every image is
+  // shown once before any repeat.
+  function next() {
+    if (index >= order.length - 1) {
+      order = shuffle(basePool);
+      index = 0;
+      buildDom();
+    } else {
+      index++;
+    }
+    persist();
+    render();
+  }
+  function prev() { index = (index - 1 + order.length) % order.length; persist(); render(); }
+  function goTo(i) { index = ((i % order.length) + order.length) % order.length; persist(); render(); }
 
   function stopAuto() { if (timer) { clearInterval(timer); timer = null; } }
   function startAuto() {
@@ -684,9 +1163,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   // Manual interaction pauses autoplay, then resumes after a breather.
   function restartAuto() { stopAuto(); startAuto(); }
 
-  nextBtn.addEventListener('click', () => { next(); restartAuto(); });
-  prevBtn.addEventListener('click', () => { prev(); restartAuto(); });
-  dots.forEach((d) => d.addEventListener('click', () => { goTo(Number(d.dataset.slide)); restartAuto(); }));
+  nextBtn.addEventListener('click', () => { next(); preloadNext(); restartAuto(); });
+  prevBtn.addEventListener('click', () => { prev(); preloadNext(); restartAuto(); });
 
   // Pause on hover/focus so it doesn't move while a visitor is reading it.
   root.addEventListener('mouseenter', stopAuto);
@@ -708,11 +1186,61 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     if (dx < -40) next();
     else if (dx > 40) prev();
     touchStartX = null;
+    preloadNext();
     startAuto();
   });
 
-  render();
-  startAuto();
+  function buildPoolFromManifest(manifest) {
+    const all = [];
+    for (const [category, skus] of Object.entries(manifest.categories || {})) {
+      for (const item of skus || []) {
+        if (!item || !item.primary) continue;
+        all.push({
+          src: item.primary,
+          alt: `${category.replace(/-/g, ' ')} — ${String(item.sku || '').replace(/-/g, ' ')}`,
+          featured: !!item.featured,
+        });
+      }
+    }
+    const featured = all.filter((s) => s.featured);
+    return featured.length ? featured : all;
+  }
+
+  async function init() {
+    try {
+      const res = await fetch(HERO_MANIFEST_URL, { cache: 'no-store' });
+      if (res.ok) {
+        const manifest = await res.json();
+        const pool = buildPoolFromManifest(manifest);
+        if (pool.length) basePool = pool;
+      }
+    } catch { /* manifest not reachable (infra not deployed yet, offline, etc.) — use fallbackPool */ }
+
+    // Restore an in-progress shuffle from this session if it matches the current pool
+    // (same images, just reordered) so a refresh mid-session doesn't reset progress.
+    let restored = false;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+      if (saved && Array.isArray(saved.order) && saved.order.length === basePool.length &&
+          saved.order.every((src) => basePool.some((s) => s.src === src))) {
+        order = saved.order.map((src) => basePool.find((s) => s.src === src));
+        index = Number.isInteger(saved.index) ? ((saved.index % order.length) + order.length) % order.length : 0;
+        restored = true;
+      }
+    } catch { /* corrupt session state — fall through to a fresh shuffle */ }
+
+    if (!restored) {
+      order = shuffle(basePool);
+      index = 0;
+    }
+
+    buildDom();
+    render();
+    preloadNext();
+    startAuto();
+  }
+
+  init();
 })();
 </script>
 

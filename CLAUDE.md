@@ -16,7 +16,7 @@ code changes (see "Migration seams" below).
 **Only `website/` is deployed** — synced verbatim to an S3 bucket, no build step, no
 bundler. Never add dev-only files (docs, test scripts, infra code) inside `website/`; they'd
 go live. Everything non-deployed has its own top-level sibling folder:
-`design-system/`, `ops-dashboard/`, `project_knowledge/`, `docs/`.
+`design-system/`, `ops-dashboard/`, `storefront-infra/`, `project_knowledge/`, `docs/`.
 
 Stack: vanilla HTML5, ES6, Tailwind via CDN (storefront) / hand-written `styles.css` (design
 system tokens + components, no utility framework). No `package.json`, no npm install, no
@@ -27,15 +27,18 @@ build — edits are live on refresh.
 | Need to touch...              | Go to |
 |---|---|
 | Cart logic, checkout          | `website/store.js` — `addToCart`, `setQty`, `removeItem`, `payNowTotal`, `submitOrder`, public API `window.KCMPS_STORE` |
-| Catalog / product data        | `website/products.js` — `window.KCMPS_STORE_DATA = { currency, shirtAddon, leaves, products }` |
+| Catalog / product data        | `website/products.js` — `window.KCMPS_STORE_DATA = { currency, shirtAddon, leaves, products }`; each leaf has an `image` (AI-generated, `website/assets/leaves/<leaf>.jpg`) used as the product-thumb fallback in `store.js`'s `thumbImage()` |
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
 | Auth (Cognito login/logout)   | `website/index.html` `<script>` block; isolated reference/debug copy at `website/login-test.html` |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
 | Carousel timing               | `.carousel-track transition` in `styles.css`; `AUTO_MS` in `index.html` |
+| Hero carousel image pool      | `HERO_MANIFEST_URL` + shuffle logic in `index.html`; sourced from `website/assets/manifest.json` (local sample) — real bucket plan in `storefront-infra/assets-bucket-structure.md` |
+| Hero category priming (headline/CTA copy) | `HERO_VARIANTS` + state machine in `index.html` (key: `kcmps_hero_category`, sessionStorage pre-cart → localStorage 7-day sticky after any cart-add, promoted via the `kcmps:cart-add` event dispatched from `store.js`'s `addToCart`) |
 | Checkout endpoint             | `CHECKOUT_ENDPOINT` constant near top of `website/store.js` (default `mailto:`) |
 | Ops dashboard pages           | `website/dashboard/*.html` + shared `dashboard.css`/`dashboard-shell.js` |
 | Ops dashboard mock data/API   | `website/dashboard/dashboard-data.js` — `window.KCMPS_DASH.*`; never touch `localStorage` directly outside this file |
 | AWS infra plan (not deployed) | `ops-dashboard/infra/backend-infra-to-deploy.md` + `ops-dashboard/infra/logic-inputs/*.js` (Lambda source) |
+| Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
 | Design system full reference  | `design-system/KCMPS Redesign/readme.md` (see also its own `CLAUDE.md`) |
 
@@ -84,4 +87,5 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
 
 - Current-state overview, layout diagram, local dev, testing checklist → `README.md`
 - Full build log / design rationale / auth implementation notes → `docs/history.md`
-- Design-system-specific and ops-dashboard-specific notes → their own `CLAUDE.md` files
+- Design-system-specific, ops-dashboard-specific, and storefront-infra-specific notes →
+  their own `CLAUDE.md` files

@@ -1,0 +1,8 @@
+{
+  "name": "kcmps-storefront-infra-lambdas",
+  "private": true,
+  "description": "Dependencies for the Lambda(s) in this folder. Deploy generate-asset-manifest.js as its own function — this package.json is a single reference for `npm install` before zipping/uploading.",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0"
+  }
+}

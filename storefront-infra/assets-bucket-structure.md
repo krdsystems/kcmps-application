@@ -31,27 +31,41 @@ are finer-grained than these three prefixes):
 
 | Prefix | Pillar | Covers these `products.js` leaves |
 |---|---|---|
-| `printing-office-supplies` | Print Production + Office Supplies | `print-office`, `dtf`, `subli`, `hotmelt` |
-| `design` | Studio Design | (no leaves yet — design services are quote-only today) |
-| `merch` | Hardware Merch | `3dprint`, `souvenir`, `network`, `storage`, `entertainment` |
+| `printing-office-supplies` | Print Production + Office Supplies | `print-office` |
+| `design` | Studio Design (apparel/DTF, plus the rest of the design catalog) | `dtf`, `subli`, `hotmelt`, `3dprint`, `souvenir` |
+| `merch` | Hardware Merch | `network`, `storage` |
+
+This matches the tab structure in `website/index.html` (`panel-design` contains Apparel/DTF,
+Subli, Hotmelt, 3D Print, and Souvenir as sub-tabs; `panel-merch` contains Network and
+Storage) and the `CATEGORY_TO_LEAF`/`PAGE_VARIANTS` mapping in the hero-priming script. The
+`entertainment` leaf was removed from the catalog entirely — KCMPS doesn't sell audio/gaming
+gadgets — so it no longer appears here either.
 
 ### Primary vs. gallery image naming
 
 Within a sku folder, the **first display image** (catalog thumbnail, and the only image
-type the hero carousel pool draws from — see §3) is always named with a `01-main` prefix;
-everything else is numbered gallery overflow:
+type the hero carousel pool draws from — see §3) is always named with a `01-main` *prefix*
+(not necessarily the exact bare filename); everything else is numbered gallery overflow:
 
 ```
-/assets/merch/wireless-earbuds/01-main.jpg   ← primary / thumbnail / hero-eligible
-/assets/merch/wireless-earbuds/02.jpg        ← gallery
-/assets/merch/wireless-earbuds/03.jpg        ← gallery
+/assets/merch/wireless-earbuds/01-main.jpg                       ← primary / thumbnail / hero-eligible
+/assets/design/mobile-legends/01-main-MOBILE LEGENDS SHIRT.jpg   ← also valid — prefix + original filename kept as a
+                                                                      suffix for traceability back to the source art file
+/assets/merch/wireless-earbuds/02.jpg                             ← gallery
+/assets/merch/wireless-earbuds/03.jpg                             ← gallery
 ```
+
+Keeping the original filename as a suffix (rather than discarding it once slugged into the
+folder name) is deliberate — see `website/assets/design/*/01-main-*` for 33 real examples
+from the DTF design archive, where the original creative-file names (e.g. artist/character
+references) needed to stay traceable for future investigation, not just the slug.
 
 Rules:
-- Exactly one `01-main.<ext>` per sku folder. The manifest generator (§2) treats this as
-  the primary image; if it's missing, it falls back to the alphabetically-first file in
-  the folder (logged as a warning, not a hard failure — an uploader forgetting to name it
-  `01-main` shouldn't take the sku out of the catalog).
+- Exactly one file starting with `01-main` per sku folder. The manifest generator (§2)
+  treats the first filename matching `01-main*` as the primary image; if none match, it
+  falls back to the alphabetically-first file in the folder (logged as a warning, not a
+  hard failure — an uploader forgetting the `01-main` prefix shouldn't take the sku out of
+  the catalog).
 - Extensions: `.jpg` or `.png`. Keep gallery files zero-padded two-digit (`02.jpg`, not
   `2.jpg`) so they sort correctly when listed.
 

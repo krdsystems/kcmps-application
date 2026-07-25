@@ -72,7 +72,48 @@ html { overflow-x: hidden; }
 .hero .row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
 .hero-figure { aspect-ratio: 4/5; }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-figure { aspect-ratio: 16/10; order: -1; } }
-@media (max-width: 760px) { .hero { padding: var(--space-3) 0 var(--space-6); gap: var(--space-3); } .hero-figure { aspect-ratio: 16/8; } }
+
+/* Mobile hero: image becomes a full-bleed 3:4 background layer, with the
+   kicker/headline/price overlaid on top of it (grid stacking, both in row
+   1/col 1). The overlay is anchored to the top of that box and height-capped
+   via --hero-overlay-max (set in JS from real nav + sticky-cta heights) so
+   it never grows into the fixed Shop/View Cart bar, regardless of headline
+   length or viewport height. CTA, checklist and trust chips stay in normal
+   flow below the image, unaffected by the cap. DOM order is untouched (only
+   wrapped, not reordered) so desktop rendering is unaffected. */
+@media (max-width: 760px) {
+  .hero {
+    padding: 0 0 var(--space-6);
+    gap: var(--space-3);
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+  }
+  .hero > div:first-child { display: contents; }
+  .hero-figure { grid-column: 1; grid-row: 1; aspect-ratio: 3/4; order: initial; z-index: 1; }
+  .hero-overlay-content {
+    grid-column: 1; grid-row: 1; z-index: 2; align-self: start; justify-self: stretch;
+    display: flex; flex-direction: column; gap: var(--space-2);
+    padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-3) var(--space-3);
+    max-height: var(--hero-overlay-max, 60vh);
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(11,25,48,0.72) 0%, rgba(11,25,48,0.45) 55%, rgba(11,25,48,0) 100%);
+  }
+  .hero-overlay-content .kicker-pill { background: rgba(255,255,255,0.16); color: #fff; }
+  .hero-overlay-content .kicker-pill .dot { background: var(--color-accent-300); }
+  .hero-overlay-content h1 { color: #fff; }
+  .hero-overlay-content h1 .warm { color: var(--color-accent-300); }
+  .hero-overlay-content .price-anchor .from,
+  .hero-overlay-content .price-anchor .was { color: rgba(255,255,255,0.75); }
+  .hero-overlay-content .price-anchor .amount { color: #fff; }
+  .hero-overlay-content .sub {
+    color: rgba(255,255,255,0.92);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  }
+  .hero > div:first-child > .row { grid-column: 1; grid-row: 2; margin-top: var(--space-4); }
+  .hero-checklist { grid-column: 1; grid-row: 3; margin-top: var(--space-3); }
+  .trust-row { grid-column: 1; grid-row: 4; }
+}
 
 .capstrip { padding: var(--space-4) 0 var(--space-6); display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -238,24 +279,42 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <script>
 (() => {
   const nav = document.querySelector('.nav');
+  const navBrand = document.querySelector('.nav-brand');
   const THRESHOLD = 8;
   function update() {
     nav.classList.toggle('is-scrolled', window.scrollY > THRESHOLD);
   }
   update();
   window.addEventListener('scroll', update, { passive: true });
+
+  // Logo tap ("go home"): a plain #top anchor jump leaves the sticky nav
+  // pinned at top:0 while the browser scrolls the hero into place, so the
+  // nav ends up overlapping the top of the hero for a moment (the target's
+  // document offset briefly equals the nav's own height, mid-scroll). Force
+  // an instant, synchronous scroll to the true top instead, then recompute
+  // is-scrolled immediately so the nav's transparency state isn't stale.
+  if (navBrand) {
+    navBrand.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      update();
+      if (location.hash) history.pushState(null, '', location.pathname + location.search);
+    });
+  }
 })();
 </script>
 
 <div class="wrap" id="top">
   <section class="hero">
     <div>
-      <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
-      <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
-      <div class="price-anchor">
-        <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱170</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
+      <div class="hero-overlay-content">
+        <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
+        <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
+        <div class="price-anchor">
+          <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱170</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
+        </div>
+        <p class="sub" id="hero-sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
       </div>
-      <p class="sub" id="hero-sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
       <ul class="hero-checklist">
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Free design file check &amp; prep — we fix it before we print</li>
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Reprint-free guarantee if the print isn't right</li>
@@ -583,6 +642,29 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <a href="#storefront" class="btn btn-secondary">Shop</a>
   <button type="button" class="btn btn-primary" id="sticky-cart">View cart</button>
 </div>
+
+<script>
+/* Caps the mobile hero's overlay text zone (--hero-overlay-max, consumed in
+   the @media (max-width: 760px) block above) to the real, measured space
+   between the nav and the fixed Shop/View Cart bar — not a hardcoded guess —
+   so the headline never renders under the bar on short viewports or with
+   longer category headline variants. */
+(() => {
+  const nav = document.querySelector('.nav');
+  const stickyCta = document.querySelector('.sticky-cta');
+  function setHeroOverlayMax() {
+    const navH = nav ? nav.getBoundingClientRect().height : 0;
+    const ctaH = stickyCta ? stickyCta.getBoundingClientRect().height : 0;
+    const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    const max = Math.max(140, vh - navH - ctaH - 24);
+    document.documentElement.style.setProperty('--hero-overlay-max', max + 'px');
+  }
+  setHeroOverlayMax();
+  window.addEventListener('resize', setHeroOverlayMax);
+  window.addEventListener('orientationchange', setHeroOverlayMax);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', setHeroOverlayMax);
+})();
+</script>
 
 <!-- Storefront data + cart logic (static, front-end only). Loaded before the
      auth script so window.KCMPS_STORE exists when the auth flow refreshes the

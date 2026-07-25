@@ -498,6 +498,44 @@ Verified via `fetch('assets/manifest.json')` in-browser (exactly the intended 4 
 leaf paths present, shuffled), plus a network-request check confirming every image resolves
 `200 OK`.
 
+### 17. Mobile hero/nav: logo-tap overlap fix, and a full-bleed 3:4 overlay hero (2026-07-25)
+
+Two related mobile-only bugs, both in `website/index.html`.
+
+**Logo tap left the nav overlapping the hero.** The nav-brand link was a plain `<a
+href="#top">`; clicking it let the browser run its native anchor-scroll (smooth, because of
+`html { scroll-behavior: smooth }`). `.nav` is `position: sticky` (entry 12), so mid-animation,
+whenever the scroll position transiently equals the nav's own height, the nav — which sits
+right before `#top` in the DOM — gets pinned back to `top: 0` and paints over the top of the
+hero for a frame. Scrolling to the true top afterward "fixed" it because at `scrollY === 0`
+there's no pinning offset to fight. **Fix:** the nav-brand click handler now calls
+`preventDefault()`, does an instant `window.scrollTo({top:0, behavior:'auto'})`, and
+synchronously re-runs the `is-scrolled` toggle so the nav's transparency state can't be stale
+either.
+
+**3:4 hero didn't exist yet, and needed a home for the headline.** The bug report described a
+mobile hero pattern — full-bleed 3:4 portrait image with the headline overlaid on top — that
+hadn't actually been built; the mobile hero was still the same stacked image-then-text layout
+as desktop (just narrower breakpoints). Built it at `@media (max-width: 760px)`: `.hero-figure`
+and a new `.hero-overlay-content` wrapper (kicker/h1/price-anchor/sub only — CTA, checklist,
+and trust chips stay in normal flow below the image) both occupy CSS Grid row 1/column 1, so
+the image acts as a background layer under the text. `.hero-overlay-content` is capped by
+`max-height: var(--hero-overlay-max)`, which a small script sets from the *measured*
+`.nav`/`.sticky-cta` heights and `visualViewport.height` (not a hardcoded pixel guess), so the
+headline zone can never grow into the fixed Shop/View Cart bar regardless of viewport height or
+which category's headline (`HERO_VARIANTS`, entry 13) is showing. The `.sub` paragraph is also
+`-webkit-line-clamp: 3` so on very short viewports it truncates gracefully with an ellipsis
+instead of getting silently cut off mid-sentence by the overlay's `overflow: hidden`.
+`hero-overlay-content` is a plain wrapper div with no rules outside the 760px query, so desktop
+layout/order is untouched — verified at 1280px that the DOM order and two-column grid are
+unchanged.
+
+Verified via DOM geometry checks (not screenshots — the sandbox's screenshot/scroll tools were
+non-functional this session): 24px of clearance between the overlay and the sticky bar held
+across all three `HERO_VARIANTS` headlines at a compact 375×667 viewport, and spying on
+`window.scrollTo` confirmed the logo-tap handler fires exactly once with `{top:0, left:0,
+behavior:'auto'}` and clears `is-scrolled` synchronously.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

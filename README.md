@@ -143,6 +143,11 @@ All changes are immediate — there's no build step.
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
 - Resize to mobile (375px): sticky CTA bar, drawer scroll, no horizontal overflow.
+- Mobile hero (≤760px): scroll down, tap the logo, and confirm the hero renders correctly with
+  no manual scroll needed (nav shouldn't overlap the hero) — see `docs/history.md` step 17 if it
+  regresses. Also confirm the 3:4 hero image's overlaid headline never overlaps the fixed
+  Shop/View Cart bar, including on a short viewport (e.g. 375×667) and with the longest category
+  headline variant (see step 13's `HERO_VARIANTS`).
 - Check the console for JS errors and the Network tab for anything the CSP blocks.
 
 ## Known gaps / next steps

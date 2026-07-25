@@ -55,9 +55,18 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   tradeoff — see `docs/history.md#auth-implementation-notes` before changing this).
 - **Client-decoded JWT claims are UI-only**, never trust them server-side once a backend
   exists — any future Lambda must re-verify against Cognito's JWKS.
-- **Mobile**: `overflow-x: hidden` on `html, body` and the `@media (max-width: 760px)` /
-  `(max-width: 480px)` rules in `styles.css` fix specific overlap bugs (nav, cart drawer).
-  Don't remove them without re-testing at 375px.
+- **Mobile**: `overflow-x: hidden` on `html` only (not `body` — see
+  `docs/history.md` step 12, promoting both axes to a scroll container breaks `position:
+  sticky`) and the `@media (max-width: 760px)` / `(max-width: 480px)` rules in `styles.css` fix
+  specific overlap bugs (nav, cart drawer). Don't remove them without re-testing at 375px.
+- **Mobile hero nav-brand click** (`index.html`, near the `.nav` script): logo tap does a
+  manual `window.scrollTo({top:0, behavior:'auto'})` + synchronous `is-scrolled` recompute
+  instead of a plain `#top` anchor jump — the native smooth-scroll anchor jump transiently pins
+  the sticky nav over the hero. Don't revert to a plain anchor link without re-testing (see
+  `docs/history.md` step 17). The mobile hero's overlaid headline zone
+  (`.hero-overlay-content`, ≤760px) is height-capped by a JS-measured `--hero-overlay-max` CSS
+  var, not a hardcoded pixel value — keep it that way so it survives viewport-height and
+  headline-copy changes without re-overlapping the fixed Shop/View Cart bar.
 - **Brand system**: navy-dominant, one orange accent reserved for a single CTA per screen,
   rounded/friendly geometry. Build from `styles.css` classes/CSS variables, don't hardcode
   colors — see `design-system/`.

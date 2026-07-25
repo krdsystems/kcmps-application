@@ -16,7 +16,7 @@ code changes (see "Migration seams" below).
 **Only `website/` is deployed** — synced verbatim to an S3 bucket, no build step, no
 bundler. Never add dev-only files (docs, test scripts, infra code) inside `website/`; they'd
 go live. Everything non-deployed has its own top-level sibling folder:
-`design-system/`, `ops-dashboard/`, `storefront-infra/`, `project_knowledge/`, `docs/`.
+`design-system/`, `ops-dashboard/`, `storefront-infra/`, `backend/`, `project_knowledge/`, `docs/`.
 
 Stack: vanilla HTML5, ES6, Tailwind via CDN (storefront) / hand-written `styles.css` (design
 system tokens + components, no utility framework). No `package.json`, no npm install, no
@@ -42,6 +42,7 @@ build — edits are live on refresh.
 | Ops dashboard pages           | `website/dashboard/*.html` + shared `dashboard.css`/`dashboard-shell.js` |
 | Ops dashboard mock data/API   | `website/dashboard/dashboard-data.js` — `window.KCMPS_DASH.*`; never touch `localStorage` directly outside this file |
 | AWS infra plan (not deployed) | `ops-dashboard/infra/backend-infra-to-deploy.md` + `ops-dashboard/infra/logic-inputs/*.js` (Lambda source) |
+| Shared backend conventions (not deployed) | `backend/lib/` — `constants.js`/`money.js`/`keys.js`/`item.js`/`events.js`/`auth.js`/`gsi.js`, the single module every future Lambda imports for status vocabulary, centavo money, PK/SK strings, and role checks (see its own `CLAUDE.md`); test with `node --test backend/lib/` |
 | Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
 | ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
@@ -117,5 +118,5 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
 - What to build next / prioritized goals → `docs/roadmap.md`; the ERP architecture it serves → `project_knowledge/ERP_System_Project_Knowledge.md`
 - Current-state overview, layout diagram, local dev, testing checklist → `README.md`
 - Full build log / design rationale / auth implementation notes → `docs/history.md`
-- Design-system-specific, ops-dashboard-specific, and storefront-infra-specific notes →
-  their own `CLAUDE.md` files
+- Design-system-specific, ops-dashboard-specific, storefront-infra-specific, and
+  backend-specific notes → their own `CLAUDE.md` files

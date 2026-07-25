@@ -36,7 +36,7 @@
   var CART_KEY = "kcmps_cart";
   // OWNER: swap this for a real order endpoint / Messenger link when a backend
   // exists (also add its origin to the CSP connect-src if you use fetch()).
-  var ORDER_EMAIL = "ken.rodulfo.dungca+kcmps@gmail.com";
+  var ORDER_EMAIL = "order@kcmps.com";
 
   var peso = function (n) {
     return DATA.currency + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });

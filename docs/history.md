@@ -536,6 +536,40 @@ across all three `HERO_VARIANTS` headlines at a compact 375×667 viewport, and s
 `window.scrollTo` confirmed the logo-tap handler fires exactly once with `{top:0, left:0,
 behavior:'auto'}` and clears `is-scrolled` synchronously.
 
+### 18. Street-statement designs split into DTF vs. Sublimation subcategories (2026-07-25)
+
+Entry 15's 20-image `street-statment/` set was entirely filed under `dtf` — the `subli` leaf
+existed as a tab (per entry 13's taxonomy) but had zero pre-made designs, just the
+`comingSoon` custom-request card. Went through each of the 20 mockups and judged DTF vs.
+Sublimation suitability by garment color in the photo (DTF prints on any color including
+dark; sublimation needs a light/white garment) plus whether the design itself needed
+sublimation's full-bleed/photographic strength:
+- **Stayed `dtf` (15)** — dark-garment mockups: `BLACK PINK`, `BRAWLSTAR`, `DISHENYO MOBA
+  ASSASSIN`, `FEITAN`, `GUSION`, `MIKU`, `MIYA`, `MOBILE LEGENDS`, `native gold`,
+  `NINGGUANG`, `RAIDEN SHOGUN`, `RUBIX CUBEZ`, `run mario run`, `SUKUNA ITADORI`, `WITCH`.
+  Renumbered `01`–`15` in place.
+- **Moved to new `sublimation` subcategory (5)** — light-garment mockups: `BTS SHIRT`
+  (photographic group photo), `ONE PIECE LUFFY`/`ONE PIECE ZORO` (full-bleed manga-panel
+  prints), plus `BTS SHIRT 1` and `TWICE SHIRT 2` — both simple single-color text-only
+  layouts on a light shirt. Those last 2 are flagged as genuinely ambiguous: the fabric
+  points to sublimation, but the design content doesn't need sublimation's photographic
+  strength and could run as DTF just as easily — needs a production call, not guessed.
+  New folder `website/assets/design/apparel/sublimation/street-statment/`, renumbered `01`–`05`.
+
+`products.js`'s `dtf-street-statement` SKU trimmed to the 15 remaining images; a new
+`subli-street-statement` SKU (same variant/pricing structure as its DTF counterpart — sizing
+carried over as a placeholder, not a confirmed sublimation price sheet) lists the 5 moved
+images under the `subli` leaf, which also lost its `comingSoon` flag since it now has a real
+priced product. `manifest.json`'s `design` category entries were regenerated to match (new
+`sublimation-street-statment-*` skus), preserving the `featured:true` flag on `BTS SHIRT 1`
+(one of the 4 hero-carousel picks from entry 16) at its new path. `index.html`'s static
+hero fallback slide for that image was updated to the new path/alt text.
+
+Verified in-browser: `KCMPS_STORE_DATA.products` shows `dtf-street-statement` at 15 images
+and `subli-street-statement` at 5; clicking Design → Apparel → Subli renders a populated
+gallery card (in-card arrows, "1 / 5" counter) instead of the old "coming soon" note; the
+new sublimation image path resolves `200 OK` over the network.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

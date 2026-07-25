@@ -47,7 +47,7 @@ window.KCMPS_STORE_DATA = {
       image: "assets/leaves/print-office.jpg",
     },
     "dtf":   { customLabel: "Custom design request", customBlurb: "Have your own artwork? Upload it at checkout. We'll review, quote, and only bill you after you approve.", image: "assets/leaves/dtf.jpg" },
-    "subli": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Full-color sublimation on light/poly fabrics. Send your design — approved and billed before we print.", image: "assets/leaves/subli.jpg" },
+    "subli": { customLabel: "Custom design request", customBlurb: "Full-color sublimation on light/poly fabrics. Send your design — approved and billed before we print.", image: "assets/leaves/subli.jpg" },
     "hotmelt": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Durable heat-applied vinyl lettering and designs. Tell us what you need and we'll quote it.", image: "assets/leaves/hotmelt.jpg" },
     "3dprint": { comingSoon: true, customLabel: "Custom 3D print request", customBlurb: "PLA/PETG prints for products and mockups. Share your model or idea for a quote.", image: "assets/leaves/3dprint.jpg" },
     "souvenir": { comingSoon: true, customLabel: "Custom souvenir request", customBlurb: "Keepsakes and giveaways for events and milestones. Describe your event and quantity.", image: "assets/leaves/souvenir.jpg" },
@@ -87,29 +87,56 @@ window.KCMPS_STORE_DATA = {
       name: "Street Statement Print",
       blurb: "Ready-to-press bold graphic transfer. Pick a size — add a shirt and we'll press it for you.",
       image: null,
-      // 20 real designs from the studio's DTF archive — bold character/franchise
-      // graphics. See store.js buildGallery()/openLightbox() for how these render.
+      // 15 of the studio's original 20 street-statement designs — the ones on
+      // dark-fabric mockups, suited to DTF's any-color-garment strength. The
+      // other 5 (light-fabric mockups) moved to the subli-street-statement
+      // SKU below; see docs/history.md for the DTF/Sublimation reclassification.
       images: [
         "assets/design/apparel/dtf/street-statment/01-BLACK PINK SHIRT.jpg",
         "assets/design/apparel/dtf/street-statment/02-BRAWLSTAR SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/03-BTS SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/04-BTS SHIRT 1.jpg",
-        "assets/design/apparel/dtf/street-statment/05-DISHENYO MOBA ASSASSIN.jpg",
-        "assets/design/apparel/dtf/street-statment/06-FEITAN SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/07-GUSION SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/08-MIKU.jpg",
-        "assets/design/apparel/dtf/street-statment/09-MIYA SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/10-MOBILE LEGENDS SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/11-native gold shirt.jpg",
-        "assets/design/apparel/dtf/street-statment/12-NINGGUANG SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/13-ONE PIECE LUFFY SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/14-ONE PIECE ZORO SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/15-RAIDEN SHOGUN SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/16-RUBIX CUBEZ SHIRT.jpg",
-        "assets/design/apparel/dtf/street-statment/17-run mario run.jpg",
-        "assets/design/apparel/dtf/street-statment/18-SUKUNA ITADORI.jpg",
-        "assets/design/apparel/dtf/street-statment/19-TWICE SHIRT 2.jpg",
-        "assets/design/apparel/dtf/street-statment/20-WITCH SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/03-DISHENYO MOBA ASSASSIN.jpg",
+        "assets/design/apparel/dtf/street-statment/04-FEITAN SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/05-GUSION SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/06-MIKU.jpg",
+        "assets/design/apparel/dtf/street-statment/07-MIYA SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/08-MOBILE LEGENDS SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/09-native gold shirt.jpg",
+        "assets/design/apparel/dtf/street-statment/10-NINGGUANG SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/11-RAIDEN SHOGUN SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/12-RUBIX CUBEZ SHIRT.jpg",
+        "assets/design/apparel/dtf/street-statment/13-run mario run.jpg",
+        "assets/design/apparel/dtf/street-statment/14-SUKUNA ITADORI.jpg",
+        "assets/design/apparel/dtf/street-statment/15-WITCH SHIRT.jpg",
+      ],
+      variants: [
+        { label: "2×3 in", price: 50 },
+        { label: "A4", price: 80 },
+        { label: "A3", price: 120 },
+      ],
+      shirtAddon: true,
+    },
+    {
+      id: "subli-street-statement",
+      leaf: "subli",
+      type: "sku",
+      kicker: "Pre-made · Sublimation",
+      name: "Street Statement Print",
+      blurb: "Full-color sublimation print for light-fabric shirts — vivid, photo-real detail with no texture or peel edge.",
+      image: null,
+      // 5 of the studio's original 20 street-statement designs — the ones on
+      // light-fabric mockups, matching sublimation's light/white-garment
+      // requirement. 2 of these (both simple text-only layouts) were flagged
+      // as genuinely ambiguous during reclassification: light fabric fits
+      // sublimation, but the design itself doesn't need sublimation's
+      // full-bleed/photographic strength and could equally run as DTF —
+      // confirm with production before treating this as final. See
+      // docs/history.md for the full split writeup.
+      images: [
+        "assets/design/apparel/sublimation/street-statment/01-BTS SHIRT.jpg",
+        "assets/design/apparel/sublimation/street-statment/02-BTS SHIRT 1.jpg",
+        "assets/design/apparel/sublimation/street-statment/03-ONE PIECE LUFFY SHIRT.jpg",
+        "assets/design/apparel/sublimation/street-statment/04-ONE PIECE ZORO SHIRT.jpg",
+        "assets/design/apparel/sublimation/street-statment/05-TWICE SHIRT 2.jpg",
       ],
       variants: [
         { label: "2×3 in", price: 50 },

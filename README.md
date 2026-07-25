@@ -40,10 +40,12 @@ ops-dashboard/                  NOT deployed — build-time tooling for website/
 storefront-infra/               NOT deployed — real product-image bucket plan (assets-bucket-structure.md)
                                  and the Lambda that generates the hero carousel's manifest.json
 
-project_knowledge/              NOT deployed — planning/design docs referenced by the build (e.g. the
-                                 Payment System file the mixed-cart/GCash logic is built against)
+project_knowledge/              NOT deployed — planning/design docs referenced by the build: the
+                                 Payment System file (mixed-cart/GCash logic) and the ERP System file
+                                 (overarching 9-module architecture / north star)
 
-docs/                            NOT deployed — history.md (full build log), moved out of this README
+docs/                            NOT deployed — history.md (full build log), roadmap.md (prioritized
+                                 next goals, ERP-framed), and build-prompts/ (per-milestone build tickets)
 ```
 
 The site is deployed by syncing `website/` directly to an S3 bucket — no build step, no
@@ -190,6 +192,13 @@ All changes are immediate — there's no build step.
 - Check the console for JS errors and the Network tab for anything the CSP blocks.
 
 ## Known gaps / next steps
+
+The prioritized plan for closing these — framed against the full ERP architecture
+(`project_knowledge/ERP_System_Project_Knowledge.md`) — lives in
+[`docs/roadmap.md`](docs/roadmap.md). Current focus is **Milestone 1: the simple payment
+backend** (real order persistence + GCash verification), which is what turns the storefront
+from a brochure into a working store. The individual gaps below are the raw material that
+roadmap sequences.
 
 - Cart icon in `index.html` is a stub with a marked integration point (`CART INTEGRATION
   POINT` comment in the auth `<script>`) for a future DynamoDB-backed cart, keyed by the

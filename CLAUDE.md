@@ -44,6 +44,8 @@ build — edits are live on refresh.
 | AWS infra plan (not deployed) | `ops-dashboard/infra/backend-infra-to-deploy.md` + `ops-dashboard/infra/logic-inputs/*.js` (Lambda source) |
 | Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
+| ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
+| Roadmap / next goals          | `docs/roadmap.md` — current-state → prioritized milestones; current focus is Milestone 1, the simple payment backend |
 | Design system full reference  | `design-system/KCMPS Redesign/readme.md` (see also its own `CLAUDE.md`) |
 
 Prefer this table + `Grep`/`Glob` over reading whole files or the README for orientation.
@@ -112,6 +114,7 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
 
 ## Where to look next
 
+- What to build next / prioritized goals → `docs/roadmap.md`; the ERP architecture it serves → `project_knowledge/ERP_System_Project_Knowledge.md`
 - Current-state overview, layout diagram, local dev, testing checklist → `README.md`
 - Full build log / design rationale / auth implementation notes → `docs/history.md`
 - Design-system-specific, ops-dashboard-specific, and storefront-infra-specific notes →

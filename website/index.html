@@ -810,6 +810,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   // this is the literal same data the shop product cards render from.
   const options = [];
   DATA.products.forEach((p) => {
+    // quoteOnRequest products (e.g. binding, bookmarks) have no confirmed
+    // price yet — leave them out rather than fabricate a ₱0 estimator line.
+    if (p.quoteOnRequest) return;
     (p.variants || [{ label: '', price: p.price || 0 }]).forEach((v) => {
       options.push({
         id: p.id + (v.label ? '|' + v.label : ''),

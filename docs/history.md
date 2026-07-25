@@ -660,6 +660,49 @@ temporarily disabled): `.is-active` follows the in-view section, click math land
 below the nav, mobile labels stay collapsed under hover+focus and flash only on `.is-tapped`,
 segments pack at 8px gaps, and content clears the rail.
 
+### 20. Print/Office SKU pricing pass, real prices instead of prototype placeholders (2026-07-25)
+
+Before this pass, `print-office` had only two priced SKUs (Catalogs & Booklets ₱180, Custom
+Packaging ₱65) left over from the early prototype draft (entry 13) — every other common
+print-shop product (document printing, photocopying, lamination, binding, stamps, bookmarks,
+business cards, stickers/labels) had no SKU at all. Since quick-buy prices here are live prices
+a real customer pays, not display copy, they can't be filled in with placeholders — each of the
+8 needed either a real researched number or an explicit "not priced yet" state.
+
+**Pricing basis.** Gathered Metro Manila small-shop competitive ranges for all 8 products
+(tarpaulin/large-format excluded per the founders' call — not part of this set). Two products —
+spiral/comb binding and bookmarks — had no confirmed local supplier cost, so per the founders'
+decision they ship as `quoteOnRequest: true` in `products.js` instead of a guessed price: no
+`price`/`variants` field at all, rendered by a new `quoteCard()` in `store.js` (added to cart at
+₱0 as a `type: "custom"` pending-approval item, reusing the same quote flow as custom design
+requests) rather than a buy card. The other 6 are priced with the founders' chosen position —
+slightly above the researched market range's midpoint per product, not premium — e.g. B/W
+printing ₱4/page (range ₱3–5), photocopying ₱3/page (range ₱2–3), lamination tiered by size
+(₱20 ID / ₱65 A4 / ₱95 8R), stamps tiered by size (₱380/₱480/₱600), business cards ₱450 per
+box of 100 (≈₱4.50/pc against a ₱2.50–5.80/pc range), stickers & labels ₱3.50 paper / ₱16
+die-cut vinyl.
+
+**Color printing as a same-card add-on, not a separate SKU.** The research treats color as a
+per-page surcharge on top of B/W, scaling hugely with ink coverage (₱7–35/page) — modeling it
+as a separate flat-priced product would either overcharge light jobs or undercharge
+photo-heavy ones. Added a generic tiered add-on mechanism to `skuCard()` in `store.js`
+(`p.addon = { label, options: [{label, price}, ...] }`, first option is the free/base tier) —
+renders as its own radio group under the size selector, additive into `unitPrice()`/`refresh()`
+alongside the existing shirt-toggle add-on. Only the B/W print SKU uses it today (None/Light
++₱10/Medium +₱20/Heavy +₱32 per page), but it's reusable — any future SKU can opt in by adding
+the same `addon` shape.
+
+**Estimator bug caught during verification.** The bulk estimator (entry 13) flattens every
+catalog SKU into its product picker via `p.variants || [{label:'', price: p.price || 0}]` —
+which silently synthesizes a fabricated ₱0.00 line for any product with neither `price` nor
+`variants`, exactly the two new `quoteOnRequest` SKUs. Added an explicit skip for
+`p.quoteOnRequest` products in that flattening loop (`index.html`) so an unconfirmed price can
+never reach the estimator's live quote calculation either — verified via DOM inspection (see
+entry 17's note: screenshot capture is unreliable in this sandbox) that both binding and
+bookmarks are present as shop-card requests but absent from the estimator dropdown after the
+fix, while the other 6 new SKUs and the color add-on's price math verified correct
+(₱4 + ₱32 heavy-color tier = ₱36).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

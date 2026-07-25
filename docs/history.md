@@ -536,6 +536,68 @@ across all three `HERO_VARIANTS` headlines at a compact 375×667 viewport, and s
 `window.scrollTo` confirmed the logo-tap handler fires exactly once with `{top:0, left:0,
 behavior:'auto'}` and clears `is-scrolled` synchronously.
 
+### 18. Floating scroll-position indicator (right-edge section rail) (2026-07-25)
+
+A persistent, translucent right-edge rail — a vertical stack of six short line segments, one
+per major homepage section (**Hero, How it works, Shop, FAQ, Bulk quote, Contact**) — that
+tracks scroll position and jumps to a section on click/tap. Markup is a `<nav
+class="scroll-indicator">` before the `.sticky-cta` bar in `index.html`; styles live under
+the `— scroll position indicator —` block in `styles.css` (mirrored to `design-system/`); the
+behavior script sits with the other end-of-body scripts.
+
+**Section tracking uses `IntersectionObserver`, not scroll math.** Each section node is
+observed with `rootMargin: '-35% 0px -55% 0px'`; the callback picks the intersecting entry
+closest to the top of that band and toggles `.is-active` on the matching segment (longer +
+accent-orange line). This is cheaper and more accurate than recomputing offsets on every
+scroll event.
+
+**Click scrolls with a nav-height offset.** `scrollIntoView` can't account for the sticky
+nav, so the handler computes `target.top + scrollY − navHeight − 12` from the *live* measured
+nav height and calls `window.scrollTo({behavior:'smooth'})`, so the section lands fully below
+the nav instead of tucked under it.
+
+**Desktop hover reveal is gated to pointer devices.** The "enlarge + show label" affordance
+(`transform: scaleY(1.6) scaleX(1.15)` + label fade-in, transform/opacity only so neighbours
+don't reflow) lives inside `@media (hover: hover) and (pointer: fine)`. On real touch devices
+that query is false, so labels never appear on hover.
+
+**Mobile was the whole tail of this work — four separate follow-up fixes:**
+- *Labels stuck open after tap.* Under desktop DevTools touch-emulation (and some Android
+  WebViews) `(hover: hover) and (pointer: fine)` still matches, so a tap-and-hold-slide left a
+  sticky `:hover`/`:focus` that pinned the label open. Fixed by explicitly resetting
+  `:hover`/`:focus`/`:focus-visible` back to the collapsed state inside the `@media (max-width:
+  760px)` block; only `.is-tapped` (a class the click handler adds for ~0.9s, declared last so
+  it wins the cascade) flashes the label, since touch has no hover to reveal it with.
+- *Segments spread across the whole band.* First mobile pass used `justify-content:
+  space-between` over the full nav→cart-bar height, so the lines were spaced far apart. Changed
+  to `justify-content: center; gap: 8px` — the rail still stays clipped to the band (via
+  JS-measured `--nav-h`/`--stickycta-h`, the same measurement that already feeds
+  `--hero-overlay-max`, see step 17) so it never overlaps the nav or the fixed Shop/View Cart
+  bar, but the segments now pack as a compact centered stack.
+- *Content ran under the rail.* Added a right-edge gutter — `.wrap { padding-right:
+  calc(var(--edge) + 20px) }` at ≤760px — reserving room so page content clears the rail
+  (verified ~14px gap instead of ~6px overlap). Desktop is untouched: the content sits well
+  inside the 1240px max-width so the rail already clears it.
+- *Swiping the rail scrolled the page.* Set `pointer-events: none` on the rail container and
+  `pointer-events: auto` + `touch-action: none` on each segment, so a swipe that starts on a
+  line is absorbed (won't drag the page) while swipes in the gaps between lines fall through to
+  the page — no dead scroll-strip on the right edge.
+
+**Positioning.** `z-index: 25`, deliberately between the sticky nav (`z-index: 20`, entry 12)
+and the cart drawer/overlay (`z-index: 101`/`100`, entry 6). The rail also auto-hides
+(`.is-hidden`) while the cart drawer is open, since both dock on the right edge. Because
+`store.js` injects `.cart-drawer` into `<body>` lazily (it doesn't exist at page load), the
+watcher is a `MutationObserver` on `document.body` that re-queries `.cart-drawer` on each
+mutation rather than observing a node captured at startup — an earlier version observed a
+never-present node and silently no-opped.
+
+Verified via DOM/computed-style inspection rather than screenshots (the sandbox's
+screenshot/scroll tools were non-functional this session, and the preview tab stayed
+backgrounded which froze CSS transitions — so hover/active states were read with transitions
+temporarily disabled): `.is-active` follows the in-view section, click math lands sections
+below the nav, mobile labels stay collapsed under hover+focus and flash only on `.is-tapped`,
+segments pack at 8px gaps, and content clears the rail.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

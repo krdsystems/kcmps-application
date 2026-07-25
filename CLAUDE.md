@@ -32,6 +32,7 @@ build — edits are live on refresh.
 | Auth (Cognito login/logout)   | `website/index.html` `<script>` block; isolated reference/debug copy at `website/login-test.html` |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
 | Carousel timing               | `.carousel-track transition` in `styles.css`; `AUTO_MS` in `index.html` |
+| Scroll-position indicator     | `<nav class="scroll-indicator">` before `.sticky-cta` in `index.html` + its behavior script; `— scroll position indicator —` block in `styles.css`. Each segment's `data-target` = a section `id`; active-tracking via `IntersectionObserver` |
 | Hero carousel image pool      | `HERO_MANIFEST_URL` + shuffle logic in `index.html`; sourced from `website/assets/manifest.json` (local sample) — real bucket plan in `storefront-infra/assets-bucket-structure.md` |
 | Hero category priming (headline/CTA copy) | `HERO_VARIANTS` + state machine in `index.html` (key: `kcmps_hero_category`, sessionStorage pre-cart → localStorage 7-day sticky after any cart-add, promoted via the `kcmps:cart-add` event dispatched from `store.js`'s `addToCart`) |
 | Checkout endpoint             | `CHECKOUT_ENDPOINT` constant near top of `website/store.js` (default `mailto:`) |
@@ -67,6 +68,15 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   (`.hero-overlay-content`, ≤760px) is height-capped by a JS-measured `--hero-overlay-max` CSS
   var, not a hardcoded pixel value — keep it that way so it survives viewport-height and
   headline-copy changes without re-overlapping the fixed Shop/View Cart bar.
+- **Scroll-position indicator** (`.scroll-indicator`, `z-index: 25`): sits deliberately between
+  the sticky nav (`z-index: 20`) and the cart drawer/overlay (`101`/`100`), and auto-hides while
+  the drawer is open. Its drawer watcher is a `MutationObserver` on `document.body` (not on
+  `.cart-drawer`) because `store.js` injects the drawer lazily — don't "optimize" it to observe
+  the node directly. Desktop hover-reveal is gated to `@media (hover: hover) and (pointer:
+  fine)`; the mobile (≤760px) block additionally *resets* `:hover`/`:focus` back to collapsed so
+  DevTools touch-emulation can't leave labels stuck open (only `.is-tapped` flashes them).
+  Segments use `pointer-events: none` on the container + `auto` on items so swipes in the gaps
+  still scroll the page. See `docs/history.md` step 18 before changing any of this.
 - **Brand system**: navy-dominant, one orange accent reserved for a single CTA per screen,
   rounded/friendly geometry. Build from `styles.css` classes/CSS variables, don't hardcode
   colors — see `design-system/`.

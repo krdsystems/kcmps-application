@@ -117,6 +117,12 @@ variables rather than hard-coding colors, fonts, or spacing.
 - **Carousel timing** — slide duration lives in `styles.css` (`.carousel-track`
   `transition`), the total interval (`AUTO_MS`) in `index.html`.
 - **Checkout endpoint** — the `CHECKOUT_ENDPOINT` constant near the top of `website/store.js`.
+- **Scroll-position indicator** — the right-edge section rail. Markup is the `<nav
+  class="scroll-indicator">` before `.sticky-cta` in `index.html` (one segment per section,
+  `data-target` = the section's `id`); styles are the `— scroll position indicator —` block in
+  `styles.css`; behavior (IntersectionObserver active-tracking, click-to-scroll, tap-to-flash)
+  is the matching script block. To add/remove a section, edit the markup segment and keep its
+  `data-target` pointing at a real section `id` — see `docs/history.md` step 18.
 
 All changes are immediate — there's no build step.
 
@@ -150,6 +156,12 @@ All changes are immediate — there's no build step.
 - Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
+- Scroll-position indicator (right edge): the segment for the section in view should highlight
+  in real time as you scroll; hovering a segment on desktop should enlarge it and reveal the
+  section name without shifting its neighbours; clicking should smooth-scroll so the section
+  lands fully below the nav. On mobile (≤760px) the segments stay collapsed to compact lines
+  (no permanent labels), a tap flashes the label briefly, swiping directly on a line shouldn't
+  scroll the page, and page content shouldn't run under the rail — see `docs/history.md` step 18.
 - Resize to mobile (375px): sticky CTA bar, drawer scroll, no horizontal overflow.
 - Mobile hero (≤760px): scroll down, tap the logo, and confirm the hero renders correctly with
   no manual scroll needed (nav shouldn't overlap the hero) — see `docs/history.md` step 17 if it

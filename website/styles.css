@@ -583,6 +583,79 @@ textarea.input { min-height: 90px; resize: vertical; }
 .sticky-cta .btn { flex: 1; }
 @media (max-width: 760px) { .sticky-cta { display: flex; } body { padding-bottom: 64px; } }
 
+/* — scroll position indicator (right-edge section rail) —
+   Desktop: vertically centered, translucent lines that brighten/lengthen for
+   the in-view section and reveal a label on hover (transform+opacity only,
+   never a layout size change, so neighbors don't jitter).
+   Mobile (≤760px): pinned between the nav and the fixed Shop/View Cart bar
+   via --nav-h/--stickycta-h (measured in JS, same pattern as
+   --hero-overlay-max). Collapsed to lines-only by default like desktop —
+   permanently-visible labels were wide enough to overlap the hero headline
+   on narrow screens. Tapping a segment flashes its label briefly (JS toggles
+   .is-tapped) before scrolling, then removes it. */
+.scroll-indicator { position: fixed; right: var(--space-2); top: 50%; transform: translateY(-50%);
+  z-index: 25; display: flex; flex-direction: column; gap: 10px; list-style: none;
+  margin: 0; padding: 0;
+  /* Only the line hit-areas are interactive; the gaps between them let
+     touches fall through to the page so normal scrolling still works near
+     the right edge (see .scroll-indicator-item pointer-events below). */
+  pointer-events: none; }
+.scroll-indicator.is-hidden { display: none; }
+.scroll-indicator-item { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  background: none; border: none; padding: 6px 2px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  /* pointer-events:auto re-enables taps on the segment itself; touch-action:none
+     makes a swipe that starts on a segment act on the rail (tap-to-jump) rather
+     than scrolling the page underneath it. */
+  pointer-events: auto; touch-action: none; }
+.scroll-indicator-label { font-size: 11.5px; font-weight: 600; color: var(--color-text);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent); padding: 3px 8px; border-radius: var(--radius-sm);
+  white-space: nowrap; opacity: 0; transform: translateX(6px) scale(0.92); transform-origin: right center;
+  transition: opacity 0.18s ease, transform 0.18s ease; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.scroll-indicator-line { width: 18px; height: 3px; border-radius: 2px;
+  background: color-mix(in srgb, var(--color-neutral-800) 45%, transparent);
+  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, width 0.2s ease;
+  transform-origin: right center; }
+/* Hover/focus-reveal is a pointer-device affordance only. Touch has no
+   hover, and touch taps can still trigger :focus-visible on some browsers
+   (e.g. DevTools touch emulation, some Android WebViews) — without this
+   guard the tapped segment's label gets stuck open on mobile instead of
+   collapsing back down. */
+@media (hover: hover) and (pointer: fine) {
+  .scroll-indicator-item:hover .scroll-indicator-line,
+  .scroll-indicator-item:focus-visible .scroll-indicator-line { background: var(--color-accent); transform: scaleY(1.6) scaleX(1.15); }
+  .scroll-indicator-item:hover .scroll-indicator-label,
+  .scroll-indicator-item:focus-visible .scroll-indicator-label { opacity: 1; transform: translateX(0) scale(1); }
+}
+.scroll-indicator-item.is-active .scroll-indicator-line { width: 26px; background: var(--color-accent);
+  opacity: 1; }
+.scroll-indicator-item:not(.is-active) .scroll-indicator-line { opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) { .scroll-indicator-line, .scroll-indicator-label { transition: none; } }
+
+@media (max-width: 760px) {
+  /* Constrain the rail to the band between the nav and the fixed Shop/View
+     Cart bar so it never overlaps either, but keep the segments packed as a
+     compact centered stack (justify-content: center) rather than spread out
+     across the whole band. */
+  .scroll-indicator { top: calc(var(--nav-h, 64px) + var(--space-2)); bottom: calc(var(--stickycta-h, 64px) + var(--space-2));
+    transform: none; justify-content: center; gap: 8px; }
+  .scroll-indicator-item { padding: 4px 2px; }
+  .scroll-indicator-label { font-size: 9.5px; padding: 2px 5px; font-weight: 700; }
+  /* Mobile is tap-driven. Force any sticky :hover/:focus reveal back to the
+     collapsed state (it can still fire under desktop touch-emulation and some
+     WebViews even though the pointer-fine query above shouldn't match) so
+     segments stay as lines. Only .is-tapped — set for ~0.9s on a real tap —
+     flashes the label, and it's declared last so it wins the cascade. */
+  .scroll-indicator-item:hover .scroll-indicator-label,
+  .scroll-indicator-item:focus .scroll-indicator-label,
+  .scroll-indicator-item:focus-visible .scroll-indicator-label { opacity: 0; transform: translateX(6px) scale(0.92); }
+  .scroll-indicator-item:hover .scroll-indicator-line,
+  .scroll-indicator-item:focus .scroll-indicator-line,
+  .scroll-indicator-item:focus-visible .scroll-indicator-line { transform: none; }
+  .scroll-indicator-item.is-tapped .scroll-indicator-label { opacity: 1; transform: none; }
+  .scroll-indicator-line { width: 12px; height: 2.5px; }
+  .scroll-indicator-item.is-active .scroll-indicator-line { width: 18px; }
+}
+
 /* — hero carousel (auto-advancing, arrows + swipe) — */
 .hero-carousel { position: relative; overflow: hidden; touch-action: pan-y; }
 .carousel-track {

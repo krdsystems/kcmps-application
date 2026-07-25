@@ -30,6 +30,11 @@ html { scroll-behavior: smooth; }
 body { margin: 0; text-wrap: pretty; }
 html { overflow-x: hidden; }
 .wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+/* Mobile: reserve a right-edge gutter for the fixed scroll-position rail
+   (.scroll-indicator, styles.css) so page content doesn't run underneath it.
+   Desktop centers the content well inside the 1240px max-width, so the rail
+   already clears it there and no extra padding is needed. */
+@media (max-width: 760px) { .wrap { padding-right: calc(var(--edge) + 20px); } }
 .nav {
   position: sticky; top: 0; z-index: 20;
   padding-inline: max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
@@ -305,7 +310,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 </script>
 
 <div class="wrap" id="top">
-  <section class="hero">
+  <section class="hero" id="hero">
     <div>
       <div class="hero-overlay-content">
         <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
@@ -637,6 +642,30 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   </div>
 </footer>
 
+<!-- Scroll position indicator — right-edge rail, one line per major section.
+     Fixed on desktop, pinned between the nav and the mobile Shop/View Cart
+     bar on small screens (see .scroll-indicator in styles.css). -->
+<nav class="scroll-indicator" aria-label="Jump to section">
+  <button type="button" class="scroll-indicator-item" data-target="hero" aria-label="Jump to Hero">
+    <span class="scroll-indicator-label">Hero</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="how" aria-label="Jump to How it works">
+    <span class="scroll-indicator-label">How it works</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="storefront" aria-label="Jump to Shop">
+    <span class="scroll-indicator-label">Shop</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="faq" aria-label="Jump to FAQ">
+    <span class="scroll-indicator-label">FAQ</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="estimator" aria-label="Jump to Bulk quote">
+    <span class="scroll-indicator-label">Bulk quote</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="contact" aria-label="Jump to Contact">
+    <span class="scroll-indicator-label">Contact</span><span class="scroll-indicator-line"></span>
+  </button>
+</nav>
+
 <!-- Persistent mobile buy bar — hidden on desktop and inside auth popups. -->
 <div class="sticky-cta">
   <a href="#storefront" class="btn btn-secondary">Shop</a>
@@ -648,7 +677,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
    the @media (max-width: 760px) block above) to the real, measured space
    between the nav and the fixed Shop/View Cart bar — not a hardcoded guess —
    so the headline never renders under the bar on short viewports or with
-   longer category headline variants. */
+   longer category headline variants. Also publishes --nav-h/--stickycta-h,
+   consumed by .scroll-indicator (mobile) to sit exactly between the two
+   fixed bars, and reused by the indicator's click-to-scroll offset below. */
 (() => {
   const nav = document.querySelector('.nav');
   const stickyCta = document.querySelector('.sticky-cta');
@@ -658,11 +689,81 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
     const max = Math.max(140, vh - navH - ctaH - 24);
     document.documentElement.style.setProperty('--hero-overlay-max', max + 'px');
+    document.documentElement.style.setProperty('--nav-h', navH + 'px');
+    document.documentElement.style.setProperty('--stickycta-h', ctaH + 'px');
   }
   setHeroOverlayMax();
   window.addEventListener('resize', setHeroOverlayMax);
   window.addEventListener('orientationchange', setHeroOverlayMax);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', setHeroOverlayMax);
+})();
+</script>
+
+<script>
+/* Scroll position indicator behavior. Uses IntersectionObserver (not scroll
+   position math) to track which section is in view — cheaper and more
+   accurate than computing offsets on every scroll event. Click scrolls to
+   the target, offsetting by the live nav height so the section lands fully
+   below the sticky nav instead of partially hidden under it. */
+(() => {
+  const rail = document.querySelector('.scroll-indicator');
+  if (!rail) return;
+  const items = Array.from(rail.querySelectorAll('.scroll-indicator-item'));
+  const nav = document.querySelector('.nav');
+  const sections = items
+    .map((item) => ({ item, el: document.getElementById(item.dataset.target) }))
+    .filter((s) => s.el);
+  if (!sections.length) return;
+
+  function setActive(id) {
+    items.forEach((item) => item.classList.toggle('is-active', item.dataset.target === id));
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      // Pick the entry closest to the top of the viewport among those
+      // currently intersecting, so the "active" segment matches what the
+      // user is actually reading rather than whichever fired last.
+      const visible = entries.filter((e) => e.isIntersecting);
+      if (!visible.length) return;
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    },
+    { rootMargin: '-35% 0px -55% 0px', threshold: 0 }
+  );
+  sections.forEach((s) => observer.observe(s.el));
+
+  let tapFlashTimer = null;
+  items.forEach((item) => {
+    item.addEventListener('click', () => {
+      const target = document.getElementById(item.dataset.target);
+      if (!target) return;
+      // Touch has no hover, so flash the label briefly on tap instead —
+      // confirms what was tapped without leaving labels on screen
+      // permanently (they're wide enough to overlap page content on
+      // narrow viewports). No-op on desktop, where :hover already reveals it.
+      clearTimeout(tapFlashTimer);
+      items.forEach((i) => i.classList.remove('is-tapped'));
+      item.classList.add('is-tapped');
+      tapFlashTimer = setTimeout(() => item.classList.remove('is-tapped'), 900);
+      item.blur(); // drop any lingering :focus-visible so the label doesn't stay stuck open
+      const navH = nav ? nav.getBoundingClientRect().height : 0;
+      const top = target.getBoundingClientRect().top + window.scrollY - navH - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    });
+  });
+
+  // Keep the rail clear of the cart drawer, which also docks on the right
+  // edge and would otherwise sit under/over the indicator while open. The
+  // drawer is injected into <body> lazily by store.js (not present at load),
+  // so watch the whole body rather than the drawer node itself.
+  const toggleForDrawer = () => {
+    const drawer = document.querySelector('.cart-drawer');
+    rail.classList.toggle('is-hidden', !!drawer && drawer.classList.contains('is-open'));
+  };
+  new MutationObserver(toggleForDrawer).observe(document.body, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['class'],
+  });
 })();
 </script>
 

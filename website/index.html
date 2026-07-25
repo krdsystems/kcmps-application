@@ -1277,9 +1277,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     for (const [category, skus] of Object.entries(manifest.categories || {})) {
       for (const item of skus || []) {
         if (!item || !item.primary) continue;
+        const title = window.KCMPS_TEXT ? window.KCMPS_TEXT.titleFromFilename(item.primary) : String(item.sku || '').replace(/-/g, ' ');
         all.push({
           src: item.primary,
-          alt: `${category.replace(/-/g, ' ')} — ${String(item.sku || '').replace(/-/g, ' ')}`,
+          alt: `${category.replace(/-/g, ' ')} — ${title}`,
           featured: !!item.featured,
         });
       }

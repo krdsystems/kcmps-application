@@ -186,9 +186,23 @@
     document.body.style.overflow = "";
   }
 
-  function buildGalleryThumb(p) {
+  // titleFromFilename lives in products.js (window.KCMPS_TEXT) so the hero
+  // carousel, catalog design cards, and cart thumbnails all format names the
+  // same way; fall back to the raw filename if it's ever missing.
+  function designTitle(src) {
+    return window.KCMPS_TEXT ? window.KCMPS_TEXT.titleFromFilename(src) : src;
+  }
+
+  // Returns { el, setIndex, getIndex } instead of a bare node so callers
+  // (skuCard's design picker grid) can drive which design the thumb shows and
+  // stay notified when browsing the in-thumb arrows changes it, keeping the
+  // large preview and the picker grid's selection in sync.
+  function buildGalleryThumb(p, onIndexChange) {
     var images = p.images && p.images.length ? p.images : null;
-    if (!images) return buildThumb(thumbImage(p), p.name);
+    if (!images) {
+      var single = buildThumb(thumbImage(p), p.name);
+      return { el: single, setIndex: function () {}, getIndex: function () { return 0; } };
+    }
 
     var idx = 0;
     var thumb = document.createElement("div");
@@ -204,13 +218,18 @@
 
     function render() {
       img.src = images[idx];
-      img.alt = p.name + " — design " + (idx + 1) + " of " + images.length;
+      img.alt = p.name + " — " + designTitle(images[idx]);
       counter.textContent = (idx + 1) + " / " + images.length;
     }
     render();
 
+    function setIndex(i) {
+      idx = ((i % images.length) + images.length) % images.length;
+      render();
+    }
+
     img.addEventListener("click", function () {
-      openLightbox(images.map(function (src) { return { src: src, alt: p.name }; }), idx);
+      openLightbox(images.map(function (src) { return { src: src, alt: p.name + " — " + designTitle(src) }; }), idx);
     });
 
     if (images.length > 1) {
@@ -220,14 +239,157 @@
       var next = document.createElement("button");
       next.type = "button"; next.className = "gallery-arrow next"; next.setAttribute("aria-label", "Next design");
       next.innerHTML = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>';
-      prev.addEventListener("click", function (e) { e.stopPropagation(); idx = (idx - 1 + images.length) % images.length; render(); });
-      next.addEventListener("click", function (e) { e.stopPropagation(); idx = (idx + 1) % images.length; render(); });
+      prev.addEventListener("click", function (e) { e.stopPropagation(); setIndex(idx - 1); if (onIndexChange) onIndexChange(idx); });
+      next.addEventListener("click", function (e) { e.stopPropagation(); setIndex(idx + 1); if (onIndexChange) onIndexChange(idx); });
       thumb.appendChild(prev); thumb.appendChild(next);
     } else {
       counter.style.display = "none";
     }
 
-    return thumb;
+    return { el: thumb, setIndex: setIndex, getIndex: function () { return idx; } };
+  }
+
+  var CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+
+  var DESIGN_GRID_MAX = 8;
+
+  // Grid of selectable design cards (one per p.images entry) shown under a
+  // SKU's main thumb — lets a customer pick exactly which pre-made design
+  // they want printed, distinct from just browsing the main thumb's arrows.
+  // Selecting a card here also updates the main thumb (via gallery.setIndex)
+  // so both stay in sync, and titles come from designTitle() (filename
+  // convention shared with the hero carousel and cart thumbnails).
+  //
+  // Capped to DESIGN_GRID_MAX tiles so every card's grid takes the same
+  // bounded space regardless of how many designs a product has (a 20-design
+  // product no longer pushes its price/add-to-cart row far below a
+  // 4-design product's) — the rest of the card stays top-aligned and
+  // consistent across the row. When a product has more designs than that,
+  // the last tile becomes a "+N more" trigger: hovering the picker (or
+  // tapping/focusing the tile, for touch/keyboard) opens a full-page-width
+  // popup with the complete, scrollable list.
+  function buildDesignGrid(p, gallery, selectedIdx) {
+    var images = p.images;
+    if (!images || images.length < 2) return null;
+
+    var collapsed = images.length > DESIGN_GRID_MAX;
+    var visibleCount = collapsed ? DESIGN_GRID_MAX - 1 : images.length;
+
+    var allPicks = []; // { el, index } across both the inline grid and (if built) the popup
+
+    function makePick(src, i) {
+      var title = designTitle(src);
+      var pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "design-pick";
+      pick.setAttribute("aria-pressed", i === selectedIdx ? "true" : "false");
+      pick.setAttribute("aria-label", "Select design: " + title);
+
+      var pimg = document.createElement("img");
+      pimg.src = src; pimg.alt = ""; pimg.loading = "lazy";
+      pick.appendChild(pimg);
+
+      var check = document.createElement("span");
+      check.className = "design-pick-check";
+      check.innerHTML = CHECK_ICON;
+      pick.appendChild(check);
+
+      var label = document.createElement("span");
+      label.className = "design-pick-label";
+      label.textContent = title;
+      pick.appendChild(label);
+
+      pick.addEventListener("click", function () {
+        gallery.setIndex(i);
+        sync();
+        hidePopup();
+      });
+
+      allPicks.push({ el: pick, index: i });
+      return pick;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "design-picker";
+
+    var grid = document.createElement("div");
+    grid.className = "design-grid";
+    grid.setAttribute("role", "group");
+    grid.setAttribute("aria-label", "Choose a design");
+    for (var i = 0; i < visibleCount; i++) grid.appendChild(makePick(images[i], i));
+
+    var moreTile = null;
+    if (collapsed) {
+      moreTile = document.createElement("button");
+      moreTile.type = "button";
+      moreTile.className = "design-pick design-pick-more";
+      moreTile.setAttribute("aria-label", "Show all " + images.length + " designs");
+      moreTile.innerHTML =
+        '<span class="design-pick-more-count">+' + (images.length - visibleCount) + '</span>' +
+        '<span class="design-pick-more-label">More designs</span>';
+      grid.appendChild(moreTile);
+    }
+    wrap.appendChild(grid);
+
+    // Full-list popup — built lazily on first hover/focus, appended to <body>
+    // (not `wrap`) since it needs to span the full page width regardless of
+    // how narrow the product card is.
+    var popup = null, hideTimer = null;
+
+    function buildPopup() {
+      popup = document.createElement("div");
+      popup.className = "design-popup";
+      var inner = document.createElement("div");
+      inner.className = "design-grid design-grid-full";
+      images.forEach(function (src, i) { inner.appendChild(makePick(src, i)); });
+      popup.appendChild(inner);
+      document.body.appendChild(popup);
+      popup.addEventListener("mouseenter", cancelHide);
+      popup.addEventListener("mouseleave", scheduleHide);
+    }
+    function positionPopup() {
+      // popup is `position: fixed`, so its offset is viewport-relative —
+      // do NOT add window.scrollY here (that's only correct for `absolute`).
+      var r = wrap.getBoundingClientRect();
+      popup.style.top = Math.round(r.bottom + 8) + "px";
+    }
+    function showPopup() {
+      if (!collapsed) return;
+      if (!popup) buildPopup();
+      positionPopup();
+      popup.classList.add("is-open");
+      sync();
+    }
+    function hidePopup() { if (popup) popup.classList.remove("is-open"); }
+    function scheduleHide() { hideTimer = setTimeout(hidePopup, 180); }
+    function cancelHide() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } }
+
+    if (collapsed) {
+      wrap.addEventListener("mouseenter", function () { cancelHide(); showPopup(); });
+      wrap.addEventListener("mouseleave", scheduleHide);
+      // Hover doesn't exist on touch — tapping/focusing the "more" tile toggles the popup instead.
+      moreTile.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (popup && popup.classList.contains("is-open")) hidePopup(); else showPopup();
+      });
+      moreTile.addEventListener("focus", showPopup);
+      // Keep the popup anchored under its trigger if the page scrolls while open.
+      window.addEventListener("scroll", function () {
+        if (popup && popup.classList.contains("is-open")) positionPopup();
+      }, { passive: true });
+    }
+
+    function sync() {
+      var current = gallery.getIndex();
+      allPicks.forEach(function (c) {
+        var isSel = c.index === current;
+        c.el.classList.toggle("is-selected", isSel);
+        c.el.setAttribute("aria-pressed", isSel ? "true" : "false");
+      });
+    }
+    sync();
+
+    return { el: wrap, sync: sync };
   }
 
   function skuCard(p) {
@@ -242,11 +404,18 @@
     function unitPrice() { return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0); }
 
     // thumb
-    card.appendChild(buildGalleryThumb(p));
+    var gallery = buildGalleryThumb(p, function () { if (designPicker) designPicker.sync(); });
+    card.appendChild(gallery.el);
 
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = p.kicker || ""; card.appendChild(kick);
     var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);
     var body = document.createElement("p"); body.className = "card-body"; body.textContent = p.blurb || ""; card.appendChild(body);
+
+    // design picker — selectable grid of pre-made designs (products.js
+    // `images[]`); the currently selected design travels with the cart line
+    // as designRef/designName so the cart can show a recognizable thumbnail.
+    var designPicker = buildDesignGrid(p, gallery, gallery.getIndex());
+    if (designPicker) card.appendChild(designPicker.el);
 
     // size selector
     if (p.variants && p.variants.length > 1) {
@@ -287,10 +456,13 @@
     addBtn.innerHTML = CART_ICON + " Add to cart";
     addBtn.addEventListener("click", function () {
       var vLabel = variants[sel].label;
+      var designRef = p.images && p.images.length ? p.images[gallery.getIndex()] : null;
+      var designName = designRef ? designTitle(designRef) : null;
       addToCart({
-        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain"),
+        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + (designRef || ""),
         id: p.id, name: p.name, leaf: p.leaf, type: "sku",
-        variantLabel: vLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty
+        variantLabel: vLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty,
+        designRef: designRef, designName: designName
       });
       var orig = addBtn.innerHTML; addBtn.innerHTML = "Added ✓"; addBtn.disabled = true;
       setTimeout(function () { addBtn.innerHTML = orig; addBtn.disabled = false; }, 1100);
@@ -395,17 +567,38 @@
     } else {
       bodyView.innerHTML = "";
       cart.forEach(function (i) {
-        var line = document.createElement("div"); line.className = "cart-line";
+        var line = document.createElement("div"); line.className = "cart-line" + (i.designRef ? " has-thumb" : "");
+
+        if (i.designRef) {
+          var thumbBtn = document.createElement("button");
+          thumbBtn.type = "button"; thumbBtn.className = "c-thumb";
+          thumbBtn.setAttribute("aria-label", "View full-size design: " + (i.designName || i.name));
+          var thumbImg = document.createElement("img");
+          thumbImg.src = i.designRef; thumbImg.alt = ""; thumbImg.loading = "lazy";
+          thumbBtn.appendChild(thumbImg);
+          thumbBtn.addEventListener("click", function () {
+            openLightbox([{ src: i.designRef, alt: i.designName || i.name }], 0);
+          });
+          line.appendChild(thumbBtn);
+        }
+
+        var text = document.createElement("div"); text.className = "c-text";
         var meta = [];
         if (i.variantLabel) meta.push(i.variantLabel);
         if (i.shirt) meta.push("with shirt");
         var nameHtml = '<div class="c-name">' + escapeHtml(i.name) +
+          (i.designName ? ' <span class="c-design">— ' + escapeHtml(i.designName) + '</span>' : '') +
           (i.type === "custom" ? '<span class="cart-tag">Pending approval</span>' : '') + '</div>';
         var metaHtml = meta.length ? '<div class="c-meta">' + escapeHtml(meta.join(" · ")) + '</div>' : '';
+        text.innerHTML = nameHtml + metaHtml;
+        line.appendChild(text);
+
         var priceHtml = i.type === "sku"
           ? '<div class="c-price">' + peso(i.unitPrice * i.qty) + '</div>'
           : '<div class="c-price pending">₱0 now</div>';
-        line.innerHTML = nameHtml + priceHtml + metaHtml;
+        var priceEl = document.createElement("div");
+        priceEl.innerHTML = priceHtml;
+        line.appendChild(priceEl.firstChild);
 
         var controls = document.createElement("div"); controls.className = "c-controls";
         var stepper = document.createElement("div"); stepper.className = "qty-stepper";

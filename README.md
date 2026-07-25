@@ -129,6 +129,14 @@ All changes are immediate — there's no build step.
   the initials placeholder) plus a custom-request card.
 - Add a priced SKU, toggle "press onto shirt", confirm the live price update (target ₱170 for
   the anchor offer).
+- Design picker (DTF pre-made designs): pick a design card, confirm the checkmark/border
+  highlight and the large thumb stay in sync; for a product with >8 designs (e.g. Street
+  Statement Print), hover the picker and confirm the full-list popup opens *in the visible
+  viewport* (not thousands of pixels below it — see `docs/history.md` step 18) and scrolling
+  the page while it's open keeps it anchored under the trigger. Add to cart and confirm the
+  cart line shows the design name and a small thumbnail; click the thumbnail and confirm it
+  opens the full-resolution image in the fullscreen lightbox, closable via Esc/click-outside/X
+  without losing the cart.
 - Add a custom request, open the drawer, confirm it reads "₱0 now / Pending approval".
 - Run checkout end-to-end and confirm the order summary reaches `mailto:` (or the configured
   endpoint).

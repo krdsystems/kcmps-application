@@ -28,6 +28,8 @@ build — edits are live on refresh.
 |---|---|
 | Cart logic, checkout          | `website/store.js` — `addToCart`, `setQty`, `removeItem`, `payNowTotal`, `submitOrder`, public API `window.KCMPS_STORE` |
 | Catalog / product data        | `website/products.js` — `window.KCMPS_STORE_DATA = { currency, shirtAddon, leaves, products }`; each leaf has an `image` (AI-generated, `website/assets/leaves/<leaf>.jpg`) used as the product-thumb fallback in `store.js`'s `thumbImage()` |
+| Filename → display-title convention | `window.KCMPS_TEXT.titleFromFilename()` in `products.js` — shared by the hero carousel, the design picker grid, and cart thumbnails so naming never drifts between views |
+| Design picker (pre-made design selection) | `store.js` `buildDesignGrid()` — selectable design cards under a SKU's gallery thumb, capped at `DESIGN_GRID_MAX` (8) tiles with a hover/tap "+N more" popup for the rest; selection travels into the cart line as `designRef`/`designName` (see `addToCart` call in `skuCard()`) |
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
 | Auth (Cognito login/logout)   | `website/index.html` `<script>` block; isolated reference/debug copy at `website/login-test.html` |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
@@ -73,6 +75,11 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   colors — see `design-system/`.
 - Editing `website/styles.css`? Also update `design-system/KCMPS Redesign/styles.css` so the
   reference docs don't drift from the live site.
+- **`.design-popup` (store.js, the design picker's "+N more" flyout) is `position: fixed`** —
+  its `top` must be plain `rect.bottom`, never `window.scrollY + rect.bottom` (that math is
+  only correct for `position: absolute`). Adding `scrollY` renders the popup thousands of
+  pixels below the viewport on any page scrolled past the top — it looked like "hover does
+  nothing" rather than a visible bug (see `docs/history.md` step 18).
 
 ## Git / worktree workflow
 

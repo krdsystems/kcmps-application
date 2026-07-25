@@ -536,6 +536,68 @@ across all three `HERO_VARIANTS` headlines at a compact 375×667 viewport, and s
 `window.scrollTo` confirmed the logo-tap handler fires exactly once with `{top:0, left:0,
 behavior:'auto'}` and clears `is-scrolled` synchronously.
 
+### 18. Design catalog: selectable design cards, cart thumbnails, and a collapsed picker with a hover popup (2026-07-25)
+
+Extends the DTF design galleries (entry 15) from "browse in a carousel" to "pick exactly one
+design, and see it in the cart." All in `website/products.js` / `website/store.js` /
+`website/styles.css` (mirrored into `design-system/KCMPS Redesign/styles.css`).
+
+**Naming convention, shared everywhere a name comes from a filename.** Added
+`window.KCMPS_TEXT.titleFromFilename()` in `products.js` (strips a leading `01-` ordering
+prefix and the extension, then title-cases kebab/snake/SHOUTY text —
+`"01-BLACK PINK SHIRT.jpg"` → `"Black Pink Shirt"`). Applied in three places so formatting
+can't drift between them: the hero carousel's alt text (`index.html`), the design picker's
+card labels, and the cart line's design name — all three now read from the same function.
+
+**Design as a cart-line attribute, not a separate line item.** Decision point: does picking a
+pre-made design add its own purchasable line, or attach as an attribute on the SKU (size/shirt)
+line already being configured? Went with the latter — a `designRef`/`designName` pair folded
+into the existing `addToCart()` call in `skuCard()`, included in the cart item `key` so two
+different designs of the same product/variant are separate cart lines. This reuses the
+size/shirt-variant architecture that already existed rather than inventing a parallel product
+type; the `designRef` is just the same manifest image path the catalog card displayed, no
+duplicate asset upload.
+
+**Selectable grid, capped and collapsible.** `buildGalleryThumb()` was refactored to return
+`{el, setIndex, getIndex}` instead of a bare node, so a new `buildDesignGrid()` can drive which
+design the large thumb shows and stay notified when the thumb's own prev/next arrows change it
+— both stay in sync regardless of which one triggered the change. The grid itself is capped at
+`DESIGN_GRID_MAX` (8) tiles: products with more designs than that (Street Statement Print has
+20) show 7 real picks plus a dashed "+N more" tile instead of dumping the whole list inline.
+Before the cap, cards with wildly different design counts (4 vs 20) left the price/add-to-cart
+row starting at very different heights across the same row of cards — capping the grid height
+fixed that (verified: all three DTF cards' `.product-buy` rows now sit at an identical
+`getBoundingClientRect().top` after render).
+
+**Full list via hover popup, not pagination.** Hovering the picker (or tapping/focusing the
+"+N more" tile, for touch/keyboard) opens `.design-popup` — built lazily, appended to
+`document.body` rather than the card, so it can span the full page width regardless of how
+narrow the product card is. It reuses the same `makePick()` factory as the collapsed grid (one
+source of truth for tile markup/selection state), scrolls internally once its wider grid still
+overflows, and closes on mouseleave (with a short `hideTimer` so moving the pointer from the
+trigger into the popup itself doesn't flicker it shut).
+
+**Bug: `position: fixed` popup positioned with `absolute` math.** First pass computed
+`popup.style.top = window.scrollY + rect.bottom` — correct for `position: absolute`, wrong for
+`position: fixed` (whose offsets are already viewport-relative). On a page scrolled down to the
+DTF cards, this placed the popup thousands of pixels below the visible viewport: it rendered,
+had the right content, everything worked in isolation — it just couldn't be seen, which read as
+"hovering does nothing." Fixed by dropping the `scrollY` term, plus a `window.addEventListener
+('scroll', …)` that repositions the popup if the page scrolls while it's open.
+
+**Cart line now names the design.** `renderCart()` prepends a `<button class="c-thumb">`
+(48–64px, using the same `designRef` path) before the item text when present, and the item
+name line grows a `<span class="c-design">— {designName}</span>` suffix so the design is
+readable without opening the thumbnail. Clicking the thumbnail opens the same shared lightbox
+used by the catalog gallery (entry 15) at the full-resolution image — no separate fetch, no
+duplicate asset — closable by the existing Esc/click-outside/X handling, which does not touch
+cart state.
+
+Verified via `read_page`/`javascript_tool` DOM assertions (the sandbox's screenshot tool was
+hanging this session): design selection from both the collapsed grid and the popup correctly
+updates the main thumb and the cart's `designRef`/`designName`; the `.design-popup` visibility
+bug was reproduced and confirmed fixed against an isolated local server before landing.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

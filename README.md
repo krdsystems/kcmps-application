@@ -113,7 +113,19 @@ variables rather than hard-coding colors, fonts, or spacing.
 - **Bulk & custom estimator** — `#estimator` in `index.html`. Pricing is sourced live from
   `products.js` (no hardcoded numbers) — add a priced SKU there and it appears in the
   estimator's product picker automatically. Volume-discount tiers and leaf-specific add-ons
-  are defined in the same script block.
+  are defined in the same script block. Products marked `quoteOnRequest: true` (no confirmed
+  cost yet) are explicitly skipped rather than showing a fabricated ₱0 — see `docs/history.md`
+  step 18.
+- **Unpriced / quote-on-request SKUs** — a product with no confirmed cost yet (e.g. a supplier
+  quote pending) should ship as `{ quoteOnRequest: true }` in `products.js` with no `price`/
+  `variants`, not a guessed number. It renders as a request card (`quoteCard()` in `store.js`)
+  that adds to cart at ₱0 under the same pending-approval flow as custom design requests, and
+  is excluded from the bulk estimator. See `docs/history.md` step 18.
+- **Tiered add-on on an existing SKU card** (e.g. color printing on the B/W print product) —
+  add `addon: { label, options: [{ label, price }, ...] }` to the product in `products.js`
+  (first option should be the free/base tier); `skuCard()` in `store.js` renders it as its own
+  radio group and folds the selected price into the card's total automatically. See
+  `docs/history.md` step 18.
 - **Carousel timing** — slide duration lives in `styles.css` (`.carousel-track`
   `transition`), the total interval (`AUTO_MS`) in `index.html`.
 - **Checkout endpoint** — the `CHECKOUT_ENDPOINT` constant near the top of `website/store.js`.
@@ -139,6 +151,13 @@ All changes are immediate — there's no build step.
 - Bulk estimator (`#estimator`): confirm the product dropdown only lists real priced SKUs, the
   quantity number field and range slider stay in sync in both directions, volume discount lines
   appear at 25/100/250+ units, and "Add to cart" shows up in the cart drawer (not a `mailto:`).
+  Confirm Spiral/Comb Binding and Custom Bookmarks do NOT appear in the dropdown (they're
+  `quoteOnRequest`, not priced).
+- Print/Office SKUs: confirm all 8 (document printing, photocopying, lamination, binding,
+  stamps, bookmarks, business cards, stickers & labels) render under the Printing & Office
+  Supplies tab. Toggle the color-printing add-on on the B/W document print card and confirm the
+  displayed price updates (base + the selected tier). Confirm Spiral/Comb Binding and Custom
+  Bookmarks show "Quote on request" and add to the cart at ₱0/pending approval, not a price.
 - Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
@@ -161,6 +180,9 @@ All changes are immediate — there's no build step.
 - Sub-categories beyond DTF and print-office pricing (Subli, Hotmelt, 3D Print, Souvenir,
   Network, Storage) currently ship as "coming soon" placeholders — custom-request only, no
   priced SKUs, so they're excluded from the bulk estimator's calculator.
+- Two print-office SKUs — Spiral/Comb Binding and Custom Bookmarks — ship as
+  `quoteOnRequest: true` (request-only, no price) pending a real supplier quote; don't fill in
+  a guessed number for either without one. See `docs/history.md` step 18.
 - Checkout is `mailto:`-based with no real payment processing; the cart lives in
   `localStorage` only, so it doesn't survive across devices or browsers.
 - Hero category priming is client-side only (`localStorage`/`sessionStorage`) — a logged-in

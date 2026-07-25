@@ -237,9 +237,13 @@
     var variants = p.variants || [{ label: "", price: p.price || 0 }];
     var sel = 0;              // selected variant index
     var withShirt = false;    // shirt add-on
+    var addonSel = 0;         // selected tiered add-on index (p.addon.options), 0 = none/base
     var qty = 1;
 
-    function unitPrice() { return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0); }
+    function unitPrice() {
+      var addonPrice = (p.addon && p.addon.options) ? p.addon.options[addonSel].price : 0;
+      return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0) + addonPrice;
+    }
 
     // thumb
     card.appendChild(buildGalleryThumb(p));
@@ -270,6 +274,24 @@
       tog.appendChild(cb); tog.appendChild(txt); card.appendChild(tog);
     }
 
+    // generic tiered add-on (e.g. the color-printing option on a B/W print SKU) —
+    // renders as its own radio group, additive on top of the base/variant price.
+    if (p.addon && p.addon.options && p.addon.options.length) {
+      if (p.addon.label) {
+        var addonLbl = document.createElement("div"); addonLbl.className = "addon-label"; addonLbl.textContent = p.addon.label;
+        card.appendChild(addonLbl);
+      }
+      var addonSeg = document.createElement("div"); addonSeg.className = "seg"; addonSeg.setAttribute("role", "radiogroup"); addonSeg.setAttribute("aria-label", p.addon.label || "Add-on");
+      p.addon.options.forEach(function (opt, i) {
+        var lab = document.createElement("label"); lab.className = "seg-opt";
+        var r = document.createElement("input"); r.type = "radio"; r.name = p.id + "-addon"; if (i === 0) r.checked = true;
+        var sp = document.createElement("span"); sp.textContent = opt.label;
+        r.addEventListener("change", function () { addonSel = i; refresh(); });
+        lab.appendChild(r); lab.appendChild(sp); addonSeg.appendChild(lab);
+      });
+      card.appendChild(addonSeg);
+    }
+
     // buy row: price + qty
     var buy = document.createElement("div"); buy.className = "product-buy";
     var priceEl = document.createElement("span"); priceEl.className = "product-price";
@@ -287,10 +309,12 @@
     addBtn.innerHTML = CART_ICON + " Add to cart";
     addBtn.addEventListener("click", function () {
       var vLabel = variants[sel].label;
+      var addonLabel = (p.addon && p.addon.options && addonSel > 0) ? p.addon.options[addonSel].label : "";
+      var lineLabel = [vLabel, addonLabel].filter(Boolean).join(" + ");
       addToCart({
-        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain"),
+        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + addonLabel,
         id: p.id, name: p.name, leaf: p.leaf, type: "sku",
-        variantLabel: vLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty
+        variantLabel: lineLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty
       });
       var orig = addBtn.innerHTML; addBtn.innerHTML = "Added ✓"; addBtn.disabled = true;
       setTimeout(function () { addBtn.innerHTML = orig; addBtn.disabled = false; }, 1100);
@@ -301,10 +325,41 @@
 
     function refresh() {
       var base = variants[sel].price;
-      var extra = withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0;
-      priceEl.innerHTML = peso(base + extra) + (extra ? ' <small>incl. shirt</small>' : (p.variants && p.variants.length > 1 ? ' <small>/ ' + variants[sel].label + '</small>' : ''));
+      var shirtExtra = withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0;
+      var addonExtra = (p.addon && p.addon.options) ? p.addon.options[addonSel].price : 0;
+      var extra = shirtExtra + addonExtra;
+      var notes = [];
+      if (shirtExtra) notes.push("incl. shirt");
+      if (addonExtra) notes.push("incl. " + p.addon.options[addonSel].label);
+      if (!notes.length && p.variants && p.variants.length > 1) notes.push("/ " + variants[sel].label);
+      priceEl.innerHTML = peso(base + extra) + (notes.length ? ' <small>' + notes.join(", ") + '</small>' : '');
     }
     refresh();
+    return card;
+  }
+
+  // Products with no confirmed cost yet (e.g. binding, bookmarks) render as a
+  // request card instead of a buy card — never ship a guessed price. Adds to
+  // cart at ₱0 under the same "pending approval" quote flow as custom items.
+  function quoteCard(p) {
+    var card = document.createElement("div");
+    card.className = "card offer product product-custom";
+    card.appendChild(buildThumb(thumbImage(p), p.name));
+    var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = "Quote on request"; card.appendChild(kick);
+    var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);
+    var body = document.createElement("p"); body.className = "card-body"; body.textContent = p.blurb || ""; card.appendChild(body);
+    var addBtn = document.createElement("button"); addBtn.type = "button"; addBtn.className = "btn btn-secondary btn-block";
+    addBtn.textContent = "Add as request";
+    addBtn.addEventListener("click", function () {
+      addToCart({
+        key: "quote|" + p.id, id: p.id, name: p.name,
+        leaf: p.leaf, type: "custom", variantLabel: "", shirt: false, unitPrice: 0, qty: 1
+      });
+      var orig = addBtn.textContent; addBtn.textContent = "Added ✓"; addBtn.disabled = true;
+      setTimeout(function () { addBtn.textContent = orig; addBtn.disabled = false; }, 1100);
+      openDrawer();
+    });
+    card.appendChild(addBtn);
     return card;
   }
 
@@ -344,7 +399,7 @@
       }
 
       var grid = document.createElement("div"); grid.className = "offer-grid";
-      DATA.products.filter(function (p) { return p.leaf === leafKey; }).forEach(function (p) { grid.appendChild(skuCard(p)); });
+      DATA.products.filter(function (p) { return p.leaf === leafKey; }).forEach(function (p) { grid.appendChild(p.quoteOnRequest ? quoteCard(p) : skuCard(p)); });
       grid.appendChild(customCard(leafKey, cfg)); // every leaf always gets the custom-request card
       container.appendChild(grid);
     });

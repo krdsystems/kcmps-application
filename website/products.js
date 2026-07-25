@@ -26,6 +26,23 @@
    To turn a "coming soon" leaf into a shop, add priced products for that leaf.
    ============================================================================ */
 
+/* Shared filename → display-title convention, used anywhere a design/product
+   name is derived from an asset filename (hero carousel, catalog design
+   picker cards, cart thumbnails) so the formatting never drifts between
+   views. Strips a leading "01-" ordering prefix, the extension, and turns
+   kebab/snake/SHOUTY case into Title Case.
+   e.g. "01-BLACK PINK SHIRT.jpg" -> "Black Pink Shirt" */
+window.KCMPS_TEXT = {
+  titleFromFilename: function (path) {
+    var base = String(path).split("/").pop().replace(/\.[^./]+$/, "");
+    base = base.replace(/^\d+[-_.\s]+/, "");
+    base = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+    return base.replace(/\S+/g, function (w) {
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+  },
+};
+
 window.KCMPS_STORE_DATA = {
   currency: "₱",
 

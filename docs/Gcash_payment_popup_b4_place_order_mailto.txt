@@ -1,0 +1,129 @@
+# Plan: GCash payment popup before "Place order" mailto
+
+## Context
+
+Today, clicking **Place order** in the cart checkout view (`#place-order`, wired in
+`renderCart()` at `website/store.js:678-683`) calls `submitOrder()` (`store.js:697-727`),
+which validates name/contact, builds a plain-text order summary, and *immediately*
+navigates to a `mailto:` link — no confirmation, no payment instructions, no chance to
+attach a screenshot.
+
+The shop currently accepts GCash payments manually (see
+`project_knowledge/Payment_System_Project_Knowledge.md`) but the storefront gives the
+customer no instructions on how/where to pay, or how to send proof of payment. This
+change adds a confirmation popup, shown right after "Place order" is clicked (before the
+mailto: fires), that thanks the customer, shows a GCash QR to scan, and gives them two
+ways to send proof of payment: (1) manual instructions with the exact subject/fields to
+use, or (2) a button that opens their email app with the same subject/body pre-filled
+(same mechanism as today's `submitOrder`) — they just still need to manually attach the
+screenshot, since `mailto:` cannot attach files.
+
+Decisions confirmed with the user:
+- Keep the existing itemized order breakdown in the pre-filled email body, in addition to
+  the new header-style fields (Contact / Fulfillment / Custom Request Details).
+- "Custom Request Details" = existing `#co-notes` textarea content, included only if the
+  cart has at least one `type: "custom"` line item.
+- The popup is a dialog **overlaying** the still-open cart drawer (drawer stays mounted
+  behind it), not a replacement/close of the drawer.
+- Use a placeholder QR image asset (owner swaps in the real GCash QR later) — build it as
+  a simple self-contained SVG (no external/binary asset needed), clearly labeled as a
+  placeholder, consistent with other "owner-editable" markers in this codebase.
+
+## Approach
+
+### 1. New worktree
+Create a git worktree for this feature per the repo's documented workflow
+(`CLAUDE.md` "Git / worktree workflow"): branch `claude/cart-place-order-popup-jcx919`
+(already assigned to this session) checked out at
+`.claude/worktrees/cart-place-order-popup`. All edits below happen in that worktree.
+
+### 2. New placeholder QR asset
+Add `website/assets/gcash-qr-placeholder.svg` — a simple square SVG with a border and
+centered text ("Sample GCash QR — replace with real QR code"). Keeps everything
+self-contained (no binary image needed) and is trivially swappable later by dropping in a
+real QR image and updating one `<img src>`.
+
+### 3. Popup markup + styles (mimic existing `.dialog`/`.dialog-backdrop`)
+In `website/styles.css` (and mirrored into `design-system/KCMPS Redesign/styles.css` per
+CLAUDE.md convention), add a `.order-popup-backdrop` / `.order-popup` rule set adapted
+from the currently-unused `.dialog`/`.dialog-backdrop` component
+(`design-system/KCMPS Redesign/components/dialog.html`, base rules already in
+`styles.css:294-310`), giving it an explicit `z-index` **above** `.cart-drawer` (101) —
+use `160`, consistent with the existing layering table (`.design-popup` 150 →
+new popup 160 → `.lightbox-overlay` 200). Reuse `.btn`, `.btn-primary`,
+`.btn-secondary`, `.field`-style spacing tokens already in the design system — no new
+color values, per the brand-system convention (navy-dominant, one orange CTA).
+
+Popup content:
+- Title: "Thank you for placing an order with us!"
+- Body copy: "Our payment system is on the way. We currently accept GCASH payments in
+  fulfilling your order." + the QR `<img>` (placeholder asset above).
+- Instructions: "After payment, kindly send us a screenshot of your payment proof to
+  order@kcmps.com" (reuse `ORDER_EMAIL` constant, don't hardcode) with the required
+  format shown as literal text (Subject / Contact / Fulfillment / Custom Request Details).
+- Two actions: a primary button "Open email app" (pre-fills the email, see below) and a
+  secondary "Close" / "I'll send it manually" button that just dismisses the popup
+  (drawer remains open/untouched, cart untouched — no auto-clearing, matching today's
+  no-op-after-submit behavior).
+
+### 4. Wire it into the order flow (`website/store.js`)
+- Rename current `submitOrder` body to a new `buildOrderEmail()` helper that returns
+  `{ subject, body }` (reusing all existing logic: name/contact/fulfillment reads, the
+  payNow/pending split via `item.type`, itemized lines, `peso()` totals) — but restructure
+  the body so it leads with the requested fields:
+  ```
+  Subject: Order for <name>
+  Contact: <contact>
+  Fulfillment: <fulfill>
+  Custom Request Details: <#co-notes content>   -- only if any cart item has type === "custom"
+
+  <existing itemized PAY NOW / PENDING APPROVAL breakdown, unchanged>
+  ```
+- New `submitOrder()`:
+  1. Keeps the existing name/contact validation (`alert(...)` + return if missing) —
+     unchanged, runs *before* anything else so the popup never opens on invalid input.
+  2. Calls `buildOrderEmail()` to get `{ subject, body }`, stashes it (e.g. in a small
+     module-level var or directly on the popup's "Open email app" button via a closure).
+  3. Opens the new popup (build/insert into DOM lazily on first use, mirroring
+     `buildLightbox()`'s pattern of building once and toggling `.is-open`, per
+     `store.js:120-187`) — **does not** call `window.location.href = mailto:...` itself
+     anymore.
+- Popup's "Open email app" button click handler does exactly what `submitOrder` used to
+  do: `window.location.href = "mailto:" + ORDER_EMAIL + "?subject=..." + "&body=..."`
+  using the stashed `{ subject, body }`.
+- Popup's "Close" button just toggles the popup closed (remove `.is-open` / hide),
+  identical open/close pattern to `.design-popup`/`.lightbox-overlay` already in the file.
+
+### 5. Files touched
+- `website/store.js` — refactor `submitOrder` → `buildOrderEmail()` + new
+  `submitOrder()` + new popup build/open/close functions, hooked at the existing
+  `#place-order` click attachment (`store.js:678-683`).
+- `website/styles.css` — new `.order-popup-backdrop`/`.order-popup` rules (z-index 160)
+  adapted from the existing `.dialog`/`.dialog-backdrop` base.
+- `design-system/KCMPS Redesign/styles.css` — mirror the same CSS addition (per
+  CLAUDE.md: keep design-system reference in sync).
+- `website/assets/gcash-qr-placeholder.svg` — new placeholder asset.
+
+No changes to `website/products.js`, `dashboard/*`, or any infra/docs files — this is
+scoped entirely to the public storefront cart checkout flow.
+
+## Verification
+- `cd website && python3 -m http.server 5500`, open the site, add at least one regular
+  (`type: "sku"`) item and one custom-request item to the cart to exercise both branches.
+- Go to checkout, fill name + contact, leave notes non-empty, click **Place order**:
+  confirm the new popup appears (drawer still visible behind it), QR placeholder renders,
+  copy matches the requested wording.
+- Click **Open email app**: confirm it navigates to a `mailto:` link (check via browser
+  network/URL bar or a `console.log` during manual testing) whose subject is
+  `Order for <name>` and whose body has Contact/Fulfillment/Custom Request Details up top
+  followed by the unchanged itemized breakdown.
+- Remove the custom-request item, repeat: confirm "Custom Request Details" line is
+  omitted entirely when no `type: "custom"` items are in the cart.
+- Click **Close** on the popup: confirm it dismisses without navigating away, cart/drawer
+  state unchanged, and clicking **Place order** again re-opens it correctly (no stale
+  DOM/leftover listeners — verify no duplicate popups get inserted on repeat opens).
+- Test at 375px width (mobile) per CLAUDE.md's mobile-testing convention, since this is a
+  new overlay component.
+- Confirm no leftover `alert()`/validation regressions: submitting with empty
+  name/contact still blocks with the existing alert and never shows the new popup.
+

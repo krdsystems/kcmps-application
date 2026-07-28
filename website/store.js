@@ -156,8 +156,8 @@
      buildLightbox()). Generic by design — it only reads p.images/p.name, so any
      future leaf can opt in just by adding the array; today only the 3 DTF SKUs
      (see products.js) have one, sourced from website/assets/design/apparel/dtf/. */
-  var lightboxOverlay, lightboxImg, lightboxCounter, lightboxPrevBtn, lightboxNextBtn;
-  var lightboxImages = [], lightboxIndex = 0;
+  var lightboxOverlay, lightboxImg, lightboxCounter, lightboxPrevBtn, lightboxNextBtn, lightboxSelectBtn;
+  var lightboxImages = [], lightboxIndex = 0, lightboxOnSelect = null;
 
   function buildLightbox() {
     lightboxOverlay = document.createElement("div");
@@ -175,18 +175,24 @@
       '<button type="button" class="lightbox-arrow next" aria-label="Next design">' +
         '<svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>' +
       '</button>' +
-      '<div class="lightbox-counter"></div>';
+      '<div class="lightbox-counter"></div>' +
+      '<button type="button" class="lightbox-select">Select this design</button>';
     document.body.appendChild(lightboxOverlay);
 
     lightboxImg = lightboxOverlay.querySelector(".lightbox-stage img");
     lightboxCounter = lightboxOverlay.querySelector(".lightbox-counter");
     lightboxPrevBtn = lightboxOverlay.querySelector(".lightbox-arrow.prev");
     lightboxNextBtn = lightboxOverlay.querySelector(".lightbox-arrow.next");
+    lightboxSelectBtn = lightboxOverlay.querySelector(".lightbox-select");
 
     lightboxOverlay.querySelector(".lightbox-close").addEventListener("click", closeLightbox);
     lightboxOverlay.addEventListener("click", function (e) { if (e.target === lightboxOverlay) closeLightbox(); });
     lightboxPrevBtn.addEventListener("click", function () { stepLightbox(-1); });
     lightboxNextBtn.addEventListener("click", function () { stepLightbox(1); });
+    lightboxSelectBtn.addEventListener("click", function () {
+      if (lightboxOnSelect) lightboxOnSelect(lightboxIndex);
+      closeLightbox();
+    });
     document.addEventListener("keydown", function (e) {
       if (!lightboxOverlay.classList.contains("is-open")) return;
       if (e.key === "Escape") closeLightbox();
@@ -204,6 +210,7 @@
     lightboxPrevBtn.style.display = multi ? "" : "none";
     lightboxNextBtn.style.display = multi ? "" : "none";
     lightboxCounter.textContent = (lightboxIndex + 1) + " / " + lightboxImages.length;
+    lightboxSelectBtn.style.display = lightboxOnSelect ? "" : "none";
   }
 
   function stepLightbox(delta) {
@@ -211,10 +218,15 @@
     renderLightbox();
   }
 
-  function openLightbox(images, startIndex) {
+  // onSelect (optional): when passed, the lightbox shows a "Select this
+  // design" button that calls onSelect(currentIndex) then closes — used by
+  // the mobile design subcatalog so picking a design still works after
+  // browsing it fullscreen. Omitted for plain gallery/cart-thumb viewing.
+  function openLightbox(images, startIndex, onSelect) {
     if (!lightboxOverlay) buildLightbox();
     lightboxImages = images;
     lightboxIndex = startIndex || 0;
+    lightboxOnSelect = onSelect || null;
     renderLightbox();
     lightboxOverlay.classList.add("is-open");
     lightboxOverlay.setAttribute("aria-hidden", "false");
@@ -226,6 +238,7 @@
     lightboxOverlay.classList.remove("is-open");
     lightboxOverlay.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
+    lightboxOnSelect = null;
   }
 
   // titleFromFilename lives in products.js (window.KCMPS_TEXT) so the hero
@@ -377,7 +390,8 @@
 
     // Full-list popup — built lazily on first hover/focus, appended to <body>
     // (not `wrap`) since it needs to span the full page width regardless of
-    // how narrow the product card is.
+    // how narrow the product card is. Desktop-only (see isHoverCapable below);
+    // touch devices get the full-screen subcatalog sheet instead.
     var popup = null, hideTimer = null;
 
     function buildPopup() {
@@ -408,15 +422,98 @@
     function scheduleHide() { hideTimer = setTimeout(hidePopup, 180); }
     function cancelHide() { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } }
 
+    // Same media query gate used by the scroll-indicator's desktop-only hover
+    // reveal (see CLAUDE.md). No-hover/touch devices get a single-tap
+    // full-screen subcatalog of ALL designs instead of the small flyout —
+    // tapping a design there opens it via the shared openLightbox() (fullscreen),
+    // and the lightbox's "Select this design" button (wired with onSelect)
+    // completes the same gallery.setIndex()+sync() selection the popup does.
+    function isHoverCapable() {
+      return window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    }
+
+    var subcatalog = null;
+
+    function buildSubcatalog() {
+      subcatalog = document.createElement("div");
+      subcatalog.className = "design-subcatalog";
+      subcatalog.setAttribute("aria-hidden", "true");
+
+      var header = document.createElement("div");
+      header.className = "design-subcatalog-header";
+      var title = document.createElement("span");
+      title.className = "design-subcatalog-title";
+      title.textContent = "All designs";
+      header.appendChild(title);
+      var close = document.createElement("button");
+      close.type = "button";
+      close.className = "design-subcatalog-close";
+      close.setAttribute("aria-label", "Close all designs");
+      close.innerHTML = "&times;";
+      header.appendChild(close);
+      subcatalog.appendChild(header);
+
+      var grid = document.createElement("div");
+      grid.className = "design-grid design-grid-full";
+      images.forEach(function (src, i) {
+        var tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "design-pick";
+        var title2 = designTitle(src);
+        tile.setAttribute("aria-label", "View design: " + title2);
+        var timg = document.createElement("img");
+        timg.src = src; timg.alt = ""; timg.loading = "lazy";
+        tile.appendChild(timg);
+        var label = document.createElement("span");
+        label.className = "design-pick-label";
+        label.textContent = title2;
+        tile.appendChild(label);
+        tile.addEventListener("click", function () {
+          openLightbox(
+            images.map(function (s) { return { src: s, alt: p.name + " — " + designTitle(s) }; }),
+            i,
+            function (selIndex) {
+              gallery.setIndex(selIndex);
+              sync();
+              hideSubcatalog();
+            }
+          );
+        });
+        grid.appendChild(tile);
+      });
+      subcatalog.appendChild(grid);
+      document.body.appendChild(subcatalog);
+
+      close.addEventListener("click", hideSubcatalog);
+      subcatalog.addEventListener("click", function (e) { if (e.target === subcatalog) hideSubcatalog(); });
+    }
+    function showSubcatalog() {
+      if (!subcatalog) buildSubcatalog();
+      subcatalog.classList.add("is-open");
+      subcatalog.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    }
+    function hideSubcatalog() {
+      if (!subcatalog) return;
+      subcatalog.classList.remove("is-open");
+      subcatalog.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+    }
+
     if (collapsed) {
       wrap.addEventListener("mouseenter", function () { cancelHide(); showPopup(); });
       wrap.addEventListener("mouseleave", scheduleHide);
-      // Hover doesn't exist on touch — tapping/focusing the "more" tile toggles the popup instead.
+      // Desktop (hover-capable): tapping/focusing the "more" tile toggles the
+      // small flyout, same as before. Touch/no-hover: single tap opens the
+      // full-screen subcatalog instead — no double-tap needed.
       moreTile.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (!isHoverCapable()) { showSubcatalog(); return; }
         if (popup && popup.classList.contains("is-open")) hidePopup(); else showPopup();
       });
-      moreTile.addEventListener("focus", showPopup);
+      moreTile.addEventListener("focus", function () {
+        if (isHoverCapable()) showPopup();
+      });
       // Keep the popup anchored under its trigger if the page scrolls while open.
       window.addEventListener("scroll", function () {
         if (popup && popup.classList.contains("is-open")) positionPopup();

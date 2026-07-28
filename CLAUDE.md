@@ -112,6 +112,15 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   only correct for `position: absolute`). Adding `scrollY` renders the popup thousands of
   pixels below the viewport on any page scrolled past the top — it looked like "hover does
   nothing" rather than a visible bug (see `docs/history.md` step 18).
+- **`.design-popup` is desktop-only** (`buildDesignGrid()`'s `isHoverCapable()` check, gated
+  on the same `(hover: hover) and (pointer: fine)` query as the scroll-indicator). No-hover/
+  touch devices get a single-tap full-screen `.design-subcatalog` sheet instead (all designs,
+  not just the `DESIGN_GRID_MAX`-capped overflow) — the old touch fallback toggled the tiny
+  flyout on tap, which needed a second tap to actually use. Tapping a design in the subcatalog
+  opens it via the shared `openLightbox()`; that call's new optional `onSelect` param (shows a
+  "Select this design" button) is what finishes the `gallery.setIndex()`/`designRef` wiring, so
+  don't build a second selection path — reuse `onSelect` for any future picker that needs
+  fullscreen-then-confirm.
 
 ## Git / worktree workflow
 

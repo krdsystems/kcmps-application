@@ -1083,6 +1083,14 @@ the visible line still resolves to `.scroll-indicator-line` and still triggers t
 Desktop (`pointer-events: auto` on the item, unchanged outside the mobile media query) keeps
 its original click-anywhere-on-the-revealed-label behavior.
 
+**Second follow-up, same day:** the owner flagged the full-viewport-height dead-zone border as
+an eyesore — a permanent hairline "crack" running top-to-bottom on every mobile page, now
+redundant since the pointer-events fix above already solves the underlying overlap without
+needing a visual warning stripe. Removed the `.scroll-indicator::before` rule and its
+`--indicator-left` CSS var entirely (`styles.css`, mirrored in `design-system/`, plus the JS
+that measured and published it in `index.html`'s `setHeroOverlayMax()` IIFE) rather than just
+hiding it, since nothing else depended on that var.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

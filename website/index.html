@@ -689,7 +689,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 (() => {
   const nav = document.querySelector('.nav');
   const stickyCta = document.querySelector('.sticky-cta');
-  const rail = document.querySelector('.scroll-indicator');
   function setHeroOverlayMax() {
     const navH = nav ? nav.getBoundingClientRect().height : 0;
     const ctaH = stickyCta ? stickyCta.getBoundingClientRect().height : 0;
@@ -698,11 +697,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     document.documentElement.style.setProperty('--hero-overlay-max', max + 'px');
     document.documentElement.style.setProperty('--nav-h', navH + 'px');
     document.documentElement.style.setProperty('--stickycta-h', ctaH + 'px');
-    // Publishes the rail's real left edge (reserved layout width, not just
-    // its visible line) so the ::before dead-zone border in styles.css
-    // (.scroll-indicator, mobile block) tracks it exactly instead of a
-    // guessed pixel offset — see CLAUDE.md mobile card/nav overlap note.
-    if (rail) document.documentElement.style.setProperty('--indicator-left', rail.getBoundingClientRect().left + 'px');
   }
   setHeroOverlayMax();
   window.addEventListener('resize', setHeroOverlayMax);

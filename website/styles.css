@@ -688,18 +688,6 @@ textarea.input { min-height: 90px; resize: vertical; }
      across the whole band. */
   .scroll-indicator { top: calc(var(--nav-h, 64px) + var(--space-2)); bottom: calc(var(--stickycta-h, 64px) + var(--space-2));
     transform: none; justify-content: center; gap: 8px; }
-  /* Full-viewport-height visual boundary at the rail's real left edge
-     (--indicator-left, measured in JS — see index.html), not just the
-     rail's own shorter box. Marks a dead zone before the tap targets so a
-     card button on the right edge (e.g. the qty stepper "+") reads as
-     "behind the nav" rather than tappable. position:fixed on this pseudo
-     is safe here because the mobile block above sets transform:none on
-     the rail, so it still resolves against the viewport, not the rail's
-     own box. Purely decorative: no pointer-events, so it never grows the
-     rail's actual hit area (only .scroll-indicator-item stays tappable). */
-  .scroll-indicator::before { content: ""; position: fixed; top: 0; bottom: 0;
-    left: var(--indicator-left, auto); border-left: 1px solid var(--color-divider);
-    pointer-events: none; }
   /* Mobile-only: the base rule above makes the whole flex item (line +
      the invisible-but-space-reserving label) tappable, so the reserved
      label width silently extends the rail's hit area over whatever card

@@ -113,7 +113,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Documents",
       name: "Document Printing",
       blurb: "Short bond paper, priced per page — choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
-      image: "assets/products/print-bw-document-printing.jpg",
+      image: "assets/printing-office-supplies/print-bw-document-printing.jpg",
       price: 4,
       addons: [
         {
@@ -145,7 +145,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Photocopying",
       name: "Photocopying (Xerox)",
       blurb: "Black-and-white copies of a document you already have, any size, priced per page. In-store only — bring the original in, there's no online booking for this one.",
-      image: "assets/products/print-photocopying.jpg",
+      image: "assets/printing-office-supplies/print-photocopying.jpg",
       price: 3,
       fulfillmentInput: "in-person",
       noOnlineOrder: true,
@@ -157,7 +157,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Lamination",
       name: "Lamination",
       blurb: "Glossy lamination, priced by size. Add Document Printing to your cart first — we'll laminate the pages we just printed for you, no visit needed.",
-      image: "assets/products/print-lamination.jpg",
+      image: "assets/printing-office-supplies/print-lamination.jpg",
       variants: [
         { label: "ID-size", price: 25 },
         { label: "A4 document", price: 70 },
@@ -173,7 +173,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Binding",
       name: "Spiral / Comb Binding",
       blurb: "Bind-only pricing (does not include printing) — spiral or comb, A5 size, per 90 leaves. Add Document Printing to your cart first — we'll bind the pages we just printed for you, no visit needed.",
-      image: "assets/products/print-binding.jpg",
+      image: "assets/printing-office-supplies/print-binding.jpg",
       variants: [
         { label: "Bind (per 90 leaves, A5, spiral or comb)", price: 50 },
       ],
@@ -187,7 +187,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Stamps",
       name: "Custom Self-Inking Stamps",
       blurb: "Personalized stamps for signatures, dates, and logos. Priced by stamp size.",
-      image: "assets/products/print-self-inking-stamps.jpg",
+      image: "assets/printing-office-supplies/print-self-inking-stamps.jpg",
       variants: [
         { label: "33×13mm (up to 3 lines)", price: 100 },
         { label: "32×12mm", price: 130 },
@@ -202,7 +202,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Bookmarks",
       name: "Custom Bookmarks",
       blurb: "Printed bookmarks for events, giveaways, or personal use. Ordering packs for a big event or giveaway? Bulk pricing kicks in at 10+ packs.",
-      image: "assets/products/print-bookmarks.jpg",
+      image: "assets/printing-office-supplies/print-bookmarks.jpg",
       variants: [
         { label: "Custom bookmark (2 pcs)", price: 35 },
         { label: "Hymnal bookmark (6 pcs)", price: 70 },
@@ -222,7 +222,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Business Cards",
       name: "Business Cards",
       blurb: "Full-color, priced per piece — minimum order of 10 pcs. Bulk pricing kicks in automatically at 50+ pcs.",
-      image: "assets/products/print-business-cards.jpg",
+      image: "assets/printing-office-supplies/print-business-cards.jpg",
       variants: [
         { label: "Front only (per pc, min. 10 pcs)", price: 7 },
         { label: "Back-to-back / double-sided (per pc, min. 10 pcs)", price: 15 },
@@ -242,7 +242,7 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Stickers & Labels",
       name: "Stickers & Labels",
       blurb: "Priced per A4 sheet, except decal stickers which are priced per inch. Bulk pricing kicks in automatically at 10+ sheets/inches.",
-      image: "assets/products/print-stickers-labels.jpg",
+      image: "assets/printing-office-supplies/print-stickers-labels.jpg",
       variants: [
         { label: "Premium printable vinyl (per A4 sheet)", price: 100 },
         { label: "Paper stickers (per A4 sheet)", price: 45 },

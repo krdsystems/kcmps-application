@@ -1157,6 +1157,18 @@ Verified by measuring geometry and computed styles across 320/375/414 widths aga
 no clipped sub-line, single-line buttons, and the primary CTA now landing above the fold in
 every variant (it was below it before). Desktop at 1280px confirmed unchanged.
 
+### 31. Local `website/assets/` restructured to match the planned S3 bucket layout (2026-07-28)
+
+`assets/products/` (print/office product photos) was renamed to
+`assets/printing-office-supplies/` to match the prefix already documented in
+`storefront-infra/assets-bucket-structure.md` §1 (`printing-office-supplies`, `design`,
+`merch`) — that doc was written first, against the future bucket, and the local folder had
+drifted from it. All 8 `image:` paths in `products.js` were updated in lockstep. An empty
+`assets/merch/` sibling was added (no merch product photos exist yet — `network`/`storage`
+leaves are `comingSoon: true` and only use the `assets/leaves/` nav thumbnail). `assets/design/`
+and `assets/leaves/` were already correct and untouched. `print-custom-packaging.jpg`
+(see step 24) remains unreferenced by any product, just carried along in the rename.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

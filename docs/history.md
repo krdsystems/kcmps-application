@@ -1195,6 +1195,23 @@ needed. Verified at 320/375/414px via `document.querySelector('.card').getBoundi
 across all three tabs: max card right edge now sits at or before the rail's visible line width
 in every case (no `bleeds` flag tripped).
 
+### 33. FAQ accordion +/− glyph moved to the left of the question (2026-07-28)
+
+Owner request: move the `.faq-item summary::after` +/− glyph from the right side of each FAQ
+row to the left, so it sits further from the right-edge floating nav elements
+(`.scroll-indicator`/`.sticky-cta`) and is less likely to be mistaken for a nav tap target
+near the screen edge. Kept the existing `[open] summary::after { content: "–" }` state-swap
+selector untouched (no duplicated CSS) by reordering visually instead: added
+`flex-direction: row-reverse` to `.faq-item summary`, which renders the `::after`-generated
+glyph first (left) and the question text after it, purely via flexbox order — no markup or
+selector changes. Then, per owner feedback that the default `justify-content: space-between`
+spread the glyph and text across the full row width (looked disconnected), changed it to
+`flex-end`, which — combined with `row-reverse` — packs both together at the row's left edge
+instead. Verified via computed styles at 375px width that `flexDirection` is `row-reverse`,
+the `::after` content correctly flips to "–" when `[open]`, and no padding/gap values changed
+(pure reorder + alignment, not a restyle). Mirrored into
+`design-system/KCMPS Redesign/styles.css` per the mirroring convention.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

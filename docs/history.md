@@ -1065,6 +1065,24 @@ it's now a real `<input>` instead of inert text: transparent background, no bord
 number-input spin arrows (`-webkit-inner/outer-spin-button`, `appearance: textfield`), and a
 focus outline so keyboard/tap-to-edit is visibly discoverable.
 
+**Follow-up, same day:** the border alone was a visual cue, not a functional fix — the
+reserved label zone was still real, still `pointer-events: auto` (inherited from
+`.scroll-indicator-item`), and still swallowed touches meant for the card button underneath.
+Went back and actually narrowed the mobile hit target: inside the `@media (max-width: 760px)`
+block, `.scroll-indicator-item` now gets `pointer-events: none` (overriding the base rule's
+`auto`) and `.scroll-indicator-line` gets `pointer-events: auto` — since `pointer-events` is
+inherited, this alone also turns the label off without a separate rule, leaving only the
+12–18px visible line as the real tap target. `touch-action: none` (needed so a swipe starting
+on a segment tap-jumps instead of scrolling the page, see step 19) moved from the item to the
+line for the same reason. The click listener (`index.html`) was already safe for this — it's
+bound per-item via `item.addEventListener` and reads `item.dataset.target` through closure,
+not `event.target`, so a click landing on the line still bubbles up and fires it correctly.
+Verified with `document.elementFromPoint()`: a point inside the old reserved-label zone now
+falls through to the underlying page content instead of hitting the nav item, while a point on
+the visible line still resolves to `.scroll-indicator-line` and still triggers the jump.
+Desktop (`pointer-events: auto` on the item, unchanged outside the mobile media query) keeps
+its original click-anywhere-on-the-revealed-label behavior.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

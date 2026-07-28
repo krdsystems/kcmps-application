@@ -700,7 +700,19 @@ textarea.input { min-height: 90px; resize: vertical; }
   .scroll-indicator::before { content: ""; position: fixed; top: 0; bottom: 0;
     left: var(--indicator-left, auto); border-left: 1px solid var(--color-divider);
     pointer-events: none; }
-  .scroll-indicator-item { padding: 4px 2px; }
+  /* Mobile-only: the base rule above makes the whole flex item (line +
+     the invisible-but-space-reserving label) tappable, so the reserved
+     label width silently extends the rail's hit area over whatever card
+     content sits behind it. Narrow the real hit target down to just the
+     visible line — pointer-events is inherited, so item:none also turns
+     off the label without a separate rule — and move touch-action:none
+     onto the line so a swipe starting exactly on it still tap-jumps
+     instead of scrolling the page underneath. The click listener
+     (index.html) is bound per-item and reads item.dataset.target via
+     closure, not event.target, so it still fires correctly via bubbling
+     from a tap that lands on the line. */
+  .scroll-indicator-item { padding: 4px 2px; pointer-events: none; touch-action: auto; }
+  .scroll-indicator-line { pointer-events: auto; touch-action: none; }
   .scroll-indicator-label { font-size: 9.5px; padding: 2px 5px; font-weight: 700; }
   /* Mobile is tap-driven. Force any sticky :hover/:focus reveal back to the
      collapsed state (it can still fire under desktop touch-emulation and some

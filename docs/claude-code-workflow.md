@@ -107,11 +107,15 @@ checked out where, and `git branch --merged main` shows which branches are safe 
 
 ## Deploying
 
-`website/` is the only folder that goes live, synced verbatim to S3 — no build step. There's
-no committed deploy script in this repo yet (deployment is still manual/external to this
-worktree), so run whatever sync command you currently use against `website/` once a change
-is on `main`. If a `sync website/ → s3://<bucket>` command becomes standard, worth adding it
-to `CLAUDE.md`'s "Local dev" section so future sessions know it exists.
+`website/` is the only folder that goes live, synced verbatim to S3 — no build step. Standard
+command, once a change is on `main` (see `CLAUDE.md`'s "Deploying to production"):
+
+```bash
+aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
+```
+
+No `--delete` — it only uploads new/changed files, never removes bucket content the sync
+didn't put there (the bucket has some pre-existing content outside `website/`'s scope).
 
 ## Getting good results from a session
 

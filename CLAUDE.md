@@ -115,6 +115,20 @@ cd website && python3 -m http.server 5500
 
 Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `README.md`.
 
+## Deploying to production
+
+`website/` syncs verbatim to S3 bucket `arn:aws:s3:::kcmps-online-bucket-est-2026` (no build
+step). Use the `kcmps-claude-priv` AWS CLI profile:
+
+```bash
+aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
+```
+
+Deliberately **no `--delete`** — this only uploads new/changed files, it never removes
+anything from the bucket that isn't in `website/` locally (the bucket has pre-existing
+content outside this repo's management, e.g. a root `README.md` and an `Assets/` folder,
+distinct from `website/assets/`). Run a `--dryrun` first if unsure what a sync will touch.
+
 ## Where to look next
 
 - What to build next / prioritized goals → `docs/roadmap.md`; the ERP architecture it serves → `project_knowledge/ERP_System_Project_Knowledge.md`

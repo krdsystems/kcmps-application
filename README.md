@@ -49,7 +49,10 @@ docs/                            NOT deployed — history.md (full build log), r
 ```
 
 The site is deployed by syncing `website/` directly to an S3 bucket — no build step, no
-bundler. Everything is vanilla HTML5, Tailwind via CDN, and ES6.
+bundler. Everything is vanilla HTML5, Tailwind via CDN, and ES6. Production bucket:
+`arn:aws:s3:::kcmps-online-bucket-est-2026`, uploaded via the `kcmps-claude-priv` AWS CLI
+profile (`aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile
+kcmps-claude-priv` — see `CLAUDE.md` "Deploying to production").
 
 ## Running the storefront locally
 

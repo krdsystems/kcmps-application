@@ -957,6 +957,27 @@ A browser-tab favicon was also added (`assets/favicon.ico`/`favicon.png`/
 `apple-touch-icon.png`, generated from the existing `assets/logo-mark.png`) since the site
 previously had none.
 
+### 26. Login/Sign-up button disabled pending real auth rollout (2026-07-28)
+
+The owner asked to disable the nav's Login/Sign-up button (feature under development) without
+removing the underlying Cognito auth code — mirroring the same disabled-with-explanation
+pattern used for the gated Lamination/Binding cards in entry 25. Added `disabled` to the
+button in both its initial markup (`index.html`'s `#auth-area`) and `renderLoggedOut()`
+(the function that re-renders it after logout), so it stays disabled across every render
+path, not just first paint.
+
+The "Currently under development" explanation is a native `title` tooltip placed on the
+wrapping `#auth-area` span, not the `<button>` itself — disabled elements don't reliably
+fire hover/mouseover events in Firefox, so a `title` on a disabled button can silently never
+show there. A non-disabled wrapper always receives the hover regardless of the button's
+state.
+
+No auth logic changed: `startLogin()`, `openLoginPopup()`, `renderLoggedIn()`, token
+exchange/storage, and the Staff-group dashboard-link branching are all untouched — the
+click listener is even still attached (disabled buttons don't fire `click`, so it's inert
+rather than removed). Re-enabling later is just deleting the `disabled` attribute/line and
+the two `title` lines.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

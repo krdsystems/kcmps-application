@@ -147,6 +147,10 @@ All changes are immediate — there's no build step.
 
 - Open in a real browser (Chrome, Firefox, Safari) — Cognito login needs an `http(s)://`
   origin, so `file://` won't exercise the auth flow.
+- Nav's Login/Sign-up button is intentionally disabled for now (`docs/history.md` entry 26,
+  feature under development) — confirm it can't be clicked and hovering the nav auth area
+  shows a "Currently under development" tooltip. The underlying auth code is unchanged, so
+  this is purely a UI gate, not a regression.
 - Hero carousel: confirm the slow drift, arrows, dots, and swipe-on-mobile all work.
 - Click through all 8 catalog leaves; confirm each shows product cards (with a real photo, not
   the initials placeholder) plus a custom-request card.

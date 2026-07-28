@@ -278,9 +278,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </button>
 
     <!-- Auth area: swaps between the "Login / Sign-up" button and the
-         logged-in user's name + logout. Populated by the auth script. -->
-    <span id="auth-area">
-      <button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>
+         logged-in user's name + logout. Populated by the auth script.
+         Login/Sign-up is disabled for now (feature under development) —
+         title lives on the wrapping span, not the disabled button itself,
+         since disabled elements don't reliably fire hover/title in Firefox. -->
+    <span id="auth-area" title="Currently under development">
+      <button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>
     </span>
   </div>
 </nav>
@@ -1678,8 +1681,10 @@ async function exchangeCodeForTokens(code) {
 
 /* ---- UI updates (site design system) ---- */
 function renderLoggedOut() {
-  document.getElementById("auth-area").innerHTML =
-    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
+  const area = document.getElementById("auth-area");
+  area.title = "Currently under development";
+  area.innerHTML =
+    '<button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>';
   document.getElementById("auth-btn").addEventListener("click", startLogin);
   document.getElementById("dashboard-link").classList.add("is-hidden");
 }

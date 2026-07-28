@@ -102,6 +102,12 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   line is actually tappable — `pointer-events` is inherited, so the label needs no separate
   override. The click listener still fires via bubbling since it reads `item.dataset.target`
   through closure, not `event.target`. See `docs/history.md` step 28.
+- **`.offer-grid` (shop product grid, `index.html` inline `<style>`)** has `min-width: 0` on
+  its direct children — grid items default to `min-width: auto`, so a card with enough content
+  (e.g. print-office's bulk-tier pricing UI) can blow out past its `1fr` track on mobile
+  instead of shrinking to it, visually bleeding under the scroll-indicator rail. Applies to
+  every shop leaf (print/design/merch) since they share this one grid class — don't scope a
+  fix to a single leaf's cards. See `docs/history.md` step 32.
 - **Brand system**: navy-dominant, one orange accent reserved for a single CTA per screen,
   rounded/friendly geometry. Build from `styles.css` classes/CSS variables, don't hardcode
   colors — see `design-system/`.

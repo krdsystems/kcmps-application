@@ -1014,6 +1014,36 @@ quantity ceiling (number-input max 2000, slider max 500 — the slider is just t
 range, typing a larger number still works) so genuine bulk/enterprise orders aren't capped by
 an arbitrary online-ordering wall.
 
+### 28. Mobile card-button/scroll-indicator overlap: full-height dead-zone border (2026-07-28)
+
+Mobile users on the Printing & Office Supplies subsection reported that tapping a button on
+the right edge of a product card (the qty stepper's "+", sometimes "Add to cart") instead hit
+the floating scroll-position rail. Confirmed via measured `getBoundingClientRect()` geometry
+at 375px width, not just visually: `.scroll-indicator-item` is a single flex item whose layout
+box reserves the full label width (~93px) even while the label sits at `opacity: 0` in its
+collapsed mobile state (step 19) — it isn't `display: none`, so it still occupies horizontal
+space. That reserved box's left edge landed at x≈270px, squarely on top of the qty stepper's
+"+" button (x≈321–351px) and overlapping part of the "−" button too.
+
+Rather than shrinking that reserved layout box (out of scope — risked destabilizing the
+label-reveal animation from step 19), added a purely visual dead-zone marker: a
+`.scroll-indicator::before` pseudo-element (mobile-only, inside the existing `@media
+(max-width: 760px)` block) drawing a `border-left: 1px solid var(--color-divider)` from
+`top: 0` to `bottom: 0` — the full viewport height, not just the rail's own shorter
+nav-h/stickycta-h-constrained box (step 19). It's anchored to the rail's *real* left edge via
+a new `--indicator-left` CSS var, measured in JS (`index.html`, same
+`setHeroOverlayMax()`/resize-listener IIFE that already publishes `--nav-h`/`--stickycta-h`)
+rather than a guessed pixel offset, so it tracks correctly if the rail's content or a future
+breakpoint changes its width. The pseudo-element has no `pointer-events` override, so it
+inherits `none` from the rail container and never expands the nav's actual tap-catching area
+(step 19's swipe-through gaps and drawer-open auto-hide are unaffected) — it only gives users
+a visible boundary to aim left of.
+
+Verified via direct DOM/CSSOM measurement (not screenshots — the browser tool's screenshot
+action was unreliable in this session) at 320/375/414px: the border consistently spans the
+full viewport height and sits at the rail's measured edge. At desktop widths the pseudo's
+`content` computes to `none` (media query doesn't match), confirming no desktop regression.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

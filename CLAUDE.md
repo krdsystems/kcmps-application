@@ -85,7 +85,13 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   fine)`; the mobile (≤760px) block additionally *resets* `:hover`/`:focus` back to collapsed so
   DevTools touch-emulation can't leave labels stuck open (only `.is-tapped` flashes them).
   Segments use `pointer-events: none` on the container + `auto` on items so swipes in the gaps
-  still scroll the page. See `docs/history.md` step 18 before changing any of this.
+  still scroll the page. See `docs/history.md` step 18 before changing any of this. Mobile
+  (≤760px) also renders a full-viewport-height `.scroll-indicator::before` dead-zone border,
+  anchored to the rail's real left edge via `--indicator-left` (measured in JS in `index.html`,
+  same IIFE as `--nav-h`/`--stickycta-h`) — the rail's flex item reserves its label's width even
+  while collapsed/invisible, so card buttons on the right edge can sit under that invisible
+  box; the border is purely visual (`pointer-events` inherits `none`) and doesn't touch the hit
+  area. See `docs/history.md` step 28.
 - **Brand system**: navy-dominant, one orange accent reserved for a single CTA per screen,
   rounded/friendly geometry. Build from `styles.css` classes/CSS variables, don't hardcode
   colors — see `design-system/`.

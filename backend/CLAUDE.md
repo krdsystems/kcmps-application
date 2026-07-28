@@ -12,11 +12,26 @@ constraint: what's deployed" section.
 
 No Lambda handlers, DynamoDB clients, or API routes exist here yet — see
 `ops-dashboard/infra/logic-inputs/*.js` for those drafts, still in their original location.
-What's here today is `lib/`: the shared conventions module every future Lambda (checkout,
-dashboard, whichever module builds next) imports so the ERP's launch-blocking data conventions
+What's here today is `lib/` (shared conventions, see below) and `infra/foundation.cfn.yaml`
+(provisioning for the DynamoDB table + Cognito groups those conventions target — written but
+not yet applied; see `infra/README.md` for the owner-run apply/rollback steps).
+
+`lib/` is the shared conventions module every future Lambda (checkout, dashboard, whichever
+module builds next) imports so the ERP's launch-blocking data conventions
 (`tenantId`/`siteId`, `schemaVersion`, centavo money, the event log, GSI1 sparse-index hygiene,
 soft-delete) are applied **identically everywhere**, instead of each Lambda reinventing its own
 key-formatting and status logic that quietly drifts.
+
+## `infra/` — what's in it
+
+- `foundation.cfn.yaml` — the CloudFormation template for Milestone 1.0 (Roadmap
+  [docs/roadmap.md](../docs/roadmap.md)): creates the single DynamoDB table with GSI1,
+  Streams, PITR, and deletion protection, plus the 5 Cognito groups
+  (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) in the **existing** user pool. Does not
+  create a Cognito user pool. Cross-check any attribute/index name changes here against
+  `ops-dashboard/infra/backend-infra-to-deploy.md` §2 so the two can't drift.
+- `README.md` — validate/apply/rollback commands, and how the stack's outputs
+  (`TableName`/`TableStreamArn`/`GSI1Name`) feed the 1.1+ Lambdas.
 
 ## `lib/` — what's in it
 

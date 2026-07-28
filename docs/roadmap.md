@@ -30,6 +30,9 @@ listed under [Deliberately deferred](#deliberately-deferred) below so nobody "ge
   single-table schema, GSI1 sparse status index, and drafted handlers —
   `streams-handler.js`, `expire-pending-orders.js`, `daily-digest.js`, `api-get-orders.js`,
   `api-advance-line-item.js`, `api-verify-payment.js`.
+- Milestone 1.0 provisioning CloudFormation, [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml)
+  (the table + GSI1 + Cognito groups above) — template + apply/rollback docs are done, actual
+  `aws cloudformation deploy` is an owner action.
 - Storefront asset-bucket plan in [`storefront-infra/`](../storefront-infra/assets-bucket-structure.md).
 
 **The gap that makes the site feel unfinished:** there is **no backend at all**. Checkout is a
@@ -55,16 +58,23 @@ matches the dependency chain in the infra doc's Stage A→C checklist.
 ### 1.0 — Platform foundation (ERP Phase 0, launch-blocking conventions)
 These conventions cannot be retrofitted (ERP file §2.3), so they go in with the very first
 table write, even though nothing uses most of them yet.
-- [ ] Create the single DynamoDB table (PK/SK patterns from
-  [infra §2.1](../ops-dashboard/infra/backend-infra-to-deploy.md)) with, on **every item**:
-  `tenantId`/`siteId` = `SITE#MNL`, `schemaVersion`, money as **integer centavos** + explicit
-  `currency`, `status` + soft-delete (never hard-delete).
-- [ ] Add **GSI1** sparse status index (`GSI1PK = STATUS#<status>`, infra §2.3).
+- [x] CloudFormation authored: [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml)
+  creates the single DynamoDB table (PK/SK patterns from
+  [infra §2.1](../ops-dashboard/infra/backend-infra-to-deploy.md)), **GSI1** sparse status index
+  (`GSI1PK = STATUS#<status>`, infra §2.3) with Streams/PITR/deletion-protection on, and the
+  5 Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`, ERP file Part 5) in the
+  existing user pool — slots defined now, enforced later. **Not yet applied** — owner runs
+  [`backend/infra/README.md`](../backend/infra/README.md)'s `aws cloudformation deploy` steps,
+  then adds the 4 founders to `Admin` via `admin-add-user-to-group` (also in that README).
+- [ ] Apply the stack above against the real AWS account (owner action, outside this repo's
+  reach — see [What can't be done from inside this repo](#what-cant-be-done-from-inside-this-repo)).
+- [ ] Stamp `tenantId`/`siteId` = `SITE#MNL`, `schemaVersion`, money as **integer centavos** +
+  explicit `currency`, `status` + soft-delete (never hard-delete) on every item — enforced in
+  code via [`backend/lib/item.js`](../backend/lib/item.js)'s `baseItem()`, not by the table
+  schema itself, so this checks off as Lambdas start using it in 1.1.
 - [ ] Immutable `EVENT#<ts>#<lineItem>` log written on every status transition — this is both
   the ERP audit trail and what BIR expects preserved (ERP file §2.3.2). Never mutate/delete.
-- [ ] Extend Cognito groups from Customer/Staff to the **five ERP roles**
-  (`Customer`/`Production`/`Sales`/`Finance`/`Admin`, ERP file Part 5). All four founders →
-  `Admin`. Slots defined now, enforced later; keep the existing Customer/Staff gate working.
+  Shape builder ready: [`backend/lib/events.js`](../backend/lib/events.js)'s `buildEvent()`.
 
 ### 1.1 — Order creation on checkout (ERP Phase 1, Sales & Order)
 - [ ] New **customer-facing** Lambda `createOrder` (the "checkout" half of the Payment System

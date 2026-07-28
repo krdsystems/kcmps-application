@@ -402,7 +402,8 @@
     var sel = 0;              // selected variant index
     var withShirt = false;    // shirt add-on
     var addonSel = 0;         // selected tiered add-on index (p.addon.options), 0 = none/base
-    var qty = 1;
+    var minQty = p.minQty || 1;
+    var qty = minQty;
 
     function unitPrice() {
       var addonPrice = (p.addon && p.addon.options) ? p.addon.options[addonSel].price : 0;
@@ -470,7 +471,7 @@
     var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−"; minus.setAttribute("aria-label", "Decrease quantity");
     var qval = document.createElement("span"); qval.className = "qval"; qval.textContent = qty;
     var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+"; plus.setAttribute("aria-label", "Increase quantity");
-    minus.addEventListener("click", function () { qty = Math.max(1, qty - 1); qval.textContent = qty; });
+    minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.textContent = qty; });
     plus.addEventListener("click", function () { qty += 1; qval.textContent = qty; });
     stepper.appendChild(minus); stepper.appendChild(qval); stepper.appendChild(plus);
     buy.appendChild(priceEl); buy.appendChild(stepper); card.appendChild(buy);
@@ -492,7 +493,7 @@
       });
       var orig = addBtn.innerHTML; addBtn.innerHTML = "Added ✓"; addBtn.disabled = true;
       setTimeout(function () { addBtn.innerHTML = orig; addBtn.disabled = false; }, 1100);
-      qty = 1; qval.textContent = qty;
+      qty = minQty; qval.textContent = qty;
       openDrawer();
     });
     card.appendChild(addBtn);
@@ -600,7 +601,18 @@
               '<label class="seg-opt" style="flex:1;justify-content:center"><input type="radio" name="co-fulfill" value="Pickup" checked /><span>Pick up</span></label>' +
               '<label class="seg-opt" style="flex:1;justify-content:center"><input type="radio" name="co-fulfill" value="Delivery" /><span>Delivery</span></label>' +
             '</div></div>' +
+          '<p class="f-note" id="co-pickup-note">Pickup orders not collected within 3 business days will be cancelled, with no refund.</p>' +
+          '<div class="field co-delivery-fields" id="co-delivery-fields">' +
+            '<label>Preferred courier</label>' +
+            '<div class="seg" role="radiogroup" aria-label="Courier" style="width:100%">' +
+              '<label class="seg-opt" style="flex:1;justify-content:center"><input type="radio" name="co-courier" value="Grab" checked /><span>Grab</span></label>' +
+              '<label class="seg-opt" style="flex:1;justify-content:center"><input type="radio" name="co-courier" value="Lalamove" /><span>Lalamove</span></label>' +
+            '</div>' +
+            '<div class="field"><label for="co-address">Exact address</label><input class="input" id="co-address" autocomplete="street-address" placeholder="Full delivery address" /></div>' +
+            '<div class="field"><label for="co-landmark">Landmark</label><input class="input" id="co-landmark" placeholder="Nearby landmark to help the rider find you" /></div>' +
+          '</div>' +
           '<div class="field"><label for="co-notes">Custom request details / design links</label><textarea class="input" id="co-notes" placeholder="For custom items: describe your design, sizes, quantities, or paste file links."></textarea></div>' +
+          '<p class="f-note">You\'ll get an email confirmation, with delivery (if selected) arriving within 1–2 business days.</p>' +
         '</div>' +
       '</div>' +
       '<div class="cart-foot" id="cart-foot"></div>';
@@ -613,11 +625,48 @@
     drawer.querySelector(".checkout-back").addEventListener("click", function () { drawer.classList.remove("checkout-mode"); });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && drawer.classList.contains("is-open")) closeDrawer(); });
 
+    // Courier + shipping-address fields only make sense for Delivery; the
+    // 3-day forfeiture note only makes sense for Pickup. Toggle between them
+    // on fulfillment change instead of showing both at once.
+    var deliveryFields = drawer.querySelector("#co-delivery-fields");
+    var pickupNote = drawer.querySelector("#co-pickup-note");
+    function syncFulfillFields() {
+      var checked = drawer.querySelector('input[name="co-fulfill"]:checked');
+      var isDelivery = checked && checked.value === "Delivery";
+      deliveryFields.style.display = isDelivery ? "" : "none";
+      pickupNote.style.display = isDelivery ? "none" : "";
+    }
+    Array.prototype.forEach.call(drawer.querySelectorAll('input[name="co-fulfill"]'), function (r) {
+      r.addEventListener("change", syncFulfillFields);
+    });
+    syncFulfillFields();
+
     bodyView = drawer.querySelector("#cart-view");
     footEl = drawer.querySelector("#cart-foot");
   }
 
+  // True when the cart holds a sku line whose catalog product is flagged
+  // fulfillmentInput:"file" (products.js) — i.e. it needs the customer's own
+  // document/artwork/logo to actually run the job.
+  function cartNeedsFile() {
+    return cart.some(function (i) {
+      if (i.type !== "sku") return false;
+      var p = DATA.products.find(function (pp) { return pp.id === i.id; });
+      return p && p.fulfillmentInput === "file";
+    });
+  }
+
   function renderCart() {
+    // Prompt the customer for a file link only when the cart actually needs
+    // one (products.js fulfillmentInput:"file") — keeps the default copy
+    // (paste design links) for carts that don't need it.
+    var notesEl = document.getElementById("co-notes");
+    if (notesEl) {
+      notesEl.placeholder = cartNeedsFile()
+        ? "Paste a Google Drive/Dropbox link to your file(s) for printing, or describe your design, sizes, and quantities."
+        : "For custom items: describe your design, sizes, quantities, or paste file links.";
+    }
+
     // lines
     if (!cart.length) {
       bodyView.innerHTML = '<div class="cart-empty">Your cart is empty.<br>Pick a design or start a custom request above.</div>';
@@ -662,7 +711,14 @@
         var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−";
         var qv = document.createElement("span"); qv.className = "qval"; qv.textContent = i.qty;
         var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+";
-        minus.addEventListener("click", function () { setQty(i.key, i.qty - 1); });
+        minus.addEventListener("click", function () {
+          // Respect a product's minQty (e.g. business cards' 10-pc minimum) —
+          // stepping below it isn't allowed, use "Remove" to drop the line instead.
+          var p = DATA.products.find(function (pp) { return pp.id === i.id; });
+          var floor = (p && p.minQty) || 1;
+          if (i.qty <= floor) return;
+          setQty(i.key, i.qty - 1);
+        });
         plus.addEventListener("click", function () { setQty(i.key, i.qty + 1); });
         stepper.appendChild(minus); stepper.appendChild(qv); stepper.appendChild(plus);
         var rm = document.createElement("button"); rm.className = "c-remove"; rm.type = "button"; rm.textContent = "Remove";
@@ -705,12 +761,17 @@
   // breakdown as `body`) shown — and copyable in one piece — in the popup,
   // so pasting it manually into an email carries every item, not just the
   // header fields.
-  function buildOrderEmail(name, contact, fulfill, notes) {
+  function buildOrderEmail(name, contact, fulfill, notes, shipping) {
     var payNow = cart.filter(function (i) { return i.type === "sku"; });
     var pending = cart.filter(function (i) { return i.type === "custom"; });
     var subject = "Order for " + name;
 
     var lines = ["Contact: " + contact, "Fulfillment: " + fulfill];
+    if (fulfill === "Delivery" && shipping) {
+      lines.push("Courier: " + shipping.courier);
+      lines.push("Delivery Address: " + shipping.address);
+      lines.push("Landmark: " + (shipping.landmark || "(none provided)"));
+    }
     if (pending.length) lines.push("Custom Request Details: " + (notes || "(none provided)"));
     lines.push("", "KCMPS ORDER REQUEST", "==================", "");
     if (payNow.length) {
@@ -813,7 +874,16 @@
     var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
     var notes = (document.getElementById("co-notes").value || "").trim();
 
-    openOrderPopup(buildOrderEmail(name, contact, fulfill, notes));
+    var shipping = null;
+    if (fulfill === "Delivery") {
+      var courierEl = document.querySelector('input[name="co-courier"]:checked');
+      var address = (document.getElementById("co-address").value || "").trim();
+      var landmark = (document.getElementById("co-landmark").value || "").trim();
+      if (!address) { alert("Please add your delivery address."); return; }
+      shipping = { courier: courierEl ? courierEl.value : "Grab", address: address, landmark: landmark };
+    }
+
+    openOrderPopup(buildOrderEmail(name, contact, fulfill, notes, shipping));
   }
 
   function openDrawer() {

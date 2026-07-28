@@ -105,6 +105,11 @@ after "Place order," before the `mailto:` fires, with a placeholder QR + copyabl
 Contact/Fulfillment/Custom Request Details + itemized-cart text. This is *not* the checklist
 below — no order record, ref-number field, or S3 upload — just a UX stopgap so customers get
 payment instructions today. The checklist items are unchanged and still needed.
+
+Extended further in `docs/history.md` entry 24 (2026-07-28): the checkout form gained a
+courier choice (Grab/Lalamove) + address/landmark fields for Delivery, and copy-only policy
+statements (1–2 business day confirmation SLA, 3-business-day pickup forfeiture). Still no
+real order record or automated enforcement — same interim, front-end-only status as above.
 - [ ] `submitPaymentProof` Lambda — returns a pre-signed S3 upload URL (private uploads
   bucket) for the screenshot, writes the `payment` sub-object (`method: gcash_manual`,
   `claimedAmount`, `gcashRefNumber`, `screenshotRef`, `submittedAt`) onto `ORDER#<id>` META,

@@ -184,6 +184,71 @@ html { overflow-x: hidden; }
 @media (max-width: 900px) { .pillar-grid { grid-template-columns: 1fr; } }
 
 .catalog { padding: var(--space-8) 0; }
+/* Hero/Shop card-deck transition: the hero is the top card, pinned via
+   position:sticky inside .hero-stage while the user scrolls through
+   .hero-deck's extra height. --deck-progress (0→1, written on :root every
+   scroll frame) drives both halves directly off scroll position — no CSS
+   transition, so the motion is scroll-scrubbed rather than a one-shot
+   animation fired at a threshold. That's what makes it read as "pulling
+   the top card off the deck".
+   Three of the four numbers here are computed in JS (see the deck-scroll
+   script) and arrive as custom properties, because they're all derived
+   from the hero's MEASURED height H and must agree with each other:
+     --deck-top    sticky top T = min(navH, V - ctaH - H)
+     --deck-margin #storefront's lift M = -(H + T - navH)
+   Do not replace either with a hand-tuned constant. Hardcoding top:0 (an
+   earlier version) silently assumed the hero fits the viewport — true on
+   desktop, false on mobile where the hero is ~2x the viewport, and there
+   the math degenerated into either a multi-scroll dead gap or an
+   unreachable bottom half of the hero. See docs/history.md. */
+/* Sequential cross-fade, not a simultaneous one. Both halves used to be
+   partly visible through most of the pass (hero fading 1→0 across the whole
+   range while the shop sat at 0.55 from the start), which double-exposed the
+   hero headline over the shop headline — the shop must be at 0 while the
+   user is still looking at the hero. So the hero owns the first half of the
+   pass and the shop owns the second, with only a brief low-alpha crossover
+   around 0.4–0.5 to avoid a hard cut. */
+:root {
+  --deck-out: clamp(0, calc((0.5 - var(--deck-progress, 0)) / 0.5), 1);
+  --deck-in: clamp(0, calc((var(--deck-progress, 0) - 0.4) / 0.6), 1);
+}
+/* pointer-events:none on the deck, auto back on the stage. The deck is a
+   tall (hero height + runway) EMPTY box at z-index 4, and #storefront's
+   negative margin pulls the shop up INSIDE it — so the deck's own box sits
+   over the shop's z-index 1 and hit-tests first, swallowing clicks on the
+   shop's category tabs even though it paints nothing. Only .hero-stage (the
+   actual card, which restores auto below) should ever be clickable here. */
+.hero-deck { position: relative; z-index: 4; pointer-events: none; }
+.hero-stage {
+  pointer-events: auto;
+  position: sticky; top: var(--deck-top, 0px); z-index: 5; transform-origin: center top;
+  /* The card keeps lifting/shrinking across the WHOLE pass (that's the
+     motion), but it finishes fading out at the halfway point — see
+     --deck-out/--deck-in below. */
+  transform: translateY(calc(var(--deck-progress, 0) * -16vh)) scale(calc(1 - var(--deck-progress, 0) * 0.08));
+  opacity: var(--deck-out);
+}
+/* visibility:hidden also drops the passed hero out of the tab order and the
+   a11y tree, so keyboard users can't land on an invisible CTA */
+.hero-deck.is-passed .hero-stage { pointer-events: none; visibility: hidden; }
+.catalog.deck-reveal {
+  position: relative; z-index: 1; margin-top: var(--deck-margin, 0px);
+  transform-origin: center top;
+  transform: translateY(calc((1 - var(--deck-in)) * 6vh)) scale(calc(0.94 + var(--deck-in) * 0.06));
+  opacity: var(--deck-in);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-deck { height: auto !important; }
+  .hero-stage { position: static; top: auto; transform: none; opacity: 1; visibility: visible; }
+  .catalog.deck-reveal { margin-top: 0; transform: none; opacity: 1; }
+}
+/* #storefront carries a translateY, so getBoundingClientRect() on it returns
+   the TRANSFORMED box — manual anchor-scroll math lands short. Let the
+   browser handle the offset natively instead; this also keeps every other
+   in-page anchor from landing under the sticky nav. */
+#storefront, #estimator, #value, #how, #faq, #contact {
+  scroll-margin-top: calc(var(--nav-h, 64px) + 12px);
+}
 .offer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
 /* Grid items default to min-width:auto, so a card with enough content
    (e.g. print-office's bulk-tier segmented control + note) can blow out
@@ -390,6 +455,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 </script>
 
 <div class="wrap" id="top">
+  <div class="hero-deck" id="hero-deck">
+    <div class="hero-stage" id="hero-stage">
   <section class="hero" id="hero">
     <div>
       <div class="hero-copy">
@@ -407,7 +474,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       </ul>
       <div class="row">
         <a href="#storefront" class="btn btn-primary" id="hero-cta">Shop designs</a>
-        <a href="#how" class="btn btn-secondary">How it works</a>
+        <a href="#how" class="btn btn-secondary" id="hero-how-it-works-btn">How it works</a>
       </div>
       <div class="trust-row">
         <span class="trust-chip"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z"/></svg>Reprint guarantee</span>
@@ -436,75 +503,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       </div>
     </div>
   </section>
-
-  <section class="capstrip" aria-label="Capabilities">
-    <span class="tag tag-accent-2">Silkscreen printing</span>
-    <span class="tag tag-accent-2">3D prototyping — PLA/PETG</span>
-    <span class="tag tag-accent-2">Custom flash drives &amp; SSDs</span>
-    <span class="tag tag-accent-2">Bookbinding &amp; editorial design</span>
-    <span class="tag tag-accent-2">Packaging &amp; lamination</span>
-    <span class="tag tag-accent-2">Commercial branding</span>
-  </section>
-
-  <!-- ============ VALUE STACK — makes the ₱170 feel small ============
-       OWNER: the peso "value" amounts below are editable placeholders meant to
-       reflect what each inclusion is really worth. Adjust to your real numbers. -->
-  <section class="valuestack" id="value">
-    <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
-      <h2 id="vs-h2">One low price. Everything included.</h2>
-      <p id="vs-p">Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
-    </div>
-    <div class="card vstack-card" id="vstack-card">
-      <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
-      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱120</span></div>
-      <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
-      <div class="vstack-line"><span class="label">Color &amp; placement layout assistance <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
-      <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
-      <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
-      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱170</span></div>
-    </div>
-  </section>
-
-  <!-- ============ GUARANTEE — removes the risk ============
-       OWNER: confirm the exact guarantee terms you want to stand behind. -->
-  <div class="guarantee">
-    <div class="g-icon"><svg width="30" height="30" viewBox="0 0 256 256" fill="currentColor"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z" opacity="0.25"/><path d="M208,32H48A24,24,0,0,0,24,56v58.77c0,89.61,75.82,119.34,91,124.39a16,16,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A24,24,0,0,0,208,32Zm0,82.77c0,78.42-66.35,104.62-80,109.18-13.53-4.51-80-30.69-80-109.18V56a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8ZM173.66,98.34a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32,0l-20-20a8,8,0,0,1,11.32-11.32L128,132.69l34.34-34.35A8,8,0,0,1,173.66,98.34Z"/></svg></div>
-    <div class="g-body">
-      <h3>Love it, or we reprint it — free.</h3>
-      <p>If your print comes out wrong on our end, we redo it at no cost until it's right. No stress, no runaround — that's our promise on every order.</p>
     </div>
   </div>
 
-  <!-- ============ HOW IT WORKS — reduces effort/time ============ -->
-  <section class="how" id="how">
-    <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>How it works</span>
-      <h2>Three steps to done.</h2>
-    </div>
-    <div class="how-grid">
-      <div class="card how-step">
-        <span class="step-num">STEP 01</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M164.44,105.34,152.05,80.61a8,8,0,0,0-7.16-4.61H111.11a8,8,0,0,0-7.16,4.61L91.56,105.34Z" opacity="0.2"/><path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Zm8,120a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80a8,8,0,0,0,7.16-4.42L99.22,60h57.56l12.06,23.58A8,8,0,0,0,176,88h40a8,8,0,0,1,8,8ZM128,100a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,100Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,172Z"/></svg></div>
-        <h3 id="how-1-h3">Pick or upload a design</h3>
-        <p id="how-1-p">Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
-      </div>
-      <div class="card how-step">
-        <span class="step-num">STEP 02</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M96,120a80,80,0,1,1,80,80A80,80,0,0,1,96,120Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg></div>
-        <h3 id="how-2-h3">We produce in-house</h3>
-        <p id="how-2-p">We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
-      </div>
-      <div class="card how-step">
-        <span class="step-num">STEP 03</span>
-        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
-        <h3 id="how-3-h3">Pick up or get it delivered</h3>
-        <p id="how-3-p">Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="catalog" id="storefront">
+  <section class="catalog deck-reveal" id="storefront">
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Shop</span>
       <h2>Pick a design — or start a custom order</h2>
@@ -587,36 +589,18 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </section>
 
-  <!-- ============ FAQ — kills the last hesitation ============ -->
-  <section class="faq" id="faq">
-    <div class="section-head">
-      <span class="kicker-pill"><span class="dot"></span>Questions</span>
-      <h2>Everything you might be wondering</h2>
-    </div>
-    <details class="faq-item" open>
-      <summary>How does a custom design request work?</summary>
-      <p>Add “Custom design request” to your cart and check out — it's ₱0 up front. We review your idea, send you a quote, and only once you approve do you pay. No commitment, no surprise charges.</p>
-    </details>
-    <details class="faq-item">
-      <summary>What files do you accept for my design?</summary>
-      <p>PNG, JPG, PDF, SVG or AI — the higher resolution the better. Not sure if your file is print-ready? Send it anyway. We check and prep every file for free before we print.</p>
-    </details>
-    <details class="faq-item">
-      <summary>Is there a minimum order?</summary>
-      <p>No minimum on ready-made shirts and prints — order a single piece if that's all you need. For bulk runs, use the estimator below for a directional quote.</p>
-    </details>
-    <details class="faq-item">
-      <summary>How fast will I get it?</summary>
-      <p>Ready-made designs are typically produced within the same or next business day. Custom work depends on the design — we'll tell you the turnaround when we send your quote.</p>
-    </details>
-    <details class="faq-item">
-      <summary>How and when do I pay?</summary>
-      <p>Ready-made priced items are settled when you place the order. Custom items are billed only after you approve the quote — we coordinate payment with you right after checkout.</p>
-    </details>
-    <details class="faq-item">
-      <summary>Pickup or delivery?</summary>
-      <p>Both. Pick up at our Manila studio, or ask for delivery at checkout and we'll arrange it.</p>
-    </details>
+  <!-- Capabilities strip. Deliberately NOT inside .hero-stage (the pinned
+       card-deck hero): every pixel in that card is a pixel the user must
+       scroll through before #storefront can reach the viewport, and this
+       strip wraps to ~216px on a phone. Keeping it here — supporting proof
+       right after the shop grid — costs the reveal nothing. -->
+  <section class="capstrip" aria-label="Capabilities">
+    <span class="tag tag-accent-2">Silkscreen printing</span>
+    <span class="tag tag-accent-2">3D prototyping — PLA/PETG</span>
+    <span class="tag tag-accent-2">Custom flash drives &amp; SSDs</span>
+    <span class="tag tag-accent-2">Bookbinding &amp; editorial design</span>
+    <span class="tag tag-accent-2">Packaging &amp; lamination</span>
+    <span class="tag tag-accent-2">Commercial branding</span>
   </section>
 
   <section class="estimator" id="estimator">
@@ -656,6 +640,96 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         <p class="quote-note" id="est-merch-note" style="display:none">Need bulk networking gear or storage? <a href="#storefront" id="est-merch-link">Request a custom quote</a> — priced individually after we review your specs.</p>
       </div>
     </div>
+  </section>
+
+  <!-- ============ VALUE STACK — makes the ₱170 feel small ============
+       OWNER: the peso "value" amounts below are editable placeholders meant to
+       reflect what each inclusion is really worth. Adjust to your real numbers. -->
+  <section class="valuestack" id="value">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
+      <h2 id="vs-h2">One low price. Everything included.</h2>
+      <p id="vs-p">Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
+    </div>
+    <div class="card vstack-card" id="vstack-card">
+      <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
+      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱120</span></div>
+      <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Color &amp; placement layout assistance <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
+      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱170</span></div>
+    </div>
+  </section>
+
+  <!-- ============ GUARANTEE — removes the risk ============
+       OWNER: confirm the exact guarantee terms you want to stand behind. -->
+  <div class="guarantee">
+    <div class="g-icon"><svg width="30" height="30" viewBox="0 0 256 256" fill="currentColor"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z" opacity="0.25"/><path d="M208,32H48A24,24,0,0,0,24,56v58.77c0,89.61,75.82,119.34,91,124.39a16,16,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A24,24,0,0,0,208,32Zm0,82.77c0,78.42-66.35,104.62-80,109.18-13.53-4.51-80-30.69-80-109.18V56a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8ZM173.66,98.34a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32,0l-20-20a8,8,0,0,1,11.32-11.32L128,132.69l34.34-34.35A8,8,0,0,1,173.66,98.34Z"/></svg></div>
+    <div class="g-body">
+      <h3>Love it, or we reprint it — free.</h3>
+      <p>If your print comes out wrong on our end, we redo it at no cost until it's right. No stress, no runaround — that's our promise on every order.</p>
+    </div>
+  </div>
+
+  <!-- ============ HOW IT WORKS — reduces effort/time ============ -->
+  <section class="how" id="how">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>How it works</span>
+      <h2>Three steps to done.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="card how-step">
+        <span class="step-num">STEP 01</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M164.44,105.34,152.05,80.61a8,8,0,0,0-7.16-4.61H111.11a8,8,0,0,0-7.16,4.61L91.56,105.34Z" opacity="0.2"/><path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Zm8,120a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80a8,8,0,0,0,7.16-4.42L99.22,60h57.56l12.06,23.58A8,8,0,0,0,176,88h40a8,8,0,0,1,8,8ZM128,100a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,100Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,172Z"/></svg></div>
+        <h3 id="how-1-h3">Pick or upload a design</h3>
+        <p id="how-1-p">Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 02</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M96,120a80,80,0,1,1,80,80A80,80,0,0,1,96,120Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg></div>
+        <h3 id="how-2-h3">We produce in-house</h3>
+        <p id="how-2-p">We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 03</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
+        <h3 id="how-3-h3">Pick up or get it delivered</h3>
+        <p id="how-3-p">Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ — kills the last hesitation ============ -->
+  <section class="faq" id="faq">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Questions</span>
+      <h2>Everything you might be wondering</h2>
+    </div>
+    <details class="faq-item" open>
+      <summary>How does a custom design request work?</summary>
+      <p>Add “Custom design request” to your cart and check out — it's ₱0 up front. We review your idea, send you a quote, and only once you approve do you pay. No commitment, no surprise charges.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What files do you accept for my design?</summary>
+      <p>PNG, JPG, PDF, SVG or AI — the higher resolution the better. Not sure if your file is print-ready? Send it anyway. We check and prep every file for free before we print.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Is there a minimum order?</summary>
+      <p>No minimum on ready-made shirts and prints — order a single piece if that's all you need. For bulk runs, use the estimator below for a directional quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How fast will I get it?</summary>
+      <p>Ready-made designs are typically produced within the same or next business day. Custom work depends on the design — we'll tell you the turnaround when we send your quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How and when do I pay?</summary>
+      <p>Ready-made priced items are settled when you place the order. Custom items are billed only after you approve the quote — we coordinate payment with you right after checkout.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Pickup or delivery?</summary>
+      <p>Both. Pick up at our Manila studio, or ask for delivery at checkout and we'll arrange it.</p>
+    </details>
   </section>
 
   <section class="mission-vision">
@@ -730,17 +804,17 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <button type="button" class="scroll-indicator-item" data-target="hero" aria-label="Jump to Hero">
     <span class="scroll-indicator-label">Hero</span><span class="scroll-indicator-line"></span>
   </button>
-  <button type="button" class="scroll-indicator-item" data-target="how" aria-label="Jump to How it works">
-    <span class="scroll-indicator-label">How it works</span><span class="scroll-indicator-line"></span>
-  </button>
   <button type="button" class="scroll-indicator-item" data-target="storefront" aria-label="Jump to Shop">
     <span class="scroll-indicator-label">Shop</span><span class="scroll-indicator-line"></span>
   </button>
-  <button type="button" class="scroll-indicator-item" data-target="faq" aria-label="Jump to FAQ">
-    <span class="scroll-indicator-label">FAQ</span><span class="scroll-indicator-line"></span>
-  </button>
   <button type="button" class="scroll-indicator-item" data-target="estimator" aria-label="Jump to Bulk quote">
     <span class="scroll-indicator-label">Bulk quote</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="how" aria-label="Jump to How it works">
+    <span class="scroll-indicator-label">How it works</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="faq" aria-label="Jump to FAQ">
+    <span class="scroll-indicator-label">FAQ</span><span class="scroll-indicator-line"></span>
   </button>
   <button type="button" class="scroll-indicator-item" data-target="contact" aria-label="Jump to Contact">
     <span class="scroll-indicator-label">Contact</span><span class="scroll-indicator-line"></span>
@@ -781,13 +855,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 /* Scroll position indicator behavior. Uses IntersectionObserver (not scroll
    position math) to track which section is in view — cheaper and more
    accurate than computing offsets on every scroll event. Click scrolls to
-   the target, offsetting by the live nav height so the section lands fully
-   below the sticky nav instead of partially hidden under it. */
+   the target via native scrollIntoView; the nav offset comes from the
+   sections' own scroll-margin-top (inline <style>), not from math here. */
 (() => {
   const rail = document.querySelector('.scroll-indicator');
   if (!rail) return;
   const items = Array.from(rail.querySelectorAll('.scroll-indicator-item'));
-  const nav = document.querySelector('.nav');
   const sections = items
     .map((item) => ({ item, el: document.getElementById(item.dataset.target) }))
     .filter((s) => s.el);
@@ -802,7 +875,14 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       // Pick the entry closest to the top of the viewport among those
       // currently intersecting, so the "active" segment matches what the
       // user is actually reading rather than whichever fired last.
-      const visible = entries.filter((e) => e.isIntersecting);
+      // #hero lives inside the sticky .hero-stage. Once the card-deck pass
+      // is done the hero is visually gone, but its box is still laid out
+      // overlapping #storefront (visibility:hidden does NOT stop
+      // IntersectionObserver reporting it) — so without this filter the
+      // rail would highlight "Hero" while the user is reading Shop.
+      const visible = entries.filter(
+        (e) => e.isIntersecting && !e.target.closest('.hero-deck.is-passed')
+      );
       if (!visible.length) return;
       visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
       setActive(visible[0].target.id);
@@ -825,9 +905,17 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       item.classList.add('is-tapped');
       tapFlashTimer = setTimeout(() => item.classList.remove('is-tapped'), 900);
       item.blur(); // drop any lingering :focus-visible so the label doesn't stay stuck open
-      const navH = nav ? nav.getBoundingClientRect().height : 0;
-      const top = target.getBoundingClientRect().top + window.scrollY - navH - 12;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      // #hero sits inside the pinned card-deck stage, so its rect is
+      // whatever the pin/transform put on screen, not its place in the
+      // document — scrolling "to" it is really scrolling to the top.
+      if (target.closest('.hero-deck')) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      // Everything else uses native scrollIntoView so the sections'
+      // scroll-margin-top does the nav offset. Doing the math by hand here
+      // read the TRANSFORMED rect of #storefront and landed short.
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 
@@ -842,6 +930,146 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   new MutationObserver(toggleForDrawer).observe(document.body, {
     childList: true, subtree: true, attributes: true, attributeFilter: ['class'],
   });
+})();
+</script>
+
+<script>
+/* Hero/Shop card-deck transition. .hero-deck is given extra height beyond
+   its own content (the "runway", E) so its child .hero-stage —
+   position:sticky — stays pinned for exactly E pixels of scroll; that's
+   the whole visible transition window. #storefront follows immediately
+   after in the DOM, pulled up under the pinned card by a negative margin,
+   so it's revealed as the hero card lifts/shrinks/fades away above it.
+
+   All the geometry derives from ONE measured input, H = the hero card's
+   own rendered height. With V = viewport height and the two fixed bars'
+   heights navH / ctaH:
+
+     E = round(V * 0.40 mobile / 0.45 desktop)   pin runway
+     T = min(navH, V - ctaH - H)                 sticky top   -> --deck-top
+     M = -(H + T - navH)                         #storefront lift -> --deck-margin
+     deck height = H + E
+     progress = clamp((T - deckTop) / E, 0, 1)
+     total scroll needed to reveal the shop = E - T
+
+   The T formula is the load-bearing part. When the hero FITS the viewport
+   (desktop) it reduces to T = navH: the card pins just under the nav.
+   When the hero is TALLER than the viewport (mobile — it runs ~2x) T goes
+   negative, i.e. the card is BOTTOM-anchored: it scrolls naturally until
+   its bottom edge reaches the sticky-CTA bar, and only then pins. That's
+   what keeps the hero's own CTA / checklist / trust chips reachable.
+   Pinning at a hardcoded top:0 instead (an earlier version) made the
+   bottom ~576px of the mobile hero permanently unscrollable-to.
+
+   M is derived from the SAME H and T, which is why the card releases and
+   the shop lands at exactly navH in the same frame. Any version of this
+   that tunes the lift independently of the pin will disagree with itself
+   on some viewport and leave either a dead-scroll gap or an overlap. */
+(() => {
+  const deck = document.getElementById('hero-deck');
+  const stage = document.getElementById('hero-stage');
+  if (!deck || !stage) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const root = document.documentElement;
+  const nav = document.querySelector('.nav');
+  const stickyCta = document.querySelector('.sticky-cta');
+  const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
+
+  let runwayPx = 0;
+  let stickyTop = 0;
+  let lastKey = '';
+  let lastWidth = window.innerWidth;
+  let ticking = false;
+
+  // .sticky-cta is display:none on desktop; offsetHeight is then 0 anyway,
+  // but read it defensively so a future layout change can't feed in a
+  // phantom height on wide screens.
+  function ctaHeight() {
+    if (!stickyCta || !isMobile()) return 0;
+    return stickyCta.offsetHeight || 0;
+  }
+
+  function measure() {
+    const H = stage.offsetHeight;
+    const V = window.innerHeight;
+    const navH = nav ? nav.offsetHeight : 0;
+    const ctaH = ctaHeight();
+
+    // measure() writes deck.style.height, and the ResizeObserver below
+    // watches a child of deck — without this guard a write can re-trigger
+    // the observer that caused it.
+    const key = H + '|' + V + '|' + navH + '|' + ctaH;
+    if (key === lastKey) return;
+    lastKey = key;
+
+    runwayPx = Math.round(V * (isMobile() ? 0.4 : 0.45));
+    stickyTop = Math.min(navH, V - ctaH - H);
+
+    deck.style.height = (H + runwayPx) + 'px';
+    root.style.setProperty('--deck-top', stickyTop + 'px');
+    root.style.setProperty('--deck-margin', -(H + stickyTop - navH) + 'px');
+  }
+
+  // measure() runs on every scroll frame, not just on resize/observer events.
+  // It's three offsetHeight reads in a frame that already forces layout for
+  // getBoundingClientRect() below, and the key guard means it only *writes*
+  // when something genuinely changed — so the cost is nil while the payoff
+  // is that a stale H can never strand the user. Observers alone were not
+  // enough: the hero grew ~68px after the last ResizeObserver callback, and
+  // T/M stayed pinned to the old height for the life of the page.
+  function applyFrame() {
+    ticking = false;
+    measure();
+    const deckTop = deck.getBoundingClientRect().top;
+    const progress = runwayPx > 0
+      ? Math.min(1, Math.max(0, (stickyTop - deckTop) / runwayPx))
+      : 1;
+    root.style.setProperty('--deck-progress', String(progress));
+    // Threshold is 0.5, not ~1: that's where --deck-out reaches 0, i.e. the
+    // hero is already fully transparent. Waiting for 0.999 left a window
+    // where an invisible hero card still covered — and swallowed clicks on —
+    // the shop section that had faded in underneath it.
+    deck.classList.toggle('is-passed', progress >= 0.5);
+  }
+
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(applyFrame);
+  }
+
+  // Mobile browsers fire 'resize' when the URL bar shows/hides, which
+  // changes innerHeight mid-scroll. Re-deriving T and M under the user's
+  // finger visibly jitters the reveal, so only re-measure when the width
+  // actually changed (or on an explicit orientation change).
+  function onResize() {
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    applyFrame();
+  }
+
+  applyFrame();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', () => { lastWidth = window.innerWidth; applyFrame(); });
+  // The hero's Google-fonts @import (styles.css) swaps from a fallback font
+  // to the real one once downloaded, reflowing the hero's line-wrapping and
+  // growing H well after our first measure() — a plain 'resize' listener
+  // never catches that, since the viewport itself hasn't changed. Re-measure
+  // once the swap lands, and on any other rendered-size change
+  // (ResizeObserver — late-decoding images, etc.). A stale H here desyncs T
+  // from M, which is exactly the "extra scrolls before the shop appears" bug.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyFrame);
+  if (window.ResizeObserver) new ResizeObserver(applyFrame).observe(stage);
+  // Settle passes: this script runs inline, mid-parse, so the first
+  // applyFrame() above sees a partly-laid-out hero. The observers above catch
+  // most of the growth, but not all of it — measured ~68px of hero growth
+  // landing after the last ResizeObserver callback, which left T and M
+  // describing a hero height that no longer existed. These two make the
+  // at-rest state correct even for a user who never scrolls.
+  requestAnimationFrame(applyFrame);
+  window.addEventListener('load', applyFrame);
 })();
 </script>
 

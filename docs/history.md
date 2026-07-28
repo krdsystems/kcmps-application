@@ -818,6 +818,81 @@ Deployed straight to the production S3 bucket (`arn:aws:s3:::kcmps-online-bucket
 `main`, per the same `aws s3 sync website/ ...` command as entry 22's deploy, dry-run checked
 first.
 
+### 24. Print/office repricing pass, checkout shipping fields, and product photos (2026-07-28)
+
+The owner sent a raw braindump of pricing corrections and two new checkout asks. Cleaned it
+into four grouped dev prompts first (`docs/braindump-2026-07-28-pricing-catalog.md`) rather
+than working straight off the notes, since several items were genuinely ambiguous (the
+2×3/3×5 apparel size note, the pickup non-collection consequence, whether the business-card
+minimum needed real enforcement) — those were confirmed with the owner via explicit
+decisions before implementing, all recorded in that file.
+
+**`print-office` pricing corrected** (`products.js`): removed Catalogs & Booklets (owner no
+longer sells it); Document Printing collapsed from a 4-tier color-density add-on (entry 20)
+to a flat two-option B/W ₱4 / Colored ₱7, and renamed off "(B/W)" since color is a first-class
+option now, not an afterthought; Lamination re-priced (ID 20→25, A4 65→70) and its 8R variant
+swapped for 4R (class-picture size, ₱40 — a swap, not an addition, per the owner's exact
+wording); Spiral/Comb Binding and Custom Bookmarks converted from entry 20's `quoteOnRequest`
+placeholders to real prices now that the owner has confirmed costs (₱50/90 leaves A5 bind-only;
+₱35/2pcs and ₱70/6pcs respectively) — `quoteCard()` still exists in `store.js` for any future
+unpriced product, these two just no longer need it; Self-Inking Stamps re-modeled from a
+line-count axis (entry 20's Small/Medium/Large ₱380–600) to a size-in-mm axis matching the
+owner's real supplier pricing (33×13mm/32×12mm/10×27mm, ₱100–130); Business Cards switched
+from a flat ₱450/box-of-100 to per-piece pricing (Front ₱7 / Back-to-back ₱15) with a
+genuine minimum-order floor; Stickers & Labels switched from per-piece to per-A4-sheet
+pricing for three materials plus a per-inch decal option.
+
+**Business-card minimum is enforced, not just stated.** The owner confirmed (via the
+decision flow above) that the 10-pc minimum needed real enforcement, not blurb copy alone —
+a copy-only minimum is trivially ignorable. Added an opt-in `minQty` field read by both
+`skuCard()`'s add-to-cart stepper (starts at `minQty`, floor clamps there) and the cart-line
+stepper in `renderCart()` (looks up the line's product by `id` to find its `minQty` before
+allowing a decrement — removing the line entirely via "Remove" still works). No other
+product sets `minQty`, so this doesn't change behavior anywhere else.
+
+**Apparel transfer pricing** (`dtf-street-statement`, `subli-street-statement`,
+`dtf-logo-transfer`, `dtf-typographic`): A3 raised 120→150 on all four; the shared
+`shirtAddon.price` lowered 120→110; the "2×3 in" variant relabeled "3×5 in" (confirmed a
+rename, not a second size tier, since the owner's note used the same `-->` "old becomes new"
+notation as the A3 change).
+
+**`fulfillmentInput` classification added**, not just pricing. Every `print-office` product
+(plus the DTF/Sublimation pre-made transfers) now carries `fulfillmentInput: "file" |
+"in-person" | "none"` — "file" for jobs needing the customer's own document/artwork/logo
+(document printing, stamps, bookmarks, business cards, stickers, custom packaging),
+"in-person" for jobs needing a physical original in-store (photocopying, lamination,
+binding — these can't be fulfilled from a digital file alone), "none" for the pre-made
+apparel transfers (design comes from the in-card picker, not an upload). `store.js`'s
+`cartNeedsFile()` reads this to swap the checkout notes textarea's placeholder to a
+file-link prompt only when the cart actually needs one. Deliberately did **not** build a
+real upload widget: `mailto:` links cannot carry file attachments (a browser/mail-client
+limitation, not a bug in this codebase), so a genuine upload needs the S3 presigned-upload
+pattern already planned for Milestone 1.2's `submitPaymentProof` Lambda — this pass stays
+scoped to classification + checkout copy.
+
+**Checkout gained courier/shipping fields and two policy statements.** When "Delivery" is
+selected, the checkout form now shows a Grab/Lalamove courier choice and address/landmark
+fields (toggled via a `syncFulfillFields()` helper in `buildDrawer()`, mirrored by
+`buildOrderEmail()`'s new `shipping` parameter so the generated order text includes them);
+selecting "Pickup" instead shows a fixed policy line — orders not collected within 3 business
+days are cancelled with no refund, confirmed with the owner as the intended consequence
+rather than assumed. A separate line states the 1–2 business day confirmation SLA regardless
+of fulfillment choice. None of this touches `buildOrderPopup()`/`openOrderPopup()` — the
+GCash popup (QR, copy-to-clipboard, mailto composition) is unchanged; only the order text it
+displays gained the new fields.
+
+**Product photos generated for the 9 `print-office` SKUs that had none** (all previously
+`image: null`, rendering as initials-placeholder thumbs). Used the Pixa image-generation MCP
+connector — not a direct Google/Gemini integration, despite one of the two models used
+(`imagen4`) being Google's — first attempting `imagen4` (12 credits/image) but hitting the
+account's Pixa credit ceiling after the first image (Custom Packaging); the remaining 8 used
+`flux-2-klein-4b` (1 credit/image) to fit the 8 credits left, so the 9 images are not from a
+uniform model. Saved to `website/assets/products/<id>.jpg` (the one PNG response from
+`imagen4` was re-encoded to JPEG for consistency) and wired into each product's `image`
+field. Verified via DOM inspection that all 9 load correctly (forcing `loading="lazy"` to
+`"eager"` confirmed `complete: true` + correct `naturalWidth` for each) — direct screenshot
+capture was unreliable in this sandbox (consistent with entry 17's note on the same issue).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

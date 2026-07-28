@@ -48,7 +48,7 @@ window.KCMPS_STORE_DATA = {
 
   // The optional add-on offered on apparel/DTF designs: have the transfer
   // heat-pressed onto a shirt for you. Real KCMPS price.
-  shirtAddon: { id: "shirt", label: "Press onto a shirt (+₱120)", price: 120 },
+  shirtAddon: { id: "shirt", label: "Press onto a shirt (+₱110)", price: 110 },
 
   /* Every terminal catalog category ("leaf") that should show a
      "Custom design request" card. `comingSoon:true` adds a small note that
@@ -77,51 +77,46 @@ window.KCMPS_STORE_DATA = {
      opts the card into the "+ shirt" toggle. `image:null` → CSS placeholder. */
   products: [
     {
-      id: "print-catalogs-booklets",
-      leaf: "print-office",
-      type: "sku",
-      kicker: "Print · Catalogs & booklets",
-      name: "Catalogs & Booklets",
-      blurb: "Saddle-stitch or perfect-bound, laminated or matte. Priced per copy.",
-      image: null,
-      price: 180,
-    },
-    {
       id: "print-custom-packaging",
       leaf: "print-office",
       type: "sku",
       kicker: "Print · Custom packaging",
       name: "Custom Packaging",
       blurb: "Die-cut boxes and sleeves, brand-ready finishes. Priced per unit.",
-      image: null,
+      image: "assets/products/print-custom-packaging.jpg",
       price: 65,
+      fulfillmentInput: "file",
     },
     /* --- Print/Office SKU set (2026-07 competitive pricing pass) ---
        Real, priced entries for the 8 most common print/office products,
        researched against Metro Manila small-shop rates and positioned
        slightly above market (not premium) per the founders' call.
-       Binding and bookmarks have no confirmed supplier cost yet, so they
-       ship as `quoteOnRequest` (see store.js quoteCard()) rather than a
-       guessed price — do not add a `price`/`variants` to either until a
-       real quote comes in. */
+       2026-07-28: owner confirmed real prices for binding, stamps, and
+       bookmarks (previously quoteOnRequest placeholders) — see
+       docs/braindump-2026-07-28-pricing-catalog.md for the source notes.
+       `fulfillmentInput` classifies how the job's content/original reaches
+       KCMPS: "file" = customer supplies digital content (design/text/logo)
+       at or after checkout; "in-person" = the customer must bring/deliver a
+       physical original (this cannot be fulfilled from a digital file
+       alone); "none" = nothing further needed beyond the SKU itself. See
+       store.js's checkout notes placeholder, which reacts to "file". */
     {
       id: "print-bw-document-printing",
       leaf: "print-office",
       type: "sku",
       kicker: "Print · Documents",
-      name: "Document Printing (B/W)",
-      blurb: "Short bond paper, priced per page. Add color for graphics-heavy pages with the option below.",
-      image: null,
+      name: "Document Printing",
+      blurb: "Short bond paper, priced per page — choose black-and-white or full color, both are standard options.",
+      image: "assets/products/print-bw-document-printing.jpg",
       price: 4,
       addon: {
-        label: "Add color printing (per page)",
+        label: "Color",
         options: [
-          { label: "B/W only", price: 0 },
-          { label: "Light color — text highlights, small graphics", price: 10 },
-          { label: "Medium color — half-page graphics/photos", price: 20 },
-          { label: "Heavy color — full-page/photo-quality", price: 32 },
+          { label: "B/W (₱4/page)", price: 0 },
+          { label: "Colored (₱7/page)", price: 3 },
         ],
       },
+      fulfillmentInput: "file",
     },
     {
       id: "print-photocopying",
@@ -129,9 +124,10 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Photocopying",
       name: "Photocopying (Xerox)",
-      blurb: "Black-and-white copies, priced per page.",
-      image: null,
+      blurb: "Black-and-white copies, any size, priced per page.",
+      image: "assets/products/print-photocopying.jpg",
       price: 3,
+      fulfillmentInput: "in-person",
     },
     {
       id: "print-lamination",
@@ -140,12 +136,13 @@ window.KCMPS_STORE_DATA = {
       kicker: "Print · Lamination",
       name: "Lamination",
       blurb: "Glossy lamination, priced by size.",
-      image: null,
+      image: "assets/products/print-lamination.jpg",
       variants: [
-        { label: "ID-size", price: 20 },
-        { label: "A4 document", price: 65 },
-        { label: "8R photo", price: 95 },
+        { label: "ID-size", price: 25 },
+        { label: "A4 document", price: 70 },
+        { label: "4R photo (class-picture size)", price: 40 },
       ],
+      fulfillmentInput: "in-person",
     },
     {
       id: "print-binding",
@@ -153,9 +150,12 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Binding",
       name: "Spiral / Comb Binding",
-      blurb: "Per-document binding for reports and manuals. Pricing depends on page count and cover choice — request a quote and we'll confirm.",
-      image: null,
-      quoteOnRequest: true,
+      blurb: "Bind-only pricing (does not include printing the pages) — spiral or comb, A5 size, per 90 leaves.",
+      image: "assets/products/print-binding.jpg",
+      variants: [
+        { label: "Bind (per 90 leaves, A5, spiral or comb)", price: 50 },
+      ],
+      fulfillmentInput: "in-person",
     },
     {
       id: "print-self-inking-stamps",
@@ -163,13 +163,14 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Stamps",
       name: "Custom Self-Inking Stamps",
-      blurb: "Personalized stamps for signatures, dates, and logos. Priced by size and line count.",
-      image: null,
+      blurb: "Personalized stamps for signatures, dates, and logos. Priced by stamp size.",
+      image: "assets/products/print-self-inking-stamps.jpg",
       variants: [
-        { label: "Small (1–2 lines)", price: 380 },
-        { label: "Medium (3–4 lines)", price: 480 },
-        { label: "Large (logo/business stamp)", price: 600 },
+        { label: "33×13mm (up to 3 lines)", price: 100 },
+        { label: "32×12mm", price: 130 },
+        { label: "10×27mm", price: 120 },
       ],
+      fulfillmentInput: "file",
     },
     {
       id: "print-bookmarks",
@@ -177,9 +178,13 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Bookmarks",
       name: "Custom Bookmarks",
-      blurb: "Printed bookmarks for events, giveaways, or personal use. Pricing depends on material and quantity — request a quote and we'll confirm.",
-      image: null,
-      quoteOnRequest: true,
+      blurb: "Printed bookmarks for events, giveaways, or personal use.",
+      image: "assets/products/print-bookmarks.jpg",
+      variants: [
+        { label: "Custom bookmark (2 pcs)", price: 35 },
+        { label: "Hymnal bookmark (6 pcs)", price: 70 },
+      ],
+      fulfillmentInput: "file",
     },
     {
       id: "print-business-cards",
@@ -187,9 +192,14 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Business Cards",
       name: "Business Cards",
-      blurb: "Full-color, priced per box of 100. Larger runs cost less per piece — ask us for a bulk quote.",
-      image: null,
-      price: 450,
+      blurb: "Full-color, priced per piece — minimum order of 10 pcs.",
+      image: "assets/products/print-business-cards.jpg",
+      variants: [
+        { label: "Front only (per pc, min. 10 pcs)", price: 7 },
+        { label: "Back-to-back / double-sided (per pc, min. 10 pcs)", price: 15 },
+      ],
+      minQty: 10,
+      fulfillmentInput: "file",
     },
     {
       id: "print-stickers-labels",
@@ -197,12 +207,15 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Stickers & Labels",
       name: "Stickers & Labels",
-      blurb: "Priced per piece — simple paper stickers or die-cut vinyl labels.",
-      image: null,
+      blurb: "Priced per A4 sheet, except decal stickers which are priced per inch.",
+      image: "assets/products/print-stickers-labels.jpg",
       variants: [
-        { label: "Simple paper (per pc)", price: 3.5 },
-        { label: "Die-cut vinyl (per pc)", price: 16 },
+        { label: "Premium printable vinyl (per A4 sheet)", price: 100 },
+        { label: "Paper stickers (per A4 sheet)", price: 45 },
+        { label: "Transparent (per A4 sheet)", price: 60 },
+        { label: "Decal stickers (per inch)", price: 5 },
       ],
+      fulfillmentInput: "file",
     },
     {
       id: "dtf-street-statement",
@@ -234,11 +247,12 @@ window.KCMPS_STORE_DATA = {
         "assets/design/apparel/dtf/street-statment/15-WITCH SHIRT.jpg",
       ],
       variants: [
-        { label: "2×3 in", price: 50 },
+        { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
-        { label: "A3", price: 120 },
+        { label: "A3", price: 150 },
       ],
       shirtAddon: true,
+      fulfillmentInput: "none",
     },
     {
       id: "subli-street-statement",
@@ -264,11 +278,12 @@ window.KCMPS_STORE_DATA = {
         "assets/design/apparel/sublimation/street-statment/05-TWICE SHIRT 2.jpg",
       ],
       variants: [
-        { label: "2×3 in", price: 50 },
+        { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
-        { label: "A3", price: 120 },
+        { label: "A3", price: 150 },
       ],
       shirtAddon: true,
+      fulfillmentInput: "none",
     },
     {
       id: "dtf-logo-transfer",
@@ -285,11 +300,12 @@ window.KCMPS_STORE_DATA = {
         "assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg",
       ],
       variants: [
-        { label: "2×3 in", price: 50 },
+        { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
-        { label: "A3", price: 120 },
+        { label: "A3", price: 150 },
       ],
       shirtAddon: true,
+      fulfillmentInput: "none",
     },
     {
       id: "dtf-typographic",
@@ -311,11 +327,12 @@ window.KCMPS_STORE_DATA = {
         "assets/design/apparel/dtf/typographic-quoteprint/09-Winner Shirt.jpg",
       ],
       variants: [
-        { label: "2×3 in", price: 50 },
+        { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
-        { label: "A3", price: 120 },
+        { label: "A3", price: 150 },
       ],
       shirtAddon: true,
+      fulfillmentInput: "none",
     },
   ],
 };

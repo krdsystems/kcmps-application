@@ -162,12 +162,16 @@ All changes are immediate — there's no build step.
   without losing the cart.
 - Add a custom request, open the drawer, confirm it reads "₱0 now / Pending approval".
 - Run checkout end-to-end: clicking "Place order" with a valid name/contact should open the
-  GCash payment popup (placeholder QR + copyable Contact/Fulfillment/Custom Request Details +
+  GCash payment popup (real QR + copyable Contact/Fulfillment/Custom Request Details +
   itemized cart) **over** the still-open cart drawer, not navigate away immediately. From
   there, "Open email app" reaches `mailto:` (or the configured endpoint) with the same content;
   "I'll send it manually" closes the popup *and* the drawer, back to the main page. Leaving
   name/contact empty should still block with the existing alert and never open the popup. See
   `docs/history.md` entry 22.
+- Fulfillment toggle (entry 24): selecting "Pick up" shows the 3-business-day forfeiture note
+  and hides the courier/address/landmark fields; selecting "Delivery" does the reverse and
+  requires an address before "Place order" will proceed. Confirm the generated order
+  text/email includes Courier/Delivery Address/Landmark lines only when Delivery is selected.
 - Hero priming: in a fresh incognito window, confirm the hero/value-stack/how-it-works copy and
   the pre-selected shop tab all match one of the three categories consistently; reload the same
   tab a few times and confirm it *doesn't* change (that's the point — see docs/history.md step
@@ -175,13 +179,14 @@ All changes are immediate — there's no build step.
 - Bulk estimator (`#estimator`): confirm the product dropdown only lists real priced SKUs, the
   quantity number field and range slider stay in sync in both directions, volume discount lines
   appear at 25/100/250+ units, and "Add to cart" shows up in the cart drawer (not a `mailto:`).
-  Confirm Spiral/Comb Binding and Custom Bookmarks do NOT appear in the dropdown (they're
-  `quoteOnRequest`, not priced).
+  Spiral/Comb Binding and Custom Bookmarks are priced now (2026-07-28, `docs/history.md` entry
+  24) and should appear in the dropdown like any other SKU.
 - Print/Office SKUs: confirm all 8 (document printing, photocopying, lamination, binding,
   stamps, bookmarks, business cards, stickers & labels) render under the Printing & Office
-  Supplies tab. Toggle the color-printing add-on on the B/W document print card and confirm the
-  displayed price updates (base + the selected tier). Confirm Spiral/Comb Binding and Custom
-  Bookmarks show "Quote on request" and add to the cart at ₱0/pending approval, not a price.
+  Supplies tab with a real product photo (not the initials placeholder). Toggle the
+  color-printing add-on on the Document Printing card and confirm the displayed price updates
+  (₱4 B/W vs ₱7 colored). Confirm the Business Cards card's quantity stepper won't decrement
+  below 10 in either the product card or the cart line (`minQty`, entry 24).
 - Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).
@@ -217,9 +222,6 @@ roadmap sequences.
 - Sub-categories beyond DTF and print-office pricing (Subli, Hotmelt, 3D Print, Souvenir,
   Network, Storage) currently ship as "coming soon" placeholders — custom-request only, no
   priced SKUs, so they're excluded from the bulk estimator's calculator.
-- Two print-office SKUs — Spiral/Comb Binding and Custom Bookmarks — ship as
-  `quoteOnRequest: true` (request-only, no price) pending a real supplier quote; don't fill in
-  a guessed number for either without one. See `docs/history.md` step 18.
 - Checkout is `mailto:`-based with no real payment processing; the cart lives in
   `localStorage` only, so it doesn't survive across devices or browsers.
 - Hero category priming is client-side only (`localStorage`/`sessionStorage`) — a logged-in

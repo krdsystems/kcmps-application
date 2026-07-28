@@ -1212,6 +1212,110 @@ the `::after` content correctly flips to "–" when `[open]`, and no padding/gap
 (pure reorder + alignment, not a restyle). Mirrored into
 `design-system/KCMPS Redesign/styles.css` per the mirroring convention.
 
+### 34. Landing-page section reorder + hero→shop card-deck reveal (2026-07-29)
+
+Owner request, stated priority "user conversion to sales, later-on the aesthetics" and "good
+ux/ui in web and mobile (priority)". Two parts.
+
+**Reorder.** Main sections resequenced to `hero > shop > bulk quote > value stack > how it
+works > FAQ > contact`, moving the storefront directly under the hero so the first scroll
+lands on something buyable. `.scroll-indicator`'s segments were reordered to match
+(`data-target`: hero, storefront, estimator, how, faq, contact).
+
+**The reveal.** Owner's metaphor was a deck of cards: the hero is the top card, and revealing
+the shop is like taking that card and putting it at the bottom of the deck. Implemented as
+`.hero-deck` (a wrapper given explicit height = hero height + a scroll "runway") containing
+`.hero-stage` (`position: sticky`), with `#storefront` pulled up underneath by a negative
+`margin-top`. A passive scroll listener + `requestAnimationFrame` writes `--deck-progress`
+(0→1) to `:root` each frame; the inline `<style>`'s `calc()`s consume it. Deliberately
+scroll-scrubbed rather than a CSS `transition`, so the motion tracks the finger/wheel instead
+of playing back on a delay.
+
+Several earlier attempts failed and are worth recording, since each looked like a tuning
+problem and was actually a structural one:
+
+*Reported as "3 swipes to reach the shop, with a big blank gap after the first"* — and later
+"this is also happening in web, just subtle in the eyes." Root cause: the sticky/margin math
+assumed the hero **fits in the viewport**. Measured, it doesn't: `.hero-stage` was 1190px
+against a 614px viewport on mobile (1.94×), versus ~724px against ~800px on desktop — which
+is exactly why desktop looked nearly fine and mobile didn't. The code pinned at a hardcoded
+`top: 0` and computed progress as `-deckTop / runway`, both of which silently bake in `T = 0`.
+With `margin-top: -runway` the shop ended up ~1129px below the fold when the pin released
+(the extra swipes); with `margin-top: -stageHeight` the shop did land at the top, but the
+hero's full 1190px box still painted over it and the hero's bottom ~576px — CTAs, checklist,
+trust chips — became permanently unreachable by scrolling. That second version traded the
+animation bug for a conversion bug, which is the wrong trade.
+
+Fix: derive everything from one measured input `H` (hero card height), with `V` = viewport,
+`navH`/`ctaH` = the two fixed bars:
+
+| quantity | formula | custom property |
+|---|---|---|
+| runway | `round(V * 0.40 mobile / 0.45 desktop)` | — |
+| sticky top `T` | `min(navH, V - ctaH - H)` | `--deck-top` |
+| shop lift `M` | `-(H + T - navH)` | `--deck-margin` |
+| deck height | `H + runway` | — |
+| progress | `clamp((T - deckTop) / runway, 0, 1)` | `--deck-progress` |
+
+`T` is the load-bearing part. When the hero fits it reduces to `T = navH` (pin just under the
+nav). When the hero is taller than the viewport `T` goes **negative**, bottom-anchoring the
+card: the hero scrolls naturally until its bottom meets the sticky-CTA bar and only *then*
+pins — which is what keeps all the hero's own content reachable. `M` derives from the same
+`H` and `T`, so the card's release and the shop's arrival at `navH` happen in the same frame;
+any version that tunes the lift independently of the pin will disagree with itself on some
+viewport. Verified: desktop 1280×800 reveals in 473px of scroll, mobile 375×812 in 668px —
+one gesture each — with `#storefront` landing at exactly `navH` in both.
+
+To hit "1 scroll" on mobile the pinned card also had to get shorter, so `.capstrip` was moved
+out of `.hero-stage` to sit after the shop grid (it wraps to ~216px on a phone, and every
+pinned pixel is a pixel the user must scroll through before the shop can arrive). Hero card:
+1190px → 1016px.
+
+*Reported as the hero headline ghosting over the shop headline mid-transition.* The two
+halves were cross-fading simultaneously — the shop sat at `opacity: 0.55` from the very first
+pixel while the hero only reached 0 at the very end, so through most of the pass both were
+painted at once. Replaced with a sequential handoff via two derived properties on `:root`:
+`--deck-out: clamp(0, (0.5 - p) / 0.5, 1)` and `--deck-in: clamp(0, (p - 0.4) / 0.6, 1)`. The
+hero owns the first half, the shop the second, with only a brief low-alpha crossover
+(p 0.40–0.50, neither above 0.16) so it doesn't read as a hard cut — and the combined alpha
+never bottoms out at 0, so there's no blank flash either. The shop's rise/scale now run off
+`--deck-in` too, so its full 48px travel happens while it's actually visible.
+
+*Reported as "I can't click the shop's tabs or sub-tabs."* Two overlapping hit-test blockers,
+and the obvious one was only half the problem. `.hero-stage` was handled by an `.is-passed`
+class setting `pointer-events: none`, but `.hero-deck` **itself** — `position: relative;
+z-index: 4`, a ~1341px-tall box that paints nothing, and which `#storefront`'s negative margin
+pulls the shop up *inside* — still hit-tested above the shop's `z-index: 1` and swallowed
+every click in that region (`elementFromPoint` on a shop tab returned `div#hero-deck`). Fixed
+with `pointer-events: none` on `.hero-deck` and `auto` back on `.hero-stage`, so only the
+actual card is ever clickable. Second, `.is-passed` fired at `progress >= 0.999` while the
+hero goes fully transparent at `0.5`, leaving a stretch where an invisible hero covered and
+blocked the faded-in shop; the threshold moved to `0.5` (visually identical, since opacity is
+already 0 there). Verified by hit-testing all 51 interactive elements in the shop at progress
+0.5/0.75/1 on both breakpoints (0 blocked), plus real `MouseEvent` clicks dispatched at each
+button's coordinates onto whatever element is topmost, drilling Design → Apparel → Subli →
+Hotmelt.
+
+Two robustness notes from the same work. **Measurement staleness:** `document.fonts.ready`
+plus a `ResizeObserver` on the stage were still not enough — the hero grew ~68px *after* the
+last observer callback, leaving `T`/`M` describing a height that no longer existed (this
+presented as the multi-scroll gap and was misdiagnosed as a tuning problem twice). `measure()`
+now runs inside the scroll frame itself — it's three `offsetHeight` reads in a frame that
+already forces layout for `getBoundingClientRect()`, and a compare-before-write key guard
+means it only *writes* when something genuinely changed — plus settle passes on
+`requestAnimationFrame` and `load`. **Resize jitter:** mobile browsers fire `resize` when the
+URL bar shows/hides, which would re-derive `T` and `M` under the user's finger mid-scroll, so
+the handler only re-measures when the *width* changed (or on `orientationchange`).
+
+Also fixed in passing: `#storefront` carries a `translateY`, so `getBoundingClientRect()`
+returns the **transformed** box and the scroll-indicator's hand-rolled click-to-scroll math
+landed short. Replaced with native `scrollIntoView` plus `scroll-margin-top: calc(var(--nav-h)
++ 12px)` on all six anchor targets, which also stops plain `href="#..."` jumps landing under
+the sticky nav. And the rail's `IntersectionObserver` now filters out
+`.hero-deck.is-passed` descendants — `visibility: hidden` does *not* stop IO reporting an
+entry, so the passed hero's still-laid-out box would otherwise win "topmost" and keep the rail
+lit on "Hero" while the user reads Shop.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

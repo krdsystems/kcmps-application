@@ -34,10 +34,11 @@ build — edits are live on refresh.
 | Filename → display-title convention | `window.KCMPS_TEXT.titleFromFilename()` in `products.js` — shared by the hero carousel, the design picker grid, and cart thumbnails so naming never drifts between views |
 | Design picker (pre-made design selection) | `store.js` `buildDesignGrid()` — selectable design cards under a SKU's gallery thumb, capped at `DESIGN_GRID_MAX` (8) tiles with a hover/tap "+N more" popup for the rest; selection travels into the cart line as `designRef`/`designName` (see `addToCart` call in `skuCard()`) |
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
+| Hero→shop card-deck reveal    | `index.html` — `.hero-deck`/`.hero-stage` CSS + the `--deck-out`/`--deck-in` `:root` rules in the inline `<style>`, driven by the deck-scroll IIFE (grep `--deck-progress`). See the "Card-deck reveal" gotcha below before touching any of it |
 | Auth (Cognito login/logout)   | `website/index.html` `<script>` block; isolated reference/debug copy at `website/login-test.html` |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
 | Carousel timing               | `.carousel-track transition` in `styles.css`; `AUTO_MS` in `index.html` |
-| Scroll-position indicator     | `<nav class="scroll-indicator">` before `.sticky-cta` in `index.html` + its behavior script; `— scroll position indicator —` block in `styles.css`. Each segment's `data-target` = a section `id`; active-tracking via `IntersectionObserver` |
+| Scroll-position indicator     | `<nav class="scroll-indicator">` before `.sticky-cta` in `index.html` + its behavior script; `— scroll position indicator —` block in `styles.css`. Each segment's `data-target` = a section `id`; active-tracking via `IntersectionObserver` (filtered to skip `.hero-deck.is-passed` descendants), click-to-scroll via native `scrollIntoView` + the sections' `scroll-margin-top` |
 | Hero carousel image pool      | `HERO_MANIFEST_URL` + shuffle logic in `index.html`; sourced from `website/assets/manifest.json` (local sample) — real bucket plan in `storefront-infra/assets-bucket-structure.md` |
 | Hero category priming (headline/CTA copy) | `PAGE_VARIANTS` (3-way pool: `print-office` / `design` / `merch`) + state machine in `index.html` (key: `kcmps_hero_category`, sessionStorage pre-cart → localStorage 7-day sticky after any cart-add, promoted via the `kcmps:cart-add` event dispatched from `store.js`'s `addToCart`) |
 | Checkout endpoint             | `ORDER_EMAIL` constant near top of `website/store.js` — order-intake address the checkout `mailto:` is addressed to (`order@kcmps.com`) |
@@ -74,6 +75,25 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   the first tab regardless of priming. `.est-product-grid` caps `max-height` with internal
   vertical scroll per tab (same bounded-grid idea as `buildDesignGrid()`'s `DESIGN_GRID_MAX`) so
   a category with many variants doesn't push Step 02 down the page.
+- **Card-deck reveal** (`.hero-deck`/`.hero-stage`, `index.html`): the hero is a `position:
+  sticky` card pinned inside a taller wrapper while `#storefront` is pulled up underneath by a
+  negative margin. Every number derives from ONE measured input, `H = stage.offsetHeight` —
+  sticky top `T = min(navH, V - ctaH - H)` (`--deck-top`) and shop lift `M = -(H + T - navH)`
+  (`--deck-margin`). Never hardcode either, and never tune one without the other: `top: 0`
+  silently assumes the hero fits the viewport (true on desktop, false on mobile where it's
+  ~1.25–2x), and an independently-tuned lift disagrees with the pin on some screen, producing
+  either a multi-scroll dead gap or an unreachable hero. Negative `T` is correct and load-
+  bearing — it bottom-anchors a too-tall hero so all its content stays scrollable-to.
+  Three more traps, each of which shipped as a bug once: (1) `.hero-deck` needs
+  `pointer-events: none` (with `auto` restored on `.hero-stage`) — it's a tall box painting
+  nothing at `z-index: 4` that the shop is pulled up *inside*, so it hit-tests above the
+  shop's `z-index: 1` and eats clicks on the category tabs. (2) `.is-passed` must fire at
+  `progress >= 0.5`, where the hero's opacity actually reaches 0 — waiting for ~1 leaves an
+  invisible card blocking the shop. (3) The hero and shop cross-fade *sequentially* via
+  `--deck-out`/`--deck-in`, not simultaneously; overlapping ramps double-expose the two
+  headlines. `measure()` runs inside the scroll frame (guarded so it only writes on real
+  change) because `fonts.ready` + `ResizeObserver` alone still went ~68px stale. See
+  `docs/history.md` step 34.
 - **Auth tokens** live in `sessionStorage`, not `localStorage` (deliberate XSS-exposure
   tradeoff — see `docs/history.md#auth-implementation-notes` before changing this).
 - **Client-decoded JWT claims are UI-only**, never trust them server-side once a backend

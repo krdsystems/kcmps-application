@@ -139,6 +139,12 @@ html { overflow-x: hidden; }
 
 .catalog { padding: var(--space-8) 0; }
 .offer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+/* Grid items default to min-width:auto, so a card with enough content
+   (e.g. print-office's bulk-tier segmented control + note) can blow out
+   past its 1fr track instead of shrinking to it — on mobile that pushed
+   the card's right edge past the scroll-indicator rail. Applies to every
+   leaf (print/design/merch) since they all share this grid. */
+.offer-grid > * { min-width: 0; }
 .offer .card-title { margin-top: 2px; }
 .offer .price { margin-top: auto; font-size: 13px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 @media (max-width: 900px) { .offer-grid { grid-template-columns: 1fr 1fr; } }

@@ -1070,6 +1070,32 @@ needing a visual warning stripe. Removed the `.scroll-indicator::before` rule an
 that measured and published it in `index.html`'s `setHeroOverlayMax()` IIFE) rather than just
 hiding it, since nothing else depended on that var.
 
+### 29. Shop `.offer-grid` card blowout under the scroll-indicator rail (2026-07-28)
+
+Separate bug from step 28, same symptom family: on mobile, Printing & Office Supplies product
+cards visually extended past the scroll-indicator's visible line (measured card right edge
+368px vs. the rail line at 349–361px, at 375px viewport width), while Design and Merch cards
+stopped short (335px) and never crossed it. Root cause was a classic CSS grid blowout, not a
+pointer-events issue: `.offer-grid`'s `1fr` mobile column (`website/index.html` inline
+`<style>`) sizes to `minmax(auto, 1fr)`, and grid items default to `min-width: auto`, so a
+card's *content-driven* minimum width can force the item wider than its track instead of
+shrinking to it. Only print-office's cards carried enough content (the bulk-tier segmented
+control + bulk-note paragraph, added for quantity-discount pricing) to trip this; design/merch
+cards' plainer content stayed under the track width by coincidence, not because of any
+per-section fix. Confirmed via `getComputedStyle(...).gridTemplateColumns` reading
+`348.281px` — wider than the grid container's own 315px box — and by binary-searching which
+descendant's `min-width: auto` forced it (setting `min-width: 0 !important` on the card *and
+all its descendants* dropped the resolved track back to 315px; the card alone wasn't enough,
+confirming the constraint was on a nested flex descendant, not the card itself).
+
+Fix: added `.offer-grid > * { min-width: 0; }` right after the `.offer-grid` rule in
+`index.html`'s inline `<style>` block. This lets any grid item's content wrap/shrink to the
+track width instead of blowing past it, and applies uniformly to all three shop subsections
+(print/design/merch) since they share the one `.offer-grid` class — no per-leaf styling
+needed. Verified at 320/375/414px via `document.querySelector('.card').getBoundingClientRect()`
+across all three tabs: max card right edge now sits at or before the rail's visible line width
+in every case (no `bleeds` flag tripped).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

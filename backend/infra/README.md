@@ -64,27 +64,27 @@ Should print `TableName`, `TableStreamArn`, and `GSI1Name`. Keep the
 `TableStreamArn` value — it's the `EventSourceArn` the 1.3 `streams-handler.js`
 Lambda's event source mapping will need.
 
-## Add the 4 founders to the Admin group
+## Add the admin user to the Admin group
 
 The template creates the `Admin` group but doesn't add any users to it (a
-CloudFormation stack shouldn't hardcode people). Do this once per founder,
-using each founder's Cognito username (their email, if the pool is configured
-that way):
+CloudFormation stack shouldn't hardcode people). The pool already has a
+dedicated admin account, `admin.kcmps.cognito` (email `admin@kcmps.com`) —
+use that instead of adding each founder individually:
 
 ```bash
 aws cognito-idp admin-add-user-to-group \
   --user-pool-id ap-southeast-1_iDvAEumNp \
-  --username founder1@kcmps.com \
+  --username admin.kcmps.cognito \
   --group-name Admin \
   --region ap-southeast-1
 ```
 
-Repeat for each of the 4 founders. Confirm membership:
+Confirm membership:
 
 ```bash
 aws cognito-idp admin-list-groups-for-user \
   --user-pool-id ap-southeast-1_iDvAEumNp \
-  --username founder1@kcmps.com \
+  --username admin.kcmps.cognito \
   --region ap-southeast-1
 ```
 
@@ -95,7 +95,26 @@ aws cognito-idp admin-list-groups-for-user \
 | `TableName` output | Every Lambda's `TABLE_NAME` environment variable (1.1 CRUD Lambdas, streams-handler, expire-pending-orders, daily-digest) |
 | `TableStreamArn` output | The 1.3 `streams-handler.js` Lambda's DynamoDB Streams event source mapping (`NEW_AND_OLD_IMAGES`, already set on the table) |
 | `GSI1Name` output (`GSI1`) | Every Lambda that queries the sparse status index (`api-get-orders.js`, `api-advance-line-item.js`'s queue reads, `expire-pending-orders.js`) |
-| Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) | JWT `cognito:groups` claim checks inside every `api-*.js` Lambda and the HTTP API's JWT authorizer setup (§4 of `backend-infra-to-deploy.md`) — dashboard routes currently gate on `Staff`-shaped access; map that check to "any of Production/Sales/Finance/Admin" or introduce a `Staff` group alias when wiring the authorizer, since this template deploys the 5 granular groups rather than a single `Staff` group |
+| Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) | JWT `cognito:groups` claim checks inside every `api-*.js` Lambda and the HTTP API's JWT authorizer setup (§4 of `backend-infra-to-deploy.md`) — dashboard routes currently gate on `Staff`-shaped access; map that check to "any of Production/Sales/Finance/Admin" when wiring the authorizer |
+
+### Legacy groups — deprecate, don't reuse
+
+The pool already had two groups from before this stack existed:
+`Staff` (precedence 10 — what `dashboard-shell.js` currently checks
+client-side) and `Customers` (precedence 100, plural). Both are superseded
+by this template's groups (`Admin` and `Customer` respectively) and should
+be **retired, not built on** — don't add new users to `Staff`/`Customers`,
+and don't design new authorization logic around them. Migration is two
+steps, done once real users are already sorted into the new groups:
+
+1. Move any users still in `Staff` into the appropriate new group
+   (`Admin`/`Production`/`Sales`/`Finance` — `Staff` doesn't distinguish
+   role, so this requires a human decision per user) and any users in
+   `Customers` into `Customer`.
+2. Update `dashboard-shell.js`'s client-side gate (see root `CLAUDE.md`'s
+   Cognito row) to check the new group set, then delete the `Staff` and
+   `Customers` groups from the pool (`aws cognito-idp delete-group`) —
+   outside this template's scope since it never created them.
 
 ## Rollback
 

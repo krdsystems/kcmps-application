@@ -58,16 +58,22 @@ matches the dependency chain in the infra doc's Stage A→C checklist.
 ### 1.0 — Platform foundation (ERP Phase 0, launch-blocking conventions)
 These conventions cannot be retrofitted (ERP file §2.3), so they go in with the very first
 table write, even though nothing uses most of them yet.
-- [x] CloudFormation authored: [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml)
-  creates the single DynamoDB table (PK/SK patterns from
-  [infra §2.1](../ops-dashboard/infra/backend-infra-to-deploy.md)), **GSI1** sparse status index
-  (`GSI1PK = STATUS#<status>`, infra §2.3) with Streams/PITR/deletion-protection on, and the
-  5 Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`, ERP file Part 5) in the
-  existing user pool — slots defined now, enforced later. **Not yet applied** — owner runs
-  [`backend/infra/README.md`](../backend/infra/README.md)'s `aws cloudformation deploy` steps,
-  then adds the 4 founders to `Admin` via `admin-add-user-to-group` (also in that README).
-- [ ] Apply the stack above against the real AWS account (owner action, outside this repo's
-  reach — see [What can't be done from inside this repo](#what-cant-be-done-from-inside-this-repo)).
+- [x] CloudFormation authored and **applied**: [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml)
+  (stack `kcmps-foundation`, `ap-southeast-1`) created the single DynamoDB table (PK/SK
+  patterns from [infra §2.1](../ops-dashboard/infra/backend-infra-to-deploy.md)), **GSI1**
+  sparse status index (`GSI1PK = STATUS#<status>`, infra §2.3) with Streams/PITR/deletion-
+  protection on, and the 5 Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`,
+  ERP file Part 5) in the existing user pool — verified live via `describe-table` and
+  `list-groups`. Slots defined now, enforced later.
+  - Admin membership: the pool's existing `admin.kcmps.cognito` account is the `Admin`
+    user (not per-founder accounts) — added via `admin-add-user-to-group` (steps in
+    [`backend/infra/README.md`](../backend/infra/README.md)), verified live. Still also
+    in the legacy `Staff` group (see below) until that group is retired.
+  - **Legacy groups found in the pool, not created by this stack:** `Staff` (precedence 10,
+    what `dashboard-shell.js` currently gates on) and `Customers` (precedence 100, plural).
+    Both are deprecated in favor of `Admin`/`Customer` — see "Legacy groups" in
+    `backend/infra/README.md` for the retirement steps (migrate members, then update
+    `dashboard-shell.js`'s client-side check, then delete the two old groups).
 - [ ] Stamp `tenantId`/`siteId` = `SITE#MNL`, `schemaVersion`, money as **integer centavos** +
   explicit `currency`, `status` + soft-delete (never hard-delete) on every item — enforced in
   code via [`backend/lib/item.js`](../backend/lib/item.js)'s `baseItem()`, not by the table

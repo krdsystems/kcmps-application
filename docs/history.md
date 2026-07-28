@@ -1014,6 +1014,28 @@ quantity ceiling (number-input max 2000, slider max 500 — the slider is just t
 range, typing a larger number still works) so genuine bulk/enterprise orders aren't capped by
 an arbitrary online-ordering wall.
 
+### 28. Editable quantity inputs, replacing the plain-text qty stepper (2026-07-28)
+
+The qty stepper's `+`/`-` buttons only ever moved one unit at a time, which was painful for the
+new bulk-tier products (Document Printing, Business Cards, Stickers & Labels, Bookmarks — see
+step 27) where a shopper wants to jump straight to e.g. 150 or 300 units instead of clicking
+`+` a hundred times. Replaced the `<span class="qval">` in both `skuCard()`'s stepper (product
+card) and the cart-drawer stepper with an `<input type="number" class="qval">`, keeping the
+existing `+`/`-` buttons alongside it.
+
+Typed input only commits on blur or Enter (not on every keystroke), so a live `refresh()` never
+fights the user mid-type or resets cursor position. On commit: the value is parsed, clamped up
+to the product's `minQty` (matching the `-` button's existing floor logic), and non-numeric or
+empty input reverts to the last valid qty instead of producing `NaN` pricing. Committing then
+routes through the exact same path the buttons already used — `refresh()` on the product card,
+`setQty()` in the cart drawer — so `activeBulkTier()`/`bulkUnitPrice()` re-tier identically
+regardless of whether the qty changed via typing or clicking.
+
+`.qty-stepper .qval` in `styles.css` (mirrored into `design-system/`) needed a few resets since
+it's now a real `<input>` instead of inert text: transparent background, no border, hidden
+number-input spin arrows (`-webkit-inner/outer-spin-button`, `appearance: textfield`), and a
+focus outline so keyboard/tap-to-edit is visibly discoverable.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

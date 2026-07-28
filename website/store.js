@@ -523,10 +523,21 @@
     var priceEl = document.createElement("span"); priceEl.className = "product-price";
     var stepper = document.createElement("div"); stepper.className = "qty-stepper";
     var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−"; minus.setAttribute("aria-label", "Decrease quantity");
-    var qval = document.createElement("span"); qval.className = "qval"; qval.textContent = qty;
+    var qval = document.createElement("input"); qval.type = "number"; qval.className = "qval"; qval.inputMode = "numeric"; qval.min = String(minQty); qval.value = qty; qval.setAttribute("aria-label", "Quantity");
     var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+"; plus.setAttribute("aria-label", "Increase quantity");
-    minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.textContent = qty; refresh(); });
-    plus.addEventListener("click", function () { qty += 1; qval.textContent = qty; refresh(); });
+    minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.value = qty; refresh(); });
+    plus.addEventListener("click", function () { qty += 1; qval.value = qty; refresh(); });
+    // Commit on blur/Enter only (not every keystroke) so re-tiering doesn't
+    // fight the user mid-type; invalid/empty input reverts to the last valid qty.
+    function commitQval() {
+      var n = parseInt(qval.value, 10);
+      if (!isFinite(n) || isNaN(n)) { qval.value = qty; return; }
+      qty = Math.max(minQty, n);
+      qval.value = qty;
+      refresh();
+    }
+    qval.addEventListener("blur", commitQval);
+    qval.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); qval.blur(); } });
     stepper.appendChild(minus); stepper.appendChild(qval); stepper.appendChild(plus);
     buy.appendChild(priceEl); buy.appendChild(stepper); card.appendChild(buy);
 
@@ -571,7 +582,7 @@
         addBtn.innerHTML = orig;
         if (p.requiresCartProduct) { syncGate(); } else { addBtn.disabled = false; }
       }, 1100);
-      qty = minQty; qval.textContent = qty;
+      qty = minQty; qval.value = qty;
       openDrawer();
     });
     card.appendChild(addBtn);
@@ -835,17 +846,32 @@
         var controls = document.createElement("div"); controls.className = "c-controls";
         var stepper = document.createElement("div"); stepper.className = "qty-stepper";
         var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−";
-        var qv = document.createElement("span"); qv.className = "qval"; qv.textContent = i.qty;
+        var qv = document.createElement("input"); qv.type = "number"; qv.className = "qval"; qv.inputMode = "numeric"; qv.value = i.qty; qv.setAttribute("aria-label", "Quantity");
         var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+";
+        function lineFloor() {
+          var p = DATA.products.find(function (pp) { return pp.id === i.id; });
+          return (p && p.minQty) || 1;
+        }
+        qv.min = String(lineFloor());
         minus.addEventListener("click", function () {
           // Respect a product's minQty (e.g. business cards' 10-pc minimum) —
           // stepping below it isn't allowed, use "Remove" to drop the line instead.
-          var p = DATA.products.find(function (pp) { return pp.id === i.id; });
-          var floor = (p && p.minQty) || 1;
-          if (i.qty <= floor) return;
+          if (i.qty <= lineFloor()) return;
           setQty(i.key, i.qty - 1);
         });
         plus.addEventListener("click", function () { setQty(i.key, i.qty + 1); });
+        // Commit on blur/Enter only, matching the product-card stepper, so
+        // re-tiering (bulkUnitPrice via setQty) fires once per typed value
+        // instead of fighting the user mid-keystroke.
+        function commitQv() {
+          var n = parseInt(qv.value, 10);
+          if (!isFinite(n) || isNaN(n)) { qv.value = i.qty; return; }
+          var clamped = Math.max(lineFloor(), n);
+          if (clamped === i.qty) { qv.value = clamped; return; }
+          setQty(i.key, clamped);
+        }
+        qv.addEventListener("blur", commitQv);
+        qv.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); qv.blur(); } });
         stepper.appendChild(minus); stepper.appendChild(qv); stepper.appendChild(plus);
         var rm = document.createElement("button"); rm.className = "c-remove"; rm.type = "button"; rm.textContent = "Remove";
         rm.addEventListener("click", function () { removeItem(i.key); });

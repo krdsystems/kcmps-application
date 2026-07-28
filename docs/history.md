@@ -1043,6 +1043,27 @@ Verified via direct DOM/CSSOM measurement (not screenshots — the browser tool'
 action was unreliable in this session) at 320/375/414px: the border consistently spans the
 full viewport height and sits at the rail's measured edge. At desktop widths the pseudo's
 `content` computes to `none` (media query doesn't match), confirming no desktop regression.
+### 29. Editable quantity inputs, replacing the plain-text qty stepper (2026-07-28)
+
+The qty stepper's `+`/`-` buttons only ever moved one unit at a time, which was painful for the
+new bulk-tier products (Document Printing, Business Cards, Stickers & Labels, Bookmarks — see
+step 27) where a shopper wants to jump straight to e.g. 150 or 300 units instead of clicking
+`+` a hundred times. Replaced the `<span class="qval">` in both `skuCard()`'s stepper (product
+card) and the cart-drawer stepper with an `<input type="number" class="qval">`, keeping the
+existing `+`/`-` buttons alongside it.
+
+Typed input only commits on blur or Enter (not on every keystroke), so a live `refresh()` never
+fights the user mid-type or resets cursor position. On commit: the value is parsed, clamped up
+to the product's `minQty` (matching the `-` button's existing floor logic), and non-numeric or
+empty input reverts to the last valid qty instead of producing `NaN` pricing. Committing then
+routes through the exact same path the buttons already used — `refresh()` on the product card,
+`setQty()` in the cart drawer — so `activeBulkTier()`/`bulkUnitPrice()` re-tier identically
+regardless of whether the qty changed via typing or clicking.
+
+`.qty-stepper .qval` in `styles.css` (mirrored into `design-system/`) needed a few resets since
+it's now a real `<input>` instead of inert text: transparent background, no border, hidden
+number-input spin arrows (`-webkit-inner/outer-spin-button`, `appearance: textfield`), and a
+focus outline so keyboard/tap-to-edit is visibly discoverable.
 
 ## Auth implementation notes
 

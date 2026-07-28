@@ -560,7 +560,11 @@ textarea.input { min-height: 90px; resize: vertical; }
 .qty-stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
 .qty-stepper button { width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1; }
 .qty-stepper button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
-.qty-stepper .qval { min-width: 30px; text-align: center; font-family: var(--font-heading); font-weight: 700; font-size: 14px; }
+.qty-stepper .qval { width: 30px; min-width: 30px; height: 32px; text-align: center; font-family: var(--font-heading);
+  font-weight: 700; font-size: 14px; color: var(--color-text); border: none; background: transparent; padding: 0;
+  -moz-appearance: textfield; appearance: textfield; }
+.qty-stepper .qval::-webkit-outer-spin-button, .qty-stepper .qval::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty-stepper .qval:focus { outline: 2px solid var(--color-accent-2); outline-offset: -2px; }
 .product.product-custom { border: 1.5px dashed color-mix(in srgb, var(--color-accent-2) 40%, transparent); background: var(--color-bg); }
 .product-custom .product-thumb { background: repeating-linear-gradient(45deg, var(--color-accent-2-100), var(--color-accent-2-100) 10px, var(--color-surface) 10px, var(--color-surface) 20px); }
 

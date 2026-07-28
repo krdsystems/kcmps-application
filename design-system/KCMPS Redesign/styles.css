@@ -560,7 +560,11 @@ textarea.input { min-height: 90px; resize: vertical; }
 .qty-stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
 .qty-stepper button { width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1; }
 .qty-stepper button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
-.qty-stepper .qval { min-width: 30px; text-align: center; font-family: var(--font-heading); font-weight: 700; font-size: 14px; }
+.qty-stepper .qval { width: 30px; min-width: 30px; height: 32px; text-align: center; font-family: var(--font-heading);
+  font-weight: 700; font-size: 14px; color: var(--color-text); border: none; background: transparent; padding: 0;
+  -moz-appearance: textfield; appearance: textfield; }
+.qty-stepper .qval::-webkit-outer-spin-button, .qty-stepper .qval::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty-stepper .qval:focus { outline: 2px solid var(--color-accent-2); outline-offset: -2px; }
 .product.product-custom { border: 1.5px dashed color-mix(in srgb, var(--color-accent-2) 40%, transparent); background: var(--color-bg); }
 .product-custom .product-thumb { background: repeating-linear-gradient(45deg, var(--color-accent-2-100), var(--color-accent-2-100) 10px, var(--color-surface) 10px, var(--color-surface) 20px); }
 
@@ -683,7 +687,19 @@ textarea.input { min-height: 90px; resize: vertical; }
      across the whole band. */
   .scroll-indicator { top: calc(var(--nav-h, 64px) + var(--space-2)); bottom: calc(var(--stickycta-h, 64px) + var(--space-2));
     transform: none; justify-content: center; gap: 8px; }
-  .scroll-indicator-item { padding: 4px 2px; }
+  /* Mobile-only: the base rule above makes the whole flex item (line +
+     the invisible-but-space-reserving label) tappable, so the reserved
+     label width silently extends the rail's hit area over whatever card
+     content sits behind it. Narrow the real hit target down to just the
+     visible line — pointer-events is inherited, so item:none also turns
+     off the label without a separate rule — and move touch-action:none
+     onto the line so a swipe starting exactly on it still tap-jumps
+     instead of scrolling the page underneath. The click listener
+     (index.html) is bound per-item and reads item.dataset.target via
+     closure, not event.target, so it still fires correctly via bubbling
+     from a tap that lands on the line. */
+  .scroll-indicator-item { padding: 4px 2px; pointer-events: none; touch-action: auto; }
+  .scroll-indicator-line { pointer-events: auto; touch-action: none; }
   .scroll-indicator-label { font-size: 9.5px; padding: 2px 5px; font-weight: 700; }
   /* Mobile is tap-driven. Force any sticky :hover/:focus reveal back to the
      collapsed state (it can still fire under desktop touch-emulation and some

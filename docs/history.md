@@ -500,7 +500,7 @@ leaf paths present, shuffled), plus a network-request check confirming every ima
 
 ### 17. Mobile hero/nav: logo-tap overlap fix, and a full-bleed 3:4 overlay hero (2026-07-25)
 
-> The overlay hero described below was replaced in step 28 — text is no longer drawn over the
+> The overlay hero described below was replaced in step 30 — text is no longer drawn over the
 > mobile hero photo. The logo-tap fix is still current. Kept for the reasoning trail.
 
 Two related mobile-only bugs, both in `website/index.html`.
@@ -1017,7 +1017,84 @@ quantity ceiling (number-input max 2000, slider max 500 — the slider is just t
 range, typing a larger number still works) so genuine bulk/enterprise orders aren't capped by
 an arbitrary online-ordering wall.
 
-### 28. Mobile hero rebuilt: copy card below the photo, replacing the text-over-image overlay (2026-07-28)
+### 28. Mobile card-button/scroll-indicator overlap: full-height dead-zone border (2026-07-28)
+
+Mobile users on the Printing & Office Supplies subsection reported that tapping a button on
+the right edge of a product card (the qty stepper's "+", sometimes "Add to cart") instead hit
+the floating scroll-position rail. Confirmed via measured `getBoundingClientRect()` geometry
+at 375px width, not just visually: `.scroll-indicator-item` is a single flex item whose layout
+box reserves the full label width (~93px) even while the label sits at `opacity: 0` in its
+collapsed mobile state (step 19) — it isn't `display: none`, so it still occupies horizontal
+space. That reserved box's left edge landed at x≈270px, squarely on top of the qty stepper's
+"+" button (x≈321–351px) and overlapping part of the "−" button too.
+
+Rather than shrinking that reserved layout box (out of scope — risked destabilizing the
+label-reveal animation from step 19), added a purely visual dead-zone marker: a
+`.scroll-indicator::before` pseudo-element (mobile-only, inside the existing `@media
+(max-width: 760px)` block) drawing a `border-left: 1px solid var(--color-divider)` from
+`top: 0` to `bottom: 0` — the full viewport height, not just the rail's own shorter
+nav-h/stickycta-h-constrained box (step 19). It's anchored to the rail's *real* left edge via
+a new `--indicator-left` CSS var, measured in JS (`index.html`, same
+`setHeroOverlayMax()`/resize-listener IIFE that already publishes `--nav-h`/`--stickycta-h`)
+rather than a guessed pixel offset, so it tracks correctly if the rail's content or a future
+breakpoint changes its width. The pseudo-element has no `pointer-events` override, so it
+inherits `none` from the rail container and never expands the nav's actual tap-catching area
+(step 19's swipe-through gaps and drawer-open auto-hide are unaffected) — it only gives users
+a visible boundary to aim left of.
+
+Verified via direct DOM/CSSOM measurement (not screenshots — the browser tool's screenshot
+action was unreliable in this session) at 320/375/414px: the border consistently spans the
+full viewport height and sits at the rail's measured edge. At desktop widths the pseudo's
+`content` computes to `none` (media query doesn't match), confirming no desktop regression.
+### 29. Editable quantity inputs, replacing the plain-text qty stepper (2026-07-28)
+
+The qty stepper's `+`/`-` buttons only ever moved one unit at a time, which was painful for the
+new bulk-tier products (Document Printing, Business Cards, Stickers & Labels, Bookmarks — see
+step 27) where a shopper wants to jump straight to e.g. 150 or 300 units instead of clicking
+`+` a hundred times. Replaced the `<span class="qval">` in both `skuCard()`'s stepper (product
+card) and the cart-drawer stepper with an `<input type="number" class="qval">`, keeping the
+existing `+`/`-` buttons alongside it.
+
+Typed input only commits on blur or Enter (not on every keystroke), so a live `refresh()` never
+fights the user mid-type or resets cursor position. On commit: the value is parsed, clamped up
+to the product's `minQty` (matching the `-` button's existing floor logic), and non-numeric or
+empty input reverts to the last valid qty instead of producing `NaN` pricing. Committing then
+routes through the exact same path the buttons already used — `refresh()` on the product card,
+`setQty()` in the cart drawer — so `activeBulkTier()`/`bulkUnitPrice()` re-tier identically
+regardless of whether the qty changed via typing or clicking.
+
+`.qty-stepper .qval` in `styles.css` (mirrored into `design-system/`) needed a few resets since
+it's now a real `<input>` instead of inert text: transparent background, no border, hidden
+number-input spin arrows (`-webkit-inner/outer-spin-button`, `appearance: textfield`), and a
+focus outline so keyboard/tap-to-edit is visibly discoverable.
+
+**Follow-up, same day:** the border alone was a visual cue, not a functional fix — the
+reserved label zone was still real, still `pointer-events: auto` (inherited from
+`.scroll-indicator-item`), and still swallowed touches meant for the card button underneath.
+Went back and actually narrowed the mobile hit target: inside the `@media (max-width: 760px)`
+block, `.scroll-indicator-item` now gets `pointer-events: none` (overriding the base rule's
+`auto`) and `.scroll-indicator-line` gets `pointer-events: auto` — since `pointer-events` is
+inherited, this alone also turns the label off without a separate rule, leaving only the
+12–18px visible line as the real tap target. `touch-action: none` (needed so a swipe starting
+on a segment tap-jumps instead of scrolling the page, see step 19) moved from the item to the
+line for the same reason. The click listener (`index.html`) was already safe for this — it's
+bound per-item via `item.addEventListener` and reads `item.dataset.target` through closure,
+not `event.target`, so a click landing on the line still bubbles up and fires it correctly.
+Verified with `document.elementFromPoint()`: a point inside the old reserved-label zone now
+falls through to the underlying page content instead of hitting the nav item, while a point on
+the visible line still resolves to `.scroll-indicator-line` and still triggers the jump.
+Desktop (`pointer-events: auto` on the item, unchanged outside the mobile media query) keeps
+its original click-anywhere-on-the-revealed-label behavior.
+
+**Second follow-up, same day:** the owner flagged the full-viewport-height dead-zone border as
+an eyesore — a permanent hairline "crack" running top-to-bottom on every mobile page, now
+redundant since the pointer-events fix above already solves the underlying overlap without
+needing a visual warning stripe. Removed the `.scroll-indicator::before` rule and its
+`--indicator-left` CSS var entirely (`styles.css`, mirrored in `design-system/`, plus the JS
+that measured and published it in `index.html`'s `setHeroOverlayMax()` IIFE) rather than just
+hiding it, since nothing else depended on that var.
+
+### 30. Mobile hero rebuilt: copy card below the photo, replacing the text-over-image overlay (2026-07-28)
 
 This supersedes the mobile half of step 17. That design put the kicker/headline/price-anchor/
 sub-line *on top of* the hero photo, over a navy gradient scrim. It never worked, and the
@@ -1071,8 +1148,9 @@ Smaller calls inside that:
   specificity tie in the class column its trailing element selector wins. The mobile font-size
   silently didn't apply until the selector matched that shape.
 - `--hero-overlay-max` and its measuring script are gone; there is no longer an overlay to cap.
-  The same script still publishes `--nav-h`/`--stickycta-h`, which the scroll-position
-  indicator (step 19) depends on.
+  The same IIFE still publishes `--nav-h`/`--stickycta-h`, which the scroll-position indicator
+  (step 19) depends on, and is renamed `setHeroOverlayMax()` → `setFixedBarHeights()` to match
+  what it actually does now — earlier entries referring to it by the old name mean this one.
 
 Verified by measuring geometry and computed styles across 320/375/414 widths against all three
 `PAGE_VARIANTS`: no horizontal overflow, photo and card both spanning the full viewport width,

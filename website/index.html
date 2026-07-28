@@ -1122,20 +1122,18 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       },
       valuestack: {
         h2: 'One flat quote. Nothing hidden.',
-        p: 'Most print shops charge extra for rush jobs and file fixes. Every KCMPS bulk print job already includes:',
+        p: 'Most print shops charge extra for file fixes and reprints. Every KCMPS bulk print job already includes:',
         lines: [
           { label: 'File check &amp; print-ready prep', free: true },
           { label: 'Color-accurate proof before the full run', free: true },
           { label: 'Bulk-quantity discount, applied automatically', free: true },
         ],
-        totalLabel: 'Rush + prep fees elsewhere',
-        totalVal: '₱500',
         payLabel: 'You pay, all-in',
         payAmt: 'Just your quote',
       },
       how: [
         { h3: 'Send your file or specs', p: 'Documents, forms, packaging — upload what you need printed, digital file or physical copy.' },
-        { h3: 'We prep, proof and print in-house', p: 'File checked, proof approved, then printed at bulk-run pricing — no rush fees.' },
+        { h3: 'We prep, proof and print in-house', p: 'File checked, proof approved, then printed at bulk-run pricing — rush delivery available.' },
         { h3: 'Pick up or get it delivered in 2–3 days', p: 'Grab it at our Manila studio or have it delivered — no minimum order.' },
       ],
     },
@@ -1198,16 +1196,21 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       ],
     },
   };
-  const CATEGORIES = Object.keys(PAGE_VARIANTS);
+  // Revenue-generating subcategories only — merch stays in PAGE_VARIANTS (data
+  // kept in case it's needed again) but is excluded from the priming rotation
+  // per owner direction. readValid() below also gates on this list, so a
+  // stale sticky "merch" value from before this change gets rejected and
+  // re-rolled rather than rendered.
+  const ACTIVE_CATEGORIES = ['print-office', 'design'];
 
-  function pickRandom() { return CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)]; }
+  function pickRandom() { return ACTIVE_CATEGORIES[Math.floor(Math.random() * ACTIVE_CATEGORIES.length)]; }
 
   function readValid(storage, wantSticky) {
     try {
       const raw = storage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const v = JSON.parse(raw);
-      if (v && CATEGORIES.includes(v.category) && !!v.sticky === wantSticky &&
+      if (v && ACTIVE_CATEGORIES.includes(v.category) && !!v.sticky === wantSticky &&
           (!wantSticky || (typeof v.expiresAt === 'number' && v.expiresAt > Date.now()))) {
         return v;
       }
@@ -1284,7 +1287,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         vs.lines.map((line) =>
           `<div class="vstack-line"><span class="label">${line.label}</span><span class="val${line.free ? ' free' : ''}">${line.free ? 'FREE' : line.val}</span></div>`
         ).join('') +
-        `<div class="vstack-total"><span>${vs.totalLabel}</span><span class="val">${vs.totalVal}</span></div>` +
+        (vs.totalLabel ? `<div class="vstack-total"><span>${vs.totalLabel}</span><span class="val">${vs.totalVal}</span></div>` : '') +
         `<div class="vstack-pay"><span class="lbl">${vs.payLabel}</span><span class="amt">${vs.payAmt}</span></div>`;
     }
 

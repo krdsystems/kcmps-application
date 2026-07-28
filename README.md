@@ -158,8 +158,13 @@ All changes are immediate — there's no build step.
   opens the full-resolution image in the fullscreen lightbox, closable via Esc/click-outside/X
   without losing the cart.
 - Add a custom request, open the drawer, confirm it reads "₱0 now / Pending approval".
-- Run checkout end-to-end and confirm the order summary reaches `mailto:` (or the configured
-  endpoint).
+- Run checkout end-to-end: clicking "Place order" with a valid name/contact should open the
+  GCash payment popup (placeholder QR + copyable Contact/Fulfillment/Custom Request Details +
+  itemized cart) **over** the still-open cart drawer, not navigate away immediately. From
+  there, "Open email app" reaches `mailto:` (or the configured endpoint) with the same content;
+  "I'll send it manually" closes the popup *and* the drawer, back to the main page. Leaving
+  name/contact empty should still block with the existing alert and never open the popup. See
+  `docs/history.md` entry 22.
 - Hero priming: in a fresh incognito window, confirm the hero/value-stack/how-it-works copy and
   the pre-selected shop tab all match one of the three categories consistently; reload the same
   tab a few times and confirm it *doesn't* change (that's the point — see docs/history.md step

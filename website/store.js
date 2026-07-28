@@ -250,6 +250,8 @@
   }
 
   var CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
+  // Used by the order popup's copy-to-clipboard button (store.js openOrderPopup).
+  var COPY_ICON = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></svg>';
 
   var DESIGN_GRID_MAX = 8;
 
@@ -694,17 +696,23 @@
     }
   }
 
-  function submitOrder() {
-    var name = (document.getElementById("co-name").value || "").trim();
-    var contact = (document.getElementById("co-contact").value || "").trim();
-    if (!name || !contact) { alert("Please add your name and a way to reach you."); return; }
-    var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
-    var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
-    var notes = (document.getElementById("co-notes").value || "").trim();
-
-    var lines = ["KCMPS ORDER REQUEST", "==================", "", "Customer: " + name, "Contact: " + contact, "Fulfillment: " + fulfill, ""];
+  // Builds the pre-filled email { subject, body, format } from the checkout
+  // form + cart, but doesn't navigate anywhere — submitOrder() opens the
+  // GCash payment popup first, and the popup's "Open email app" button uses
+  // this. `format` is the full plain-text message (Subject/Contact/
+  // Fulfillment/Custom Request Details header, filled in with the
+  // customer's actual answers, followed by the same itemized cart
+  // breakdown as `body`) shown — and copyable in one piece — in the popup,
+  // so pasting it manually into an email carries every item, not just the
+  // header fields.
+  function buildOrderEmail(name, contact, fulfill, notes) {
     var payNow = cart.filter(function (i) { return i.type === "sku"; });
     var pending = cart.filter(function (i) { return i.type === "custom"; });
+    var subject = "Order for " + name;
+
+    var lines = ["Contact: " + contact, "Fulfillment: " + fulfill];
+    if (pending.length) lines.push("Custom Request Details: " + (notes || "(none provided)"));
+    lines.push("", "KCMPS ORDER REQUEST", "==================", "");
     if (payNow.length) {
       lines.push("PAY NOW:");
       payNow.forEach(function (i) {
@@ -721,9 +729,91 @@
     if (notes) lines.push("NOTES / DESIGN DETAILS:", notes, "");
     lines.push("(Sent from the KCMPS website cart.)");
 
-    var subject = "KCMPS order request — " + name + " (" + peso(payNowTotal()) + " now)";
-    var href = "mailto:" + ORDER_EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
-    window.location.href = href;
+    var body = lines.join("\n");
+    return { subject: subject, body: body, format: "Subject: " + subject + "\n" + body };
+  }
+
+  var orderPopup, orderPopupEmailBtn, orderPopupFormatEl, orderPopupCopyBtn;
+  var pendingOrderEmail = null;
+
+  function buildOrderPopup() {
+    var backdrop = document.createElement("div");
+    backdrop.className = "order-popup-backdrop";
+    backdrop.setAttribute("aria-hidden", "true");
+    backdrop.innerHTML =
+      '<div class="order-popup" role="dialog" aria-modal="true" aria-labelledby="order-popup-title">' +
+        '<h3 class="dialog-title" id="order-popup-title">Thank you for placing an order with us!</h3>' +
+        '<div class="dialog-body">' +
+          '<p>Our payment system is on the way. We currently accept GCASH payments in fulfilling your order.</p>' +
+          '<img class="order-popup-qr" src="assets/gcash-qr-placeholder.svg" alt="Placeholder GCash QR code — owner to replace with the real QR" width="180" height="180" />' +
+          '<p>After payment, kindly send us a screenshot of your payment proof to <strong>' + escapeHtml(ORDER_EMAIL) + '</strong> with:</p>' +
+          '<div class="order-popup-format-wrap">' +
+            '<button type="button" class="btn-icon-copy" id="order-popup-copy" aria-label="Copy this text">' + COPY_ICON + '</button>' +
+            '<p class="order-popup-format mono" id="order-popup-format"></p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dialog-actions">' +
+          '<button type="button" class="btn btn-secondary" id="order-popup-close">I\'ll send it manually</button>' +
+          '<button type="button" class="btn btn-primary" id="order-popup-email">Open email app</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+
+    orderPopup = backdrop;
+    orderPopupEmailBtn = backdrop.querySelector("#order-popup-email");
+    orderPopupFormatEl = backdrop.querySelector("#order-popup-format");
+    orderPopupCopyBtn = backdrop.querySelector("#order-popup-copy");
+
+    // "I'll send it manually" fully backs out of checkout (popup + drawer
+    // both close) — clicking outside the popup (backdrop) only dismisses
+    // the popup itself, leaving the drawer/cart untouched underneath.
+    backdrop.querySelector("#order-popup-close").addEventListener("click", function () {
+      closeOrderPopup();
+      closeDrawer();
+    });
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeOrderPopup(); });
+    orderPopupEmailBtn.addEventListener("click", function () {
+      if (!pendingOrderEmail) return;
+      window.location.href = "mailto:" + ORDER_EMAIL +
+        "?subject=" + encodeURIComponent(pendingOrderEmail.subject) +
+        "&body=" + encodeURIComponent(pendingOrderEmail.body);
+    });
+    orderPopupCopyBtn.addEventListener("click", function () {
+      if (!pendingOrderEmail) return;
+      navigator.clipboard.writeText(pendingOrderEmail.format).then(function () {
+        orderPopupCopyBtn.classList.add("is-copied");
+        orderPopupCopyBtn.setAttribute("aria-label", "Copied");
+        setTimeout(function () {
+          orderPopupCopyBtn.classList.remove("is-copied");
+          orderPopupCopyBtn.setAttribute("aria-label", "Copy this text");
+        }, 1500);
+      });
+    });
+  }
+
+  function openOrderPopup(orderEmail) {
+    pendingOrderEmail = orderEmail;
+    if (!orderPopup) buildOrderPopup();
+    orderPopupFormatEl.innerHTML = escapeHtml(orderEmail.format).replace(/\n/g, "<br>");
+    orderPopup.classList.add("is-open");
+    orderPopup.setAttribute("aria-hidden", "false");
+  }
+
+  function closeOrderPopup() {
+    if (!orderPopup) return;
+    orderPopup.classList.remove("is-open");
+    orderPopup.setAttribute("aria-hidden", "true");
+  }
+
+  function submitOrder() {
+    var name = (document.getElementById("co-name").value || "").trim();
+    var contact = (document.getElementById("co-contact").value || "").trim();
+    if (!name || !contact) { alert("Please add your name and a way to reach you."); return; }
+    var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
+    var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
+    var notes = (document.getElementById("co-notes").value || "").trim();
+
+    openOrderPopup(buildOrderEmail(name, contact, fulfill, notes));
   }
 
   function openDrawer() {

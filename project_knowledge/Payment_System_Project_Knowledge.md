@@ -136,6 +136,8 @@ This is the same underlying mechanism as the previously planned **Launch Kit bun
 
 **Context:** While BIR/DTI registration is in process, KCMPS cannot yet onboard a registered payment gateway (PayMongo, HitPay, etc.). This section defines a manual GCash-based verification flow as a temporary bridge — designed so it slots into the same order/status model and can be swapped for an automated gateway later with minimal rework.
 
+**Current implementation status (2026-07-28):** only a front-end-only interim step has shipped — a popup shown after "Place order," before checkout's `mailto:` fires, with a placeholder GCash QR and copyable payment instructions (`website/store.js` `openOrderPopup()`, see `docs/history.md` entry 22). None of the flow below (order creation in `Pending Payment Verification`, the reference-number field, S3 screenshot upload, staff verify/reject queue) is built yet — the customer still emails proof manually and staff still process it outside the system. This section remains the target design for Milestone 1.
+
 ### Flow
 
 1. **Checkout (customer side)**

@@ -737,6 +737,62 @@ and `subli-street-statement` at 5; clicking Design → Apparel → Subli renders
 gallery card (in-card arrows, "1 / 5" counter) instead of the old "coming soon" note; the
 new sublimation image path resolves `200 OK` over the network.
 
+### 22. GCash payment confirmation popup before the checkout `mailto:` fires (2026-07-28)
+
+`submitOrder()` used to validate name/contact and immediately navigate to a `mailto:` link —
+no confirmation, no payment instructions, no chance to attach a screenshot. The shop accepts
+GCash payments manually (see [Payment System file](../project_knowledge/Payment_System_Project_Knowledge.md)
+"Bridge Payment Method"), but the storefront gave the customer no instructions on how/where to
+pay. This adds a confirmation popup shown right after "Place order," before the mailto fires.
+
+`submitOrder()`'s body (validation + itemized-breakdown construction) moved into a new
+`buildOrderEmail(name, contact, fulfill, notes)` returning `{ subject, body, format }` —
+`subject`/`body` feed the `mailto:` exactly as before (Contact/Fulfillment/Custom Request
+Details header, only including the Custom Request Details line if the cart has a
+`type: "custom"` item, followed by the unchanged PAY NOW / PENDING APPROVAL breakdown);
+`format` is `"Subject: " + subject + "\n" + body` — the single block of text the popup's copy
+button copies, so pasting it manually into an email carries every cart item, not just the
+header fields. `submitOrder()` itself now only validates, then calls `openOrderPopup()`
+instead of setting `window.location.href` directly — the popup's own "Open email app" button
+does that mailto navigation using the stashed `{ subject, body }`.
+
+The popup (`buildOrderPopup()`/`openOrderPopup()`/`closeOrderPopup()`) follows the same
+lazy-build-once-then-toggle-`.is-open` pattern as `buildLightbox()` — one `.order-popup-backdrop`
+appended to `<body>`, never rebuilt on repeat opens (verified no duplicate nodes accumulate).
+It **overlays the still-open cart drawer** rather than replacing it (`.cart-drawer` is
+z-index 101; the popup sits at 160, between `.design-popup` 150 and `.lightbox-overlay` 200).
+Shows a placeholder QR (`website/assets/gcash-qr-placeholder.svg` — a plain bordered SVG with
+"Sample GCash QR — replace with real QR code," so the owner swaps one file later with no code
+change), the `ORDER_EMAIL` address, and the copyable format block with a small copy-to-clipboard
+icon button (`.btn-icon-copy`, positioned top-right of the block via `.order-popup-format-wrap
+{ position: relative }`) that briefly turns green on success.
+
+Two actions: "Open email app" (primary) fires the mailto as described above; "I'll send it
+manually" (secondary) closes **both** the popup and the cart drawer — a full exit back to the
+main page, not just a dismiss — while clicking the backdrop itself only dismisses the popup,
+leaving the drawer/cart untouched (that path is an accidental-click safety net, not an
+intentional "I'm done").
+
+One easy-to-miss trap avoided: the popup's `.order-popup` is a scroll container
+(`max-height: 90vh; overflow-y: auto`) since the format block can grow long with a big cart,
+and a stock full-width scrollbar looked out of place against the rounded card — added
+`scrollbar-width: thin` + `scrollbar-color` (Firefox) and `::-webkit-scrollbar*` rules
+(Chrome/Safari/Edge) for a slim, low-contrast thumb instead, mirrored into
+`design-system/KCMPS Redesign/styles.css` per convention.
+
+Verified in-browser via `window.KCMPS_STORE.addToCart(...)` + DOM/JS assertions (the
+in-sandbox screenshot tool was unreliable this session — see entry 17's note, same class of
+issue): popup opens over the open drawer on valid submit; empty name/contact still blocks with
+the pre-existing `alert()` and never opens the popup; the format block renders the customer's
+actual typed values (not placeholder text) plus the full itemized cart; Custom Request Details
+line is present only when a custom-type item is in the cart; "I'll send it manually" leaves
+`drawerOpen: false, overlayOpen: false`; only one `.order-popup-backdrop` node exists in the
+DOM after repeated opens; content overflow at a short viewport height confirmed
+`scrollHeight (945) > clientHeight` with the thin-scrollbar CSS applied. This is a front-end-only
+interim step — no backend order creation, GCash reference-number field, or S3 screenshot
+upload yet; those remain Milestone 1 roadmap items (see
+[roadmap.md](roadmap.md#12--gcash-payment-proof-capture-the-missing-customer-facing-half)).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

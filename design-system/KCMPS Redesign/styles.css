@@ -309,6 +309,47 @@ textarea.input { min-height: 90px; resize: vertical; }
 .dialog-body { font-size: 14px; opacity: 0.85; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 
+/* — order confirmation popup (store.js openOrderPopup/closeOrderPopup) —
+   overlays the still-open cart drawer (101) rather than replacing it, so it
+   sits above it in the stacking order: .design-popup 150 -> this 160 ->
+   .lightbox-overlay 200. Adapted from the .dialog/.dialog-backdrop base
+   above, appended once to <body> and toggled via .is-open like the other
+   lazily-built overlays in this file (lightbox, design-popup). */
+.order-popup-backdrop {
+  position: fixed; inset: 0; z-index: 160; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.order-popup-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .order-popup-backdrop { transition: none; } }
+.order-popup {
+  width: min(440px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-text) 25%, transparent) transparent;
+}
+.order-popup::-webkit-scrollbar { width: 6px; }
+.order-popup::-webkit-scrollbar-track { background: transparent; }
+.order-popup::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text) 25%, transparent);
+  border-radius: 999px;
+}
+.order-popup::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-text) 40%, transparent); }
+.order-popup-qr { display: block; margin: var(--space-2) auto; width: 180px; height: 180px; border-radius: var(--radius-md); }
+.order-popup-format-wrap { position: relative; }
+.order-popup-format { background: color-mix(in srgb, var(--color-text) 6%, transparent); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); padding-right: 36px; font-size: 12.5px; line-height: 1.6; margin: 0; }
+.btn-icon-copy {
+  position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: grid; place-items: center;
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text);
+}
+.btn-icon-copy:hover { background: color-mix(in srgb, var(--color-text) 18%, transparent); }
+.btn-icon-copy.is-copied { background: var(--color-green); color: #fff; }
+@media (max-width: 480px) { .order-popup-backdrop { padding: var(--space-2); } .order-popup { max-height: 94vh; } }
+
 /* ══════════════════════════════════════════════════════════════════════════
    STOREFRONT — conversion-first offer, value stack, guarantee, how-it-works,
    product buy-cards, cart drawer, checkout, FAQ, sticky CTA. Built entirely

@@ -99,6 +99,12 @@ table write, even though nothing uses most of them yet.
 The staff side is drafted ([api-verify-payment.js](../ops-dashboard/infra/logic-inputs/api-verify-payment.js));
 the customer side that *creates* the `payment` object it reads is **not built** and is the real
 work here (infra doc §3 flags `submitPaymentProof` as out-of-scope-for-dashboard, build-it-here).
+
+**Front-end-only interim step already shipped** (`docs/history.md` entry 22): a popup shown
+after "Place order," before the `mailto:` fires, with a placeholder QR + copyable
+Contact/Fulfillment/Custom Request Details + itemized-cart text. This is *not* the checklist
+below — no order record, ref-number field, or S3 upload — just a UX stopgap so customers get
+payment instructions today. The checklist items are unchanged and still needed.
 - [ ] `submitPaymentProof` Lambda — returns a pre-signed S3 upload URL (private uploads
   bucket) for the screenshot, writes the `payment` sub-object (`method: gcash_manual`,
   `claimedAmount`, `gcashRefNumber`, `screenshotRef`, `submittedAt`) onto `ORDER#<id>` META,

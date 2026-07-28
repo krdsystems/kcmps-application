@@ -81,46 +81,92 @@ html { overflow-x: hidden; }
 .hero-figure { aspect-ratio: 4/5; }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-figure { aspect-ratio: 16/10; order: -1; } }
 
-/* Mobile hero: image becomes a full-bleed 3:4 background layer, with the
-   kicker/headline/price overlaid on top of it (grid stacking, both in row
-   1/col 1). The overlay is anchored to the top of that box and height-capped
-   via --hero-overlay-max (set in JS from real nav + sticky-cta heights) so
-   it never grows into the fixed Shop/View Cart bar, regardless of headline
-   length or viewport height. CTA, checklist and trust chips stay in normal
-   flow below the image, unaffected by the cap. DOM order is untouched (only
-   wrapped, not reordered) so desktop rendering is unaffected. */
+/* ── Mobile hero (≤760px): full-bleed photo + overlapping copy card ────────
+   Text is NOT overlaid on the photo. Earlier revisions did that and it never
+   worked: the hero carousel pulls from a rotating pool of real product shots
+   (some near-black, some blown-out white), so the only way to keep white
+   copy readable over ALL of them was a ~0.6-alpha navy scrim across the
+   entire image — which muddied every photo into grey and still clipped the
+   sub-line on narrow screens. Instead the photo runs clean edge-to-edge and
+   the copy sits in a card that overlaps its bottom edge, so contrast is
+   inherited from the page's own light surface and is photo-independent.
+
+   The card is `.hero > div:first-child`, the existing DOM wrapper — it is no
+   longer `display: contents`, so it becomes the card box itself, and its
+   children are re-sequenced with flex `order` (CTA above the checklist,
+   which is the mobile priority) rather than by grid-row assignment.
+   DOM order is untouched, so desktop rendering is unaffected. */
 @media (max-width: 760px) {
   .hero {
-    padding: 0 0 var(--space-6);
-    gap: var(--space-3);
+    /* Bottom padding lives on the card below, so the card's opaque surface
+       runs to the end of the section rather than stopping at the last chip. */
+    padding: 0;
+    gap: 0;
     display: grid;
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto auto;
+    /* Full-bleed: cancel .wrap's edge padding (the right side carries the
+       extra +20px gutter reserved for the fixed .scroll-indicator rail). */
+    margin-inline: calc(var(--edge) * -1) calc((var(--edge) + 20px) * -1);
+    /* How far the copy card rides up over the photo. Referenced by the card
+       and by the carousel dots, which must clear it. */
+    --hero-card-overlap: 28px;
   }
-  .hero > div:first-child { display: contents; }
-  .hero-figure { grid-column: 1; grid-row: 1; aspect-ratio: 3/4; order: initial; z-index: 1; }
-  .hero-overlay-content {
-    grid-column: 1; grid-row: 1; z-index: 2; align-self: start; justify-self: stretch;
+  .hero-figure {
+    grid-column: 1; grid-row: 1; order: initial;
+    aspect-ratio: 4/3;
+    /* Square corners — the photo now touches both screen edges, where a
+       radius would read as a rendering seam rather than a card. */
+    border-radius: 0;
+  }
+  /* Dots sit above the card's overlap so they stay visible. */
+  .hero-figure .carousel-dots { bottom: calc(var(--hero-card-overlap) + 14px); }
+
+  .hero > div:first-child {
+    grid-column: 1; grid-row: 2;
+    position: relative; z-index: 2;
+    margin-top: calc(var(--hero-card-overlap) * -1);
+    display: flex; flex-direction: column;
+    /* --color-bg is deliberately translucent (α .92); layering it over an
+       opaque neutral makes the card itself opaque so the photo underneath
+       the 28px overlap doesn't ghost through, while still rendering the
+       exact page-background colour. */
+    background: linear-gradient(var(--color-bg), var(--color-bg)), var(--color-neutral-100);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    /* Restores the .wrap gutters the negative margin above stripped off. */
+    padding: var(--space-4) calc(var(--edge) + 20px) var(--space-6) var(--edge);
+  }
+  .hero-copy { order: 1; }
+  /* Stacked full-width buttons. Side-by-side halves are ~150px on a 375px
+     screen, which wraps the longer CTA labels ("Get an instant quote", set
+     per category by PAGE_VARIANTS) onto two lines inside the button. */
+  .hero > div:first-child > .row {
+    order: 2; margin: 0 0 var(--space-4);
     display: flex; flex-direction: column; gap: var(--space-2);
-    padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-3) var(--space-3);
-    max-height: var(--hero-overlay-max, 60vh);
-    overflow: hidden;
-    background: linear-gradient(180deg, rgba(11,25,48,0.72) 0%, rgba(11,25,48,0.45) 55%, rgba(11,25,48,0) 100%);
   }
-  .hero-overlay-content .kicker-pill { background: rgba(255,255,255,0.16); color: #fff; }
-  .hero-overlay-content .kicker-pill .dot { background: var(--color-accent-300); }
-  .hero-overlay-content h1 { color: #fff; }
-  .hero-overlay-content h1 .warm { color: var(--color-accent-300); }
-  .hero-overlay-content .price-anchor .from,
-  .hero-overlay-content .price-anchor .was { color: rgba(255,255,255,0.75); }
-  .hero-overlay-content .price-anchor .amount { color: #fff; }
-  .hero-overlay-content .sub {
-    color: rgba(255,255,255,0.92);
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  .hero > div:first-child > .row .btn { width: 100%; justify-content: center; }
+  .hero-checklist { order: 3; margin: 0 0 var(--space-3); }
+  .trust-row { order: 4; margin: 0; }
+
+  /* Type scale: the desktop clamp bottoms out at 38px, too heavy for a
+     360px-wide column once the headline wraps to three lines. */
+  .hero-copy h1 { font-size: clamp(29px, 8.4vw, 38px); line-height: 1.12; margin-bottom: var(--space-2); }
+  /* Kicker drops the pill chrome on mobile and becomes a plain eyebrow
+     label. The category kickers run up to ~51 characters ("Networking gear
+     & storage hardware · sourced & ready"), which overflows a 315px content
+     column and wraps a *pill* onto two lines — a two-line label reads as
+     editorial, a two-line pill reads as broken. */
+  .hero-copy .kicker-pill {
+    display: flex; align-items: flex-start; gap: 6px;
+    background: none; padding: 0; border-radius: 0;
+    color: var(--color-accent-2-700);
+    font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; line-height: 1.45;
+    margin-bottom: var(--space-2);
   }
-  .hero > div:first-child > .row { grid-column: 1; grid-row: 2; margin-top: var(--space-4); }
-  .hero-checklist { grid-column: 1; grid-row: 3; margin-top: var(--space-3); }
-  .trust-row { grid-column: 1; grid-row: 4; }
+  .hero-copy .kicker-pill .dot { margin-top: 5px; }
+  .hero-copy .price-anchor { margin-bottom: var(--space-2); }
+  /* `p.sub` in the selector, not just `.sub` — the desktop rule is
+     `.hero p.sub`, which outranks a two-class selector on the element column. */
+  .hero-copy p.sub { font-size: 15.5px; line-height: 1.55; margin-bottom: var(--space-4); }
 }
 
 .capstrip { padding: var(--space-4) 0 var(--space-6); display: flex; gap: 10px; flex-wrap: wrap; }
@@ -318,7 +364,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <div class="wrap" id="top">
   <section class="hero" id="hero">
     <div>
-      <div class="hero-overlay-content">
+      <div class="hero-copy">
         <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
         <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
         <div class="price-anchor">
@@ -679,29 +725,26 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 </div>
 
 <script>
-/* Caps the mobile hero's overlay text zone (--hero-overlay-max, consumed in
-   the @media (max-width: 760px) block above) to the real, measured space
-   between the nav and the fixed Shop/View Cart bar — not a hardcoded guess —
-   so the headline never renders under the bar on short viewports or with
-   longer category headline variants. Also publishes --nav-h/--stickycta-h,
-   consumed by .scroll-indicator (mobile) to sit exactly between the two
-   fixed bars, and reused by the indicator's click-to-scroll offset below. */
+/* Publishes --nav-h/--stickycta-h: the real, measured heights of the two
+   fixed bars (sticky nav, mobile Shop/View Cart bar). Consumed by
+   .scroll-indicator (mobile) to sit exactly between them, and reused by the
+   indicator's click-to-scroll offset below.
+   (This used to also publish --hero-overlay-max, capping a text overlay on
+   the mobile hero photo. That overlay is gone — the mobile hero copy now
+   sits in a card below the photo, in normal flow, so nothing needs capping.) */
 (() => {
   const nav = document.querySelector('.nav');
   const stickyCta = document.querySelector('.sticky-cta');
-  function setHeroOverlayMax() {
+  function setFixedBarHeights() {
     const navH = nav ? nav.getBoundingClientRect().height : 0;
     const ctaH = stickyCta ? stickyCta.getBoundingClientRect().height : 0;
-    const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-    const max = Math.max(140, vh - navH - ctaH - 24);
-    document.documentElement.style.setProperty('--hero-overlay-max', max + 'px');
     document.documentElement.style.setProperty('--nav-h', navH + 'px');
     document.documentElement.style.setProperty('--stickycta-h', ctaH + 'px');
   }
-  setHeroOverlayMax();
-  window.addEventListener('resize', setHeroOverlayMax);
-  window.addEventListener('orientationchange', setHeroOverlayMax);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', setHeroOverlayMax);
+  setFixedBarHeights();
+  window.addEventListener('resize', setFixedBarHeights);
+  window.addEventListener('orientationchange', setFixedBarHeights);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', setFixedBarHeights);
 })();
 </script>
 

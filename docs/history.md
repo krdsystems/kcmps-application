@@ -500,6 +500,9 @@ leaf paths present, shuffled), plus a network-request check confirming every ima
 
 ### 17. Mobile hero/nav: logo-tap overlap fix, and a full-bleed 3:4 overlay hero (2026-07-25)
 
+> The overlay hero described below was replaced in step 28 — text is no longer drawn over the
+> mobile hero photo. The logo-tap fix is still current. Kept for the reasoning trail.
+
 Two related mobile-only bugs, both in `website/index.html`.
 
 **Logo tap left the nav overlapping the hero.** The nav-brand link was a plain `<a
@@ -1013,6 +1016,68 @@ schedule — the estimator and the shop cards can no longer disagree on price. R
 quantity ceiling (number-input max 2000, slider max 500 — the slider is just the fast-drag
 range, typing a larger number still works) so genuine bulk/enterprise orders aren't capped by
 an arbitrary online-ordering wall.
+
+### 28. Mobile hero rebuilt: copy card below the photo, replacing the text-over-image overlay (2026-07-28)
+
+This supersedes the mobile half of step 17. That design put the kicker/headline/price-anchor/
+sub-line *on top of* the hero photo, over a navy gradient scrim. It never worked, and the
+reason is structural rather than a tuning miss: the hero carousel draws from a rotating pool
+of real studio and product shots (step 16), which includes both near-black frames and
+blown-out high-key ones. White copy over that pool has no single safe scrim value.
+
+Two rounds of trying to tune it out are worth recording so nobody re-tries them:
+
+- **Raising the scrim floor.** The original gradient faded to fully transparent by 55%, so the
+  sub-line sat over bare photo. Contrast math on white text over a *white* photo puts a
+  0.35-alpha navy floor at 2.2–2.4:1 — nowhere near WCAG AA's 4.5:1. The alpha that actually
+  clears AA is ~0.6 *flat across the whole image*, which is dark enough to flatten every photo
+  in the pool into grey. The scrim can be correct or the photo can be visible, not both.
+- **Layered text-shadow + a translucent panel behind the sub-line.** Made the text legible but
+  looked like a patch, and the panel's extra height pushed the overlay past the image on narrow
+  phones. Clamping it with `-webkit-line-clamp` then silently ate the end of the sentence,
+  which read as "some words are missing" rather than as a deliberate truncation.
+
+There was also a layout dead end worth naming. To make the overlay cover the whole photo, the
+obvious move is to lock the overlay's height to the image's. It cannot work: as the viewport
+narrows, the text wraps onto *more* lines while the aspect-ratio'd image gets *shorter*. The
+two move in opposite directions, so any width where they happen to match is a coincidence, and
+below it the copy overflows. (Measured at −77 to −118px of overflow at 369px across the three
+`PAGE_VARIANTS`.) That's why the intermediate fix split the scrim into its own `.hero-scrim`
+div sized by a matching `aspect-ratio` — covering the photo and containing the text are two
+different jobs and can't share one box.
+
+**The fix is to stop overlaying.** Below 760px the photo now runs full-bleed at `4/3` with
+square corners (negative `margin-inline` cancels `.wrap`'s edge padding, including the +20px
+right gutter reserved for the scroll-indicator rail), and all the copy sits in a light card
+that overlaps its bottom edge by 28px with a rounded top. Contrast is then inherited from the
+page's own surface and is photo-independent by construction — no scrim, no text-shadow, no
+clamp, and the photos are no longer greyed out. The card is the existing DOM wrapper
+(`.hero > div:first-child`), which stops being `display: contents` and becomes the card box;
+its children are resequenced with flex `order` (CTA above the checklist) rather than by
+grid-row assignment, so DOM order — and therefore desktop — is untouched.
+
+Smaller calls inside that:
+
+- The card's background is `linear-gradient(var(--color-bg), var(--color-bg)),
+  var(--color-neutral-100)` rather than plain `var(--color-bg)`. `--color-bg` is deliberately
+  translucent (α .92), so used directly the photo ghosts through the 28px overlap strip;
+  layering it over an opaque neutral renders the identical colour while actually being opaque.
+- The kicker drops its pill chrome on mobile and becomes a plain uppercase eyebrow label. The
+  category kickers run to ~51 characters, which overflows a 315px column — a two-line label
+  reads as editorial, a two-line *pill* reads as broken.
+- CTAs stack full-width. Side-by-side halves are ~150px at 375px, which wrapped the longer
+  per-category labels ("Get an instant quote") inside the button.
+- `.hero-copy p.sub`, not `.hero-copy .sub` — the desktop rule is `.hero p.sub`, and on a
+  specificity tie in the class column its trailing element selector wins. The mobile font-size
+  silently didn't apply until the selector matched that shape.
+- `--hero-overlay-max` and its measuring script are gone; there is no longer an overlay to cap.
+  The same script still publishes `--nav-h`/`--stickycta-h`, which the scroll-position
+  indicator (step 19) depends on.
+
+Verified by measuring geometry and computed styles across 320/375/414 widths against all three
+`PAGE_VARIANTS`: no horizontal overflow, photo and card both spanning the full viewport width,
+no clipped sub-line, single-line buttons, and the primary CTA now landing above the fold in
+every variant (it was below it before). Desktop at 1280px confirmed unchanged.
 
 ## Auth implementation notes
 

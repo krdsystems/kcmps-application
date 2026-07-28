@@ -634,8 +634,8 @@ textarea.input { min-height: 90px; resize: vertical; }
    the in-view section and reveal a label on hover (transform+opacity only,
    never a layout size change, so neighbors don't jitter).
    Mobile (≤760px): pinned between the nav and the fixed Shop/View Cart bar
-   via --nav-h/--stickycta-h (measured in JS, same pattern as
-   --hero-overlay-max). Collapsed to lines-only by default like desktop —
+   via --nav-h/--stickycta-h (measured in JS, not hardcoded, so the rail
+   tracks the real bar heights). Collapsed to lines-only by default like desktop —
    permanently-visible labels were wide enough to overlap the hero headline
    on narrow screens. Tapping a segment flashes its label briefly (JS toggles
    .is-tapped) before scrolling, then removes it. */

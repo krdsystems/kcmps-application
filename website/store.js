@@ -42,6 +42,25 @@
     return DATA.currency + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
+  /* ---------- bulk-quantity pricing ----------
+     A product opts in with `bulkTiers: [{ minQty, discountPct }, ...]`
+     (ascending minQty). Given a line's pre-discount unit price and its
+     current qty, returns the discounted unit price at the highest tier the
+     qty qualifies for (or the base price if none apply). Used both for the
+     live price shown on a product card as the qty stepper changes, and to
+     recompute a cart line's unitPrice when its qty changes in the drawer —
+     see skuCard()'s unitPrice()/refresh() and setQty(). */
+  function activeBulkTier(qty, tiers) {
+    if (!tiers || !tiers.length) return null;
+    var best = null;
+    tiers.forEach(function (t) { if (qty >= t.minQty && (!best || t.minQty > best.minQty)) best = t; });
+    return best;
+  }
+  function bulkUnitPrice(base, qty, tiers) {
+    var tier = activeBulkTier(qty, tiers);
+    return tier ? Math.round(base * (1 - tier.discountPct / 100) * 100) / 100 : base;
+  }
+
   /* ---------- cart state ---------- */
   function loadCart() {
     try { var v = JSON.parse(localStorage.getItem(CART_KEY)); return Array.isArray(v) ? v : []; }
@@ -66,7 +85,13 @@
 
   function addToCart(item) {
     var existing = cart.find(function (i) { return i.key === item.key; });
-    if (existing) existing.qty += item.qty; else cart.push(item);
+    if (existing) {
+      existing.qty += item.qty;
+      if (existing.baseUnitPrice != null) {
+        var p = DATA.products.find(function (pp) { return pp.id === existing.id; });
+        existing.unitPrice = bulkUnitPrice(existing.baseUnitPrice, existing.qty, p && p.bulkTiers);
+      }
+    } else cart.push(item);
     saveCart(cart); syncUI();
     // Covers both instant-buy (sku) and the site's quote flow (custom items
     // ARE the quote/custom-request action here — see hero-priming script).
@@ -76,6 +101,13 @@
     var it = cart.find(function (i) { return i.key === key; });
     if (!it) return;
     it.qty = qty;
+    // Bulk-tier lines carry the pre-discount baseUnitPrice (see addToCart) so
+    // the per-unit price can be re-struck at the new qty rather than staying
+    // frozen at whatever tier applied when the line was first added.
+    if (it.baseUnitPrice != null) {
+      var p = DATA.products.find(function (pp) { return pp.id === it.id; });
+      it.unitPrice = bulkUnitPrice(it.baseUnitPrice, it.qty, p && p.bulkTiers);
+    }
     if (it.qty <= 0) cart = cart.filter(function (i) { return i.key !== key; });
     saveCart(cart); syncUI();
   }
@@ -422,8 +454,11 @@
       return addonGroups.reduce(function (sum, g, i) { return sum + g.options[addonSel[i]].price; }, 0);
     }
 
-    function unitPrice() {
+    function baseUnitPrice() {
       return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0) + addonsTotal();
+    }
+    function unitPrice() {
+      return bulkUnitPrice(baseUnitPrice(), qty, p.bulkTiers);
     }
 
     // thumb
@@ -490,10 +525,19 @@
     var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−"; minus.setAttribute("aria-label", "Decrease quantity");
     var qval = document.createElement("span"); qval.className = "qval"; qval.textContent = qty;
     var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+"; plus.setAttribute("aria-label", "Increase quantity");
-    minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.textContent = qty; });
-    plus.addEventListener("click", function () { qty += 1; qval.textContent = qty; });
+    minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.textContent = qty; refresh(); });
+    plus.addEventListener("click", function () { qty += 1; qval.textContent = qty; refresh(); });
     stepper.appendChild(minus); stepper.appendChild(qval); stepper.appendChild(plus);
     buy.appendChild(priceEl); buy.appendChild(stepper); card.appendChild(buy);
+
+    // bulk-tier note — advertises the discount ladder up front so customers
+    // know it's worth sizing an order up, and highlights the tier the
+    // current qty has actually reached.
+    var bulkNote = null;
+    if (p.bulkTiers && p.bulkTiers.length) {
+      bulkNote = document.createElement("p"); bulkNote.className = "addon-label bulk-note";
+      card.insertBefore(bulkNote, buy);
+    }
 
     // gate note — shown only while p.requiresCartProduct isn't satisfied
     // (e.g. Lamination/Binding before a Document Printing line exists).
@@ -518,7 +562,8 @@
       addToCart({
         key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + (designRef || "") + "|" + addonLabels.join("|"),
         id: p.id, name: p.name, leaf: p.leaf, type: "sku",
-        variantLabel: lineLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty,
+        variantLabel: lineLabel, shirt: withShirt,
+        unitPrice: unitPrice(), baseUnitPrice: p.bulkTiers ? baseUnitPrice() : null, qty: qty,
         designRef: designRef, designName: designName
       });
       var orig = addBtn.innerHTML; addBtn.innerHTML = "Added ✓"; addBtn.disabled = true;
@@ -546,15 +591,20 @@
     }
 
     function refresh() {
-      var base = variants[sel].price;
-      var shirtExtra = withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0;
-      var addonExtra = addonsTotal();
-      var extra = shirtExtra + addonExtra;
+      var base = baseUnitPrice();
+      var tier = activeBulkTier(qty, p.bulkTiers);
+      var shown = tier ? bulkUnitPrice(base, qty, p.bulkTiers) : base;
       var notes = [];
-      if (shirtExtra) notes.push("incl. shirt");
+      if (withShirt && p.shirtAddon) notes.push("incl. shirt");
       addonGroups.forEach(function (g, i) { if (addonSel[i] > 0) notes.push("incl. " + g.options[addonSel[i]].label); });
       if (!notes.length && p.variants && p.variants.length > 1) notes.push("/ " + variants[sel].label);
-      priceEl.innerHTML = peso(base + extra) + (notes.length ? ' <small>' + notes.join(", ") + '</small>' : '');
+      if (tier) notes.push(tier.discountPct + "% bulk price");
+      priceEl.innerHTML = peso(shown) + (notes.length ? ' <small>' + notes.join(", ") + '</small>' : '');
+      if (bulkNote) {
+        bulkNote.textContent = "Bulk pricing: " + p.bulkTiers.map(function (t) {
+          return t.minQty + "+ → " + t.discountPct + "% off";
+        }).join(" · ");
+      }
     }
     refresh();
     return card;
@@ -1008,5 +1058,12 @@
 
   // Public hooks for the auth script (login/logout/session-restore) to refresh
   // the badge and open the drawer without knowing cart internals.
-  window.KCMPS_STORE = { open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart };
+  // bulkTier/bulkUnitPrice exposed so the "Bulk & custom" estimator
+  // (index.html, near the bottom script block) prices off the exact same
+  // per-product discount ladder as the catalog cards above, instead of
+  // maintaining its own separate schedule that can drift out of sync.
+  window.KCMPS_STORE = {
+    open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart,
+    bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice,
+  };
 })();

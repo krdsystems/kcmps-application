@@ -549,7 +549,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Bulk &amp; custom</span>
       <h2 id="est-h2">Ordering in bulk?</h2>
-      <p id="est-p">Pick a real product, set your quantity, and see exact catalog pricing — automatic bulk discounts kick in at 25+ units. Add it straight to your cart, no back-and-forth required.</p>
+      <p id="est-p">Pick a real product, set your quantity, and see exact catalog pricing — bulk discounts on eligible products apply automatically as you scale up. Add it straight to your cart, no back-and-forth required.</p>
     </div>
     <div class="est-grid">
       <div>
@@ -561,10 +561,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
           <p class="est-step">Step 02 · Quantity &amp; add-ons</p>
           <div class="est-row">
             <label for="qty-num" style="font-size:14px">Quantity</label>
-            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="100" step="1" value="50" aria-label="Quantity (type a number)" />
+            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="2000" step="1" value="50" aria-label="Quantity (type a number)" />
           </div>
-          <input id="qty" type="range" min="1" max="100" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
-          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0">Bulk discount applies automatically: 5% at 25+, 10% at 100 units. Capped at 100 units per order — for a larger run, message us directly.</p>
+          <input id="qty" type="range" min="1" max="500" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
+          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0" id="est-bulk-note">Pick a product to see its bulk-discount ladder.</p>
           <div class="finish-grid" id="est-addons"></div>
         </div>
       </div>
@@ -803,6 +803,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   const q_discountLabel = document.getElementById('q-discount-label');
   const q_discount = document.getElementById('q-discount');
   const q_total = document.getElementById('q-total');
+  const bulkNote = document.getElementById('est-bulk-note');
   const addCartBtn = document.getElementById('est-add-cart');
   const copyBtn = document.getElementById('copy-spec');
   const merchNote = document.getElementById('est-merch-note');
@@ -833,6 +834,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         name: p.name + (v.label ? ' — ' + v.label : ''),
         unitPrice: v.price,
         shirtAddon: !!p.shirtAddon,
+        bulkTiers: p.bulkTiers || null,
       });
     });
   });
@@ -906,12 +908,25 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     });
   }
 
-  function bulkDiscountPct(q) {
-    // Capped at 100 units/order (production capacity) — the top tier lands
-    // exactly at the cap rather than a separate 250+ break.
-    if (q >= 100) return 0.10;
-    if (q >= 25) return 0.05;
-    return 0;
+  // Reads the SAME per-product bulkTiers (products.js) and the SAME
+  // discount math (bulkUnitPrice) the shop's product cards use — see
+  // store.js's window.KCMPS_STORE.bulkTier/bulkUnitPrice — so this estimator
+  // can never quote a different bulk price than what "Add to cart" charges.
+  function bulkDiscountPct(opt, q) {
+    const tier = window.KCMPS_STORE.bulkTier(q, opt.bulkTiers);
+    return tier ? tier.discountPct / 100 : 0;
+  }
+
+  function updateBulkNote() {
+    const opt = currentOption();
+    if (!bulkNote) return;
+    if (!opt.bulkTiers || !opt.bulkTiers.length) {
+      bulkNote.textContent = 'This product is priced flat regardless of quantity.';
+      return;
+    }
+    bulkNote.textContent = 'Bulk discount applies automatically: ' +
+      opt.bulkTiers.map((t) => `${t.discountPct}% at ${t.minQty}+`).join(', ') +
+      '. Need more than that? Message us for a custom production plan.';
   }
 
   function computeQuote() {
@@ -924,7 +939,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       addonAmt += inp.dataset.kind === 'pct' ? subtotal * parseFloat(inp.dataset.value) : parseFloat(inp.dataset.value) * q;
     });
     const preDiscount = subtotal + addonAmt;
-    const discountPct = bulkDiscountPct(q);
+    const discountPct = bulkDiscountPct(opt, q);
     const discountAmt = preDiscount * discountPct;
     const total = preDiscount - discountAmt;
     return { opt, q, base, addonAmt, discountPct, discountAmt, total };
@@ -946,17 +961,21 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   }
 
   // Range slider and number input drive the same value, kept in sync both ways.
+  // Slider tops out at 500 (its usable drag range) but the number field
+  // accepts up to 2000 directly — real bulk/enterprise print runs shouldn't
+  // hit an artificial online-ordering ceiling.
   function syncQty(value) {
-    const clamped = Math.min(100, Math.max(1, parseInt(value, 10) || 1));
-    qty.value = String(clamped);
+    const clamped = Math.min(2000, Math.max(1, parseInt(value, 10) || 1));
+    qty.value = String(Math.min(500, clamped));
     qtyNum.value = String(clamped);
     recalc();
   }
   qty.addEventListener('input', () => syncQty(qty.value));
   qtyNum.addEventListener('input', () => syncQty(qtyNum.value));
-  productSel.addEventListener('change', () => { buildAddons(); recalc(); });
+  productSel.addEventListener('change', () => { buildAddons(); updateBulkNote(); recalc(); });
 
   buildAddons();
+  updateBulkNote();
   recalc();
 
   copyBtn.addEventListener('click', () => {

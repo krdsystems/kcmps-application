@@ -112,7 +112,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Documents",
       name: "Document Printing",
-      blurb: "Short bond paper, priced per page — choose black-and-white or full color.",
+      blurb: "Short bond paper, priced per page — choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
       image: "assets/products/print-bw-document-printing.jpg",
       price: 4,
       addons: [
@@ -124,6 +124,17 @@ window.KCMPS_STORE_DATA = {
             { label: "Colored (₱7/page)", price: 3 },
           ],
         },
+      ],
+      // 2026-07-28: bulk-pricing pass — reports/handouts printed at volume
+      // cost less per page (toner/paper bought in bulk, one setup amortized
+      // over more sheets), so the discount ladder trades margin-per-page for
+      // more pages per order. See docs/braindump-2026-07-28-pricing-catalog.md
+      // sibling note; discountPct applies to whichever variant (B/W or Color)
+      // is selected, off that variant's own price.
+      bulkTiers: [
+        { minQty: 50, discountPct: 6 },
+        { minQty: 150, discountPct: 10 },
+        { minQty: 300, discountPct: 12 },
       ],
       fulfillmentInput: "file",
     },
@@ -190,11 +201,17 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Bookmarks",
       name: "Custom Bookmarks",
-      blurb: "Printed bookmarks for events, giveaways, or personal use.",
+      blurb: "Printed bookmarks for events, giveaways, or personal use. Ordering packs for a big event or giveaway? Bulk pricing kicks in at 10+ packs.",
       image: "assets/products/print-bookmarks.jpg",
       variants: [
         { label: "Custom bookmark (2 pcs)", price: 35 },
         { label: "Hymnal bookmark (6 pcs)", price: 70 },
+      ],
+      // Tiers key off pack qty (not pcs) since that's the cart line unit —
+      // 10 packs of the 6-pc variant is already 60 pcs, a real event order.
+      bulkTiers: [
+        { minQty: 10, discountPct: 6 },
+        { minQty: 25, discountPct: 10 },
       ],
       fulfillmentInput: "file",
     },
@@ -204,13 +221,18 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Business Cards",
       name: "Business Cards",
-      blurb: "Full-color, priced per piece — minimum order of 10 pcs.",
+      blurb: "Full-color, priced per piece — minimum order of 10 pcs. Bulk pricing kicks in automatically at 50+ pcs.",
       image: "assets/products/print-business-cards.jpg",
       variants: [
         { label: "Front only (per pc, min. 10 pcs)", price: 7 },
         { label: "Back-to-back / double-sided (per pc, min. 10 pcs)", price: 15 },
       ],
       minQty: 10,
+      bulkTiers: [
+        { minQty: 50, discountPct: 7 },
+        { minQty: 100, discountPct: 10 },
+        { minQty: 250, discountPct: 12 },
+      ],
       fulfillmentInput: "file",
     },
     {
@@ -219,13 +241,18 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Stickers & Labels",
       name: "Stickers & Labels",
-      blurb: "Priced per A4 sheet, except decal stickers which are priced per inch.",
+      blurb: "Priced per A4 sheet, except decal stickers which are priced per inch. Bulk pricing kicks in automatically at 10+ sheets/inches.",
       image: "assets/products/print-stickers-labels.jpg",
       variants: [
         { label: "Premium printable vinyl (per A4 sheet)", price: 100 },
         { label: "Paper stickers (per A4 sheet)", price: 45 },
         { label: "Transparent (per A4 sheet)", price: 60 },
         { label: "Decal stickers (per inch)", price: 5 },
+      ],
+      bulkTiers: [
+        { minQty: 10, discountPct: 5 },
+        { minQty: 25, discountPct: 8 },
+        { minQty: 50, discountPct: 12 },
       ],
       fulfillmentInput: "file",
     },

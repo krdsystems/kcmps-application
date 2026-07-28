@@ -978,6 +978,42 @@ click listener is even still attached (disabled buttons don't fire `click`, so i
 rather than removed). Re-enabling later is just deleting the `disabled` attribute/line and
 the two `title` lines.
 
+### 27. Bulk pricing pass: quantity discount tiers, and unifying the estimator with the catalog (2026-07-28)
+
+The owner flagged that print-office pricing wasn't competitive for bulk orders — every product
+was flat per-unit regardless of quantity, so a 500-page or 250-piece order paid the exact same
+per-unit rate as a 10-unit order. Added a `bulkTiers: [{ minQty, discountPct }, ...]` field
+(products.js) to the four products where volume orders actually happen — Document Printing
+(6%/10%/12% at 50+/150+/300+ pages), Business Cards (7%/10%/12% at 50+/100+/250+ pcs), Stickers
+& Labels (5%/8%/12% at 10+/25+/50+ sheets or inches), Bookmarks (6%/10% at 10+/25+ packs, keyed
+off pack qty since that's the cart line unit). Lamination, Binding, Photocopying, and Stamps
+stay flat — bulk ordering isn't realistic for those. Discount depths are estimates against
+typical Metro Manila small-print-shop cost ratios (no real COGS data available yet), capped at
+the owner's requested modest 8–12% top tier — worth a gut-check against actual material costs
+before treating them as final.
+
+Pricing engine changes (`store.js`): added `activeBulkTier(qty, tiers)` / `bulkUnitPrice(base,
+qty, tiers)` helpers. `skuCard()`'s qty stepper now calls `refresh()` on every +/- click (it
+previously only refreshed on variant/addon change), so the displayed unit price and a new
+"Bulk pricing: 50+ → 6% off · …" ladder note update live as the shopper adjusts quantity before
+adding to cart. Cart lines now carry a `baseUnitPrice` (pre-discount) alongside `unitPrice`;
+`setQty()` and `addToCart()`'s merge-on-existing-key path both recompute `unitPrice` from
+`baseUnitPrice` at the new qty, so a line re-strikes its discount tier live in the cart drawer
+too (e.g. stepping a Document Printing line from 299→300 pages drops it from the 10% to the 12%
+tier without needing to remove/re-add).
+
+Also found and fixed a second, disconnected bulk-pricing system: the "Bulk & custom" estimator
+section (`index.html`, `#estimator`) had its own flat 5%/10%-at-25/100-units discount applied
+uniformly to *any* product, hard-capped at 100 units total — meaning it could quote a different
+bulk price than the matching product card, and it choked off real bulk/enterprise orders right
+where they'd matter (a 500-page order had nowhere to go past the 100-unit ceiling). Unified it
+by exposing `bulkTier`/`bulkUnitPrice` on `window.KCMPS_STORE` (store.js) and having the
+estimator read each product's own `bulkTiers` through that shared function instead of its own
+schedule — the estimator and the shop cards can no longer disagree on price. Raised the
+quantity ceiling (number-input max 2000, slider max 500 — the slider is just the fast-drag
+range, typing a larger number still works) so genuine bulk/enterprise orders aren't capped by
+an arbitrary online-ordering wall.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

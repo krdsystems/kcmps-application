@@ -86,10 +86,7 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   DevTools touch-emulation can't leave labels stuck open (only `.is-tapped` flashes them).
   Segments use `pointer-events: none` on the container + `auto` on items (desktop/base) so
   swipes in the gaps still scroll the page. See `docs/history.md` step 18 before changing any
-  of this. Mobile (≤760px) also renders a full-viewport-height `.scroll-indicator::before`
-  dead-zone border, anchored to the rail's real left edge via `--indicator-left` (measured in
-  JS in `index.html`, same IIFE as `--nav-h`/`--stickycta-h`) — purely visual, doesn't touch
-  the hit area. On top of that, mobile narrows the *real* tap target one level further: the
+  of this. Mobile (≤760px) also narrows the *real* tap target one level further: the
   item's flex box reserves its label's full width even while the label sits at `opacity: 0`
   (not `display: none`), so without this the reserved-but-invisible zone would still swallow
   taps meant for whatever card button sits behind it. The mobile block overrides

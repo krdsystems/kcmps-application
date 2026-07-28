@@ -76,17 +76,6 @@ window.KCMPS_STORE_DATA = {
      prices (the real DTF size pricing). `variants` = size choices; `shirtAddon`
      opts the card into the "+ shirt" toggle. `image:null` → CSS placeholder. */
   products: [
-    {
-      id: "print-custom-packaging",
-      leaf: "print-office",
-      type: "sku",
-      kicker: "Print · Custom packaging",
-      name: "Custom Packaging",
-      blurb: "Die-cut boxes and sleeves, brand-ready finishes. Priced per unit.",
-      image: "assets/products/print-custom-packaging.jpg",
-      price: 65,
-      fulfillmentInput: "file",
-    },
     /* --- Print/Office SKU set (2026-07 competitive pricing pass) ---
        Real, priced entries for the 8 most common print/office products,
        researched against Metro Manila small-shop rates and positioned
@@ -99,23 +88,43 @@ window.KCMPS_STORE_DATA = {
        at or after checkout; "in-person" = the customer must bring/deliver a
        physical original (this cannot be fulfilled from a digital file
        alone); "none" = nothing further needed beyond the SKU itself. See
-       store.js's checkout notes placeholder, which reacts to "file". */
+       store.js's checkout notes placeholder, which reacts to "file".
+
+       2026-07-28 (part 2): Photocopying, Lamination, and Binding all need
+       a physical original in KCMPS's hands, but that original doesn't
+       always mean a walk-in — if the customer prints the pages with KCMPS
+       first (Document Printing, below), KCMPS already holds the finished
+       sheets and can laminate/bind them without a visit.
+        - Photocopying has no such path (you're duplicating something that
+          already exists on paper — there's no file to print from), so it
+          carries `noOnlineOrder: true`: renders as a reference-price card
+          with no "Add to cart" button at all (see store.js's
+          `inStoreInfoCard()`).
+        - Lamination/Binding carry `requiresCartProduct:
+          "print-bw-document-printing"`: their "Add to cart" stays disabled
+          (with an explanatory note) until that product is already in the
+          cart, proving the pages are being printed here rather than
+          brought in — see store.js skuCard()'s gate, which listens for
+          the "kcmps:cart-change" event. */
     {
       id: "print-bw-document-printing",
       leaf: "print-office",
       type: "sku",
       kicker: "Print · Documents",
       name: "Document Printing",
-      blurb: "Short bond paper, priced per page — choose black-and-white or full color, both are standard options.",
+      blurb: "Short bond paper, priced per page — choose black-and-white or full color.",
       image: "assets/products/print-bw-document-printing.jpg",
       price: 4,
-      addon: {
-        label: "Color",
-        options: [
-          { label: "B/W (₱4/page)", price: 0 },
-          { label: "Colored (₱7/page)", price: 3 },
-        ],
-      },
+      addons: [
+        {
+          key: "color",
+          label: "Color",
+          options: [
+            { label: "B/W (₱4/page)", price: 0 },
+            { label: "Colored (₱7/page)", price: 3 },
+          ],
+        },
+      ],
       fulfillmentInput: "file",
     },
     {
@@ -124,10 +133,11 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Photocopying",
       name: "Photocopying (Xerox)",
-      blurb: "Black-and-white copies, any size, priced per page.",
+      blurb: "Black-and-white copies of a document you already have, any size, priced per page. In-store only — bring the original in, there's no online booking for this one.",
       image: "assets/products/print-photocopying.jpg",
       price: 3,
       fulfillmentInput: "in-person",
+      noOnlineOrder: true,
     },
     {
       id: "print-lamination",
@@ -135,14 +145,15 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Lamination",
       name: "Lamination",
-      blurb: "Glossy lamination, priced by size.",
+      blurb: "Glossy lamination, priced by size. Add Document Printing to your cart first — we'll laminate the pages we just printed for you, no visit needed.",
       image: "assets/products/print-lamination.jpg",
       variants: [
         { label: "ID-size", price: 25 },
         { label: "A4 document", price: 70 },
         { label: "4R photo (class-picture size)", price: 40 },
       ],
-      fulfillmentInput: "in-person",
+      fulfillmentInput: "none",
+      requiresCartProduct: "print-bw-document-printing",
     },
     {
       id: "print-binding",
@@ -150,12 +161,13 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Binding",
       name: "Spiral / Comb Binding",
-      blurb: "Bind-only pricing (does not include printing the pages) — spiral or comb, A5 size, per 90 leaves.",
+      blurb: "Bind-only pricing (does not include printing) — spiral or comb, A5 size, per 90 leaves. Add Document Printing to your cart first — we'll bind the pages we just printed for you, no visit needed.",
       image: "assets/products/print-binding.jpg",
       variants: [
         { label: "Bind (per 90 leaves, A5, spiral or comb)", price: 50 },
       ],
-      fulfillmentInput: "in-person",
+      fulfillmentInput: "none",
+      requiresCartProduct: "print-bw-document-printing",
     },
     {
       id: "print-self-inking-stamps",

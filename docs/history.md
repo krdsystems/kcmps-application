@@ -893,6 +893,70 @@ field. Verified via DOM inspection that all 9 load correctly (forcing `loading="
 `"eager"` confirmed `complete: true` + correct `naturalWidth` for each) — direct screenshot
 capture was unreliable in this sandbox (consistent with entry 17's note on the same issue).
 
+### 25. Onsite-only print-office services gated instead of sold online (2026-07-28)
+
+The owner flagged that not every `print-office` line can actually be fulfilled from an
+online order: Photocopying always needs the customer's physical original in-store, and
+Lamination/Binding are only realistic online if they're finishing a Document Printing job
+placed here (the shop can't laminate/bind a document it never printed). Two designs were
+tried before landing on the shipped one — worth recording since the first was fully built
+before the owner reversed it.
+
+**First attempt (built, then reverted):** a "Finishing" add-on group on the Document
+Printing card itself, letting a customer opt into lamination/binding as a line item on that
+same card. The owner's follow-up ("lamination card add to cart button only enables if user
+opts for docu print... same logic for binding") made clear they wanted Lamination/Binding to
+stay as their own cards, just gated — not folded into Document Printing. Confirmed via
+`AskUserQuestion` before reverting: replace the add-on with gating (not layer both), and the
+unlock condition is simply "any Document Printing line in the cart" (not a matching
+finishing selection).
+
+**Shipped design** (`products.js`): removed Custom Packaging entirely (owner no longer
+offers it — the product entry and its `image` reference were deleted; the still-generated
+`assets/products/print-custom-packaging.jpg` was left on disk, unreferenced, rather than
+deleted). Photocopying gained `noOnlineOrder: true` — `store.js` routes any product with
+this flag to a new `inStoreInfoCard()` instead of `skuCard()`/`quoteCard()`: a reference-price
+card with an "In-store only" kicker and no Add-to-cart button at all, since there's genuinely
+nothing to add. Lamination and Binding gained `requiresCartProduct:
+"print-bw-document-printing"` — `skuCard()` reads this to disable "Add to cart" and show a
+"Add Document Printing to your cart first to unlock this" note until that product id is
+present in the cart, re-checked live via a new `kcmps:cart-change` event (dispatched from
+`saveCart()` on every add/qty-change/remove) so unlocking/re-locking never needs a page
+reload — added Document Printing while Lamination is already on-screen and it unlocks
+immediately; remove it again and Lamination re-locks.
+
+**Bug caught and fixed in the same pass:** the bulk estimator (`index.html`) builds its own
+product dropdown and calls `KCMPS_STORE.addToCart` directly, bypassing `skuCard()`'s gate UI
+entirely — it could add Lamination/Binding to the cart with zero Document Printing present,
+or "sell" Photocopying online despite the new in-store-only card. Fixed by excluding both
+`noOnlineOrder` and `requiresCartProduct` products from the estimator's flattened list.
+
+**A second, more serious bug surfaced after this shipped its first pass and the owner
+tested it live**: adding Document Printing to the cart, then removing it, left Document
+Printing's own "Add to cart" button permanently disabled — not just Lamination/Binding's.
+Root cause: the add-button click handler always sets `addBtn.disabled = true` for the
+"Added ✓" animation, then a `setTimeout` was supposed to restore it via `syncGate()` — but
+`syncGate()` early-returns `if (!p.requiresCartProduct)`, so for every *ungated* product
+(including Document Printing itself) the button's `disabled` flag was never reset back to
+`false`. One click permanently disabled any ungated product's own button. Fixed by having
+the `setTimeout` callback call `syncGate()` only for gated products and reset
+`addBtn.disabled = false` directly otherwise.
+
+**Card ordering also got a pass**: `renderCatalog()` used to render products in their
+`products.js` array order, which put Photocopying's `noOnlineOrder` card in the middle of
+the purchasable Document Printing/Lamination/Binding run — it read as visually broken rather
+than intentionally different. Reordered so every leaf's grid now renders all purchasable
+cards first, then its `noOnlineOrder` cards, then the leaf's custom-request card last —
+grouping "can't buy this online" cards next to the "request something custom" card instead
+of interleaving them with Add-to-cart cards.
+
+**Unrelated fixes bundled into the same round:** the bulk estimator's quantity input/slider
+was capped at 100 (was 1000) — production genuinely can't fulfill runs larger than that, so
+the copy now reads "capped at 100 units per order — for a larger run, message us directly."
+A browser-tab favicon was also added (`assets/favicon.ico`/`favicon.png`/
+`apple-touch-icon.png`, generated from the existing `assets/logo-mark.png`) since the site
+previously had none.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

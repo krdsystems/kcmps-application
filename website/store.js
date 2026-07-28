@@ -745,7 +745,7 @@
         '<h3 class="dialog-title" id="order-popup-title">Thank you for placing an order with us!</h3>' +
         '<div class="dialog-body">' +
           '<p>Our payment system is on the way. We currently accept GCASH payments in fulfilling your order.</p>' +
-          '<img class="order-popup-qr" src="assets/gcash-qr-placeholder.svg" alt="Placeholder GCash QR code — owner to replace with the real QR" width="180" height="180" />' +
+          '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
           '<p>After payment, kindly send us a screenshot of your payment proof to <strong>' + escapeHtml(ORDER_EMAIL) + '</strong> with:</p>' +
           '<div class="order-popup-format-wrap">' +
             '<button type="button" class="btn-icon-copy" id="order-popup-copy" aria-label="Copy this text">' + COPY_ICON + '</button>' +

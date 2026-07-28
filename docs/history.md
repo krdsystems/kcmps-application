@@ -793,6 +793,31 @@ interim step — no backend order creation, GCash reference-number field, or S3 
 upload yet; those remain Milestone 1 roadmap items (see
 [roadmap.md](roadmap.md#12--gcash-payment-proof-capture-the-missing-customer-facing-half)).
 
+### 23. Swapped the placeholder QR for the owner's real GCash QR (2026-07-28)
+
+Entry 22 shipped a self-contained SVG placeholder (`gcash-qr-placeholder.svg`, a bordered
+square labeled "Sample GCash QR — replace with real QR code") specifically so this swap would
+later be a one-file drop-in with no code change. Replaced it with the owner's actual GCash
+payment QR (`website/assets/gcash-qr.jpg`, a screenshot of the GCash app's InstaPay QR
+screen — masked name/mobile/user ID are GCash's own privacy masking, not something this repo
+adds or needs to add) and deleted the placeholder SVG.
+
+The one thing that *did* need a code change, contrary to the "no code change needed" claim in
+entry 22: the placeholder was a square SVG (180×180 CSS box), but the real screenshot is
+portrait (667×1280 intrinsic, GCash's app-screen aspect ratio) — forcing it into a square box
+would have stretched/cropped the QR. Updated `.order-popup-qr` (`store.js`'s injected markup,
+`styles.css`, and its `design-system/` mirror) to `width: 200px; height: auto` instead of a
+fixed square, and the `<img>`'s `width`/`height` attributes to `200`/`384` (200 scaled to the
+source's real aspect ratio) so the browser reserves the correct portrait space instead of a
+stale square one. Alt text changed from "Placeholder GCash QR code — owner to replace with
+the real QR" to "KCMPS GCash QR code — scan to pay" — placeholder language would be
+misleading now that it's live.
+
+Deployed straight to the production S3 bucket (`arn:aws:s3:::kcmps-online-bucket-est-2026`,
+`kcmps-claude-priv` profile — see `CLAUDE.md` "Deploying to production") after merging to
+`main`, per the same `aws s3 sync website/ ...` command as entry 22's deploy, dry-run checked
+first.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

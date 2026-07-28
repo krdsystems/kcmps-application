@@ -47,12 +47,22 @@
     try { var v = JSON.parse(localStorage.getItem(CART_KEY)); return Array.isArray(v) ? v : []; }
     catch (e) { return []; }
   }
-  function saveCart(cart) { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+  // Fires on every cart mutation (add/qty-change/remove) — used by
+  // skuCard()'s requiresCartProduct gate (e.g. Lamination/Binding unlocking
+  // once a Document Printing line exists) to re-check its condition without
+  // a full catalog re-render.
+  function saveCart(cart) {
+    localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    document.dispatchEvent(new CustomEvent("kcmps:cart-change"));
+  }
   var cart = loadCart();
 
   function itemCount() { return cart.reduce(function (s, i) { return s + i.qty; }, 0); }
   function payNowTotal() { return cart.reduce(function (s, i) { return s + (i.type === "sku" ? i.unitPrice * i.qty : 0); }, 0); }
   function pendingCount() { return cart.reduce(function (s, i) { return s + (i.type === "custom" ? i.qty : 0); }, 0); }
+  // Used by skuCard()'s requiresCartProduct gate (Lamination/Binding unlock
+  // once a Document Printing line is already in the cart).
+  function cartHasProduct(id) { return cart.some(function (i) { return i.id === id; }); }
 
   function addToCart(item) {
     var existing = cart.find(function (i) { return i.key === item.key; });
@@ -401,13 +411,19 @@
     var variants = p.variants || [{ label: "", price: p.price || 0 }];
     var sel = 0;              // selected variant index
     var withShirt = false;    // shirt add-on
-    var addonSel = 0;         // selected tiered add-on index (p.addon.options), 0 = none/base
+    // One selected option-index per entry in p.addons (each its own radio
+    // group, e.g. Color + Finishing on Document Printing), 0 = none/base.
+    var addonGroups = p.addons || [];
+    var addonSel = addonGroups.map(function () { return 0; });
     var minQty = p.minQty || 1;
     var qty = minQty;
 
+    function addonsTotal() {
+      return addonGroups.reduce(function (sum, g, i) { return sum + g.options[addonSel[i]].price; }, 0);
+    }
+
     function unitPrice() {
-      var addonPrice = (p.addon && p.addon.options) ? p.addon.options[addonSel].price : 0;
-      return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0) + addonPrice;
+      return variants[sel].price + (withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0) + addonsTotal();
     }
 
     // thumb
@@ -446,23 +462,26 @@
       tog.appendChild(cb); tog.appendChild(txt); card.appendChild(tog);
     }
 
-    // generic tiered add-on (e.g. the color-printing option on a B/W print SKU) —
-    // renders as its own radio group, additive on top of the base/variant price.
-    if (p.addon && p.addon.options && p.addon.options.length) {
-      if (p.addon.label) {
-        var addonLbl = document.createElement("div"); addonLbl.className = "addon-label"; addonLbl.textContent = p.addon.label;
+    // generic tiered add-ons (e.g. the color-printing and finishing options on
+    // Document Printing) — each group renders as its own radio group,
+    // additive on top of the base/variant price. A product can carry more
+    // than one independent group (p.addons is an array).
+    addonGroups.forEach(function (group, gi) {
+      if (!group.options || !group.options.length) return;
+      if (group.label) {
+        var addonLbl = document.createElement("div"); addonLbl.className = "addon-label"; addonLbl.textContent = group.label;
         card.appendChild(addonLbl);
       }
-      var addonSeg = document.createElement("div"); addonSeg.className = "seg"; addonSeg.setAttribute("role", "radiogroup"); addonSeg.setAttribute("aria-label", p.addon.label || "Add-on");
-      p.addon.options.forEach(function (opt, i) {
+      var addonSeg = document.createElement("div"); addonSeg.className = "seg"; addonSeg.setAttribute("role", "radiogroup"); addonSeg.setAttribute("aria-label", group.label || "Add-on");
+      group.options.forEach(function (opt, i) {
         var lab = document.createElement("label"); lab.className = "seg-opt";
-        var r = document.createElement("input"); r.type = "radio"; r.name = p.id + "-addon"; if (i === 0) r.checked = true;
+        var r = document.createElement("input"); r.type = "radio"; r.name = p.id + "-addon-" + (group.key || gi); if (i === 0) r.checked = true;
         var sp = document.createElement("span"); sp.textContent = opt.label;
-        r.addEventListener("change", function () { addonSel = i; refresh(); });
+        r.addEventListener("change", function () { addonSel[gi] = i; refresh(); });
         lab.appendChild(r); lab.appendChild(sp); addonSeg.appendChild(lab);
       });
       card.appendChild(addonSeg);
-    }
+    });
 
     // buy row: price + qty
     var buy = document.createElement("div"); buy.className = "product-buy";
@@ -476,6 +495,15 @@
     stepper.appendChild(minus); stepper.appendChild(qval); stepper.appendChild(plus);
     buy.appendChild(priceEl); buy.appendChild(stepper); card.appendChild(buy);
 
+    // gate note — shown only while p.requiresCartProduct isn't satisfied
+    // (e.g. Lamination/Binding before a Document Printing line exists).
+    var gateNote = null;
+    if (p.requiresCartProduct) {
+      gateNote = document.createElement("p"); gateNote.className = "addon-label gate-note";
+      gateNote.textContent = "Add Document Printing to your cart first to unlock this.";
+      card.appendChild(gateNote);
+    }
+
     // add button
     var addBtn = document.createElement("button"); addBtn.type = "button"; addBtn.className = "btn btn-primary btn-block";
     addBtn.innerHTML = CART_ICON + " Add to cart";
@@ -483,29 +511,48 @@
       var vLabel = variants[sel].label;
       var designRef = p.images && p.images.length ? p.images[gallery.getIndex()] : null;
       var designName = designRef ? designTitle(designRef) : null;
-      var addonLabel = (p.addon && p.addon.options && addonSel > 0) ? p.addon.options[addonSel].label : "";
-      var lineLabel = [vLabel, addonLabel].filter(Boolean).join(" + ");
+      var addonLabels = addonGroups
+        .map(function (g, i) { return addonSel[i] > 0 ? g.options[addonSel[i]].label : ""; })
+        .filter(Boolean);
+      var lineLabel = [vLabel].concat(addonLabels).filter(Boolean).join(" + ");
       addToCart({
-        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + (designRef || "") + "|" + addonLabel,
+        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + (designRef || "") + "|" + addonLabels.join("|"),
         id: p.id, name: p.name, leaf: p.leaf, type: "sku",
         variantLabel: lineLabel, shirt: withShirt, unitPrice: unitPrice(), qty: qty,
         designRef: designRef, designName: designName
       });
       var orig = addBtn.innerHTML; addBtn.innerHTML = "Added ✓"; addBtn.disabled = true;
-      setTimeout(function () { addBtn.innerHTML = orig; addBtn.disabled = false; }, 1100);
+      setTimeout(function () {
+        addBtn.innerHTML = orig;
+        if (p.requiresCartProduct) { syncGate(); } else { addBtn.disabled = false; }
+      }, 1100);
       qty = minQty; qval.textContent = qty;
       openDrawer();
     });
     card.appendChild(addBtn);
 
+    // Re-checked on every cart mutation (kcmps:cart-change, see saveCart())
+    // rather than only at build time, so e.g. adding Document Printing after
+    // Lamination is already on-screen unlocks it live, no reload needed.
+    function syncGate() {
+      if (!p.requiresCartProduct) return;
+      var unlocked = cartHasProduct(p.requiresCartProduct);
+      addBtn.disabled = !unlocked;
+      if (gateNote) gateNote.style.display = unlocked ? "none" : "";
+    }
+    if (p.requiresCartProduct) {
+      syncGate();
+      document.addEventListener("kcmps:cart-change", syncGate);
+    }
+
     function refresh() {
       var base = variants[sel].price;
       var shirtExtra = withShirt && p.shirtAddon ? DATA.shirtAddon.price : 0;
-      var addonExtra = (p.addon && p.addon.options) ? p.addon.options[addonSel].price : 0;
+      var addonExtra = addonsTotal();
       var extra = shirtExtra + addonExtra;
       var notes = [];
       if (shirtExtra) notes.push("incl. shirt");
-      if (addonExtra) notes.push("incl. " + p.addon.options[addonSel].label);
+      addonGroups.forEach(function (g, i) { if (addonSel[i] > 0) notes.push("incl. " + g.options[addonSel[i]].label); });
       if (!notes.length && p.variants && p.variants.length > 1) notes.push("/ " + variants[sel].label);
       priceEl.innerHTML = peso(base + extra) + (notes.length ? ' <small>' + notes.join(", ") + '</small>' : '');
     }
@@ -535,6 +582,25 @@
       openDrawer();
     });
     card.appendChild(addBtn);
+    return card;
+  }
+
+  // Products with no online path at all (products.js `noOnlineOrder`, e.g.
+  // Photocopying — there's no file to duplicate a physical original from).
+  // Shows the reference price for transparency but never touches the cart:
+  // no "Add to cart" button, no ₱0 pending-approval line either — this
+  // isn't a quote-on-request flow, it's a walk-in-only service.
+  function inStoreInfoCard(p) {
+    var card = document.createElement("div");
+    card.className = "card offer product product-custom";
+    card.appendChild(buildThumb(thumbImage(p), p.name));
+    var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = "In-store only"; card.appendChild(kick);
+    var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);
+    var body = document.createElement("p"); body.className = "card-body"; body.textContent = p.blurb || ""; card.appendChild(body);
+    var priceEl = document.createElement("p"); priceEl.className = "product-price"; priceEl.textContent = peso(p.price || 0) + " (reference price)";
+    card.appendChild(priceEl);
+    var note = document.createElement("p"); note.className = "addon-label"; note.textContent = "No online booking — walk in anytime during studio hours.";
+    card.appendChild(note);
     return card;
   }
 
@@ -574,7 +640,17 @@
       }
 
       var grid = document.createElement("div"); grid.className = "offer-grid";
-      DATA.products.filter(function (p) { return p.leaf === leafKey; }).forEach(function (p) { grid.appendChild(p.quoteOnRequest ? quoteCard(p) : skuCard(p)); });
+      var leafProducts = DATA.products.filter(function (p) { return p.leaf === leafKey; });
+      // Onsite-only cards (noOnlineOrder) render after every purchasable card,
+      // right next to the custom-request card — grouping "can't buy this
+      // online" cards together instead of interleaving them with Add-to-cart
+      // cards looks less awkward (see the removeItem/re-lock bug fix above).
+      leafProducts.filter(function (p) { return !p.noOnlineOrder; }).forEach(function (p) {
+        grid.appendChild(p.quoteOnRequest ? quoteCard(p) : skuCard(p));
+      });
+      leafProducts.filter(function (p) { return p.noOnlineOrder; }).forEach(function (p) {
+        grid.appendChild(inStoreInfoCard(p));
+      });
       grid.appendChild(customCard(leafKey, cfg)); // every leaf always gets the custom-request card
       container.appendChild(grid);
     });

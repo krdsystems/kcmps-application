@@ -110,6 +110,11 @@ Extended further in `docs/history.md` entry 24 (2026-07-28): the checkout form g
 courier choice (Grab/Lalamove) + address/landmark fields for Delivery, and copy-only policy
 statements (1–2 business day confirmation SLA, 3-business-day pickup forfeiture). Still no
 real order record or automated enforcement — same interim, front-end-only status as above.
+
+`docs/history.md` entry 25 (2026-07-28) is unrelated to payment proof but touches the same
+`print-office` catalog: Photocopying/Lamination/Binding are now gated (`noOnlineOrder`/
+`requiresCartProduct` in `products.js`) instead of freely orderable, since they genuinely
+can't be fulfilled from an online order alone.
 - [ ] `submitPaymentProof` Lambda — returns a pre-signed S3 upload URL (private uploads
   bucket) for the screenshot, writes the `payment` sub-object (`method: gcash_manual`,
   `claimedAmount`, `gcashRefNumber`, `screenshotRef`, `submittedAt`) onto `ORDER#<id>` META,

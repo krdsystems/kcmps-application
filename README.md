@@ -187,6 +187,14 @@ All changes are immediate — there's no build step.
   color-printing add-on on the Document Printing card and confirm the displayed price updates
   (₱4 B/W vs ₱7 colored). Confirm the Business Cards card's quantity stepper won't decrement
   below 10 in either the product card or the cart line (`minQty`, entry 24).
+- Onsite-only gating (entry 25): Photocopying should render with no "Add to cart" button at
+  all (an "In-store only" reference-price card). Lamination and Binding should start with
+  "Add to cart" disabled and a "Add Document Printing to your cart first" note; adding
+  Document Printing to the cart should unlock both live, no reload; removing it again should
+  re-lock them. Add Document Printing, remove it, and confirm *its own* "Add to cart" button
+  is still clickable afterward (a real regression this pass fixed — it used to stay
+  permanently disabled). Confirm the bulk estimator's product dropdown excludes all three
+  gated/onsite products.
 - Scroll the desktop page: the nav should stay pinned to the top (`position: sticky`) and fade
   from transparent to a solid blurred background + shadow past ~8px of scroll — see
   `docs/history.md` step 12 if it stops sticking (it's tied to `html`/`body` `overflow-x`).

@@ -22,6 +22,9 @@
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 <title>KCMPS — Kaalyados Creatives</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="assets/favicon.png" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <link rel="stylesheet" href="styles.css" />
 <style>
 :root { --edge: clamp(20px, 5vw, 72px); --measure: 62ch; }
@@ -555,10 +558,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
           <p class="est-step">Step 02 · Quantity &amp; add-ons</p>
           <div class="est-row">
             <label for="qty-num" style="font-size:14px">Quantity</label>
-            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="1000" step="1" value="50" aria-label="Quantity (type a number)" />
+            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="100" step="1" value="50" aria-label="Quantity (type a number)" />
           </div>
-          <input id="qty" type="range" min="1" max="1000" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
-          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0">Bulk discount applies automatically: 5% at 25+, 10% at 100+, 15% at 250+ units.</p>
+          <input id="qty" type="range" min="1" max="100" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
+          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0">Bulk discount applies automatically: 5% at 25+, 10% at 100 units. Capped at 100 units per order — for a larger run, message us directly.</p>
           <div class="finish-grid" id="est-addons"></div>
         </div>
       </div>
@@ -813,6 +816,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     // quoteOnRequest products (e.g. binding, bookmarks) have no confirmed
     // price yet — leave them out rather than fabricate a ₱0 estimator line.
     if (p.quoteOnRequest) return;
+    // noOnlineOrder (e.g. Photocopying) has no cart path at all — this
+    // estimator's "Add to cart" goes straight to window.KCMPS_STORE.addToCart.
+    // requiresCartProduct (e.g. Lamination/Binding) is gated behind already
+    // having a Document Printing line — the estimator can't express or
+    // enforce that gate, so both are left out here; order them from their
+    // own shop cards instead.
+    if (p.noOnlineOrder || p.requiresCartProduct) return;
     (p.variants || [{ label: '', price: p.price || 0 }]).forEach((v) => {
       options.push({
         id: p.id + (v.label ? '|' + v.label : ''),
@@ -894,7 +904,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   }
 
   function bulkDiscountPct(q) {
-    if (q >= 250) return 0.15;
+    // Capped at 100 units/order (production capacity) — the top tier lands
+    // exactly at the cap rather than a separate 250+ break.
     if (q >= 100) return 0.10;
     if (q >= 25) return 0.05;
     return 0;
@@ -933,7 +944,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 
   // Range slider and number input drive the same value, kept in sync both ways.
   function syncQty(value) {
-    const clamped = Math.min(1000, Math.max(1, parseInt(value, 10) || 1));
+    const clamped = Math.min(100, Math.max(1, parseInt(value, 10) || 1));
     qty.value = String(clamped);
     qtyNum.value = String(clamped);
     recalc();

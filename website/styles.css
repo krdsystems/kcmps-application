@@ -208,6 +208,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   backdrop-filter: blur(6px);
 }
 .card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-700); }
+/* Explains why a gated product's "Add to cart" is disabled (products.js
+   `requiresCartProduct`, e.g. Lamination/Binding before Document Printing
+   is in the cart) — hidden by skuCard()'s syncGate() once unlocked. */
+.gate-note { color: var(--color-accent-700); }
 .card-title {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   font-size: 17px; line-height: 1.2;

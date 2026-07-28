@@ -73,10 +73,17 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   manual `window.scrollTo({top:0, behavior:'auto'})` + synchronous `is-scrolled` recompute
   instead of a plain `#top` anchor jump — the native smooth-scroll anchor jump transiently pins
   the sticky nav over the hero. Don't revert to a plain anchor link without re-testing (see
-  `docs/history.md` step 17). The mobile hero's overlaid headline zone
-  (`.hero-overlay-content`, ≤760px) is height-capped by a JS-measured `--hero-overlay-max` CSS
-  var, not a hardcoded pixel value — keep it that way so it survives viewport-height and
-  headline-copy changes without re-overlapping the fixed Shop/View Cart bar.
+  `docs/history.md` step 17).
+- **Mobile hero (`≤760px`) does NOT overlay text on the photo.** The photo runs full-bleed
+  (negative `margin-inline` cancelling `.wrap`'s padding) at `4/3`, and `.hero-copy` + CTA +
+  checklist + trust chips live in a light card (`.hero > div:first-child`, `margin-top: -28px`,
+  rounded top) that overlaps its bottom edge — so copy contrast is inherited from the page
+  surface and is independent of whatever photo the carousel pool serves. Don't "simplify" this
+  back to copy-over-image with a scrim: the pool contains both near-black and blown-out-white
+  shots, and the only scrim alpha that carried white text over *both* (~0.6 navy) greyed out
+  every photo and still clipped the sub-line on narrow phones. The card re-sequences its
+  children with flex `order` (CTA above checklist), never by reordering the DOM, so desktop is
+  untouched.
 - **Scroll-position indicator** (`.scroll-indicator`, `z-index: 25`): sits deliberately between
   the sticky nav (`z-index: 20`) and the cart drawer/overlay (`101`/`100`), and auto-hides while
   the drawer is open. Its drawer watcher is a `MutationObserver` on `document.body` (not on

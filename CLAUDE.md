@@ -28,6 +28,7 @@ build — edits are live on refresh.
 |---|---|
 | Cart logic, checkout          | `website/store.js` — `addToCart`, `setQty`, `removeItem`, `payNowTotal`, `submitOrder`, public API `window.KCMPS_STORE` |
 | Bulk quantity-discount pricing | Product opts in via `bulkTiers: [{minQty, discountPct}]` in `products.js`; `store.js`'s `activeBulkTier()`/`bulkUnitPrice()` (exposed on `window.KCMPS_STORE`) apply it in `skuCard()`'s live price/qty-stepper, cart-line `setQty()`/`addToCart()` re-tiering, and the `index.html` `#estimator` bulk-quote widget — all three read the same tiers so they can't quote different prices |
+| Bulk-quote Step 01 product picker | `index.html` `#estimator` inline `<script>` — tabbed thumbnail/name/price cards (`.est-product-tabs`/`.est-product-grid`/`.est-product-pick`) built from the same `options` list sourced off `window.KCMPS_STORE_DATA.products`; one tab per catalog leaf, reusing the page's generic `[data-tabs]` click-handler. The original `<select id="est-product">` stays in the DOM (`display:none`) as the single source of truth — clicking a card just sets its value and fires `change`, so `currentOption()`/pricing/cart-add are untouched. See the "Bulk-quote product picker" gotcha below before changing this. |
 | GCash payment popup (post-"Place order", pre-mailto) | `store.js` `buildOrderEmail()` (builds `{subject, body, format}` from the checkout form + cart — `format` is the full copyable message, header fields + itemized breakdown) and `openOrderPopup()`/`closeOrderPopup()` (lazy-built `.order-popup-backdrop`, overlays the still-open cart drawer, z-index 160); QR asset `website/assets/gcash-qr.jpg` (real, owner's GCash — portrait aspect ratio, `.order-popup-qr` CSS sizes it `width: 200px; height: auto`, don't force it square) |
 | Catalog / product data        | `website/products.js` — `window.KCMPS_STORE_DATA = { currency, shirtAddon, leaves, products }`; each leaf has an `image` (AI-generated, `website/assets/leaves/<leaf>.jpg`) used as the product-thumb fallback in `store.js`'s `thumbImage()` |
 | Filename → display-title convention | `window.KCMPS_TEXT.titleFromFilename()` in `products.js` — shared by the hero carousel, the design picker grid, and cart thumbnails so naming never drifts between views |
@@ -61,6 +62,18 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   (`window.KCMPS_DASH`) are the *only* things callers touch — no page reads `localStorage`
   directly. When a backend exists, only these two files' function bodies change to `fetch()`.
   Keep new features behind this same seam.
+- **Bulk-quote product picker** (`index.html` `#estimator`, replaced a plain `<select>` — owner
+  found it too hard to use): the hidden `<select id="est-product">` is still the only thing
+  `currentOption()`/pricing/`addToCart()` read from. `selectOption(id)` is the single place that
+  writes to it (sets `.value`, syncs `.is-selected` on cards, fires `change`) — any new way of
+  picking a product must go through it, not set `productSel.value` directly. Tabs reuse the
+  site's existing generic `[data-tabs]` click-handler script (same `<script>` tag, runs right
+  after this IIFE) instead of custom JS — don't duplicate that logic here. The primed-category
+  read (`readPrimedCategory()`/`CATEGORY_TO_LEAF`) runs *before* the tab markup is built so the
+  matching leaf's tab can render `is-active` from the start; moving it after would default to
+  the first tab regardless of priming. `.est-product-grid` caps `max-height` with internal
+  vertical scroll per tab (same bounded-grid idea as `buildDesignGrid()`'s `DESIGN_GRID_MAX`) so
+  a category with many variants doesn't push Step 02 down the page.
 - **Auth tokens** live in `sessionStorage`, not `localStorage` (deliberate XSS-exposure
   tradeoff — see `docs/history.md#auth-implementation-notes` before changing this).
 - **Client-decoded JWT claims are UI-only**, never trust them server-side once a backend

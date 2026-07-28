@@ -209,6 +209,28 @@ html { overflow-x: hidden; }
 .est-row .val { font-weight: 700; font-family: var(--font-heading); min-width: 2.5ch; text-align: right; }
 .est-qty-num { width: 5.5ch; padding: 6px 8px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); background: var(--color-bg); color: var(--color-text); }
 .est-qty-num:focus { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+/* Step 01 product picker — one tab per catalog leaf (reusing the site's
+   .tabs/.tab-btn/.tab-panel pattern, see the generic [data-tabs] handler
+   script) so tapping a category narrows the grid to a handful of
+   thumbnail+name+price cards; replaces a plain <select> so a product can be
+   identified and chosen without leaving this card or scrolling elsewhere on
+   the page. The real <select id="est-product"> stays in the DOM (hidden) as
+   the single source of truth the rest of the estimator script reads. */
+.est-product-tabs { gap: var(--space-2); }
+.est-product-tabs .tab-list { padding: 3px; }
+.est-product-tabs .tab-btn { font-size: 12.5px; padding: 6px 12px; }
+.est-product-tabs .tab-btn[aria-selected='true'] { background: var(--color-accent); }
+.est-product-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px;
+  max-height: 256px; overflow-y: auto; padding: 2px 2px 4px; align-content: start;
+}
+.est-product-pick { border: 2px solid transparent; border-radius: var(--radius-md); padding: 6px 6px 8px; background: var(--color-surface); cursor: pointer; text-align: left; transition: border-color 0.15s ease; }
+.est-product-pick .product-thumb { width: 100%; margin-bottom: 4px; }
+.est-product-pick:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent); }
+.est-product-pick:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.est-product-pick.is-selected { border-color: var(--color-accent); background: var(--color-accent-100); }
+.est-product-pick-name { display: block; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
+.est-product-pick-price { display: block; font-size: 10.5px; color: var(--color-accent-700); font-weight: 700; margin-top: 2px; }
 .finish-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
 .finish { cursor: pointer; }
 .finish input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -607,7 +629,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       <div>
         <div class="card est-panel">
           <p class="est-step">Step 01 · Product</p>
-          <select id="est-product" class="input" style="width:100%"></select>
+          <div class="est-product-picker" id="est-product-picker" role="listbox" aria-label="Choose a product"></div>
+          <select id="est-product" style="display:none" aria-hidden="true" tabindex="-1"></select>
         </div>
         <div class="card est-panel">
           <p class="est-step">Step 02 · Quantity &amp; add-ons</p>
@@ -842,6 +865,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 (() => {
   const DATA = window.KCMPS_STORE_DATA;
   const productSel = document.getElementById('est-product');
+  const productPicker = document.getElementById('est-product-picker');
   const qty = document.getElementById('qty');
   const qtyNum = document.getElementById('qty-num');
   const addonsWrap = document.getElementById('est-addons');
@@ -859,7 +883,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   const merchLink = document.getElementById('est-merch-link');
   if (!DATA || !productSel || !qty || !qtyNum) return;
 
-  const LEAF_LABEL = { 'print-office': 'Printing & Office', dtf: 'Apparel · DTF' };
+  const LEAF_LABEL = { 'print-office': 'Printing & Office', dtf: 'Apparel · DTF', subli: 'Apparel · Sublimation' };
   const fmt = (n) => DATA.currency + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Flatten every priced SKU (and each of its variants) into one option list —
@@ -884,6 +908,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         unitPrice: v.price,
         shirtAddon: !!p.shirtAddon,
         bulkTiers: p.bulkTiers || null,
+        // Same fallback order as store.js's thumbImage(): the product's own
+        // image wins, else its leaf's representative photo, else no thumb.
+        image: p.image || (DATA.leaves[p.leaf] && DATA.leaves[p.leaf].image) || null,
       });
     });
   });
@@ -897,7 +924,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 
   const groups = {};
   options.forEach((o) => { (groups[o.leaf] = groups[o.leaf] || []).push(o); });
-  productSel.innerHTML = Object.keys(groups).map((leaf) =>
+  const leaves = Object.keys(groups);
+  productSel.innerHTML = leaves.map((leaf) =>
     `<optgroup label="${LEAF_LABEL[leaf] || leaf}">` +
     groups[leaf].map((o) => `<option value="${o.id}">${o.name} — ${fmt(o.unitPrice)}</option>`).join('') +
     `</optgroup>`
@@ -906,7 +934,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   // Default to whichever product matches the category already primed for this
   // visitor (see the hero-priming script below) — same storage key, read
   // directly since this script runs before that one defines it. Falls back to
-  // the first available option if nothing's primed yet (first-ever pageview).
+  // the first available option/leaf if nothing's primed yet (first-ever
+  // pageview). Computed before the picker below so its default tab can open
+  // on the right category from the start, instead of always the first one.
   function readPrimedCategory() {
     try {
       const local = JSON.parse(localStorage.getItem('kcmps_hero_category') || 'null');
@@ -921,8 +951,55 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   const CATEGORY_TO_LEAF = { 'print-office': 'print-office', design: 'dtf' };
   const primed = readPrimedCategory();
   const primedLeaf = primed && CATEGORY_TO_LEAF[primed];
-  if (primedLeaf && groups[primedLeaf]) productSel.value = groups[primedLeaf][0].id;
+  const defaultLeaf = (primedLeaf && groups[primedLeaf]) ? primedLeaf : leaves[0];
   if (primed === 'merch' && merchNote) merchNote.style.display = '';
+
+  // Visual picker — the hidden <select> above stays the single source of
+  // truth; clicking a card just drives it, so every downstream reader
+  // (currentOption() etc.) is unaffected. Grouped into one tab per catalog
+  // leaf (reusing the site's existing [data-tabs]/.tab-btn/.tab-panel
+  // pattern and its generic click-handler script further down) so tapping a
+  // category narrows the grid to a handful of thumbnail+name+price cards
+  // instead of one long scrolling/wrapping list — each panel caps its own
+  // height with internal scroll if a category still has a lot of variants
+  // (same bounded-grid idea as store.js's buildDesignGrid()). escapeHtml
+  // guards product names (owner-editable copy) from breaking the markup.
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function initialsOf(name) { return name.split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join('').toUpperCase(); }
+  function cardHtml(o) {
+    return `
+      <button type="button" class="est-product-pick" data-opt-id="${o.id}" role="option" aria-selected="false">
+        <div class="product-thumb">${o.image ? `<img src="${o.image}" alt="" loading="lazy" />` : `<span class="mono">${escapeHtml(initialsOf(o.name))}</span>`}</div>
+        <span class="est-product-pick-name">${escapeHtml(o.name)}</span>
+        <span class="est-product-pick-price">${fmt(o.unitPrice)}</span>
+      </button>`;
+  }
+  function selectOption(id, { silent } = {}) {
+    productSel.value = id;
+    productPicker.querySelectorAll('.est-product-pick').forEach((card) => {
+      const selected = card.dataset.optId === id;
+      card.classList.toggle('is-selected', selected);
+      card.setAttribute('aria-selected', String(selected));
+    });
+    if (!silent) productSel.dispatchEvent(new Event('change'));
+  }
+  if (productPicker) {
+    productPicker.innerHTML = leaves.length > 1
+      ? `<div class="tabs est-product-tabs" data-tabs>
+          <div class="tab-list" role="tablist">
+            ${leaves.map((leaf) => `<button type="button" class="tab-btn" data-tab-target="est-panel-${leaf}" aria-selected="${leaf === defaultLeaf}">${escapeHtml(LEAF_LABEL[leaf] || leaf)}</button>`).join('')}
+          </div>
+          <div class="tab-panels">
+            ${leaves.map((leaf) => `<div class="tab-panel${leaf === defaultLeaf ? ' is-active' : ''}" id="est-panel-${leaf}"><div class="est-product-grid">${groups[leaf].map(cardHtml).join('')}</div></div>`).join('')}
+          </div>
+        </div>`
+      : `<div class="est-product-grid">${options.map(cardHtml).join('')}</div>`;
+    productPicker.addEventListener('click', (e) => {
+      const card = e.target.closest('.est-product-pick');
+      if (card) selectOption(card.dataset.optId);
+    });
+  }
+  selectOption(groups[defaultLeaf][0].id, { silent: true });
 
   if (merchLink) {
     merchLink.addEventListener('click', (e) => {

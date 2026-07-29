@@ -1136,6 +1136,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         unitPrice: v.price,
         shirtAddon: !!p.shirtAddon,
         bulkTiers: p.bulkTiers || null,
+        softCap: p.softCap || null,
         // Same fallback order as store.js's thumbImage(): the product's own
         // image wins, else its leaf's representative photo, else no thumb.
         image: p.image || (DATA.leaves[p.leaf] && DATA.leaves[p.leaf].image) || null,
@@ -1274,13 +1275,29 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   function updateBulkNote() {
     const opt = currentOption();
     if (!bulkNote) return;
-    if (!opt.bulkTiers || !opt.bulkTiers.length) {
-      bulkNote.textContent = 'This product is priced flat regardless of quantity.';
-      return;
-    }
-    bulkNote.textContent = 'Bulk discount applies automatically: ' +
-      opt.bulkTiers.map((t) => `${t.discountPct}% at ${t.minQty}+`).join(', ') +
-      '. Need more than that? Message us for a custom production plan.';
+    const priceText = (!opt.bulkTiers || !opt.bulkTiers.length)
+      ? 'This product is priced flat regardless of quantity.'
+      : 'Bulk discount applies automatically: ' +
+        opt.bulkTiers.map((t) => `${t.discountPct}% at ${t.minQty}+`).join(', ') + '.';
+    // Capacity soft-cap (products.js softCap) — same 4-person-team throttle
+    // as the shop cards; see store.js's capacity soft-cap section.
+    const capText = opt.softCap
+      ? ` Orders above ${opt.softCap} need extra lead time from our small team — you'll get a heads-up before confirming.`
+      : '';
+    bulkNote.textContent = priceText + capText;
+  }
+
+  // Routes the current typed/dragged qty through the shared capacity-cap
+  // popup (window.KCMPS_STORE.requestQty) — called on commit (blur/Enter,
+  // slider release, product switch), not on every keystroke/drag tick, so
+  // it doesn't interrupt the shopper mid-input.
+  function enforceQtyCap() {
+    const opt = currentOption();
+    const requested = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    if (!window.KCMPS_STORE || !window.KCMPS_STORE.requestQty) return;
+    window.KCMPS_STORE.requestQty(opt.softCap, requested, (finalQty) => {
+      if (finalQty !== requested) syncQty(finalQty);
+    });
   }
 
   function computeQuote() {
@@ -1324,9 +1341,16 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     qtyNum.value = String(clamped);
     recalc();
   }
+  // Cap enforcement runs on commit only (slider release / blur / Enter /
+  // switching products) — not on every 'input' tick — so a mid-drag or
+  // mid-keystroke value never pops the confirmation out from under the
+  // shopper before they've finished adjusting it.
   qty.addEventListener('input', () => syncQty(qty.value));
+  qty.addEventListener('change', enforceQtyCap);
   qtyNum.addEventListener('input', () => syncQty(qtyNum.value));
-  productSel.addEventListener('change', () => { buildAddons(); updateBulkNote(); recalc(); });
+  qtyNum.addEventListener('blur', enforceQtyCap);
+  qtyNum.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); qtyNum.blur(); } });
+  productSel.addEventListener('change', () => { buildAddons(); updateBulkNote(); recalc(); enforceQtyCap(); });
 
   buildAddons();
   updateBulkNote();

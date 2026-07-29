@@ -1343,6 +1343,60 @@ names/numbers) rather than N copies of one design, so the same-design bulk-tier 
 misrepresents the product. Custom design-request cards remain correctly excluded — they have
 no fixed `baseUnitPrice` to tier against.
 
+### 36. Order-quantity capacity soft-cap, so a 4-person team can't be typed into an unfulfillable order (2026-07-30)
+
+The owner flagged a real operational risk the bulk-pricing tiers (steps 27, 35) didn't cover:
+nothing stopped a shopper from typing an arbitrarily large quantity (10,000+) into any qty
+field, and KCMPS is a 4-person all-in-one production team with no capacity to absorb that
+without warning. Researched typical small print-shop turnaround bands (10-20 pcs same/next-
+day, 50-100 pcs 2-3 days, 100-500 pcs up to a week, 500+ 7-14 days) and set a per-product-
+family `softCap` (products.js) reflecting how labor-bound each family actually is: 150 for the
+four DTF/sublimation apparel SKUs (manual heat-pressing is the real bottleneck), 500 for
+business cards/stickers/bookmarks (cut/print-bound, less per-unit labor), 1000 for Document
+Printing and the two products gated behind it (Lamination, Binding — same job), and 20 for
+Custom Stamps (individually sourced hardware, not a print run).
+
+Added a capacity-throttle layer to `store.js`, all funneled through one new entry point,
+`requestQty(cap, requestedQty, back)` (exposed on `window.KCMPS_STORE`) — every qty input in
+the site routes a requested value through it rather than setting qty directly:
+`skuCard()`'s stepper, the cart-drawer line stepper, and the `#estimator` qty field/slider
+(index.html). Below the cap, `requestQty` calls back synchronously with no UI change. Above
+it, `openCapPopup()` shows a confirmation with the added lead time (`+2` business days per
+full multiple of the cap the requested qty crosses) and two buttons — "Keep at max" clamps
+back to the cap, "I agree" honors the requested qty and also sets a session-wide unlock (see
+below). Past a hard ceiling (5x the cap) there's no "I agree" option at all — the popup
+explains the order needs a manual production plan (points at `ORDER_EMAIL` / the custom-
+request flow, mirroring the estimator's existing "message us" copy) and always clamps to the
+ceiling.
+
+Two deliberate design choices, both because the popup is asynchronous (waits for a click) but
+the call sites that trigger it are not naturally async:
+
+- **The "I agree" override resets on refresh, on purpose.** It's a plain in-memory module
+  variable (`capAcknowledged`), not `sessionStorage`/`localStorage` — both would survive a
+  page refresh, which is exactly what the requirement ruled out. Once true it's global (not
+  per-field): agreeing on one product unlocks every capped field for the rest of the tab's
+  session, so a shopper ordering several bulk designs isn't asked to re-agree per line.
+- **Cap checks fire on commit, not on every keystroke/drag tick.** The product-card and
+  cart-line qty fields already committed typed values on blur/Enter only (steps 27/29's "don't
+  fight the user mid-type" pattern) — the `+`/`-` steppers and the new `setQtyChecked()`
+  wrapper just route through the same commit point. The estimator's qty field/slider update
+  the live quote on every `input` event (existing behavior, kept as-is for responsive
+  feedback), but only run `enforceQtyCap()` on `blur`/Enter (typed field) or `change` (slider
+  release) — checking on every `input` tick would pop the confirmation mid-drag or mid-type,
+  interrupting the shopper before they'd finished adjusting the value.
+
+New `.cap-popup-backdrop`/`.cap-popup` CSS (styles.css, mirrored into the design-system copy)
+reuses the generic `.dialog-title`/`.dialog-body`/`.dialog-actions` classes the order-
+confirmation popup (step 22) established, same structural pattern, own z-index (162) since it
+can appear either standalone on a product card or over the still-open cart drawer/estimator.
+
+Owner follow-up: the popup's body copy originally named the team size ("...our 4-person
+team..."). Dropped to "...our team..." — the owner didn't want the exact headcount stated to
+customers. The reasoning in this write-up and the `softCap`/`capAcknowledged` code comments
+still say "4-person" since that's real internal context for why the caps are set where they
+are; only the shopper-facing string changed.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

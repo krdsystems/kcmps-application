@@ -61,6 +61,108 @@
     return tier ? Math.round(base * (1 - tier.discountPct / 100) * 100) / 100 : base;
   }
 
+  /* ---------- capacity soft-cap (production-lead-time throttle) ----------
+     KCMPS is a 4-person all-in-one team — an order of, say, 10,000 pieces
+     typed into a qty field would swamp them. A product opts in with
+     `softCap: N` (products.js): the qty above which a real order needs extra
+     lead time. It's a THROTTLE, not a hard block — requestQty() is the single
+     entry point every qty input (product-card stepper, cart-drawer stepper,
+     the index.html bulk estimator) routes through, so they can't disagree on
+     when to warn or how far to let a shopper go.
+
+     - Below the cap: no popup, works exactly as before.
+     - Above the cap, below the hard ceiling (5x cap): openCapPopup() shows
+       the added lead time (2 business days per extra cap-multiple) and lets
+       the shopper either "Keep at max" (clamped back to the cap) or
+       "I agree" (their requested qty is honored).
+     - Above the ceiling: too large to self-serve online at all — the popup
+       instead points them at a manual quote (mirrors the existing
+       "Message us for a custom production plan" copy in the bulk estimator)
+       and clamps to the ceiling.
+
+     capAcknowledged is a plain in-memory module variable, deliberately NOT
+     sessionStorage/localStorage — the ask was for the override to reset on
+     a page refresh, which rules out both Web Storage APIs (they'd survive
+     it). Once true, it applies globally: agreeing once on any field unlocks
+     every capped field for the rest of this tab's session. */
+  var CAP_CEILING_MULT = 5;
+  var CAP_EXTRA_DAYS_PER_STEP = 2;
+  var capAcknowledged = false;
+
+  function capInfo(qty, cap) {
+    if (!cap || qty <= cap) return null;
+    var ceilingQty = cap * CAP_CEILING_MULT;
+    var steps = Math.ceil(qty / cap) - 1;
+    return { cap: cap, ceilingQty: ceilingQty, blocked: qty > ceilingQty, extraDays: steps * CAP_EXTRA_DAYS_PER_STEP };
+  }
+
+  var capPopup, capPopupTitleEl, capPopupBodyEl, capPopupActionsEl;
+
+  function buildCapPopup() {
+    var backdrop = document.createElement("div");
+    backdrop.className = "cap-popup-backdrop";
+    backdrop.setAttribute("aria-hidden", "true");
+    backdrop.innerHTML =
+      '<div class="cap-popup" role="dialog" aria-modal="true" aria-labelledby="cap-popup-title">' +
+        '<h3 class="dialog-title" id="cap-popup-title"></h3>' +
+        '<p class="dialog-body" id="cap-popup-body"></p>' +
+        '<div class="dialog-actions" id="cap-popup-actions"></div>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    capPopup = backdrop;
+    capPopupTitleEl = backdrop.querySelector("#cap-popup-title");
+    capPopupBodyEl = backdrop.querySelector("#cap-popup-body");
+    capPopupActionsEl = backdrop.querySelector("#cap-popup-actions");
+  }
+
+  function closeCapPopup() {
+    if (!capPopup) return;
+    capPopup.classList.remove("is-open");
+    capPopup.setAttribute("aria-hidden", "true");
+  }
+
+  // Shows the popup for the given capInfo() result and calls back(agreed)
+  // once the shopper picks an action. In the blocked (over-ceiling) case
+  // there's only one button and it always resolves false (clamp to ceiling)
+  // — there's no "agree" option once an order is too large to self-serve.
+  function openCapPopup(info, back) {
+    if (!capPopup) buildCapPopup();
+    if (info.blocked) {
+      capPopupTitleEl.textContent = "That's beyond what we can confirm online";
+      capPopupBodyEl.textContent = "Orders above " + info.ceilingQty + " need a hands-on production plan from " +
+        "our small team. Message us at " + ORDER_EMAIL + ", or add a custom request from the shop above, and " +
+        "we'll work out a realistic delivery date with you. We've kept your quantity at " + info.ceilingQty + " for now.";
+      capPopupActionsEl.innerHTML = '<button type="button" class="btn btn-primary" id="cap-popup-ok">Got it</button>';
+      capPopupActionsEl.querySelector("#cap-popup-ok").addEventListener("click", function () { closeCapPopup(); back(false); });
+    } else {
+      capPopupTitleEl.textContent = "That's a big order";
+      capPopupBodyEl.textContent = "Orders above " + info.cap + " take extra time from our team — expect about " +
+        info.extraDays + " additional business day" + (info.extraDays === 1 ? "" : "s") + " beyond our standard " +
+        "turnaround. Agree to continue at your requested quantity, or keep it at " + info.cap + " for our normal turnaround.";
+      capPopupActionsEl.innerHTML =
+        '<button type="button" class="btn btn-secondary" id="cap-popup-keep">Keep at max</button>' +
+        '<button type="button" class="btn btn-primary" id="cap-popup-agree">I agree</button>';
+      capPopupActionsEl.querySelector("#cap-popup-keep").addEventListener("click", function () { closeCapPopup(); back(false); });
+      capPopupActionsEl.querySelector("#cap-popup-agree").addEventListener("click", function () {
+        capAcknowledged = true; closeCapPopup(); back(true);
+      });
+    }
+    capPopup.classList.add("is-open");
+    capPopup.setAttribute("aria-hidden", "false");
+  }
+
+  // The one entry point every qty input routes a requested value through.
+  // `back(finalQty)` fires synchronously if no popup is needed, or once the
+  // shopper answers it otherwise — callers don't need to know which happened.
+  function requestQty(cap, requestedQty, back) {
+    if (!cap || capAcknowledged || requestedQty <= cap) { back(requestedQty); return; }
+    var info = capInfo(requestedQty, cap);
+    openCapPopup(info, function (agreed) {
+      if (info.blocked) { back(info.ceilingQty); return; }
+      back(agreed ? requestedQty : info.cap);
+    });
+  }
+
   /* ---------- cart state ---------- */
   function loadCart() {
     try { var v = JSON.parse(localStorage.getItem(CART_KEY)); return Array.isArray(v) ? v : []; }
@@ -622,16 +724,24 @@
     var minus = document.createElement("button"); minus.type = "button"; minus.textContent = "−"; minus.setAttribute("aria-label", "Decrease quantity");
     var qval = document.createElement("input"); qval.type = "number"; qval.className = "qval"; qval.inputMode = "numeric"; qval.min = String(minQty); qval.value = qty; qval.setAttribute("aria-label", "Quantity");
     var plus = document.createElement("button"); plus.type = "button"; plus.textContent = "+"; plus.setAttribute("aria-label", "Increase quantity");
+    // Every requested qty (stepper or typed) routes through requestQty() so
+    // the capacity soft-cap (products.js `softCap`) can intercept it and pop
+    // the extra-lead-time confirmation before the field actually holds a
+    // value past the cap — see the capacity soft-cap section above.
+    function setQtyChecked(n) {
+      requestQty(p.softCap, Math.max(minQty, n), function (finalQty) {
+        qty = finalQty; qval.value = qty; refresh();
+      });
+    }
     minus.addEventListener("click", function () { qty = Math.max(minQty, qty - 1); qval.value = qty; refresh(); });
-    plus.addEventListener("click", function () { qty += 1; qval.value = qty; refresh(); });
+    plus.addEventListener("click", function () { setQtyChecked(qty + 1); });
     // Commit on blur/Enter only (not every keystroke) so re-tiering doesn't
     // fight the user mid-type; invalid/empty input reverts to the last valid qty.
     function commitQval() {
       var n = parseInt(qval.value, 10);
       if (!isFinite(n) || isNaN(n)) { qval.value = qty; return; }
-      qty = Math.max(minQty, n);
-      qval.value = qty;
-      refresh();
+      if (Math.max(minQty, n) === qty) { qval.value = qty; return; }
+      setQtyChecked(n);
     }
     qval.addEventListener("blur", commitQval);
     qval.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); qval.blur(); } });
@@ -949,6 +1059,16 @@
           var p = DATA.products.find(function (pp) { return pp.id === i.id; });
           return (p && p.minQty) || 1;
         }
+        function lineCap() {
+          var p = DATA.products.find(function (pp) { return pp.id === i.id; });
+          return p && p.softCap;
+        }
+        // Same capacity-cap gate as the product cards (requestQty()), so
+        // bumping a line's qty in the cart drawer can't bypass the popup by
+        // just adding to cart at the cap then editing it up here.
+        function setQtyChecked(n) {
+          requestQty(lineCap(), Math.max(lineFloor(), n), function (finalQty) { setQty(i.key, finalQty); });
+        }
         qv.min = String(lineFloor());
         minus.addEventListener("click", function () {
           // Respect a product's minQty (e.g. business cards' 10-pc minimum) —
@@ -956,7 +1076,7 @@
           if (i.qty <= lineFloor()) return;
           setQty(i.key, i.qty - 1);
         });
-        plus.addEventListener("click", function () { setQty(i.key, i.qty + 1); });
+        plus.addEventListener("click", function () { setQtyChecked(i.qty + 1); });
         // Commit on blur/Enter only, matching the product-card stepper, so
         // re-tiering (bulkUnitPrice via setQty) fires once per typed value
         // instead of fighting the user mid-keystroke.
@@ -965,7 +1085,7 @@
           if (!isFinite(n) || isNaN(n)) { qv.value = i.qty; return; }
           var clamped = Math.max(lineFloor(), n);
           if (clamped === i.qty) { qv.value = clamped; return; }
-          setQty(i.key, clamped);
+          setQtyChecked(clamped);
         }
         qv.addEventListener("blur", commitQv);
         qv.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); qv.blur(); } });
@@ -1185,8 +1305,11 @@
   // (index.html, near the bottom script block) prices off the exact same
   // per-product discount ladder as the catalog cards above, instead of
   // maintaining its own separate schedule that can drift out of sync.
+  // requestQty exposed so the "Bulk & custom" estimator (index.html) gates
+  // its quantity field through the exact same capacity soft-cap popup as the
+  // shop cards and cart drawer — see the capacity soft-cap section above.
   window.KCMPS_STORE = {
     open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart,
-    bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice,
+    bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice, requestQty: requestQty,
   };
 })();

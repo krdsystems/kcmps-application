@@ -24,6 +24,17 @@
    OWNER: to add a real priced product, copy an entry in `products` and give it
    a unique `id`, the correct `leaf`, and either a single `price` or `variants`.
    To turn a "coming soon" leaf into a shop, add priced products for that leaf.
+
+   `softCap: N` — production-capacity throttle (2026-07-30). KCMPS is a
+   4-person all-in-one team; N is the quantity above which a real order needs
+   extra lead time beyond standard turnaround. It's a soft limit, not a hard
+   block: store.js's qty steppers (product cards, cart drawer) and the
+   index.html bulk estimator all read it through the shared
+   window.KCMPS_STORE.requestQty() helper, which pops a confirmation showing
+   the added lead time and only lets the field hold a higher number once the
+   shopper clicks "I agree" — see store.js's capacity soft-cap section for the
+   day-count formula and the hard ceiling (5x cap) past which online
+   self-service is turned off entirely in favor of a manual quote.
    ============================================================================ */
 
 /* Shared filename → display-title convention, used anywhere a design/product
@@ -136,6 +147,10 @@ window.KCMPS_STORE_DATA = {
         { minQty: 150, discountPct: 10 },
         { minQty: 300, discountPct: 12 },
       ],
+      // 2026-07-30: capacity soft-cap — see products.js top-of-file note for
+      // what this field does. Pure printer throughput, least labor-bound of
+      // the catalog, so it gets the highest cap.
+      softCap: 1000,
       fulfillmentInput: "file",
     },
     {
@@ -163,6 +178,9 @@ window.KCMPS_STORE_DATA = {
         { label: "A4 document", price: 70 },
         { label: "4R photo (class-picture size)", price: 40 },
       ],
+      // Tied to Document Printing's cap since it's gated behind that product
+      // already being in the cart (requiresCartProduct below) — one job.
+      softCap: 1000,
       fulfillmentInput: "none",
       requiresCartProduct: "print-bw-document-printing",
     },
@@ -177,6 +195,8 @@ window.KCMPS_STORE_DATA = {
       variants: [
         { label: "Bind (per 90 leaves, A5, spiral or comb)", price: 50 },
       ],
+      // Tied to Document Printing's cap, same reasoning as Lamination above.
+      softCap: 1000,
       fulfillmentInput: "none",
       requiresCartProduct: "print-bw-document-printing",
     },
@@ -193,6 +213,9 @@ window.KCMPS_STORE_DATA = {
         { label: "32×12mm", price: 130 },
         { label: "10×27mm", price: 120 },
       ],
+      // Low cap — each stamp is individually sourced/made hardware, not a
+      // print run KCMPS can just scale up.
+      softCap: 20,
       fulfillmentInput: "file",
     },
     {
@@ -213,6 +236,7 @@ window.KCMPS_STORE_DATA = {
         { minQty: 10, discountPct: 6 },
         { minQty: 25, discountPct: 10 },
       ],
+      softCap: 500,
       fulfillmentInput: "file",
     },
     {
@@ -233,6 +257,7 @@ window.KCMPS_STORE_DATA = {
         { minQty: 100, discountPct: 10 },
         { minQty: 250, discountPct: 12 },
       ],
+      softCap: 500,
       fulfillmentInput: "file",
     },
     {
@@ -254,6 +279,7 @@ window.KCMPS_STORE_DATA = {
         { minQty: 25, discountPct: 8 },
         { minQty: 50, discountPct: 12 },
       ],
+      softCap: 500,
       fulfillmentInput: "file",
     },
     {
@@ -299,6 +325,10 @@ window.KCMPS_STORE_DATA = {
         { minQty: 50, discountPct: 13 },
         { minQty: 100, discountPct: 16 },
       ],
+      // 2026-07-30: capacity soft-cap — manual heat-pressing is the real
+      // bottleneck for a 4-person team, so this sits well below the
+      // print-bound products' caps above.
+      softCap: 150,
       shirtAddon: true,
       fulfillmentInput: "none",
     },
@@ -339,6 +369,10 @@ window.KCMPS_STORE_DATA = {
         { minQty: 50, discountPct: 13 },
         { minQty: 100, discountPct: 16 },
       ],
+      // 2026-07-30: capacity soft-cap — manual heat-pressing is the real
+      // bottleneck for a 4-person team, so this sits well below the
+      // print-bound products' caps above.
+      softCap: 150,
       shirtAddon: true,
       fulfillmentInput: "none",
     },
@@ -370,6 +404,10 @@ window.KCMPS_STORE_DATA = {
         { minQty: 50, discountPct: 13 },
         { minQty: 100, discountPct: 16 },
       ],
+      // 2026-07-30: capacity soft-cap — manual heat-pressing is the real
+      // bottleneck for a 4-person team, so this sits well below the
+      // print-bound products' caps above.
+      softCap: 150,
       shirtAddon: true,
       fulfillmentInput: "none",
     },
@@ -406,6 +444,10 @@ window.KCMPS_STORE_DATA = {
         { minQty: 50, discountPct: 13 },
         { minQty: 100, discountPct: 16 },
       ],
+      // 2026-07-30: capacity soft-cap — manual heat-pressing is the real
+      // bottleneck for a 4-person team, so this sits well below the
+      // print-bound products' caps above.
+      softCap: 150,
       shirtAddon: true,
       fulfillmentInput: "none",
     },

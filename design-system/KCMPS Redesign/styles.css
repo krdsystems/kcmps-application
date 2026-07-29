@@ -354,6 +354,26 @@ textarea.input { min-height: 90px; resize: vertical; }
 .btn-icon-copy.is-copied { background: var(--color-green); color: #fff; }
 @media (max-width: 480px) { .order-popup-backdrop { padding: var(--space-2); } .order-popup { max-height: 94vh; } }
 
+/* — capacity soft-cap popup (store.js requestQty/openCapPopup) — same
+   .dialog-backdrop/.dialog base as .order-popup above, its own stacking
+   layer since it can appear either on its own (a product card, before the
+   cart drawer is even open) or over the drawer/estimator. */
+.cap-popup-backdrop {
+  position: fixed; inset: 0; z-index: 162; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.cap-popup-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .cap-popup-backdrop { transition: none; } }
+.cap-popup {
+  width: min(420px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+@media (max-width: 480px) { .cap-popup-backdrop { padding: var(--space-2); } }
+
 /* ══════════════════════════════════════════════════════════════════════════
    STOREFRONT — conversion-first offer, value stack, guarantee, how-it-works,
    product buy-cards, cart drawer, checkout, FAQ, sticky CTA. Built entirely

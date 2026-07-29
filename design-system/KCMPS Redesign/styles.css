@@ -469,18 +469,50 @@ textarea.input { min-height: 90px; resize: vertical; }
 .lightbox-arrow.prev { left: 16px; }
 .lightbox-arrow.next { right: 16px; }
 .lightbox-counter {
-  position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; color: #fff;
+  position: absolute; left: 0; right: 0; top: 16px; text-align: center; color: #fff; z-index: 1;
   font-size: 13px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
 }
-/* Shown only when openLightbox() was called with an onSelect callback (the
-   mobile design subcatalog flow) — hidden for plain gallery/cart viewing. */
-.lightbox-select {
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2;
-  border: none; cursor: pointer; border-radius: 999px; padding: 12px 22px; font-weight: 700; font-size: 14px;
-  background: var(--color-accent-2); color: #fff; box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+/* Bottom bar shown when openLightbox() was called with an onSelect callback
+   and/or a `controls` object (see store.js buildLightboxControls()) — the
+   design-subsection lightbox always gets both, so a customer can pick the
+   size, adjust quantity, and add to cart without leaving fullscreen.
+   Hidden for plain gallery/cart-thumb viewing (neither param passed). */
+.lightbox-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px;
+  padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, color-mix(in srgb, #05070d 92%, transparent), transparent);
 }
+.lightbox-size-seg { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.lightbox-size-opt {
+  border: 1px solid color-mix(in srgb, #fff 35%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, #0b1930 45%, transparent); color: #fff;
+  padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.lightbox-size-opt.is-selected { background: var(--color-accent-2); border-color: var(--color-accent-2); }
+.lightbox-qty {
+  display: inline-flex; align-items: center; gap: 10px;
+  border: 1px solid color-mix(in srgb, #fff 35%, transparent); border-radius: 999px; padding: 4px 6px;
+}
+.lightbox-qty button {
+  width: 26px; height: 26px; border: none; border-radius: 50%; cursor: pointer;
+  background: color-mix(in srgb, #fff 15%, transparent); color: #fff; font-size: 16px; line-height: 1;
+}
+.lightbox-qty-val {
+  color: #fff; font-weight: 700; font-size: 13.5px; width: 2.2em; text-align: center;
+  background: transparent; border: none; padding: 0; font-family: inherit;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.lightbox-qty-val::-webkit-outer-spin-button, .lightbox-qty-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.lightbox-qty-val:focus { outline: 1px solid #fff; outline-offset: 2px; }
+.lightbox-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.lightbox-select {
+  border: 1px solid color-mix(in srgb, #fff 45%, transparent); cursor: pointer; border-radius: 999px;
+  padding: 11px 20px; font-weight: 700; font-size: 13.5px; background: transparent; color: #fff;
+}
+.lightbox-add { border-radius: 999px; padding: 11px 20px; font-size: 13.5px; }
 @media (max-width: 760px) {
-  .lightbox-select { bottom: max(18px, env(safe-area-inset-bottom)); min-height: 44px; }
+  .lightbox-select, .lightbox-add { min-height: 44px; }
 }
 @media (max-width: 760px) {
   /* Fills the screen edge-to-edge on mobile, per spec. */
@@ -587,6 +619,53 @@ textarea.input { min-height: 90px; resize: vertical; }
 .product .seg-opt:has(input:checked) { background: var(--color-accent-2); }
 .shirt-toggle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; margin-top: 4px; }
 .shirt-toggle input { accent-color: var(--color-accent-2); width: 16px; height: 16px; }
+
+/* — shirt color picks (shown alongside the "Press onto a shirt" toggle) —
+   grayed out and non-interactive until the shirt toggle is checked; "Custom"
+   opens a native color input and reveals an availability disclaimer. — */
+.shirt-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) 12px; margin-top: 4px; }
+.shirt-row .shirt-toggle { margin-top: 0; }
+.shirt-color-opts { display: flex; align-items: center; gap: 8px; }
+.shirt-color-opts.is-disabled { opacity: 0.45; }
+.shirt-color-pick {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--color-divider); border-radius: 999px; padding: 3px 8px 3px 3px;
+  background: var(--color-surface); cursor: pointer; font-size: 11.5px; font-weight: 600;
+}
+.shirt-color-pick:disabled { cursor: not-allowed; }
+.shirt-color-pick.is-selected {
+  border-color: var(--color-accent-2); background: var(--color-accent-2); color: #fff;
+}
+.shirt-color-pick.is-selected .shirt-color-swatch {
+  border-color: #fff; box-shadow: 0 0 0 1px var(--color-accent-2);
+}
+.shirt-color-swatch {
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  border: 1.5px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+}
+.shirt-color-swatch.is-custom {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+.shirt-color-disclaimer {
+  flex: 1 0 100%; font-size: 11px; line-height: 1.4; margin: 0;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+/* Two-step custom color pick: opens on the "Custom" swatch's own click
+   (no overlay input intercepting it — see skuCard's shirt-color block for
+   why that broke selection before), applies only once "Use this color" is
+   clicked, so the picker's live hex readout doubles as a confirmation step. */
+.shirt-color-custom-panel {
+  flex: 1 0 100%; display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  padding: 6px 8px; background: var(--color-surface);
+}
+.shirt-color-custom-input {
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); cursor: pointer;
+}
+.shirt-color-custom-hex {
+  font-family: var(--font-heading); font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em;
+}
+.shirt-color-confirm { margin-left: auto; padding: 6px 12px; font-size: 12px; min-height: 0; }
 .addon-label { font-size: 12.5px; font-weight: 600; opacity: 0.75; margin-top: var(--space-2); }
 .product-buy { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); }
 .product-price { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }

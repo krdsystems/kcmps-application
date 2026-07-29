@@ -1316,6 +1316,51 @@ the sticky nav. And the rail's `IntersectionObserver` now filters out
 entry, so the passed hero's still-laid-out box would otherwise win "topmost" and keep the rail
 lit on "Hero" while the user reads Shop.
 
+### 35. Design name in the order email, shirt-color choice, and a purchasable lightbox (2026-07-30)
+
+Three related storefront gaps, all in `store.js`.
+
+**The order email dropped the chosen design.** `buildOrderEmail()`'s pay-now itemization read
+`name`/`variantLabel`/`shirt`/`qty`/`unitPrice` off each cart line but never `designRef`/
+`designName` — even though both were already set by `addToCart` and already rendered in the
+cart drawer. So a customer picked a specific DTF design, saw it confirmed in the drawer, and
+the message that actually reached `order@kcmps.com` said only "Street Statement Print / 3×5 in
+x1" — the owner had no way to know *which* design to produce. Now each line emits an indented
+`Design: <name>` (falling back to `designRef`), conditional so plain products don't get a
+blank `Design:` line. Pending/custom lines were checked and deliberately skipped: they're
+built at `store.js`'s two `type: "custom"` call sites without any design fields and never go
+through the design picker, so a field there would be a permanent no-op.
+
+**Shirt color.** The "Press onto a shirt" checkbox now sits in a `.shirt-row` with
+Black/White/Custom picks that stay `disabled` (and dimmed via `.is-disabled`) until the shirt
+box is checked. The choice travels as a new `shirtColor` field on the cart line into the
+drawer meta and the order email. Custom is a **two-step** pick — clicking the swatch opens a
+panel with a native color input, a live hex readout, and a "Use this color" button, and only
+that button commits. The first version instead layered the `<input type="color">` invisibly
+over the whole Custom button and applied on its click; the input's own handler called
+`stopPropagation()`, so the button's selection handler never ran. That single swallowed event
+was the whole of the owner's three-part bug report — no highlight, no confirm/hex, nothing in
+the cart — because `shirtColor` was never being set at all, and Black/White only appeared to
+work since they had no overlay. Worth remembering as a shape: an invisible full-bleed input
+over a button is a click sink, not a decoration.
+
+**A purchasable fullscreen view.** Clicking the card's gallery image, an inline design tile,
+a "+N more" popup tile, or a mobile subcatalog tile now all route through one
+`openDesignLightbox()` in `skuCard()`, and the lightbox always carries "Select this design"
+plus size / quantity / Add-to-cart (`openLightbox`'s new optional `controls` param, built by
+`buildLightboxControls()`) — previously the tiles selected instantly and only the mobile
+subcatalog path ever showed a select button. Selecting still just drives `gallery.setIndex()`
++ `designPicker.sync()`; adding delegates to the card's own `addBtn.click()` rather than
+duplicating the cart-line construction, so bulk tiers, shirt add-on, and design refs can't
+drift between the two entry points.
+
+The lightbox quantity started as a `<span>` (plus/minus only, per the owner: "i cannt type
+custom numbers"), now an `<input type="number">` mirroring the card stepper's commit-on-blur/
+Enter. It also force-commits inside the +/−/Add-to-cart handlers: a click can reach the button
+handler before the focused input's `blur` has committed a freshly-typed value, which silently
+added qty 1 instead of the typed 25. The overlay's global `keydown` (Escape/arrows) now
+early-returns when the event targets that input, so typing digits doesn't step the carousel.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

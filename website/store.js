@@ -157,7 +157,8 @@
      future leaf can opt in just by adding the array; today only the 3 DTF SKUs
      (see products.js) have one, sourced from website/assets/design/apparel/dtf/. */
   var lightboxOverlay, lightboxImg, lightboxCounter, lightboxPrevBtn, lightboxNextBtn, lightboxSelectBtn;
-  var lightboxImages = [], lightboxIndex = 0, lightboxOnSelect = null;
+  var lightboxControlsPanel, lightboxSizeSeg, lightboxQtyVal, lightboxQtyMinusBtn, lightboxQtyPlusBtn, lightboxAddBtn;
+  var lightboxImages = [], lightboxIndex = 0, lightboxOnSelect = null, lightboxControls = null;
 
   function buildLightbox() {
     lightboxOverlay = document.createElement("div");
@@ -176,7 +177,18 @@
         '<svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>' +
       '</button>' +
       '<div class="lightbox-counter"></div>' +
-      '<button type="button" class="lightbox-select">Select this design</button>';
+      '<div class="lightbox-controls">' +
+        '<div class="lightbox-size-seg" role="radiogroup" aria-label="Size"></div>' +
+        '<div class="lightbox-qty">' +
+          '<button type="button" class="lightbox-qty-minus" aria-label="Decrease quantity">−</button>' +
+          '<input type="number" inputmode="numeric" class="lightbox-qty-val" aria-label="Quantity" value="1" />' +
+          '<button type="button" class="lightbox-qty-plus" aria-label="Increase quantity">+</button>' +
+        '</div>' +
+        '<div class="lightbox-actions">' +
+          '<button type="button" class="lightbox-select">Select this design</button>' +
+          '<button type="button" class="btn btn-primary lightbox-add">' + CART_ICON + ' Add to cart</button>' +
+        '</div>' +
+      '</div>';
     document.body.appendChild(lightboxOverlay);
 
     lightboxImg = lightboxOverlay.querySelector(".lightbox-stage img");
@@ -184,6 +196,12 @@
     lightboxPrevBtn = lightboxOverlay.querySelector(".lightbox-arrow.prev");
     lightboxNextBtn = lightboxOverlay.querySelector(".lightbox-arrow.next");
     lightboxSelectBtn = lightboxOverlay.querySelector(".lightbox-select");
+    lightboxControlsPanel = lightboxOverlay.querySelector(".lightbox-controls");
+    lightboxSizeSeg = lightboxOverlay.querySelector(".lightbox-size-seg");
+    lightboxQtyVal = lightboxOverlay.querySelector(".lightbox-qty-val");
+    lightboxQtyMinusBtn = lightboxOverlay.querySelector(".lightbox-qty-minus");
+    lightboxQtyPlusBtn = lightboxOverlay.querySelector(".lightbox-qty-plus");
+    lightboxAddBtn = lightboxOverlay.querySelector(".lightbox-add");
 
     lightboxOverlay.querySelector(".lightbox-close").addEventListener("click", closeLightbox);
     lightboxOverlay.addEventListener("click", function (e) { if (e.target === lightboxOverlay) closeLightbox(); });
@@ -193,8 +211,47 @@
       if (lightboxOnSelect) lightboxOnSelect(lightboxIndex);
       closeLightbox();
     });
+    // Typed entry, mirroring the product card's qty input (commitQval):
+    // commit on blur/Enter, not every keystroke, so re-tiering doesn't fight
+    // mid-type; invalid/empty input reverts to the last valid qty. Also
+    // called defensively before the +/-/add-to-cart buttons act, since a
+    // click on one of them can reach its handler before the input's own
+    // blur has committed a value the user just typed.
+    function commitLightboxQty() {
+      if (!lightboxControls) return;
+      var n = parseInt(lightboxQtyVal.value, 10);
+      if (!isFinite(n) || isNaN(n)) { lightboxQtyVal.value = lightboxControls.getQty(); return; }
+      lightboxControls.setQty(n);
+    }
+    lightboxQtyMinusBtn.addEventListener("click", function () {
+      if (!lightboxControls) return;
+      commitLightboxQty();
+      lightboxControls.setQty(lightboxControls.getQty() - 1);
+      renderLightboxControls();
+    });
+    lightboxQtyPlusBtn.addEventListener("click", function () {
+      if (!lightboxControls) return;
+      commitLightboxQty();
+      lightboxControls.setQty(lightboxControls.getQty() + 1);
+      renderLightboxControls();
+    });
+    lightboxQtyVal.addEventListener("blur", function () {
+      commitLightboxQty();
+      renderLightboxControls();
+    });
+    lightboxQtyVal.addEventListener("keydown", function (e) {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); lightboxQtyVal.blur(); }
+    });
+    lightboxAddBtn.addEventListener("click", function () {
+      if (!lightboxControls) return;
+      commitLightboxQty();
+      lightboxControls.onAddToCart();
+      closeLightbox();
+    });
     document.addEventListener("keydown", function (e) {
       if (!lightboxOverlay.classList.contains("is-open")) return;
+      if (e.target === lightboxQtyVal) return;
       if (e.key === "Escape") closeLightbox();
       else if (e.key === "ArrowLeft") stepLightbox(-1);
       else if (e.key === "ArrowRight") stepLightbox(1);
@@ -213,6 +270,41 @@
     lightboxSelectBtn.style.display = lightboxOnSelect ? "" : "none";
   }
 
+  // Renders the size/qty/add-to-cart bar from the `controls` object passed
+  // to openLightbox() (see skuCard's buildLightboxControls()) — independent
+  // of which design image is currently shown, so it's built once per open
+  // rather than on every stepLightbox().
+  function renderLightboxControls() {
+    var show = !!(lightboxControls || lightboxOnSelect);
+    lightboxControlsPanel.style.display = show ? "" : "none";
+    if (!lightboxControls) {
+      lightboxSizeSeg.style.display = "none";
+      lightboxOverlay.querySelector(".lightbox-qty").style.display = "none";
+      lightboxAddBtn.style.display = "none";
+      return;
+    }
+    var sizes = lightboxControls.sizes || [];
+    lightboxSizeSeg.style.display = sizes.length > 1 ? "" : "none";
+    lightboxSizeSeg.innerHTML = "";
+    sizes.forEach(function (s) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lightbox-size-opt" + (s.index === lightboxControls.selectedIndex ? " is-selected" : "");
+      btn.textContent = s.label;
+      btn.setAttribute("aria-pressed", s.index === lightboxControls.selectedIndex ? "true" : "false");
+      btn.addEventListener("click", function () {
+        lightboxControls.onSelectSize(s.index);
+        lightboxControls.selectedIndex = s.index;
+        renderLightboxControls();
+      });
+      lightboxSizeSeg.appendChild(btn);
+    });
+    lightboxOverlay.querySelector(".lightbox-qty").style.display = "";
+    lightboxQtyVal.min = String(lightboxControls.minQty || 1);
+    if (document.activeElement !== lightboxQtyVal) lightboxQtyVal.value = lightboxControls.getQty();
+    lightboxAddBtn.style.display = "";
+  }
+
   function stepLightbox(delta) {
     lightboxIndex = (lightboxIndex + delta + lightboxImages.length) % lightboxImages.length;
     renderLightbox();
@@ -220,14 +312,20 @@
 
   // onSelect (optional): when passed, the lightbox shows a "Select this
   // design" button that calls onSelect(currentIndex) then closes — used by
-  // the mobile design subcatalog so picking a design still works after
-  // browsing it fullscreen. Omitted for plain gallery/cart-thumb viewing.
-  function openLightbox(images, startIndex, onSelect) {
+  // the design picker/subcatalog so picking a design still works after
+  // browsing it fullscreen. controls (optional): { sizes, selectedIndex,
+  // onSelectSize, getQty, setQty, onAddToCart } — when passed, the lightbox
+  // also shows a size selector, quantity stepper, and "Add to cart" button
+  // (see skuCard's buildLightboxControls()). Both omitted for plain
+  // gallery/cart-thumb viewing.
+  function openLightbox(images, startIndex, onSelect, controls) {
     if (!lightboxOverlay) buildLightbox();
     lightboxImages = images;
     lightboxIndex = startIndex || 0;
     lightboxOnSelect = onSelect || null;
+    lightboxControls = controls || null;
     renderLightbox();
+    renderLightboxControls();
     lightboxOverlay.classList.add("is-open");
     lightboxOverlay.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
@@ -239,6 +337,7 @@
     lightboxOverlay.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
     lightboxOnSelect = null;
+    lightboxControls = null;
   }
 
   // titleFromFilename lives in products.js (window.KCMPS_TEXT) so the hero
@@ -251,8 +350,11 @@
   // Returns { el, setIndex, getIndex } instead of a bare node so callers
   // (skuCard's design picker grid) can drive which design the thumb shows and
   // stay notified when browsing the in-thumb arrows changes it, keeping the
-  // large preview and the picker grid's selection in sync.
-  function buildGalleryThumb(p, onIndexChange) {
+  // large preview and the picker grid's selection in sync. onImageClick(idx)
+  // (optional): when passed, clicking the thumb image calls this instead of
+  // opening a plain lightbox — skuCard wires it to openDesignLightbox() so
+  // the fullscreen view also gets the select/size/qty/add-to-cart controls.
+  function buildGalleryThumb(p, onIndexChange, onImageClick) {
     var images = p.images && p.images.length ? p.images : null;
     if (!images) {
       var single = buildThumb(thumbImage(p), p.name);
@@ -284,6 +386,7 @@
     }
 
     img.addEventListener("click", function () {
+      if (onImageClick) { onImageClick(idx); return; }
       openLightbox(images.map(function (src) { return { src: src, alt: p.name + " — " + designTitle(src) }; }), idx);
     });
 
@@ -325,7 +428,7 @@
   // the last tile becomes a "+N more" trigger: hovering the picker (or
   // tapping/focusing the tile, for touch/keyboard) opens a full-page-width
   // popup with the complete, scrollable list.
-  function buildDesignGrid(p, gallery, selectedIdx) {
+  function buildDesignGrid(p, gallery, selectedIdx, openImage) {
     var images = p.images;
     if (!images || images.length < 2) return null;
 
@@ -356,10 +459,13 @@
       label.textContent = title;
       pick.appendChild(label);
 
+      // Clicking a design tile (inline grid or the "+N more" popup) opens the
+      // shared fullscreen lightbox rather than selecting instantly — the
+      // lightbox's "Select this design" button (wired below via openImage)
+      // finishes the gallery.setIndex()+sync() selection.
       pick.addEventListener("click", function () {
-        gallery.setIndex(i);
-        sync();
         hidePopup();
+        openImage(i);
       });
 
       allPicks.push({ el: pick, index: i });
@@ -469,15 +575,8 @@
         label.textContent = title2;
         tile.appendChild(label);
         tile.addEventListener("click", function () {
-          openLightbox(
-            images.map(function (s) { return { src: s, alt: p.name + " — " + designTitle(s) }; }),
-            i,
-            function (selIndex) {
-              gallery.setIndex(selIndex);
-              sync();
-              hideSubcatalog();
-            }
-          );
+          hideSubcatalog();
+          openImage(i);
         });
         grid.appendChild(tile);
       });
@@ -559,7 +658,7 @@
     }
 
     // thumb
-    var gallery = buildGalleryThumb(p, function () { if (designPicker) designPicker.sync(); });
+    var gallery = buildGalleryThumb(p, function () { if (designPicker) designPicker.sync(); }, function (idx) { openDesignLightbox(idx); });
     card.appendChild(gallery.el);
 
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = p.kicker || ""; card.appendChild(kick);
@@ -569,10 +668,45 @@
     // design picker — selectable grid of pre-made designs (products.js
     // `images[]`); the currently selected design travels with the cart line
     // as designRef/designName so the cart can show a recognizable thumbnail.
-    var designPicker = buildDesignGrid(p, gallery, gallery.getIndex());
+    var designPicker = buildDesignGrid(p, gallery, gallery.getIndex(), openDesignLightbox);
     if (designPicker) card.appendChild(designPicker.el);
 
+    // Clicking the main thumb image or any design-pick tile (inline grid,
+    // "+N more" popup, or the mobile subcatalog sheet) all route here — the
+    // fullscreen lightbox always gets a "Select this design" button plus the
+    // size/qty/add-to-cart controls (buildLightboxControls below), so a
+    // customer can finish the whole purchase from the fullscreen view.
+    function openDesignLightbox(startIndex) {
+      var images = p.images;
+      openLightbox(
+        images.map(function (src) { return { src: src, alt: p.name + " — " + designTitle(src) }; }),
+        startIndex,
+        function (selIndex) { gallery.setIndex(selIndex); if (designPicker) designPicker.sync(); },
+        buildLightboxControls()
+      );
+    }
+
+    function buildLightboxControls() {
+      return {
+        sizes: variants.map(function (v, i) { return { label: v.label || ("Option " + (i + 1)), index: i }; }),
+        selectedIndex: sel,
+        onSelectSize: function (i) {
+          sel = i;
+          if (sizeRadios[i]) sizeRadios[i].checked = true;
+          refresh();
+        },
+        getQty: function () { return qty; },
+        setQty: function (n) {
+          qty = Math.max(minQty, n);
+          qval.value = qty;
+          refresh();
+        },
+        onAddToCart: function () { addBtn.click(); }
+      };
+    }
+
     // size selector
+    var sizeRadios = [];
     if (p.variants && p.variants.length > 1) {
       var seg = document.createElement("div"); seg.className = "seg"; seg.setAttribute("role", "radiogroup"); seg.setAttribute("aria-label", "Size");
       variants.forEach(function (v, i) {
@@ -581,17 +715,129 @@
         var sp = document.createElement("span"); sp.textContent = v.label;
         r.addEventListener("change", function () { sel = i; refresh(); });
         lab.appendChild(r); lab.appendChild(sp); seg.appendChild(lab);
+        sizeRadios.push(r);
       });
       card.appendChild(seg);
     }
 
-    // shirt toggle
+    // shirt toggle + color choice (black / white / custom) — the color picks
+    // are only interactive once "Press onto a shirt" is checked; picking
+    // "Custom" opens a native color input and shows an availability caveat.
+    var shirtColor = null;       // "black" | "white" | "custom" | null
+    var shirtCustomColor = "#000000";
+    function shirtColorLabel() {
+      if (!withShirt || !shirtColor) return null;
+      if (shirtColor === "black") return "Black";
+      if (shirtColor === "white") return "White";
+      return "Custom (" + shirtCustomColor + ")";
+    }
     if (p.shirtAddon) {
+      var shirtRow = document.createElement("div"); shirtRow.className = "shirt-row";
+
       var tog = document.createElement("label"); tog.className = "shirt-toggle";
       var cb = document.createElement("input"); cb.type = "checkbox";
       var txt = document.createElement("span"); txt.textContent = DATA.shirtAddon.label;
-      cb.addEventListener("change", function () { withShirt = cb.checked; refresh(); });
-      tog.appendChild(cb); tog.appendChild(txt); card.appendChild(tog);
+      tog.appendChild(cb); tog.appendChild(txt); shirtRow.appendChild(tog);
+
+      var colorOpts = document.createElement("div"); colorOpts.className = "shirt-color-opts";
+      colorOpts.setAttribute("role", "group"); colorOpts.setAttribute("aria-label", "Shirt color");
+      var COLOR_CHOICES = [
+        { key: "black", label: "Black", swatch: "#111111" },
+        { key: "white", label: "White", swatch: "#ffffff" },
+        { key: "custom", label: "Custom", swatch: null }
+      ];
+      var colorBtns = {};
+
+      var disclaimer = document.createElement("p"); disclaimer.className = "shirt-color-disclaimer";
+      disclaimer.textContent = "We'll do our best to match the selected color, subject to availability.";
+      disclaimer.style.display = "none";
+
+      // Custom color is a two-step pick: clicking the "Custom" swatch opens
+      // this panel (native color input + live hex readout); the color only
+      // becomes the selection once "Use this color" is clicked — an earlier
+      // version applied the pick on the swatch's own click, but the native
+      // <input type="color"> was layered on top of it and swallowed that
+      // click (stopPropagation), so nothing ever registered as selected.
+      var customPanel = document.createElement("div"); customPanel.className = "shirt-color-custom-panel";
+      customPanel.style.display = "none";
+      var customColorInput = document.createElement("input");
+      customColorInput.type = "color"; customColorInput.className = "shirt-color-custom-input";
+      customColorInput.value = shirtCustomColor;
+      customColorInput.setAttribute("aria-label", "Pick custom shirt color");
+      var customHex = document.createElement("span"); customHex.className = "shirt-color-custom-hex";
+      customHex.textContent = shirtCustomColor.toUpperCase();
+      var customConfirm = document.createElement("button");
+      customConfirm.type = "button"; customConfirm.className = "btn btn-secondary shirt-color-confirm";
+      customConfirm.textContent = "Use this color";
+      customColorInput.addEventListener("input", function () {
+        shirtCustomColor = customColorInput.value;
+        customHex.textContent = shirtCustomColor.toUpperCase();
+      });
+      customConfirm.addEventListener("click", function () {
+        selectShirtColor("custom");
+        customPanel.style.display = "none";
+      });
+      customPanel.appendChild(customColorInput);
+      customPanel.appendChild(customHex);
+      customPanel.appendChild(customConfirm);
+
+      function selectShirtColor(key) {
+        if (!withShirt) return;
+        shirtColor = key;
+        Object.keys(colorBtns).forEach(function (k) {
+          var isSel = k === key;
+          colorBtns[k].classList.toggle("is-selected", isSel);
+          colorBtns[k].setAttribute("aria-pressed", isSel ? "true" : "false");
+        });
+        colorBtns.custom.querySelector(".shirt-color-label").textContent =
+          key === "custom" ? "Custom (" + shirtCustomColor.toUpperCase() + ")" : "Custom";
+        colorBtns.custom.querySelector(".shirt-color-swatch").style.background =
+          key === "custom" ? shirtCustomColor : "";
+        disclaimer.style.display = key === "custom" ? "" : "none";
+        refresh();
+      }
+
+      COLOR_CHOICES.forEach(function (c) {
+        var pick = document.createElement("button");
+        pick.type = "button"; pick.className = "shirt-color-pick";
+        pick.setAttribute("aria-pressed", "false");
+        pick.setAttribute("aria-label", c.label + " shirt color");
+        var sw = document.createElement("span");
+        sw.className = "shirt-color-swatch" + (c.key === "custom" ? " is-custom" : "");
+        if (c.swatch) sw.style.background = c.swatch;
+        pick.appendChild(sw);
+        var lbl = document.createElement("span"); lbl.className = "shirt-color-label"; lbl.textContent = c.label;
+        pick.appendChild(lbl);
+        pick.addEventListener("click", function () {
+          if (!withShirt) return;
+          if (c.key === "custom") {
+            customPanel.style.display = customPanel.style.display === "none" ? "" : "none";
+            return;
+          }
+          customPanel.style.display = "none";
+          selectShirtColor(c.key);
+        });
+        colorOpts.appendChild(pick);
+        colorBtns[c.key] = pick;
+      });
+      shirtRow.appendChild(colorOpts);
+      shirtRow.appendChild(customPanel);
+      shirtRow.appendChild(disclaimer);
+      card.appendChild(shirtRow);
+
+      function syncShirtColorState() {
+        Object.keys(colorBtns).forEach(function (k) { colorBtns[k].disabled = !withShirt; });
+        colorOpts.classList.toggle("is-disabled", !withShirt);
+        if (!withShirt) customPanel.style.display = "none";
+        disclaimer.style.display = (withShirt && shirtColor === "custom") ? "" : "none";
+      }
+      syncShirtColorState();
+
+      cb.addEventListener("change", function () {
+        withShirt = cb.checked;
+        syncShirtColorState();
+        refresh();
+      });
     }
 
     // generic tiered add-ons (e.g. the color-printing and finishing options on
@@ -667,10 +913,11 @@
         .map(function (g, i) { return addonSel[i] > 0 ? g.options[addonSel[i]].label : ""; })
         .filter(Boolean);
       var lineLabel = [vLabel].concat(addonLabels).filter(Boolean).join(" + ");
+      var colorLabel = shirtColorLabel();
       addToCart({
-        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt" : "plain") + "|" + (designRef || "") + "|" + addonLabels.join("|"),
+        key: p.id + "|" + vLabel + "|" + (withShirt ? "shirt:" + (colorLabel || "") : "plain") + "|" + (designRef || "") + "|" + addonLabels.join("|"),
         id: p.id, name: p.name, leaf: p.leaf, type: "sku",
-        variantLabel: lineLabel, shirt: withShirt,
+        variantLabel: lineLabel, shirt: withShirt, shirtColor: colorLabel,
         unitPrice: unitPrice(), baseUnitPrice: p.bulkTiers ? baseUnitPrice() : null, qty: qty,
         designRef: designRef, designName: designName
       });
@@ -703,7 +950,7 @@
       var tier = activeBulkTier(qty, p.bulkTiers);
       var shown = tier ? bulkUnitPrice(base, qty, p.bulkTiers) : base;
       var notes = [];
-      if (withShirt && p.shirtAddon) notes.push("incl. shirt");
+      if (withShirt && p.shirtAddon) notes.push("incl. shirt" + (shirtColorLabel() ? " (" + shirtColorLabel() + ")" : ""));
       addonGroups.forEach(function (g, i) { if (addonSel[i] > 0) notes.push("incl. " + g.options[addonSel[i]].label); });
       if (!notes.length && p.variants && p.variants.length > 1) notes.push("/ " + variants[sel].label);
       if (tier) notes.push(tier.discountPct + "% bulk price");
@@ -925,7 +1172,7 @@
         var text = document.createElement("div"); text.className = "c-text";
         var meta = [];
         if (i.variantLabel) meta.push(i.variantLabel);
-        if (i.shirt) meta.push("with shirt");
+        if (i.shirt) meta.push("with shirt" + (i.shirtColor ? " — " + i.shirtColor : ""));
         var nameHtml = '<div class="c-name">' + escapeHtml(i.name) +
           (i.designName ? ' <span class="c-design">— ' + escapeHtml(i.designName) + '</span>' : '') +
           (i.type === "custom" ? '<span class="cart-tag">Pending approval</span>' : '') + '</div>';
@@ -1026,8 +1273,10 @@
     if (payNow.length) {
       lines.push("PAY NOW:");
       payNow.forEach(function (i) {
-        var d = [i.name]; if (i.variantLabel) d.push(i.variantLabel); if (i.shirt) d.push("with shirt");
+        var d = [i.name]; if (i.variantLabel) d.push(i.variantLabel); if (i.shirt) d.push("with shirt" + (i.shirtColor ? " (" + i.shirtColor + ")" : ""));
         lines.push("  - " + d.join(" / ") + " x" + i.qty + "  =  " + peso(i.unitPrice * i.qty));
+        var design = i.designName || i.designRef;
+        if (design) lines.push("    Design: " + design);
       });
       lines.push("  Subtotal (pay now): " + peso(payNowTotal()), "");
     }

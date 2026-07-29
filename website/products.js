@@ -290,6 +290,15 @@ window.KCMPS_STORE_DATA = {
         { label: "A4", price: 80 },
         { label: "A3", price: 150 },
       ],
+      // 2026-07-30: bulk-pricing pass — same ladder across all four DTF/
+      // sublimation apparel SKUs (identical price ladder, same "repeat
+      // design N times for a team/event" use case).
+      bulkTiers: [
+        { minQty: 10, discountPct: 6 },
+        { minQty: 25, discountPct: 10 },
+        { minQty: 50, discountPct: 13 },
+        { minQty: 100, discountPct: 16 },
+      ],
       shirtAddon: true,
       fulfillmentInput: "none",
     },
@@ -321,6 +330,15 @@ window.KCMPS_STORE_DATA = {
         { label: "A4", price: 80 },
         { label: "A3", price: 150 },
       ],
+      // 2026-07-30: bulk-pricing pass — same ladder across all four DTF/
+      // sublimation apparel SKUs (identical price ladder, same "repeat
+      // design N times for a team/event" use case).
+      bulkTiers: [
+        { minQty: 10, discountPct: 6 },
+        { minQty: 25, discountPct: 10 },
+        { minQty: 50, discountPct: 13 },
+        { minQty: 100, discountPct: 16 },
+      ],
       shirtAddon: true,
       fulfillmentInput: "none",
     },
@@ -342,6 +360,15 @@ window.KCMPS_STORE_DATA = {
         { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
         { label: "A3", price: 150 },
+      ],
+      // 2026-07-30: bulk-pricing pass — same ladder across all four DTF/
+      // sublimation apparel SKUs (identical price ladder, same "repeat
+      // design N times for a team/event" use case).
+      bulkTiers: [
+        { minQty: 10, discountPct: 6 },
+        { minQty: 25, discountPct: 10 },
+        { minQty: 50, discountPct: 13 },
+        { minQty: 100, discountPct: 16 },
       ],
       shirtAddon: true,
       fulfillmentInput: "none",
@@ -369,6 +396,15 @@ window.KCMPS_STORE_DATA = {
         { label: "3×5 in", price: 50 },
         { label: "A4", price: 80 },
         { label: "A3", price: 150 },
+      ],
+      // 2026-07-30: bulk-pricing pass — same ladder across all four DTF/
+      // sublimation apparel SKUs (identical price ladder, same "repeat
+      // design N times for a team/event" use case).
+      bulkTiers: [
+        { minQty: 10, discountPct: 6 },
+        { minQty: 25, discountPct: 10 },
+        { minQty: 50, discountPct: 13 },
+        { minQty: 100, discountPct: 16 },
       ],
       shirtAddon: true,
       fulfillmentInput: "none",

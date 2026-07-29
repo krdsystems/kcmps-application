@@ -1316,6 +1316,33 @@ the sticky nav. And the rail's `IntersectionObserver` now filters out
 entry, so the passed hero's still-laid-out box would otherwise win "topmost" and keep the rail
 lit on "Hero" while the user reads Shop.
 
+### 35. Bulk pricing for DTF/sublimation apparel: competitive research, then `bulkTiers` added to all four transfer SKUs (2026-07-30)
+
+Step 27 added `bulkTiers` to print-office products but deliberately left the DTF/sublimation
+apparel SKUs (`dtf-street-statement`, `subli-street-statement`, `dtf-logo-transfer`,
+`dtf-typographic`) flat. The owner asked for a grounded pricing recommendation before touching
+that data — not generic industry percentages, reconciled against KCMPS's actual per-unit
+pricing.
+
+Research found two disconnected reference points: wholesale DTF/gang-sheet suppliers (selling
+*to resellers*) discount 60–70% at 250+ pieces, which doesn't transfer to KCMPS's per-order
+retail model; small retail print shops instead cluster around 10–20% off at 50–100 units. The
+stronger anchor turned out to be KCMPS's own step-27 precedent (5–12% across print-office,
+breakpoints scaled to realistic order sizes per product). All four apparel SKUs share an
+identical price ladder (3×5=₱50, A4=₱80, A3=₱150) and the same realistic bulk use case — a
+team or event ordering many copies of one design — so they got one shared ladder rather than
+per-SKU tuning: `10+/25+/50+/100+ → 6%/10%/13%/16% off` (products.js). The top tier sits one
+notch above print-office's 12% ceiling (apparel has more absolute margin per unit) but stays
+well under both the wholesale-supplier and general-retail benchmarks above, partly because
+`skuCard()`'s `baseUnitPrice()` folds the ₱110 shirt-press add-on into the pre-discount base
+(store.js:554) — so a bundled bulk order discounts the press labor fee too, not just the print.
+
+Hotmelt (heat-vinyl lettering, still `comingSoon`) was flagged to skip this treatment when it
+launches: unlike these four, hotmelt orders are typically personalized per piece (jersey
+names/numbers) rather than N copies of one design, so the same-design bulk-tier model
+misrepresents the product. Custom design-request cards remain correctly excluded — they have
+no fixed `baseUnitPrice` to tier against.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

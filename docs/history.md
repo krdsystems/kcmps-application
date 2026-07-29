@@ -1391,6 +1391,12 @@ reuses the generic `.dialog-title`/`.dialog-body`/`.dialog-actions` classes the 
 confirmation popup (step 22) established, same structural pattern, own z-index (162) since it
 can appear either standalone on a product card or over the still-open cart drawer/estimator.
 
+Owner follow-up: the popup's body copy originally named the team size ("...our 4-person
+team..."). Dropped to "...our team..." — the owner didn't want the exact headcount stated to
+customers. The reasoning in this write-up and the `softCap`/`capAcknowledged` code comments
+still say "4-person" since that's real internal context for why the caps are set where they
+are; only the shopper-facing string changed.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

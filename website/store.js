@@ -136,7 +136,7 @@
       capPopupActionsEl.querySelector("#cap-popup-ok").addEventListener("click", function () { closeCapPopup(); back(false); });
     } else {
       capPopupTitleEl.textContent = "That's a big order";
-      capPopupBodyEl.textContent = "Orders above " + info.cap + " take extra time from our 4-person team — expect about " +
+      capPopupBodyEl.textContent = "Orders above " + info.cap + " take extra time from our team — expect about " +
         info.extraDays + " additional business day" + (info.extraDays === 1 ? "" : "s") + " beyond our standard " +
         "turnaround. Agree to continue at your requested quantity, or keep it at " + info.cap + " for our normal turnaround.";
       capPopupActionsEl.innerHTML =

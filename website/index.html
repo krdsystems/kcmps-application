@@ -1295,9 +1295,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     const opt = currentOption();
     const requested = Math.max(1, parseInt(qtyNum.value, 10) || 1);
     if (!window.KCMPS_STORE || !window.KCMPS_STORE.requestQty) return;
+    // Keyed by opt.id so agreeing to a big order for one catalog product here
+    // carries over to that same product's shop card/cart line, but not to a
+    // different product picked in Step 01.
     window.KCMPS_STORE.requestQty(opt.softCap, requested, (finalQty) => {
       if (finalQty !== requested) syncQty(finalQty);
-    });
+    }, opt.id);
   }
 
   function computeQuote() {

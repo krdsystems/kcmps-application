@@ -28,12 +28,14 @@ build — edits are live on refresh.
 |---|---|
 | Cart logic, checkout          | `website/store.js` — `addToCart`, `setQty`, `removeItem`, `payNowTotal`, `submitOrder`, public API `window.KCMPS_STORE` |
 | Bulk quantity-discount pricing | Product opts in via `bulkTiers: [{minQty, discountPct}]` in `products.js`; `store.js`'s `activeBulkTier()`/`bulkUnitPrice()` (exposed on `window.KCMPS_STORE`) apply it in `skuCard()`'s live price/qty-stepper, cart-line `setQty()`/`addToCart()` re-tiering, and the `index.html` `#estimator` bulk-quote widget — all three read the same tiers so they can't quote different prices |
-| Order-quantity capacity soft-cap | Product opts in via `softCap: N` in `products.js` (the qty above which KCMPS's 4-person team needs extra lead time). `store.js`'s `requestQty()` (exposed on `window.KCMPS_STORE`) is the single gate every qty input — `skuCard()`'s stepper, cart-drawer line stepper, and the `#estimator` qty field — routes a requested value through; it pops the `.cap-popup-backdrop` confirmation (extra-lead-time copy, or a hard-ceiling "message us" notice at 5x the cap) and only commits the higher value once the shopper clicks "I agree". See the "Capacity soft-cap" gotcha below before touching this. |
+| Order-quantity capacity soft-cap | Product opts in via `softCap: N` in `products.js` (the qty above which KCMPS's 4-person team needs extra lead time). `store.js`'s `requestQty()` (exposed on `window.KCMPS_STORE`) is the single gate every qty input — `skuCard()`'s stepper, cart-drawer line stepper, and the `#estimator` qty field — routes a requested value through, passing a per-product `key` (`p.id`/`i.id`/`opt.id`); it pops the `.cap-popup-backdrop` confirmation (extra-lead-time copy, or a hard-ceiling "message us" notice at 5x the cap) and only commits the higher value once the shopper clicks "I agree" — which only unlocks that one product's cap, not every product's. See the "Capacity soft-cap" gotcha below before touching this. |
 | Bulk-quote Step 01 product picker | `index.html` `#estimator` inline `<script>` — tabbed thumbnail/name/price cards (`.est-product-tabs`/`.est-product-grid`/`.est-product-pick`) built from the same `options` list sourced off `window.KCMPS_STORE_DATA.products`; one tab per catalog leaf, reusing the page's generic `[data-tabs]` click-handler. The original `<select id="est-product">` stays in the DOM (`display:none`) as the single source of truth — clicking a card just sets its value and fires `change`, so `currentOption()`/pricing/cart-add are untouched. See the "Bulk-quote product picker" gotcha below before changing this. |
-| GCash payment popup (post-"Place order", pre-mailto) | `store.js` `buildOrderEmail()` (builds `{subject, body, format}` from the checkout form + cart — `format` is the full copyable message, header fields + itemized breakdown) and `openOrderPopup()`/`closeOrderPopup()` (lazy-built `.order-popup-backdrop`, overlays the still-open cart drawer, z-index 160); QR asset `website/assets/gcash-qr.jpg` (real, owner's GCash — portrait aspect ratio, `.order-popup-qr` CSS sizes it `width: 200px; height: auto`, don't force it square) |
+| GCash payment popup (post-"Place order", pre-mailto) | `store.js` `buildOrderEmail()` (builds `{subject, body, format}` from the checkout form + cart — `format` is the full copyable message, header fields + itemized breakdown, including a per-line `Design: <name>` when the line carries a `designRef`/`designName`, and `with shirt (<color>)` when it carries `shirtColor`) and `openOrderPopup()`/`closeOrderPopup()` (lazy-built `.order-popup-backdrop`, overlays the still-open cart drawer, z-index 160); QR asset `website/assets/gcash-qr.jpg` (real, owner's GCash — portrait aspect ratio, `.order-popup-qr` CSS sizes it `width: 200px; height: auto`, don't force it square) |
 | Catalog / product data        | `website/products.js` — `window.KCMPS_STORE_DATA = { currency, shirtAddon, leaves, products }`; each leaf has an `image` (AI-generated, `website/assets/leaves/<leaf>.jpg`) used as the product-thumb fallback in `store.js`'s `thumbImage()` |
 | Filename → display-title convention | `window.KCMPS_TEXT.titleFromFilename()` in `products.js` — shared by the hero carousel, the design picker grid, and cart thumbnails so naming never drifts between views |
-| Design picker (pre-made design selection) | `store.js` `buildDesignGrid()` — selectable design cards under a SKU's gallery thumb, capped at `DESIGN_GRID_MAX` (8) tiles with a hover/tap "+N more" popup for the rest; selection travels into the cart line as `designRef`/`designName` (see `addToCart` call in `skuCard()`) |
+| Design picker (pre-made design selection) | `store.js` `buildDesignGrid()` — selectable design cards under a SKU's gallery thumb, capped at `DESIGN_GRID_MAX` (8) tiles with a hover/tap "+N more" popup for the rest; clicking any tile (inline, popup, or the mobile subcatalog) opens the shared fullscreen lightbox rather than selecting instantly — see "Fullscreen design lightbox" below; selection travels into the cart line as `designRef`/`designName` (see `addToCart` call in `skuCard()`) |
+| Fullscreen design lightbox (purchasable) | `store.js` `openLightbox()`/`buildLightbox()` — the shared overlay always shows "Select this design" plus a size seg, quantity input, and "Add to cart" whenever opened with the optional `onSelect`/`controls` params; every design-subsection trigger (gallery thumb image, inline/popup design tiles, mobile subcatalog) routes through `skuCard()`'s `openDesignLightbox()`, which builds those `controls` via `buildLightboxControls()` and delegates the actual add to the card's own `addBtn.click()` (never duplicates cart-line construction, so bulk tiers/shirt-addon/design-ref can't drift between the card and the lightbox) |
+| Shirt color choice (Black/White/Custom) | `store.js` `skuCard()`'s `.shirt-row` block, next to the `p.shirtAddon` checkbox — the three picks are `disabled`/dimmed until that checkbox is checked; "Custom" is a two-step pick (opens a panel with a native color input + live hex readout, only "Use this color" commits — don't apply on the swatch's own click, see the gotcha below) and the result travels as `shirtColor` on the cart line into the drawer meta and `buildOrderEmail()` |
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
 | Hero→shop card-deck reveal    | `index.html` — `.hero-deck`/`.hero-stage` CSS + the `--deck-out`/`--deck-in` `:root` rules in the inline `<style>`, driven by the deck-scroll IIFE (grep `--deck-progress`). See the "Card-deck reveal" gotcha below before touching any of it |
 | Auth (Cognito login/logout)   | `website/index.html` `<script>` block; isolated reference/debug copy at `website/login-test.html` |
@@ -76,17 +78,19 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   the first tab regardless of priming. `.est-product-grid` caps `max-height` with internal
   vertical scroll per tab (same bounded-grid idea as `buildDesignGrid()`'s `DESIGN_GRID_MAX`) so
   a category with many variants doesn't push Step 02 down the page.
-- **Capacity soft-cap** (`store.js`, `requestQty()`/`capAcknowledged`): the "I agree" override is
-  a plain in-memory module variable, deliberately *not* `sessionStorage`/`localStorage` — the
+- **Capacity soft-cap** (`store.js`, `requestQty()`/`capAcknowledgedByKey`): the "I agree"
+  override is a plain in-memory object, deliberately *not* `sessionStorage`/`localStorage` — the
   requirement was that it resets on page refresh, which rules out both Web Storage APIs (they'd
-  survive a refresh; only closing the tab/losing the JS context clears a module variable). Once
-  true it's global for the rest of the tab's session — agreeing on one product's qty field
-  unlocks every capped field, not just the one that triggered the popup. Cap-check calls are on
-  *commit* only (blur/Enter on typed fields, `change` not `input` on the estimator's range
-  slider, the product-card stepper's `+` button) — never on every keystroke/drag tick, or the
-  popup would interrupt the shopper mid-input. The hard ceiling (5x the product's `softCap`) has
-  no "I agree" path at all — it's genuinely too large to self-serve online and always clamps to
-  the ceiling, pointing the shopper at a manual quote instead.
+  survive a refresh; only closing the tab/losing the JS context clears a module variable). It's
+  keyed **per product** (`requestQty`'s 4th `key` arg — `p.id` from `skuCard()`, `i.id` from the
+  cart-drawer line, `opt.id` from the `#estimator`), not one flag for the whole page: agreeing to
+  a big order on one product doesn't silently wave a different product's overflow through, but a
+  given product's card and cart line share the same key so agreeing in one place carries to the
+  other. Cap-check calls are on *commit* only (blur/Enter on typed fields, `change` not `input`
+  on the estimator's range slider, the product-card stepper's `+` button) — never on every
+  keystroke/drag tick, or the popup would interrupt the shopper mid-input. The hard ceiling (5x
+  the product's `softCap`) has no "I agree" path at all — it's genuinely too large to self-serve
+  online and always clamps to the ceiling, pointing the shopper at a manual quote instead.
 - **Card-deck reveal** (`.hero-deck`/`.hero-stage`, `index.html`): the hero is a `position:
   sticky` card pinned inside a taller wrapper while `#storefront` is pulled up underneath by a
   negative margin. Every number derives from ONE measured input, `H = stage.offsetHeight` —
@@ -167,11 +171,32 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   on the same `(hover: hover) and (pointer: fine)` query as the scroll-indicator). No-hover/
   touch devices get a single-tap full-screen `.design-subcatalog` sheet instead (all designs,
   not just the `DESIGN_GRID_MAX`-capped overflow) — the old touch fallback toggled the tiny
-  flyout on tap, which needed a second tap to actually use. Tapping a design in the subcatalog
-  opens it via the shared `openLightbox()`; that call's new optional `onSelect` param (shows a
-  "Select this design" button) is what finishes the `gallery.setIndex()`/`designRef` wiring, so
-  don't build a second selection path — reuse `onSelect` for any future picker that needs
-  fullscreen-then-confirm.
+  flyout on tap, which needed a second tap to actually use.
+- **Every design-tile click opens the fullscreen lightbox — none of them select instantly
+  anymore.** The gallery thumb image, inline design-grid tiles, `.design-popup` tiles, and
+  `.design-subcatalog` tiles all call `skuCard()`'s `openDesignLightbox(i)`, which opens
+  `openLightbox()` with an `onSelect` (finishes `gallery.setIndex()` + `designPicker.sync()`)
+  and a `controls` object (size seg + qty + Add-to-cart, from `buildLightboxControls()`) —
+  both always passed together from this codebase's only caller of that pair. Don't reintroduce
+  a second "select on click" path on any tile; route new pickers through `openDesignLightbox`/
+  `openImage` so the lightbox stays the single confirm step.
+- **An invisible full-bleed `<input>` layered over a button is a click sink, not a
+  decoration.** The shirt-color "Custom" swatch originally had a `<input type="color">`
+  positioned `inset: 0` over the whole button so clicking it opened the native color dialog;
+  the input's own click handler called `stopPropagation()` to stop the click reaching the
+  button underneath, which meant the button's *own* selection handler (`selectShirtColor`)
+  never ran — no highlight, no confirm, and the color never reached the cart, because
+  `shirtColor` was never actually set. Black/White worked since they had no overlay. Fixed by
+  making Custom a real two-step flow: the swatch opens a `.shirt-color-custom-panel` (visible
+  native color input, live hex text) and only its own "Use this color" button calls
+  `selectShirtColor("custom")`. See `docs/history.md` step 35.
+- **Lightbox quantity commits defensively, not just on blur.** `.lightbox-qty-val` is a real
+  `<input type="number">` (commit-on-blur/Enter, mirroring the product card's `qval`), but the
+  +/−/Add-to-cart buttons each call `commitLightboxQty()` themselves before acting — a click on
+  one of them can reach its own handler before the still-focused input's `blur` fires,
+  otherwise silently dropping a freshly-typed quantity back to 1. The overlay's global
+  `keydown` (Escape/arrow-step) also early-returns when `e.target` is that input, so typing
+  digits doesn't step the design carousel underneath.
 
 ## Git / worktree workflow
 

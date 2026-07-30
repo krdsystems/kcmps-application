@@ -1452,6 +1452,44 @@ handler before the focused input's `blur` has committed a freshly-typed value, w
 added qty 1 instead of the typed 25. The overlay's global `keydown` (Escape/arrows) now
 early-returns when the event targets that input, so typing digits doesn't step the carousel.
 
+### 38. Mobile pass on the night's shirt-color/cap/lightbox features, plus distinct custom-request labels (2026-07-30)
+
+Step 36 and 37 (capacity soft-cap popup, shirt-color picker, purchasable lightbox) had only
+been checked on web. A mobile-width pass in the browser (320px/375px, driven programmatically
+rather than by eye, since the environment's screenshot tool was unavailable this session)
+turned up two real regressions, both in `styles.css`:
+
+**Lightbox counter/close collision.** Step 37 moved `.lightbox-counter` from `bottom: 18px` to
+`top: 16px` to make room for the new bottom controls bar. On mobile the close button isn't a
+small icon — `.lightbox-close-text` swaps in a wider "Close" text pill (see step 15's original
+comment: no chrome/whitespace left once the image fills the viewport to signal "tap here to
+leave"). That pill sits top-center-right in the same 14–60px band the counter now occupies, so
+the centered "1 / N" counter text rendered directly under it. Fixed by pushing the counter down
+to clear the close pill's height inside the existing `@media (max-width: 760px)` block.
+
+**Shirt-color "Use this color" button wrapping to two lines.** `.shirt-color-custom-panel` lays
+the color input, hex readout, and confirm button out in one non-wrapping flex row. At ≤480px
+there wasn't enough width left for the confirm button once the panel's own padding and the
+other two children took their share, so "Use this color" wrapped mid-phrase, inflating the
+button to a squat two-line block. Fixed with a `@media (max-width: 480px)` override that lets
+the panel wrap and gives the confirm button `flex: 1 0 100%`, dropping it to its own full-width
+row instead of shrinking it.
+
+Both fixes were mirrored into `design-system/KCMPS Redesign/styles.css` per the usual
+convention. Everything else exercised at 320px — cap popups on product cards/cart-drawer/
+estimator, the lightbox's size/qty/add-to-cart controls, the custom color panel — had zero
+horizontal overflow.
+
+**Separately:** the three apparel custom-request leaves (`dtf`, `subli`, `hotmelt` in
+`products.js`) all shared the literal `customLabel` "Custom design request". Since both the
+cart-drawer line and `buildOrderEmail()`'s pending-approval itemization render straight off
+`i.name`, a shopper (and the owner reading the checkout email) had no way to tell which type
+of custom request they were looking at once more than one was in the cart — unlike every other
+leaf (`3dprint`, `souvenir`, `network`, `storage`, `print-office`), which already had a
+type-specific label. Renamed the three to "Custom DTF design request", "Custom sublimation
+design request", and "Custom hotmelt design request" — no code changes needed since both
+render sites already read `i.name`.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

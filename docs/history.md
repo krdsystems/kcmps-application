@@ -1558,6 +1558,22 @@ kicks in automatically at 10+ pcs." to each; and the five design-tab `customBlur
 approve", "for a quote", no mention at all) — normalized all five to close with print-office's
 "Add to cart now — you only pay once we confirm."
 
+### 40. Cart not clearing after checkout (2026-07-31)
+
+Owner feedback (reported on both mobile and web): after placing an order, the cart still had
+its items in it whether the shopper clicked "I'll send it manually" or "Open email app" on the
+post-checkout GCash payment popup (`buildOrderPopup()`/`openOrderPopup()` in `store.js`,
+introduced in step 22). Both buttons only ever appear after `submitOrder()` has already built
+the order email — they're two ways of delivering that same already-placed order, not a way to
+back out of it — so neither should leave the order sitting in the cart afterward. Added a
+`clearCart()` function (same shape as the existing `removeItem`) and called it at the top of
+both button handlers, right before their existing behavior (closing the popup/drawer, or
+navigating to the `mailto:` link). Verified in-browser: added an item, walked through checkout,
+and confirmed `localStorage`'s cart key goes from the populated line item to `[]` immediately
+after clicking "I'll send it manually" (the `mailto:` path wasn't click-tested live, since
+triggering a real `mailto:` navigation in the automated browser risked hanging the tab on an OS
+handler prompt, but it runs through the identical `clearCart()` call first).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

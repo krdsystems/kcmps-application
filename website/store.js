@@ -225,6 +225,7 @@
     saveCart(cart); syncUI();
   }
   function removeItem(key) { cart = cart.filter(function (i) { return i.key !== key; }); saveCart(cart); syncUI(); }
+  function clearCart() { cart = []; saveCart(cart); syncUI(); }
 
   /* ---------- badge (reuses the auth-era nav elements) ---------- */
   function updateBadge() {
@@ -1483,16 +1484,21 @@
     orderPopupFormatEl = backdrop.querySelector("#order-popup-format");
     orderPopupCopyBtn = backdrop.querySelector("#order-popup-copy");
 
-    // "I'll send it manually" fully backs out of checkout (popup + drawer
-    // both close) — clicking outside the popup (backdrop) only dismisses
-    // the popup itself, leaving the drawer/cart untouched underneath.
+    // The popup only appears after submitOrder() already built the order
+    // email, so both exit paths here are ways of delivering an order that's
+    // already placed, not a way to back out — both clear the cart. "I'll
+    // send it manually" also fully backs out of checkout (popup + drawer
+    // both close); clicking outside the popup (backdrop) only dismisses the
+    // popup itself, leaving the (now-empty) drawer underneath.
     backdrop.querySelector("#order-popup-close").addEventListener("click", function () {
+      clearCart();
       closeOrderPopup();
       closeDrawer();
     });
     backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeOrderPopup(); });
     orderPopupEmailBtn.addEventListener("click", function () {
       if (!pendingOrderEmail) return;
+      clearCart();
       window.location.href = "mailto:" + ORDER_EMAIL +
         "?subject=" + encodeURIComponent(pendingOrderEmail.subject) +
         "&body=" + encodeURIComponent(pendingOrderEmail.body);

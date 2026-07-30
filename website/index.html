@@ -463,7 +463,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
         <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
         <div class="price-anchor">
-          <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱170</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
+          <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱160</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
         </div>
         <p class="sub" id="hero-sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
       </div>
@@ -478,7 +478,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       </div>
       <div class="trust-row">
         <span class="trust-chip"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z"/></svg>Reprint guarantee</span>
-        <span class="trust-chip">No minimum order</span>
+        <span class="trust-chip">Bulk discounts, automatic</span>
         <span class="trust-chip">Custom: pay after approval</span>
       </div>
     </div>
@@ -642,9 +642,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </section>
 
-  <!-- ============ VALUE STACK — makes the ₱170 feel small ============
+  <!-- ============ VALUE STACK — makes the ₱160 feel small ============
        OWNER: the peso "value" amounts below are editable placeholders meant to
-       reflect what each inclusion is really worth. Adjust to your real numbers. -->
+       reflect what each inclusion is really worth. Adjust to your real numbers.
+       The DTF-transfer and shirt-press lines mirror the real checkout prices
+       (products.js's cheapest DTF/subli variant + window.KCMPS_STORE_DATA.shirtAddon.price)
+       so the "all-in from" anchor stays accurate — don't let these two drift
+       from those real values without also updating the anchor math below. -->
   <section class="valuestack" id="value">
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
@@ -653,12 +657,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
     <div class="card vstack-card" id="vstack-card">
       <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
-      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱120</span></div>
+      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱110</span></div>
       <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
       <div class="vstack-line"><span class="label">Color &amp; placement layout assistance <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
       <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
       <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
-      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱170</span></div>
+      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱160</span></div>
     </div>
   </section>
 
@@ -716,7 +720,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </details>
     <details class="faq-item">
       <summary>Is there a minimum order?</summary>
-      <p>No minimum on ready-made shirts and prints — order a single piece if that's all you need. For bulk runs, use the estimator below for a directional quote.</p>
+      <p>No minimum on shirts, DTF/sublimation designs, and hardware — order a single piece if that's all you need. A few print &amp; office items (Document Printing, Business Cards, Stickers &amp; Labels) carry a small minimum to keep per-order costs down, and bulk pricing kicks in automatically once you order more. For bulk runs, use the estimator below for a directional quote.</p>
     </details>
     <details class="faq-item">
       <summary>How fast will I get it?</summary>
@@ -1137,6 +1141,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         shirtAddon: !!p.shirtAddon,
         bulkTiers: p.bulkTiers || null,
         softCap: p.softCap || null,
+        minQty: p.minQty || 1,
         // Same fallback order as store.js's thumbImage(): the product's own
         // image wins, else its leaf's representative photo, else no thumb.
         image: p.image || (DATA.leaves[p.leaf] && DATA.leaves[p.leaf].image) || null,
@@ -1293,13 +1298,15 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   // it doesn't interrupt the shopper mid-input.
   function enforceQtyCap() {
     const opt = currentOption();
-    const requested = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    qtyNum.min = String(opt.minQty || 1);
+    const typed = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    const requested = Math.max(opt.minQty || 1, typed);
     if (!window.KCMPS_STORE || !window.KCMPS_STORE.requestQty) return;
     // Keyed by opt.id so agreeing to a big order for one catalog product here
     // carries over to that same product's shop card/cart line, but not to a
     // different product picked in Step 01.
     window.KCMPS_STORE.requestQty(opt.softCap, requested, (finalQty) => {
-      if (finalQty !== requested) syncQty(finalQty);
+      if (finalQty !== typed) syncQty(finalQty);
     }, opt.id);
   }
 
@@ -1453,8 +1460,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       hero: {
         kicker: 'Bulk printing & office supplies · 2–3 day turnaround',
         headline: ['Your bulk print job,', 'done in days', '— not weeks.'],
-        anchor: { from: 'Turnaround', amount: '2–3 days', was: 'no minimum quantity, no back-and-forth' },
-        sub: "Send your file, get a quote back in minutes, and pick up in 2–3 business days. No minimum order, no back-and-forth — just documents, forms, and office essentials printed right the first time.",
+        anchor: { from: 'Turnaround', amount: '2–3 days', was: 'clear pricing, no back-and-forth' },
+        sub: "Send your file, get a quote back in minutes, and pick up in 2–3 business days. Small per-order minimums keep pricing fair, bulk discounts apply automatically — just documents, forms, and office essentials printed right the first time.",
         cta: 'Get an instant quote',
         tabTarget: 'panel-print-office',
       },
@@ -1472,14 +1479,14 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       how: [
         { h3: 'Send your file or specs', p: 'Documents, forms, packaging — upload what you need printed, digital file or physical copy.' },
         { h3: 'We prep, proof and print in-house', p: 'File checked, proof approved, then printed at bulk-run pricing — rush delivery available.' },
-        { h3: 'Pick up or get it delivered in 2–3 days', p: 'Grab it at our Manila studio or have it delivered — no minimum order.' },
+        { h3: 'Pick up or get it delivered in 2–3 days', p: 'Grab it at our Manila studio or have it delivered — fast.' },
       ],
     },
     design: {
       hero: {
         kicker: 'Design + print, one team · Launch Kit',
         headline: ['One decision,', 'not three quotes.', 'Your brand, launched.'],
-        anchor: { from: 'From', amount: '₱170', was: 'design + shirt, all-in' },
+        anchor: { from: 'From', amount: '₱160', was: 'design + shirt, all-in' },
         sub: "Stop collecting quotes from three different shops. One team designs it, prints it, and hands you a finished piece — logo, layout and production all under one roof.",
         cta: 'Start my design',
         tabTarget: 'panel-design',
@@ -1489,7 +1496,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         p: 'Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:',
         lines: [
           { label: 'Premium DTF transfer of your design', val: '₱80' },
-          { label: 'Heat-pressed onto a quality shirt', val: '₱120' },
+          { label: 'Heat-pressed onto a quality shirt', val: '₱110' },
           { label: 'Design file check &amp; print-prep', free: true },
           { label: 'Color &amp; placement layout assistance', free: true },
           { label: "Reprint-free guarantee if it's not right", free: true },
@@ -1497,7 +1504,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         totalLabel: 'Typical value elsewhere',
         totalVal: '₱450',
         payLabel: 'You pay, all-in from',
-        payAmt: '₱170',
+        payAmt: '₱160',
       },
       how: [
         { h3: 'Tell us your idea', p: 'Pick a ready-made design or send us yours — one form covers it.' },

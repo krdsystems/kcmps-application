@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  dev.kcmps.com staging domain — a second CloudFront distribution in front of the SAME
+  S3 bucket the live site uses, scoped to a /dev-site origin path so it never serves or
+  overwrites production content. Basic-auth gated via a CloudFront Function so
+  work-in-progress isn't publicly browsable/indexable. See storefront-infra/CLAUDE.md
+  and README "Deploying to the dev/staging domain" for the deploy workflow once this
+  stack exists.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: kcmps-online-bucket-est-2026
+    Description: Existing production deploy bucket (not created/owned by this stack).
+  BucketRegionalDomainName:
+    Type: String
+    Default: kcmps-online-bucket-est-2026.s3.ap-southeast-1.amazonaws.com
+  OriginAccessControlId:
+    Type: String
+    Default: E233V4Y9BPPX6H
+    Description: Reuses the existing OAC already authorized to read this bucket.
+  AcmCertificateArn:
+    Type: String
+    Default: arn:aws:acm:us-east-1:600929977538:certificate/c2758183-3a3a-43b2-bdd6-f6c0848edfb6
+    Description: Existing *.kcmps.com wildcard cert (must be in us-east-1 for CloudFront).
+  DevAlias:
+    Type: String
+    Default: dev.kcmps.com
+  DevOriginPath:
+    Type: String
+    Default: /dev-site
+    Description: S3 prefix dev content is synced to — keeps it out of the live site's root.
+  BasicAuthUser:
+    Type: String
+    Default: kcmps-dev
+    NoEcho: true
+  BasicAuthPassword:
+    Type: String
+    NoEcho: true
+    Description: Required — no default. Pass via --parameter-overrides, never commit it.
+    MinLength: 8
+
+Resources:
+  DevBasicAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: kcmps-dev-basic-auth
+      FunctionConfig:
+        Comment: Basic-auth gate for dev.kcmps.com so WIP isn't publicly browsable.
+        Runtime: cloudfront-js-2.0
+      AutoPublish: true
+      FunctionCode: !Sub
+        - |
+          function handler(event) {
+              var request = event.request;
+              var headers = request.headers;
+              var expected = "Basic ${AuthB64}";
+
+              if (
+                  typeof headers.authorization === "undefined" ||
+                  headers.authorization.value !== expected
+              ) {
+                  return {
+                      statusCode: 401,
+                      statusDescription: "Unauthorized",
+                      headers: {
+                          "www-authenticate": { value: 'Basic realm="KCMPS dev"' }
+                      }
+                  };
+              }
+
+              return request;
+          }
+        - AuthB64:
+            Fn::Base64: !Sub "${BasicAuthUser}:${BasicAuthPassword}"
+
+  DevResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: kcmps-dev-noindex
+        Comment: Belt-and-suspenders — keeps dev out of search indexes even though it's auth-gated.
+        CustomHeadersConfig:
+          Items:
+            - Header: X-Robots-Tag
+              Value: "noindex, nofollow, noarchive"
+              Override: true
+
+  DevDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: kcmps dev/staging site
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Aliases:
+          - !Ref DevAlias
+        Origins:
+          - Id: dev-origin
+            DomainName: !Ref BucketRegionalDomainName
+            OriginPath: !Ref DevOriginPath
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !Ref OriginAccessControlId
+        DefaultCacheBehavior:
+          TargetOriginId: dev-origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          # Matches prod's CachingDisabled policy — `aws s3 sync` shows up instantly,
+          # no invalidation step needed, which is the point of a fast-iteration staging domain.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          ResponseHeadersPolicyId: !Ref DevResponseHeadersPolicy
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt DevBasicAuthFunction.FunctionMetadata.FunctionARN
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+
+  # NOTE: the bucket policy is intentionally NOT managed as a CFN resource here.
+  # AWS::S3::BucketPolicy's Create handler refuses to touch a bucket that already
+  # has a policy applied outside CloudFormation (safety guard against clobbering
+  # unmanaged resources) — it fails with "The bucket policy already exists on
+  # bucket <name>." Since kcmps-online-bucket-est-2026's policy predates this
+  # stack, granting the new dev distribution read access is a separate, explicit
+  # `aws s3api put-bucket-policy` step run after this stack outputs the dev
+  # distribution's ID — see storefront-infra's README/CLAUDE.md for the exact
+  # command. Don't re-add this resource without first importing the bucket
+  # policy into the stack (`aws cloudformation import` or `--import-mode`).
+
+Outputs:
+  DevDistributionId:
+    Value: !Ref DevDistribution
+  DevDistributionDomainName:
+    Description: Point dev.kcmps.com's DNS record at this (CNAME, or ALIAS with CloudFront's fixed hosted zone ID Z2FDTNDATAQYW2).
+    Value: !GetAtt DevDistribution.DomainName

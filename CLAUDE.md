@@ -52,6 +52,7 @@ build — edits are live on refresh.
 | Shared backend conventions (not deployed) | `backend/lib/` — `constants.js`/`money.js`/`keys.js`/`item.js`/`events.js`/`auth.js`/`gsi.js`, the single module every future Lambda imports for status vocabulary, centavo money, PK/SK strings, and role checks (see its own `CLAUDE.md`); test with `node --test backend/lib/` |
 | Milestone 1.0 foundation (CloudFormation, owner-applied) | `backend/infra/foundation.cfn.yaml` — single DynamoDB table + GSI1 + Streams/PITR/deletion-protection, and the 5 Cognito groups added to the *existing* user pool; apply/rollback steps in `backend/infra/README.md` |
 | Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
+| dev/staging domain (`dev.kcmps.com`) infra | `storefront-infra/dev-domain.cfn.yaml` — CloudFormation for the second CloudFront distribution + basic-auth Function + response-headers policy, applied via `aws cloudformation deploy` with `kcmps-claude-priv` (needs its own IAM policy grant — see `storefront-infra/CLAUDE.md`) |
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
 | ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
 | Roadmap / next goals          | `docs/roadmap.md` — current-state → prioritized milestones; current focus is Milestone 1, the simple payment backend |
@@ -230,6 +231,23 @@ Deliberately **no `--delete`** — this only uploads new/changed files, it never
 anything from the bucket that isn't in `website/` locally (the bucket has pre-existing
 content outside this repo's management, e.g. a root `README.md` and an `Assets/` folder,
 distinct from `website/assets/`). Run a `--dryrun` first if unsure what a sync will touch.
+
+## Deploying to the dev/staging domain
+
+`dev.kcmps.com` is a second CloudFront distribution (stack `kcmps-dev-domain`, defined in
+`storefront-infra/dev-domain.cfn.yaml`) sitting in front of the **same** S3 bucket as
+production, reading from a `dev-site/` prefix instead of the root — so it never overlaps
+with or overwrites the live site. Same `CachingDisabled` behavior as prod, so a sync shows
+up immediately with no invalidation step.
+
+```bash
+aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
+```
+
+`dev.kcmps.com` is gated behind CloudFront-Function basic auth (credentials aren't in this
+repo — ask whoever set up the stack, or check the password manager entry). See
+`storefront-infra/CLAUDE.md` for the stack's architecture, IAM policy requirements, and
+rollback notes before touching it.
 
 ## Where to look next
 

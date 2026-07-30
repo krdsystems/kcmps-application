@@ -54,6 +54,11 @@ bundler. Everything is vanilla HTML5, Tailwind via CDN, and ES6. Production buck
 profile (`aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile
 kcmps-claude-priv` — see `CLAUDE.md` "Deploying to production").
 
+A password-gated staging mirror is also live at `dev.kcmps.com` (same bucket, `dev-site/`
+prefix, separate CloudFront distribution) for checking changes before they hit the live
+site — see `CLAUDE.md` "Deploying to the dev/staging domain" and
+`storefront-infra/CLAUDE.md` for the full setup.
+
 ## Running the storefront locally
 
 Cognito's OAuth redirect needs an `http(s)://` origin — opening `index.html` directly

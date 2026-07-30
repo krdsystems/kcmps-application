@@ -218,36 +218,40 @@ cd website && python3 -m http.server 5500
 
 Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `README.md`.
 
-## Deploying to production
+## Standard deploy workflow: dev.kcmps.com first, then production
 
-`website/` syncs verbatim to S3 bucket `arn:aws:s3:::kcmps-online-bucket-est-2026` (no build
-step). Use the `kcmps-claude-priv` AWS CLI profile:
+Default flow for any `website/` change, every session — **stage it, look at it, then
+promote it**:
 
-```bash
-aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
-```
+1. Sync to the dev/staging bucket prefix and check `https://dev.kcmps.com` (Basic Auth —
+   credentials aren't in this repo, ask whoever set up the stack or check the password
+   manager):
+   ```bash
+   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
+   ```
+2. Once it looks right on `dev.kcmps.com`, sync the same content to production:
+   ```bash
+   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
+   ```
 
-Deliberately **no `--delete`** — this only uploads new/changed files, it never removes
-anything from the bucket that isn't in `website/` locally (the bucket has pre-existing
-content outside this repo's management, e.g. a root `README.md` and an `Assets/` folder,
-distinct from `website/assets/`). Run a `--dryrun` first if unsure what a sync will touch.
+Both use `CachingDisabled`, so either sync shows up immediately — no invalidation step,
+no wait. Skipping straight to step 2 is still possible (nothing enforces the order) but
+defeats the point of having a staging domain — treat step 1 as the default, not an optional
+extra.
 
-## Deploying to the dev/staging domain
+Deliberately **no `--delete`** on either command — this only uploads new/changed files, it
+never removes anything from the bucket that isn't in `website/` locally (the bucket has
+pre-existing content outside this repo's management, e.g. a root `README.md` and an
+`Assets/` folder, distinct from `website/assets/`). Run a `--dryrun` first if unsure what a
+sync will touch.
 
 `dev.kcmps.com` is a second CloudFront distribution (stack `kcmps-dev-domain`, defined in
 `storefront-infra/dev-domain.cfn.yaml`) sitting in front of the **same** S3 bucket as
-production, reading from a `dev-site/` prefix instead of the root — so it never overlaps
-with or overwrites the live site. Same `CachingDisabled` behavior as prod, so a sync shows
-up immediately with no invalidation step.
-
-```bash
-aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
-```
-
-`dev.kcmps.com` is gated behind CloudFront-Function basic auth (credentials aren't in this
-repo — ask whoever set up the stack, or check the password manager entry). See
-`storefront-infra/CLAUDE.md` for the stack's architecture, IAM policy requirements, and
-rollback notes before touching it.
+production, reading from a `dev-site/` prefix instead of the root — so a dev sync never
+overlaps with or overwrites the live site. It's gated behind CloudFront-Function basic auth
+so work-in-progress isn't publicly browsable. See `storefront-infra/CLAUDE.md` for the
+stack's architecture, IAM policy requirements, password rotation, and rollback notes before
+touching the infra itself (not needed for routine content syncs above).
 
 ## Where to look next
 

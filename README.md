@@ -51,13 +51,13 @@ docs/                            NOT deployed — history.md (full build log), r
 The site is deployed by syncing `website/` directly to an S3 bucket — no build step, no
 bundler. Everything is vanilla HTML5, Tailwind via CDN, and ES6. Production bucket:
 `arn:aws:s3:::kcmps-online-bucket-est-2026`, uploaded via the `kcmps-claude-priv` AWS CLI
-profile (`aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile
-kcmps-claude-priv` — see `CLAUDE.md` "Deploying to production").
+profile.
 
-A password-gated staging mirror is also live at `dev.kcmps.com` (same bucket, `dev-site/`
-prefix, separate CloudFront distribution) for checking changes before they hit the live
-site — see `CLAUDE.md` "Deploying to the dev/staging domain" and
-`storefront-infra/CLAUDE.md` for the full setup.
+Standard workflow is **stage, then promote**: sync to the password-gated `dev.kcmps.com`
+mirror first (same bucket, `dev-site/` prefix, separate CloudFront distribution), check it
+there, then sync the same content to the bucket root for production. See `CLAUDE.md`
+"Standard deploy workflow: dev.kcmps.com first, then production" for both commands, and
+`storefront-infra/CLAUDE.md` for the dev domain's full infra setup.
 
 ## Running the storefront locally
 

@@ -74,11 +74,11 @@ window.KCMPS_STORE_DATA = {
       customBlurb: "Send your file or specs (catalogs, packaging, documents) and we'll quote it. Add to cart now — you only pay once we confirm.",
       image: "assets/leaves/print-office.jpg",
     },
-    "dtf":   { customLabel: "Custom design request", customBlurb: "Have your own artwork? Upload it at checkout. We'll review, quote, and only bill you after you approve.", image: "assets/leaves/dtf.jpg" },
-    "subli": { customLabel: "Custom design request", customBlurb: "Full-color sublimation on light/poly fabrics. Send your design — approved and billed before we print.", image: "assets/leaves/subli.jpg" },
-    "hotmelt": { comingSoon: true, customLabel: "Custom design request", customBlurb: "Durable heat-applied vinyl lettering and designs. Tell us what you need and we'll quote it.", image: "assets/leaves/hotmelt.jpg" },
-    "3dprint": { comingSoon: true, customLabel: "Custom 3D print request", customBlurb: "PLA/PETG prints for products and mockups. Share your model or idea for a quote.", image: "assets/leaves/3dprint.jpg" },
-    "souvenir": { comingSoon: true, customLabel: "Custom souvenir request", customBlurb: "Keepsakes and giveaways for events and milestones. Describe your event and quantity.", image: "assets/leaves/souvenir.jpg" },
+    "dtf":   { customLabel: "Custom DTF design request", customBlurb: "Have your own artwork? Upload it at checkout and we'll quote it. Add to cart now — you only pay once we confirm.", image: "assets/leaves/dtf.jpg" },
+    "subli": { customLabel: "Custom sublimation design request", customBlurb: "Full-color sublimation on light/poly fabrics — upload your design and we'll quote it. Add to cart now — you only pay once we confirm.", image: "assets/leaves/subli.jpg" },
+    "hotmelt": { comingSoon: true, customLabel: "Custom hotmelt design request", customBlurb: "Durable heat-applied vinyl lettering and designs. Tell us what you need and we'll quote it. Add to cart now — you only pay once we confirm.", image: "assets/leaves/hotmelt.jpg" },
+    "3dprint": { comingSoon: true, customLabel: "Custom 3D print request", customBlurb: "PLA/PETG prints for products and mockups. Share your model or idea and we'll quote it. Add to cart now — you only pay once we confirm.", image: "assets/leaves/3dprint.jpg" },
+    "souvenir": { comingSoon: true, customLabel: "Custom souvenir request", customBlurb: "Keepsakes and giveaways for events and milestones. Describe your event and quantity and we'll quote it. Add to cart now — you only pay once we confirm.", image: "assets/leaves/souvenir.jpg" },
     "network": { comingSoon: true, customLabel: "Request networking gear", customBlurb: "Routers, cables and accessories. Tell us your setup and we'll source and quote it.", image: "assets/leaves/network.jpg" },
     "storage": { comingSoon: true, customLabel: "Request custom storage", customBlurb: "Flash drives and SSDs in the capacity you need. Request a quote.", image: "assets/leaves/storage.jpg" },
   },
@@ -123,7 +123,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Documents",
       name: "Document Printing",
-      blurb: "Short bond paper, priced per page — choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
+      blurb: "Short bond paper, priced per page — minimum order of 20 pages. Choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
       image: "assets/printing-office-supplies/print-bw-document-printing.jpg",
       price: 4,
       addons: [
@@ -136,6 +136,12 @@ window.KCMPS_STORE_DATA = {
           ],
         },
       ],
+      // 2026-07-30: minimum-order floor — a 1-page order doesn't cover
+      // paper/toner setup or staff handling time, and leaves no margin once
+      // a real payment gateway (GCash Business/PayMongo, ~1.5-2.5% + possible
+      // fixed fee) is wired in. 20 pages ≈ ₱80-140, comfortably under the
+      // first bulk-discount tier below.
+      minQty: 20,
       // 2026-07-28: bulk-pricing pass — reports/handouts printed at volume
       // cost less per page (toner/paper bought in bulk, one setup amortized
       // over more sheets), so the discount ladder trades margin-per-page for
@@ -224,7 +230,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Bookmarks",
       name: "Custom Bookmarks",
-      blurb: "Printed bookmarks for events, giveaways, or personal use. Ordering packs for a big event or giveaway? Bulk pricing kicks in at 10+ packs.",
+      blurb: "Printed bookmarks for events, giveaways, or personal use, priced per pack. Bulk pricing kicks in automatically at 10+ packs.",
       image: "assets/printing-office-supplies/print-bookmarks.jpg",
       variants: [
         { label: "Custom bookmark (2 pcs)", price: 35 },
@@ -266,14 +272,18 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Stickers & Labels",
       name: "Stickers & Labels",
-      blurb: "Priced per A4 sheet, except decal stickers which are priced per inch. Bulk pricing kicks in automatically at 10+ sheets/inches.",
+      blurb: "Priced per A4 sheet, except decal stickers which are priced per inch — minimum order of 5 sheets/inches. Bulk pricing kicks in automatically at 10+ sheets/inches.",
       image: "assets/printing-office-supplies/print-stickers-labels.jpg",
       variants: [
-        { label: "Premium printable vinyl (per A4 sheet)", price: 100 },
-        { label: "Paper stickers (per A4 sheet)", price: 45 },
-        { label: "Transparent (per A4 sheet)", price: 60 },
-        { label: "Decal stickers (per inch)", price: 5 },
+        { label: "Premium printable vinyl (per A4 sheet, min. 5)", price: 100 },
+        { label: "Paper stickers (per A4 sheet, min. 5)", price: 45 },
+        { label: "Transparent (per A4 sheet, min. 5)", price: 60 },
+        { label: "Decal stickers (per inch, min. 5)", price: 5 },
       ],
+      // 2026-07-30: minimum-order floor — the decal-sticker variant is priced
+      // per inch (₱5/inch), so a 1-inch order is trivially low value. 5 sits
+      // below the first bulk-discount tier here.
+      minQty: 5,
       bulkTiers: [
         { minQty: 10, discountPct: 5 },
         { minQty: 25, discountPct: 8 },
@@ -288,7 +298,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Pre-made · DTF",
       name: "Street Statement Print",
-      blurb: "Ready-to-press bold graphic transfer. Pick a size — add a shirt and we'll press it for you.",
+      blurb: "Ready-to-press bold graphic transfer. Pick a size — add a shirt and we'll press it for you. Bulk pricing kicks in automatically at 10+ pcs.",
       image: null,
       // 15 of the studio's original 20 street-statement designs — the ones on
       // dark-fabric mockups, suited to DTF's any-color-garment strength. The
@@ -338,7 +348,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Pre-made · Sublimation",
       name: "Street Statement Print",
-      blurb: "Full-color sublimation print for light-fabric shirts — vivid, photo-real detail with no texture or peel edge.",
+      blurb: "Full-color sublimation print for light-fabric shirts — vivid, photo-real detail with no texture or peel edge. Bulk pricing kicks in automatically at 10+ pcs.",
       image: null,
       // 5 of the studio's original 20 street-statement designs — the ones on
       // light-fabric mockups, matching sublimation's light/white-garment
@@ -382,7 +392,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Pre-made · DTF",
       name: "Clean Logo Transfer",
-      blurb: "Crisp single-logo transfer, great for team shirts and merch. Choose your size.",
+      blurb: "Crisp single-logo transfer, great for team shirts and merch. Choose your size. Bulk pricing kicks in automatically at 10+ pcs.",
       image: null,
       images: [
         "assets/design/apparel/dtf/clean-logo-transfer/01-DETHROSE LORAL.jpg",
@@ -417,7 +427,7 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Pre-made · DTF",
       name: "Typographic Quote Print",
-      blurb: "Trendy lettered design, ready to press. Add a shirt for a finished, wearable piece.",
+      blurb: "Trendy lettered design, ready to press. Add a shirt for a finished, wearable piece. Bulk pricing kicks in automatically at 10+ pcs.",
       image: null,
       images: [
         "assets/design/apparel/dtf/typographic-quoteprint/01-baybayin BABAERO shirt.jpg",

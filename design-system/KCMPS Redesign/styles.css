@@ -546,6 +546,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   }
   .lightbox-close-icon { display: none; }
   .lightbox-close-text { display: inline-flex; align-items: center; height: 44px; padding: 0 16px; }
+  /* Mobile shows the close button as a wide text pill (not a small icon), which
+     sits centered-top and would otherwise sit directly under the centered
+     counter text — clear it instead of overlapping. */
+  .lightbox-counter { top: calc(max(14px, env(safe-area-inset-top)) + 48px); }
 }
 
 /* — design picker grid (products.js `images[]`) — selectable cards shown
@@ -685,7 +689,14 @@ textarea.input { min-height: 90px; resize: vertical; }
 .shirt-color-custom-hex {
   font-family: var(--font-heading); font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em;
 }
-.shirt-color-confirm { margin-left: auto; padding: 6px 12px; font-size: 12px; min-height: 0; }
+.shirt-color-confirm { margin-left: auto; padding: 6px 12px; font-size: 12px; min-height: 0; white-space: nowrap; }
+@media (max-width: 480px) {
+  /* At narrow widths the input+hex+"Use this color" trio no longer fits one
+     row without squeezing the confirm button's label onto two lines — drop
+     it to its own full-width row instead of letting it wrap mid-word. */
+  .shirt-color-custom-panel { flex-wrap: wrap; }
+  .shirt-color-confirm { flex: 1 0 100%; margin-left: 0; }
+}
 .addon-label { font-size: 12.5px; font-weight: 600; opacity: 0.75; margin-top: var(--space-2); }
 .product-buy { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); }
 .product-price { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }

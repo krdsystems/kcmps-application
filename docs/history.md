@@ -1452,6 +1452,112 @@ handler before the focused input's `blur` has committed a freshly-typed value, w
 added qty 1 instead of the typed 25. The overlay's global `keydown` (Escape/arrows) now
 early-returns when the event targets that input, so typing digits doesn't step the carousel.
 
+### 38. Mobile pass on the night's shirt-color/cap/lightbox features, plus distinct custom-request labels (2026-07-30)
+
+Step 36 and 37 (capacity soft-cap popup, shirt-color picker, purchasable lightbox) had only
+been checked on web. A mobile-width pass in the browser (320px/375px, driven programmatically
+rather than by eye, since the environment's screenshot tool was unavailable this session)
+turned up two real regressions, both in `styles.css`:
+
+**Lightbox counter/close collision.** Step 37 moved `.lightbox-counter` from `bottom: 18px` to
+`top: 16px` to make room for the new bottom controls bar. On mobile the close button isn't a
+small icon — `.lightbox-close-text` swaps in a wider "Close" text pill (see step 15's original
+comment: no chrome/whitespace left once the image fills the viewport to signal "tap here to
+leave"). That pill sits top-center-right in the same 14–60px band the counter now occupies, so
+the centered "1 / N" counter text rendered directly under it. Fixed by pushing the counter down
+to clear the close pill's height inside the existing `@media (max-width: 760px)` block.
+
+**Shirt-color "Use this color" button wrapping to two lines.** `.shirt-color-custom-panel` lays
+the color input, hex readout, and confirm button out in one non-wrapping flex row. At ≤480px
+there wasn't enough width left for the confirm button once the panel's own padding and the
+other two children took their share, so "Use this color" wrapped mid-phrase, inflating the
+button to a squat two-line block. Fixed with a `@media (max-width: 480px)` override that lets
+the panel wrap and gives the confirm button `flex: 1 0 100%`, dropping it to its own full-width
+row instead of shrinking it.
+
+Both fixes were mirrored into `design-system/KCMPS Redesign/styles.css` per the usual
+convention. Everything else exercised at 320px — cap popups on product cards/cart-drawer/
+estimator, the lightbox's size/qty/add-to-cart controls, the custom color panel — had zero
+horizontal overflow.
+
+**Separately:** the three apparel custom-request leaves (`dtf`, `subli`, `hotmelt` in
+`products.js`) all shared the literal `customLabel` "Custom design request". Since both the
+cart-drawer line and `buildOrderEmail()`'s pending-approval itemization render straight off
+`i.name`, a shopper (and the owner reading the checkout email) had no way to tell which type
+of custom request they were looking at once more than one was in the cart — unlike every other
+leaf (`3dprint`, `souvenir`, `network`, `storage`, `print-office`), which already had a
+type-specific label. Renamed the three to "Custom DTF design request", "Custom sublimation
+design request", and "Custom hotmelt design request" — no code changes needed since both
+render sites already read `i.name`.
+
+### 39. Print-office minimum order quantities, then a marketing-copy consistency pass across print-office and design (2026-07-30)
+
+Owner flagged that Document Printing let a shopper order a single page — no `minQty` was set,
+so it defaulted to 1 (`store.js`), which doesn't cover paper/toner setup or staff handling
+time, and leaves no margin once a real payment gateway (GCash Business/PayMongo) is wired in.
+Market research (PayMongo/GCash fee pages, competitor print-shop pricing) found no external
+minimum-order norm to match — most Manila print shops advertise "no minimum," and gateway fees
+are proportional with no hard transaction floor — so the number is an internal
+overhead-coverage judgment call, decided with the owner:
+
+- **Document Printing**: `minQty: 20` (pages) — ≈₱80–140 minimum order value, comfortably under
+  the existing 50-page first bulk-discount tier.
+- **Stickers & Labels**: `minQty: 5` — its decal-sticker variant is priced per inch (₱5/inch),
+  so a 1-inch order is trivially low value; 5 sits below its own first bulk tier (10).
+- No other print-office product changed: Photocopying has no cart path at all; Lamination/
+  Binding are gated behind an already-qualifying Document Printing line in cart; Self-Inking
+  Stamps and Bookmarks already clear a reasonable per-unit floor as single units; Business
+  Cards already had `minQty: 10` from step 27.
+
+The mechanism (`minQty`, read generically by `skuCard()`'s stepper and the cart-drawer's
+`lineFloor()`) already existed and needed zero code changes — both re-derive the product from
+`DATA.products` by id, so they picked up the new values automatically. The one real gap was the
+`#estimator` bulk-quote widget (`index.html`), which flattens `DATA.products` into its own
+`options` array and copied `bulkTiers`/`softCap` but never `minQty`. Added `minQty: p.minQty ||
+1` to that flattening, and updated `enforceQtyCap()` (the widget's single commit-time gate —
+fires on blur/Enter, slider release, and product-switch) to floor the requested quantity against
+`opt.minQty` before passing it into the shared `requestQty()` soft-cap check, mirroring
+`skuCard()`'s `setQtyChecked` pattern. Quantity persists across product switches with no
+separate reset-to-1 logic, so switching from a low/no-minimum product to one of the two new
+minimums relies on this same commit-time floor to catch and correct it — verified in-browser by
+switching between Document Printing, Stickers & Labels, and an unrelated product with a small
+leftover quantity typed in.
+
+**Marketing-copy fallout.** Adding real minimums surfaced that the site made several blanket
+"no minimum order" claims, some of which predated this change (already stale once Business
+Cards got `minQty: 10` back in step 27) and were now more obviously wrong:
+- The hero's `.trust-chip` "No minimum order" rendered unconditionally on every category —
+  changed to "Bulk discounts, automatic" (true site-wide, since nearly every product with
+  `bulkTiers` now discloses its ladder in its blurb).
+- The FAQ "Is there a minimum order?" answer said "No minimum on ready-made shirts and
+  prints" — "prints" read as covering the newly-minimum'd products. Rewrote to name what
+  genuinely has no minimum (shirts, DTF/sublimation, hardware) versus the three print/office
+  items that now carry one.
+- The `print-office` `PAGE_VARIANTS` hero (shown when that category is primed) had its entire
+  pitch built around "no minimum quantity, no back-and-forth" in both the price-anchor `was`
+  text and the hero sub-copy — rewrote both, and the matching how-step-3 copy, to drop the
+  false claim while keeping the true "no back-and-forth" and turnaround points.
+- Normalized every print-office product blurb to one template ("[what it is], priced per
+  [unit] — minimum order of N [unit]. Bulk pricing kicks in automatically at X+ [unit]."):
+  Stickers & Labels' blurb said "minimum order of 5" with no unit (now "5 sheets/inches", and
+  added matching "(min. 5)" to each variant label, mirroring how Business Cards already embeds
+  its minimum in variant labels); Bookmarks used a rhetorical-question aside and "kicks in at"
+  instead of "kicks in automatically at" — reworded to match every other card.
+
+Same pass extended to the **design** tab (`dtf`/`subli`/`hotmelt`/`3dprint`/`souvenir` leaves —
+there is no literal `leaf: "design"`; that's only a `PAGE_VARIANTS` key targeting
+`panel-design`), which turned up a real pricing defect, not just wording drift: the hero
+valuestack and `PAGE_VARIANTS.design` advertised the shirt-press add-on at ₱120, but
+`shirtAddon.price` (the number actually charged at checkout) is ₱110 — the "From ₱170"
+price anchor was silently derived from the stale ₱120 (₱50 cheapest DTF size + ₱120). Corrected
+both the shirt-press line and the anchor/all-in total to ₱110/₱160 in the static default hero
+and the `design` variant. Also: the four DTF/subli product blurbs all share an identical
+`bulkTiers` ladder but never disclosed it in copy (unlike print-office) — added "Bulk pricing
+kicks in automatically at 10+ pcs." to each; and the five design-tab `customBlurb` fields
+(`dtf`/`subli`/`hotmelt`/`3dprint`/`souvenir`) had drifted endings ("bill you after you
+approve", "for a quote", no mention at all) — normalized all five to close with print-office's
+"Add to cart now — you only pay once we confirm."
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

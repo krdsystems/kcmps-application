@@ -7,4 +7,7 @@
 # google_client_id     = "REPLACE-ME.apps.googleusercontent.com"
 # google_client_secret = "REPLACE-ME"
 
-# dev_basic_auth_credential = "REPLACE-ME (base64 of user:pass)"
+# Only if dev.kcmps.com also needs recovering — see
+# storefront-infra/dev-domain.cfn.yaml (separate CloudFormation deploy) and
+# ../README.md "Recovering dev.kcmps.com". Its output feeds this variable:
+# dev_distribution_domain_name = "<dev-domain.cfn.yaml stack output>"

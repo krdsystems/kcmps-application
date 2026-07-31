@@ -32,28 +32,18 @@ variable "domain_aliases" {
   default = ["kcmps.com", "www.kcmps.com", "site.kcmps.com"]
 }
 
-variable "dev_domain_alias" {
-  type    = string
-  default = "dev.kcmps.com"
-}
-
-variable "dev_origin_path" {
-  description = "Prefix within the same bucket that the dev distribution serves (matches the live dev-site convention)."
-  type        = string
-  default     = "/dev-site"
-}
-
-variable "dev_basic_auth_credential" {
+variable "dev_distribution_domain_name" {
   description = <<-EOT
-    Base64 of "username:password" for the dev.kcmps.com basic-auth gate
-    (e.g. `echo -n 'user:pass' | base64`). Not defaulted on purpose — the
-    real current value is a live credential; retrieve/rotate it out of band
-    and pass it via -var/-var-file/TF_VAR_dev_basic_auth_credential, never
-    commit it. Leave blank to deploy dev with no gate (not recommended).
+    dev.kcmps.com is NOT managed by this module — it's
+    storefront-infra/dev-domain.cfn.yaml (CloudFormation), the single
+    source of truth for that distribution, its basic-auth Function, and its
+    response-headers policy. This variable only exists to feed that
+    template's DevDistributionDomainName *output* into this module's
+    Route 53 dev CNAME (route53.tf). Leave blank to skip the dev record —
+    e.g. if dev.kcmps.com doesn't need recovering right now.
   EOT
   type        = string
   default     = ""
-  sensitive   = true
 }
 
 variable "cognito_user_pool_name" {

@@ -49,7 +49,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "site" {
 # Bucket policy is declared with the "edge" provider (us-east-1) even
 # though the bucket itself is in ap-southeast-1 — S3 bucket-policy PutObject
 # calls aren't region-locked to the bucket's home region, and this resource
-# needs both CloudFront distributions' ARNs, which only exist in cloudfront.tf.
+# needs the prod distribution's ARN, which only exists in cloudfront.tf.
+#
+# Prod's statement only. dev.kcmps.com's read-access statement is added as
+# a separate manual `aws s3api put-bucket-policy` step (full replace, both
+# statements present) AFTER deploying storefront-infra/dev-domain.cfn.yaml
+# — that template's own CLAUDE.md documents why it can't own the policy
+# either (AWS::S3::BucketPolicy's Create handler refuses to touch a bucket
+# with an externally-applied policy). See ../README.md "Recovering
+# dev.kcmps.com" for the exact command.
 resource "aws_s3_bucket_policy" "site" {
   provider = aws.edge
   bucket   = aws_s3_bucket.site.id
@@ -66,18 +74,6 @@ resource "aws_s3_bucket_policy" "site" {
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.prod.arn
-          }
-        }
-      },
-      {
-        Sid       = "AllowCloudFrontServicePrincipalDev"
-        Effect    = "Allow"
-        Principal = { Service = "cloudfront.amazonaws.com" }
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.site.arn}/*"
-        Condition = {
-          StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.dev.arn
           }
         }
       }

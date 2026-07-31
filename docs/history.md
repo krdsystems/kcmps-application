@@ -1574,6 +1574,50 @@ after clicking "I'll send it manually" (the `mailto:` path wasn't click-tested l
 triggering a real `mailto:` navigation in the automated browser risked hanging the tab on an OS
 handler prompt, but it runs through the identical `clearCart()` call first).
 
+### 41. Production domain moved from `site.kcmps.com` to `kcmps.com`/`www.kcmps.com` (2026-07-31)
+
+The site previously lived only at `site.kcmps.com`. Owner wanted the bare domain and `www` to
+serve the site directly, with `site.kcmps.com` becoming a permanent redirect rather than a
+second live copy.
+
+**Two-account split, and why it stayed that way.** DNS for `kcmps.com` (MX/SPF/DKIM for
+Spacemail, plus the app subdomains) is registered and hosted in Route 53 account
+`260866268499` (`default` profile). The CloudFront distribution + S3 origin that actually
+serve `website/` live in a separate account, `600929977538` (`kcmps-claude-priv`/
+`kcmps-claude-ro` profiles) — that account also holds a `kcmps.com`/`*.kcmps.com` hosted zone,
+but it's a decoy: only NS/SOA records, never the one actually delegated at the registrar (its
+NS set doesn't match `dig NS kcmps.com`). Moving the domain's registration into the CloudFront
+account was considered and rejected for now — Route 53 domain transfers have a mandatory
+~14-day lock after registration/prior transfer, so the two-account split is staying as-is
+rather than blocking this change on that wait.
+
+**What changed, account by account:**
+- `600929977538` — distribution `EY6Q5RSWLDCEF` (origin: `kcmps-online-bucket-est-2026`,
+  `d370ib8wcl1f2f.cloudfront.net`) gained `kcmps.com` and `www.kcmps.com` as additional
+  aliases alongside the existing `site.kcmps.com` (kept, not removed — it must keep resolving
+  to this same distribution for the redirect below to fire). No new ACM certificate was
+  needed; the existing cert already covered `kcmps.com` + `*.kcmps.com`. A CloudFront Function
+  (`site-kcmps-redirect`, JS runtime, viewer-request) was attached to the default cache
+  behavior: it checks the `Host` header, and only when it's exactly `site.kcmps.com` returns a
+  301 to `https://kcmps.com` + the original path/query — every other host (`kcmps.com`,
+  `www.kcmps.com`, and `dev.kcmps.com` on the separate dev distribution) passes through
+  untouched. Source kept at `storefront-infra/logic-inputs/site-kcmps-redirect.function.js`
+  for reference — CloudFront Functions have no infra-as-code deploy path here, so this is the
+  copy of record; re-paste it into the console's Functions editor if it's ever edited.
+- `260866268499` — in the real `kcmps.com` zone (`Z06397161LBTJCRTPLL62`): added a `kcmps.com`
+  apex A/ALIAS record pointing at `d370ib8wcl1f2f.cloudfront.net`; changed `www.kcmps.com` from
+  a CNAME to `site.kcmps.com` into its own direct A/ALIAS to the same CloudFront domain (so it
+  no longer depends on a name that's about to start redirecting); left `site.kcmps.com`'s
+  existing alias record untouched. Mail records (MX/SPF/DKIM/autodiscover) and `dev.kcmps.com`
+  were not touched.
+
+Net effect: `kcmps.com` and `www.kcmps.com` now serve the storefront directly; `site.kcmps.com`
+still resolves to the same distribution but is 301-redirected to `https://kcmps.com` at the
+edge, so old links/bookmarks keep working instead of breaking. If the domain registration is
+ever transferred into `600929977538` after the transfer lock clears, the decoy `kcmps.com`
+hosted zone already sitting in that account should be deleted rather than reused — it doesn't
+have the mail/SPF/DKIM records and would silently drop them if it became authoritative.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

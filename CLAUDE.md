@@ -253,6 +253,19 @@ so work-in-progress isn't publicly browsable. See `storefront-infra/CLAUDE.md` f
 stack's architecture, IAM policy requirements, password rotation, and rollback notes before
 touching the infra itself (not needed for routine content syncs above).
 
+**Domain/CDN routing lives in two separate AWS accounts, on purpose.** The CloudFront
+distribution (`EY6Q5RSWLDCEF`, aliases `kcmps.com`/`www.kcmps.com`/`site.kcmps.com`) and its S3
+origin are in `600929977538` (`kcmps-claude-priv`/`kcmps-claude-ro` profiles). The domain's
+actual DNS (mail records plus the `kcmps.com`/`www`/`site`/`dev` subdomains) is registered and
+hosted in a *different* account, `260866268499` (`default` profile) — Route 53's ~14-day
+post-registration/transfer lock is why the domain hasn't been moved into the CloudFront
+account. `600929977538` also has its own `kcmps.com` hosted zone, but it's a decoy with only
+NS/SOA records — never delegate to it or add records there; the real zone is
+`Z06397161LBTJCRTPLL62` in `260866268499`. `kcmps.com`/`www.kcmps.com` resolve straight to
+CloudFront; `site.kcmps.com` still resolves to the same distribution but gets 301-redirected to
+`https://kcmps.com` by a CloudFront Function (`site-kcmps-redirect`) on viewer-request. See
+`docs/history.md` step 41 before changing any of this.
+
 ## Where to look next
 
 - What to build next / prioritized goals → `docs/roadmap.md`; the ERP architecture it serves → `project_knowledge/ERP_System_Project_Knowledge.md`

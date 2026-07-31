@@ -21,6 +21,13 @@ and the hero rotation work end-to-end without AWS.
   the primary/gallery image naming convention, the manifest JSON shape, and the
   S3-event-triggered Lambda plan that regenerates it.
 - `logic-inputs/generate-asset-manifest.js` — the actual Lambda source to deploy.
+- `logic-inputs/site-kcmps-redirect.function.js` — the CloudFront Function (viewer-request,
+  301-redirects `site.kcmps.com` → `https://kcmps.com`) live on distribution `EY6Q5RSWLDCEF`
+  in account `600929977538`. Unrelated to the asset bucket, kept here only because this is
+  where other non-deployed infra source lives; there's no CLI/IaC deploy path for CloudFront
+  Functions in this repo, so this file is the copy of record — edit it, then re-paste into the
+  console's Functions editor. See `docs/history.md` step 41 and the root `CLAUDE.md`'s
+  "Deploying to production" section for the full domain/DNS picture.
 
 ## When you'd touch this folder
 

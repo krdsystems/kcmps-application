@@ -2091,6 +2091,21 @@ day/month metrics rollups (spoilage, cash collected, output yesterday) still com
 header notes this as deferred) — so those numbers stay a known, accepted mock-only gap, now that
 they default to zero instead of seeded fake values.
 
+**Follow-up same day: bug #1's real root cause was CSP, not CORS.** The S3 CORS fix above was
+necessary but not sufficient — a live re-test from `localhost:5500` (already an allowed CORS
+origin) still failed with "Failed to fetch," and `aws s3api head-object` confirmed the
+screenshot never landed. Direct testing (regenerating a real presigned URL via
+`aws lambda invoke kcmps-submit-payment-proof`, then `curl -X PUT` with a matching `Origin`
+header) proved the CORS+presigning setup works correctly server-side — a clean `200` with the
+right `Access-Control-Allow-Origin` header. The actual blocker was `website/index.html`'s
+Content-Security-Policy: its `connect-src` allow-list had `'self'`, the Cognito domain, and the
+checkout API, but never the S3 upload bucket's host — so the browser blocked the direct-to-S3
+`PUT` at the CSP layer before the request left the page, which surfaces to JS as the exact same
+generic `TypeError: Failed to fetch` as a CORS block, making the two indistinguishable from the
+error message alone. Fixed by adding
+`https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com` to `index.html`'s
+`connect-src`.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

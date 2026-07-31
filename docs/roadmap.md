@@ -152,6 +152,232 @@ result. `mailto:` checkout retired.
 
 ---
 
+## Parallel track — Design Asset Library (no dependency on Milestone 1)
+**Trigger (2026-07-30):** the designer has no home for source files today — no versioned
+storage, no way to browse past work, and publishing a new design to the storefront is a manual
+file-drop that only scales because the catalog is still small. This is a real, currently-unmet
+need, so it's in scope now rather than deferred (ERP file Part 0 governing rule). Extends
+Module 1 (Sales & Order) in the ERP file's module map — it's the supply side of the existing
+design picker, not a new module.
+
+Reuses the Milestone 1.0 foundation (the `kcmps` DynamoDB table, `backend/lib/` conventions)
+and the S3/manifest pattern already proven for the hero carousel
+(`storefront-infra/logic-inputs/generate-asset-manifest.js`), so it can be built before, during,
+or after Milestone 1 — nothing here blocks or is blocked by the payment work.
+
+**Architecture:**
+- Two S3 buckets: a **private** originals bucket (PSD/AI/PDF/whatever the designer works in —
+  "virtually unlimited" via a standard→IA→Glacier lifecycle policy, never public) and the
+  **existing public** storefront assets bucket for the derived, web-optimized copy.
+- Metadata lives as `DESIGN#<id>` items in the same foundation table, stamped via
+  `backend/lib/item.js`'s `baseItem()` (tenantId/schemaVersion/soft-delete) and logged via
+  `events.js`'s `buildEvent()` — same conventions as orders, not a separate schema style.
+- **Category = an existing catalog leaf** from `products.js` (per 2026-07-30 decision) — one
+  naming/category vocabulary end to end, not a second taxonomy to keep in sync.
+- **Access = existing Production/Sales/Admin Cognito groups** (per 2026-07-30 decision) — no
+  new 6th role; reuses the 5-role model already provisioned in
+  [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml).
+- Autonaming reuses `window.KCMPS_TEXT.titleFromFilename()`'s existing filename→display-title
+  convention (`products.js`) so the library and the storefront can never drift into two
+  different naming schemes.
+
+**Checklist:**
+- [ ] Private S3 bucket for originals — versioned, lifecycle to IA/Glacier, bucket policy
+  denies all public access
+- [ ] `DESIGN#<id>` META shape: `name`, `description`, `category` (=leaf id), `tags`,
+  `uploadedBy` (Cognito `sub`), `s3KeyOriginal`, `s3KeyWeb`, `status` (`draft`/`published`/
+  `archived`)
+- [ ] `getUploadUrl` Lambda — presigned PUT to the private bucket, key
+  `designs/<category>/<uuid>-<sanitized-name>.<ext>`
+- [ ] `publishDesign` Lambda — on upload confirm: derives a web-optimized image, renames it
+  through the same `titleFromFilename()` convention, copies it into the public storefront
+  assets path, writes the `DESIGN#` record, and regenerates the design-grid manifest (same
+  pattern as the hero carousel's manifest, new leaf) — this is what makes the storefront
+  "auto-update" without a code deploy
+- [x] A **"Soon"-badged placeholder page exists**: `website/dashboard/design-library.html`
+  (nav key `design`, 2026-07-31). It already carries the correct shell, `mount("design")`, and
+  topbar title — building the real page means replacing its `<main>` contents, nothing else.
+- [ ] Dashboard "Design Library" page: upload form (category dropdown sourced straight from
+  `products.js`'s leaves) + browsable/searchable grid (filter by category, tag, uploader).
+  Scan+filter is fine at current volume — add a category GSI only if/when volume actually
+  demands it, not before (same "don't build the index before the need" rule as the rest of the
+  table)
+- [ ] Verify `buildDesignGrid()`/the design picker need zero `.html`/`store.js` changes to pick
+  up a newly published design — they should only need the manifest to change
+
+**Open decision:** max upload size / allowed file types (PSD/AI originals can be large —
+decide the presigned-URL size ceiling before building, so multipart upload isn't a surprise
+requirement mid-build).
+
+---
+
+## Parallel track — Staff email panel (no dependency on Milestone 1)
+**Trigger (2026-07-30):** requested as an embedded, already-logged-in staff mailbox inside the
+dashboard. **Technical constraint found during planning:** a literal "logged-in mini-browser"
+iframe is not viable for any modern webmail — providers set `X-Frame-Options`/CSP
+`frame-ancestors` specifically to block this as a clickjacking defense, and even where framing
+happens to be allowed, piping a live authenticated third-party session through our own app
+would make the dashboard a full man-in-the-middle for that mailbox's session cookie. Staff mail
+is on **Spacemail** (Spaceship, formerly under Namecheap), which supports standard IMAP/SMTP —
+that's the actual integration point, not the webmail UI.
+
+**Research finding (2026-07-30) — Spacemail app-specific passwords, unresolved:** Spacemail's
+own client-setup docs (Spark, Outlook, Thunderbird, macOS Mail) all authenticate IMAP/SMTP with
+the **regular mailbox password**, with no app-password step mentioned anywhere. Spacemail's
+documented Security Center covers 2FA, Activity Log, and Device Management — no "Application
+Passwords" feature is documented, unlike the older, separate "Namecheap Private Email" product
+which explicitly has one (`Settings > Security > Application Passwords`). Spacemail appears to
+be a newer, distinct platform that didn't inherit that feature. **Not confirmed either way from
+docs alone** — the deciding test is empirical: enable 2FA on one staff mailbox and try an IMAP
+client login with the regular password; if it's rejected with no app-password fallback offered,
+the gap is confirmed. Do this test before starting the build.
+
+**Revised architecture — a native inbox panel backed by IMAP/SMTP, not an iframe:**
+- Staff connects their mailbox **once**, in their own dashboard session: enters their
+  `@kcmps.com` address + credential (app-specific password if the test above confirms Spacemail
+  supports them; otherwise see the two-tier fallback below).
+- **Credential storage: SSM Parameter Store `SecureString`, not Secrets Manager.** Secrets
+  Manager charges a flat $0.40/secret/month regardless of use, which is a fixed recurring cost
+  for a handful of rarely-touched staff credentials on a 4-person team. Parameter Store
+  standard-tier parameters are **free** (no monthly fee) with the same KMS-backed encryption at
+  rest and the same per-item IAM scoping (`/kcmps/staff/<sub>/email-cred`) — only the KMS
+  encrypt/decrypt API calls are billed, at ~$0.03/10,000 requests, negligible at this usage
+  level. Trade-off: no built-in rotation-Lambda templates like Secrets Manager has, but that's
+  not needed here — a compromised app password is rotated manually by the staff member from
+  their own Spacemail settings, not on an automated schedule. Written via a Lambda the staff
+  calls themselves; never stored in DynamoDB, never touches client-side JS after that one call.
+- `getInboxMessages` Lambda — opens a short-lived IMAP connection scoped to the caller's own
+  parameter, fetches headers/snippets/thread list, closes the connection. No standing
+  connection.
+- `sendEmail` Lambda — same pattern over SMTP.
+- Dashboard gets a new "Email" tab that renders the fetched messages in KCMPS's own UI. To the
+  staff member it feels like an always-logged-in embedded mailbox; under the hood it's API
+  calls, not a framed session — this is what makes it both possible and safe to build, versus
+  the originally-requested literal iframe.
+
+**Two-tier fallback if Spacemail has no app-password mechanism:**
+1. **Near-term:** store the staff member's *regular* mailbox password (same Parameter Store
+   design above) rather than a scoped app password. Works today, but is a materially weaker
+   design — a leaked credential is full account takeover, not just mail access — and creates
+   pressure to leave 2FA off on staff mailboxes, which is the wrong trade for a business email
+   account. Treat this as a stopgap, not the end state.
+2. **Better, if the trade-off in (1) is unacceptable:** migrate staff email off Spacemail to a
+   provider with real OAuth support — Google Workspace (~$7/user/mo) or Microsoft 365 Business
+   Basic (~$6/user/mo). Both expose Gmail API / Microsoft Graph: no stored passwords at all,
+   staff revoke dashboard access from their own account settings, scoped + revocable tokens
+   instead of a stored secret of any kind. This is the architecture this feature actually wants
+   — worth a real cost/migration-effort comparison against staying on Spacemail if tier 1 turns
+   out to be necessary.
+
+**Checklist:**
+- [ ] Empirically test Spacemail app-password support (2FA + third-party client login test
+  above) — resolves which tier of the fallback plan applies
+- [ ] SSM Parameter Store `SecureString`: one parameter per staff `sub`, written only via a
+  Lambda the staff calls from their own authenticated session
+- [ ] `getInboxMessages` / `sendEmail` Lambdas — JWT-authenticated, IMAP/SMTP client, reads
+  only the caller's own parameter
+- [x] **DONE (mock data), 2026-07-31 — `website/dashboard/email.html`.** The full Email tab,
+  running on mock data behind the `window.KCMPS_DASH` seam exactly like every other dashboard
+  page, so it was unblocked by the still-pending app-password test. Scope: **read + reply**
+  (no "compose new"). Mailbox selector covers both shared shop inboxes (`order@`, `info@`) and
+  the signed-in staffer's personal mailbox. The mock function shapes deliberately mirror an IMAP
+  `FETCH` — including the envelope/body split across `getMessages()`/`getMessage()`, matching
+  IMAP's two round-trips — so wiring the real Lambdas is a function-**body** change with no
+  `.html` edit. New API: `getMailboxes`, `getMessages`, `getMessage`, `getThread`,
+  `markMessageRead`, `sendReply`.
+- [x] **v1 deliberately renders plain text only.** HTML parts are never rendered (a notice is
+  shown instead), remote images are never loaded (the page CSP `img-src 'self' data:` also fails
+  closed), attachments are metadata-only (no download path exists yet), and URLs are not
+  auto-linkified (auto-`<a>` on arbitrary mail is a phishing amplifier). Verified against
+  injected `<script>`/`<img onerror>` in every field — sender name, subject, body, filename.
+- [ ] Shared-mailbox credentials are a **second namespace** the architecture above doesn't cover:
+  `/kcmps/shared/order/email-cred`, `/kcmps/shared/info/email-cred`, written once by an admin,
+  one credential per shop inbox rather than per staff `sub`. Access decided by **Cognito group**:
+  `order@` → Sales/Finance/Admin, `info@` → Sales/Admin, Production → personal mailbox only,
+  Customer → none. Encode as `backend/lib/mail.js` (`MAILBOX_ACCESS`, `canAccessMailbox(groups,
+  mailboxId)`) so it's unit-testable with the rest of `backend/lib/`. `getMailboxes` decides
+  *visibility*, but every other handler must re-check — never trust the client's `mailboxId`.
+- [ ] **Trap to honour when writing `putEmailCredential`:** derive `<sub>` from the *verified
+  JWT*, never from the request body. Accepting a client-supplied `sub` lets any staff member
+  overwrite anyone else's stored credential. Sharpest trap in this feature.
+- [ ] SSM Parameter Store `SecureString`: one parameter per staff `sub`, written only via a
+  Lambda the staff calls from their own authenticated session
+- [ ] `getInboxMessages` / `sendEmail` Lambdas — JWT-authenticated, IMAP/SMTP client, reads
+  only the caller's own parameter
+- [ ] Explicitly **not building**: any iframe/embedded-session approach to Spacemail's webmail
+  — closed off above as a hard constraint, not a missing feature
+
+**Open decisions:** (1) Spacemail app-password support — test before starting the *backend*,
+gates which credential tier gets built (the UI above did not need it). (2) If tier 2 (provider
+migration) becomes necessary, get owner sign-off on cost/migration effort before touching DNS/MX
+records — that's a shared-infrastructure change, not something to do unilaterally. (3) **Shared
+inbox `\Seen` semantics:** IMAP flags are per-mailbox, not per-user, so one staffer opening a
+shared-inbox message marks it read for everyone. Defensible for a triage inbox, but decide it
+deliberately rather than discovering it in production; if it's wrong, the fix is per-user read
+state in DynamoDB keyed on `<sub>` + `Message-ID`, layered over the IMAP flags.
+
+**RESOLVED (2026-07-31) — Spacemail has no app-password mechanism.** Confirmed empirically:
+Settings → Connect third-party apps → IMAP/SMTP/POP3 configuration screen states the password
+field is "Your mailbox password" — no app-specific credential option anywhere in the flow. This
+closes the open question above: any IMAP/SMTP integration against Spacemail must either store
+the real mailbox password (Tier 1, a materially weaker design — see below) or bypass
+IMAP/SMTP-with-stored-credentials entirely.
+
+**Reconsidered (2026-07-31) — is an embedded inbox tab worth building at all?** Re-examined
+whether the value here is "staff read mail inside the dashboard" (marginal — Spacemail's own
+webmail already does this, a bookmark costs nothing) versus "email threads are linked to
+orders" (real — order-linked correspondence is discoverable and disputable, the reason this
+was worth discussing in the first place). Decision: **the order-linking payoff is what's worth
+building toward, not a generic embedded-inbox UI.** This reframes the whole track — the
+mock `email.html` inbox built earlier stays as-is (useful, already shipped) but is no longer the
+required path to get order-linking; see the lightweight alternative shipped below, which
+delivers the linking value today with zero relay infrastructure.
+
+**Order↔email linking — lightweight version, DONE (2026-07-31).** Before committing to the
+SES-relay build (below), shipped the actual payoff at near-zero cost: `job-detail.html` gained a
+"Customer correspondence" card with (a) a manual log — staff type a note referencing what was
+discussed by email (`KCMPS_DASH.addCorrespondenceLog(orderId, note, actorName)`, a new
+`order.correspondenceLog` array, backfilled via `ensureCollections()` per this file's existing
+additive-migration pattern) — and (b) a "Search Spacemail for this order" button that deep-links
+to `https://spacemail.com/mail/?f=INBOX&search=<orderId>`, which works because every staff
+mailbox already forwards into `admin@kcmps.com` (owner-configured Spacemail forwarding rule),
+making that one inbox the de facto shared search target. No email content is ever stored by the
+dashboard — only the staff-written note and a link to go find the real thread. This alone
+resolves the two real pros identified for order-linking (fast lookup, disputable audit trail)
+without any of the SES-relay/credential-storage complexity.
+
+**SES relay — in progress (2026-07-31), pursuing despite the above** because full inbound
+mirroring (auto-populating the dashboard with actual message content, not just a manual log) is
+still the more complete end state and its infra cost is near-zero. Progress so far:
+- `kcmps.com` verified as an SES sending identity (`ap-southeast-1`) — DKIM CNAMEs, a
+  `mail.kcmps.com` MAIL FROM domain (its own MX to `feedback-smtp.ap-southeast-1.amazonses.com`
+  + SPF TXT), and a `_dmarc.kcmps.com` DMARC TXT (`p=none`) all added via `UPSERT` to the real
+  zone `Z06397161LBTJCRTPLL62` in account `260866268499` (`default` profile) — change ID
+  `C09946213N3M6GO6S21RC`. Purely additive; `kcmps.com`'s existing MX (Spacemail) untouched.
+- SES production-access request submitted for the same region; AWS Support asked for more
+  detail (standard for new accounts) — response drafted covering sending volume/frequency,
+  recipient-list policy (existing-customer replies only, no marketing list), bounce/complaint
+  handling plan, and a sample email; saved outside the repo at
+  `~/Desktop/ses-production-access-response.txt` (not committed — support-ticket correspondence,
+  not project documentation). **Status: pending AWS review as of 2026-07-31.**
+
+**Remaining SES-relay checklist (blocked on production access, except where noted):**
+- [ ] Configure an SNS topic on the `kcmps.com` identity for bounce/complaint notifications —
+  doable now, independent of the access request, and strengthens the pending support case if
+  done before AWS's review completes
+- [ ] Verify a second identity, `mirror.kcmps.com`, for **receiving** — not gated by sandbox
+  mode (only sending is restricted), so this can be built and tested today
+- [ ] MX record for `mirror.kcmps.com` → `inbound-smtp.<region>.amazonaws.com`, S3 bucket +
+  SES receipt rule delivering incoming mail there
+- [ ] Spacemail forwarding rule from each mailbox to an address on `mirror.kcmps.com`
+- [ ] Parser Lambda: S3-object-created trigger → parse MIME → write into the same
+  `MESSAGE#`/mailbox shape `email.html`'s mock already expects (swap-in, not a rewrite)
+- [ ] `sendReply`-equivalent Lambda via `SES.SendEmail`/`SendRawEmail` on the verified
+  `kcmps.com` identity — buildable now, testable against your own verified address even while
+  in sandbox, full production traffic once access clears
+
+---
+
 ## Milestone 2 — Operational telemetry (ERP Phase 4, after M1 has real orders)
 Only meaningful once real orders flow. Instrument now because a metric not captured is gone.
 - METRIC# atomic counters in `streams-handler.js`; `api-metrics.js`; `/today` numbers real.

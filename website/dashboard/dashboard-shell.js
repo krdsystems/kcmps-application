@@ -69,7 +69,12 @@
     { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin" },
     { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
     { key: "clients", href: "clients.html", label: "Clients", hint: "CRM" },
+    { key: "email", href: "email.html", label: "Email", hint: "Shop + personal mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels" },
+    // `soon: true` renders a "Soon" badge and dims the link, but still points at
+    // a real placeholder page — a dead/disabled nav item reads as a bug, and the
+    // placeholder becomes the real page's shell later (only <main> changes).
+    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library", soon: true },
     { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs" },
   ];
 
@@ -80,6 +85,10 @@
       month: '<path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Z"/>',
       jobs: '<path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Z"/>',
       clients: '<path d="M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92Z"/>',
+      // Phosphor "envelope-simple" / "images-square" (regular), copied verbatim
+      // from phosphor-icons/core assets/regular/*.svg — never hand-write path data.
+      email: '<path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM203.43,64,128,133.15,52.57,64ZM216,192H40V74.19l82.59,75.71a8,8,0,0,0,10.82,0L216,74.19V192Z"/>',
+      design: '<path d="M208,32H80A16,16,0,0,0,64,48V64H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V192h16a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM80,48H208v69.38l-16.7-16.7a16,16,0,0,0-22.62,0L93.37,176H80Zm96,160H48V80H64v96a16,16,0,0,0,16,16h96Zm32-32H116l64-64,28,28v36Zm-88-64A24,24,0,1,0,96,88,24,24,0,0,0,120,112Zm0-32a8,8,0,1,1-8,8A8,8,0,0,1,120,80Z"/>',
       inventory: '<path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.35"/>',
       settings: '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Z" opacity="0.35"/><path d="M128,176a48,48,0,1,1,48-48A48.05,48.05,0,0,1,128,176Zm0-80a32,32,0,1,0,32,32A32,32,0,0,0,128,96Z"/>',
     };
@@ -129,9 +138,10 @@
         '<div class="dash-brand"><img src="../assets/logo-mark.png" alt="" /><span>KCMPS <em>Ops</em></span></div>' +
         '<nav class="dash-navlinks">' +
         NAV_ITEMS.map((n) =>
-          `<a href="${n.href}" class="dash-navlink${n.key === activeKey ? " is-active" : ""}">` +
+          `<a href="${n.href}" class="dash-navlink${n.key === activeKey ? " is-active" : ""}${n.soon ? " is-soon" : ""}">` +
           `<svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">${svgIcon(n.key)}</svg>` +
-          `<span class="lbl">${n.label}</span></a>`
+          `<span class="lbl">${n.label}</span>` +
+          (n.soon ? '<span class="badge-soon">Soon</span>' : "") + '</a>'
         ).join("") +
         '</nav>' +
         '<a href="../index.html" class="dash-navlink dash-back"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg><span class="lbl">Back to site</span></a>';

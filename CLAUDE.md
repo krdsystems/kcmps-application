@@ -48,9 +48,14 @@ build — edits are live on refresh.
 | General/contact email         | Footer "Contact channels" block in `website/index.html` (`info@kcmps.com`) |
 | Ops dashboard pages           | `website/dashboard/*.html` + shared `dashboard.css`/`dashboard-shell.js` |
 | Ops dashboard mock data/API   | `website/dashboard/dashboard-data.js` — `window.KCMPS_DASH.*`; never touch `localStorage` directly outside this file |
+| Staff Email page (mock)       | `website/dashboard/email.html` — two-pane mail client (list + read/reply) on `KCMPS_DASH`'s `getMailboxes`/`getMessages`/`getMessage`/`getThread`/`markMessageRead`/`sendReply`. Shapes mirror an IMAP `FETCH`, including the envelope-vs-body split across `getMessages()`/`getMessage()`, so wiring the real Lambdas is a function-body change with no `.html` edit. Renders **plain text only** — see the gotcha below |
+| Order↔email linking (lightweight, no relay/IMAP needed) | `website/dashboard/job-detail.html`'s "Customer correspondence" card + `dashboard-data.js`'s `addCorrespondenceLog(orderId, note, actorName)`, backed by a per-order `correspondenceLog` array. Stores staff-written notes only, never email content — pairs with a "Search Spacemail for this order" deep-link button (`SPACEMAIL_SEARCH_URL` constant in `job-detail.html`) that opens `https://spacemail.com/mail/?f=INBOX&search=<orderId>` against the `admin@kcmps.com` inbox every staff/shop mailbox forwards into. See `docs/roadmap.md` "Order↔email linking" for why this replaced building a full embedded inbox tab |
+| Dashboard sidebar nav         | `NAV_ITEMS` in `website/dashboard/dashboard-shell.js` — one `{key, href, label, hint}` entry per page plus a matching `svgIcon(key)` path; optional `soon: true` dims the link and appends a "Soon" badge (used by `design-library.html`, the Design Asset Library placeholder) |
 | AWS infra plan (not deployed) | `ops-dashboard/infra/backend-infra-to-deploy.md` + `ops-dashboard/infra/logic-inputs/*.js` (Lambda source) |
 | Shared backend conventions (not deployed) | `backend/lib/` — `constants.js`/`money.js`/`keys.js`/`item.js`/`events.js`/`auth.js`/`gsi.js`, the single module every future Lambda imports for status vocabulary, centavo money, PK/SK strings, and role checks (see its own `CLAUDE.md`); test with `node --test backend/lib/` |
 | Milestone 1.0 foundation (CloudFormation, owner-applied) | `backend/infra/foundation.cfn.yaml` — single DynamoDB table + GSI1 + Streams/PITR/deletion-protection, and the 5 Cognito groups added to the *existing* user pool; apply/rollback steps in `backend/infra/README.md` |
+| Design asset library plan (not built) | `docs/roadmap.md` "Parallel track — Design Asset Library" — private S3 + foundation table, category reuses catalog leaves, access reuses Production/Sales/Admin groups |
+| Staff email panel plan (not built) | `docs/roadmap.md` "Parallel track — Staff email panel" — IMAP/SMTP bridge to Spacemail, not an embedded webmail iframe (see that section for why) |
 | Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
 | ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
@@ -65,7 +70,27 @@ Line numbers drift; the function/constant names above are stable anchors — gre
 - **Migration seams**: both `store.js` (`window.KCMPS_STORE`) and `dashboard-data.js`
   (`window.KCMPS_DASH`) are the *only* things callers touch — no page reads `localStorage`
   directly. When a backend exists, only these two files' function bodies change to `fetch()`.
-  Keep new features behind this same seam.
+  Keep new features behind this same seam. `KCMPS_DASH` now also fronts a mail API whose return
+  shapes are deliberately IMAP-shaped for the same reason.
+- **Adding a collection to `dashboard-data.js`? Backfill it, don't bump `STORAGE_KEY`.**
+  `load()` calls `ensureCollections(state)` on the success branch (never inside `buildSeed()`,
+  which already has every collection — calling it there double-seeds) to fill in collections a
+  pre-existing blob lacks. Bumping the key would "work" by throwing away every tester's
+  in-progress mock state — advanced jobs, logged spoilage, blockers — for a feature unrelated to
+  any of it. Keep related collections under **one** guard so a partial blob can't produce e.g.
+  mailboxes-without-messages.
+- **The Email page renders plain text and nothing else** (`email.html`). HTML parts are never
+  rendered (a `.mail-notice` is shown instead), remote images never load, attachments are
+  metadata-only chips with no download path, and URLs are not auto-linkified. Every field that
+  reaches the DOM — sender display name, subject, body, attachment filename — is attacker-
+  controlled and goes through `escapeHtml`. Rendering third-party HTML would need either an
+  iframe (ruled out for this feature in `docs/roadmap.md`) or a hand-maintained sanitizer in a
+  repo with no build step; auto-linkifying arbitrary mail is a phishing amplifier. Don't
+  "improve" any of these without re-reading that section.
+- **The mail layout overrides two dashboard defaults, scoped on purpose.** `.q-list` caps height
+  at 320px and `.dash-content` caps width at 1320px — both fight a full-height mail pane, so
+  `dashboard.css` overrides them under `.mail-list`/`.mail-wide` only. Unscoping either one
+  silently reflows every queue card on `today.html`/`jobs.html`.
 - **Bulk-quote product picker** (`index.html` `#estimator`, replaced a plain `<select>` — owner
   found it too hard to use): the hidden `<select id="est-product">` is still the only thing
   `currentOption()`/pricing/`addToCart()` read from. `selectOption(id)` is the single place that

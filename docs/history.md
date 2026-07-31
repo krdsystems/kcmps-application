@@ -2106,6 +2106,29 @@ error message alone. Fixed by adding
 `https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com` to `index.html`'s
 `connect-src`.
 
+### 52. Login/signup error on dev.kcmps.com — Cognito callback URL not registered (2026-07-31)
+
+Re-enabling the storefront's login button (entry 49) surfaced a Cognito Hosted UI error: a
+generic "Something went wrong / An error was encountered with the requested page" on
+`dev.kcmps.com`. `index.html`'s `COGNITO_CONFIG.redirectUri` is `window.location.origin + "/"`
+— so on `dev.kcmps.com` it sends `https://dev.kcmps.com/` as `redirect_uri`. Cognito's Hosted UI
+shows exactly this generic error when `redirect_uri` doesn't exactly match one of the app
+client's registered `CallbackURLs`. `describe-user-pool-client` confirmed the app client
+(`95rrk0mflffentqdiomg1fipc`) only had `http://localhost:5500/`,
+`http://localhost:5500/login-test.html`, and `https://site.kcmps.com/` registered — `kcmps.com`,
+`www.kcmps.com`, and `dev.kcmps.com` had never been added, even though the site resolves on all
+three (see root `CLAUDE.md`'s DNS/CloudFront section). Fixed via `update-user-pool-client`,
+adding `https://dev.kcmps.com/`, `https://kcmps.com/`, `https://www.kcmps.com/` to both
+`CallbackURLs` and `LogoutURLs`. Verified every other client setting (token validity,
+`SupportedIdentityProviders: ["COGNITO", "Google"]`, `PreventUserExistenceErrors`, etc.) was
+unchanged after the update — `update-user-pool-client` was called with the full existing
+callback/logout/OAuth-flow/scope set plus the 3 additions, not a partial call, since this API
+replaces whichever fields it's given rather than merging.
+
+This is App-Client config, not code — no file in this repo changes as a result. `login-test.html`
+never hit this because it has its own explicitly-registered callback URL
+(`localhost:5500/login-test.html`).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

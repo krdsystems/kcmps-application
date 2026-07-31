@@ -17,9 +17,16 @@
      2. Cart persistence — today localStorage under CART_KEY. Later: an API
         (e.g. API Gateway + Lambda over DynamoDB keyed by the Cognito `sub`),
         called with the access token from the auth script's loadTokens().
-     3. Checkout — today composes a mailto: (the site's CSP `connect-src` only
-        allows Cognito, so no third-party fetch). Later: POST the order to your
-        API / open a hosted payment link. Swap ORDER_EMAIL/submitOrder() only.
+     3. Checkout — DONE (2026-07-31, docs/roadmap.md Milestone 1.1/1.2): submitOrder()
+        POSTs to CHECKOUT_API_BASE/orders (backend/checkout/create-order.js behind
+        kcmps-checkout-api, see backend/infra/README.md) instead of composing a
+        mailto:. Guest checkout unchanged — the Bearer token is attached only if
+        a Cognito session already exists (accessToken() below), never required.
+        The post-checkout popup then collects the GCash reference number, claimed
+        amount, and a screenshot upload, POSTs to submit-payment-proof.js for a
+        pre-signed S3 URL, then PUTs the file straight to S3 — see
+        renderPaymentProofStep()/submitPaymentProof() below. An all-custom order
+        (nothing to pay yet) skips straight to a plain confirmation instead.
 
    CSP-safe: same-origin script, no external requests, thumbnails are CSS.
    ============================================================================ */
@@ -34,9 +41,25 @@
   if (!DATA) { console.warn("[store] KCMPS_STORE_DATA missing — is products.js loaded?"); return; }
 
   var CART_KEY = "kcmps_cart";
-  // OWNER: swap this for a real order endpoint / Messenger link when a backend
-  // exists (also add its origin to the CSP connect-src if you use fetch()).
+  // Fallback only now — shown in the payment-proof step for the rare case a
+  // customer's upload genuinely fails (e.g. a corporate network blocking S3).
   var ORDER_EMAIL = "order@kcmps.com";
+  // backend/checkout/{create-order,submit-payment-proof}.js behind
+  // kcmps-checkout-api (HTTP API id 6msg2uho6c, ap-southeast-1) — see
+  // backend/infra/README.md. Also present in index.html's CSP connect-src;
+  // keep both in sync if this API is ever recreated under a different id.
+  var CHECKOUT_API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  // Same sessionStorage key index.html's auth script writes to
+  // (TOKEN_STORAGE_KEY there) — read independently here rather than via a
+  // shared export, matching how dashboard-shell.js already does this.
+  var AUTH_TOKEN_KEY = "kcmps_tokens";
+  function accessToken() {
+    try {
+      var raw = sessionStorage.getItem(AUTH_TOKEN_KEY);
+      var tokens = raw ? JSON.parse(raw) : null;
+      return tokens && tokens.access_token ? tokens.access_token : null;
+    } catch (e) { return null; }
+  }
 
   var peso = function (n) {
     return DATA.currency + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -534,8 +557,6 @@
   }
 
   var CHECK_ICON = '<svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>';
-  // Used by the order popup's copy-to-clipboard button (store.js openOrderPopup).
-  var COPY_ICON = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></svg>';
 
   var DESIGN_GRID_MAX = 8;
 
@@ -1409,117 +1430,50 @@
     }
   }
 
-  // Builds the pre-filled email { subject, body, format } from the checkout
-  // form + cart, but doesn't navigate anywhere — submitOrder() opens the
-  // GCash payment popup first, and the popup's "Open email app" button uses
-  // this. `format` is the full plain-text message (Subject/Contact/
-  // Fulfillment/Custom Request Details header, filled in with the
-  // customer's actual answers, followed by the same itemized cart
-  // breakdown as `body`) shown — and copyable in one piece — in the popup,
-  // so pasting it manually into an email carries every item, not just the
-  // header fields.
-  function buildOrderEmail(name, contact, fulfill, notes, shipping) {
-    var payNow = cart.filter(function (i) { return i.type === "sku"; });
-    var pending = cart.filter(function (i) { return i.type === "custom"; });
-    var subject = "Order for " + name;
+  /* ---------- post-checkout popup: GCash payment proof upload ----------
+     Two states, chosen by whether the order has anything to pay NOW
+     (payNowTotal > 0 means it has sku lines; an all-custom order has
+     nothing to pay until staff quotes it):
+       - renderPaymentProofStep(): QR + ref-number/amount/screenshot form,
+         wired to the real submitPaymentProof.js via submitPaymentProof()
+         below (docs/roadmap.md Milestone 1.2 — this is the piece that
+         replaced the old copy-to-clipboard/mailto: interim from history.md
+         entry 22, now that createOrder/submitPaymentProof are both live).
+       - renderCustomOnlyConfirmation(): just tells the customer their
+         request is in for a quote — no payment step to show.
+     The shell (backdrop/title/body/actions) is built once and reused;
+     each open re-renders #order-popup-body/#order-popup-actions fresh so
+     stale listeners from the previous order's render never linger (a
+     plain innerHTML replace drops them for free). ---------- */
+  var orderPopup, orderPopupBody, orderPopupActions;
 
-    var lines = ["Contact: " + contact, "Fulfillment: " + fulfill];
-    if (fulfill === "Delivery" && shipping) {
-      lines.push("Courier: " + shipping.courier);
-      lines.push("Delivery Address: " + shipping.address);
-      lines.push("Landmark: " + (shipping.landmark || "(none provided)"));
-    }
-    if (pending.length) lines.push("Custom Request Details: " + (notes || "(none provided)"));
-    lines.push("", "KCMPS ORDER REQUEST", "==================", "");
-    if (payNow.length) {
-      lines.push("PAY NOW:");
-      payNow.forEach(function (i) {
-        var d = [i.name]; if (i.variantLabel) d.push(i.variantLabel); if (i.shirt) d.push("with shirt" + (i.shirtColor ? " (" + i.shirtColor + ")" : ""));
-        lines.push("  - " + d.join(" / ") + " x" + i.qty + "  =  " + peso(i.unitPrice * i.qty));
-        var design = i.designName || i.designRef;
-        if (design) lines.push("    Design: " + design);
-      });
-      lines.push("  Subtotal (pay now): " + peso(payNowTotal()), "");
-    }
-    if (pending.length) {
-      lines.push("PENDING APPROVAL (billed after we approve the design):");
-      pending.forEach(function (i) { lines.push("  - " + i.name + " x" + i.qty); });
-      lines.push("");
-    }
-    if (notes) lines.push("NOTES / DESIGN DETAILS:", notes, "");
-    lines.push("(Sent from the KCMPS website cart.)");
-
-    var body = lines.join("\n");
-    return { subject: subject, body: body, format: "Subject: " + subject + "\n" + body };
-  }
-
-  var orderPopup, orderPopupEmailBtn, orderPopupFormatEl, orderPopupCopyBtn;
-  var pendingOrderEmail = null;
-
-  function buildOrderPopup() {
+  function ensureOrderPopupShell() {
+    if (orderPopup) return;
     var backdrop = document.createElement("div");
     backdrop.className = "order-popup-backdrop";
     backdrop.setAttribute("aria-hidden", "true");
     backdrop.innerHTML =
       '<div class="order-popup" role="dialog" aria-modal="true" aria-labelledby="order-popup-title">' +
         '<h3 class="dialog-title" id="order-popup-title">Thank you for placing an order with us!</h3>' +
-        '<div class="dialog-body">' +
-          '<p>Our payment system is on the way. We currently accept GCASH payments in fulfilling your order.</p>' +
-          '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
-          '<p>After payment, kindly send us a screenshot of your payment proof to <strong>' + escapeHtml(ORDER_EMAIL) + '</strong> with:</p>' +
-          '<div class="order-popup-format-wrap">' +
-            '<button type="button" class="btn-icon-copy" id="order-popup-copy" aria-label="Copy this text">' + COPY_ICON + '</button>' +
-            '<p class="order-popup-format mono" id="order-popup-format"></p>' +
-          '</div>' +
-        '</div>' +
-        '<div class="dialog-actions">' +
-          '<button type="button" class="btn btn-secondary" id="order-popup-close">I\'ll send it manually</button>' +
-          '<button type="button" class="btn btn-primary" id="order-popup-email">Open email app</button>' +
-        '</div>' +
+        '<div class="dialog-body" id="order-popup-body"></div>' +
+        '<div class="dialog-actions" id="order-popup-actions"></div>' +
       '</div>';
     document.body.appendChild(backdrop);
-
-    orderPopup = backdrop;
-    orderPopupEmailBtn = backdrop.querySelector("#order-popup-email");
-    orderPopupFormatEl = backdrop.querySelector("#order-popup-format");
-    orderPopupCopyBtn = backdrop.querySelector("#order-popup-copy");
-
-    // The popup only appears after submitOrder() already built the order
-    // email, so both exit paths here are ways of delivering an order that's
-    // already placed, not a way to back out — both clear the cart. "I'll
-    // send it manually" also fully backs out of checkout (popup + drawer
-    // both close); clicking outside the popup (backdrop) only dismisses the
-    // popup itself, leaving the (now-empty) drawer underneath.
-    backdrop.querySelector("#order-popup-close").addEventListener("click", function () {
-      clearCart();
-      closeOrderPopup();
-      closeDrawer();
-    });
+    // Clicking the backdrop only dismisses the popup — the cart isn't
+    // cleared, since (unlike the old flow) the order already exists for
+    // real regardless of whether the customer finishes this step; they can
+    // reopen the drawer and pick up the payment-proof step again later via
+    // their own records of the order ID, or contact support.
     backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeOrderPopup(); });
-    orderPopupEmailBtn.addEventListener("click", function () {
-      if (!pendingOrderEmail) return;
-      clearCart();
-      window.location.href = "mailto:" + ORDER_EMAIL +
-        "?subject=" + encodeURIComponent(pendingOrderEmail.subject) +
-        "&body=" + encodeURIComponent(pendingOrderEmail.body);
-    });
-    orderPopupCopyBtn.addEventListener("click", function () {
-      if (!pendingOrderEmail) return;
-      navigator.clipboard.writeText(pendingOrderEmail.format).then(function () {
-        orderPopupCopyBtn.classList.add("is-copied");
-        orderPopupCopyBtn.setAttribute("aria-label", "Copied");
-        setTimeout(function () {
-          orderPopupCopyBtn.classList.remove("is-copied");
-          orderPopupCopyBtn.setAttribute("aria-label", "Copy this text");
-        }, 1500);
-      });
-    });
+    orderPopup = backdrop;
+    orderPopupBody = backdrop.querySelector("#order-popup-body");
+    orderPopupActions = backdrop.querySelector("#order-popup-actions");
   }
 
-  function openOrderPopup(orderEmail) {
-    pendingOrderEmail = orderEmail;
-    if (!orderPopup) buildOrderPopup();
-    orderPopupFormatEl.innerHTML = escapeHtml(orderEmail.format).replace(/\n/g, "<br>");
+  function openOrderPopup(state) {
+    ensureOrderPopupShell();
+    if (state.payNowTotal > 0) renderPaymentProofStep(state);
+    else renderCustomOnlyConfirmation(state);
     orderPopup.classList.add("is-open");
     orderPopup.setAttribute("aria-hidden", "false");
   }
@@ -1528,6 +1482,113 @@
     if (!orderPopup) return;
     orderPopup.classList.remove("is-open");
     orderPopup.setAttribute("aria-hidden", "true");
+  }
+
+  function finishAndClose() {
+    clearCart();
+    closeOrderPopup();
+    closeDrawer();
+  }
+
+  function renderCustomOnlyConfirmation(state) {
+    orderPopupBody.innerHTML =
+      '<p>Order <strong>' + escapeHtml(state.orderId) + '</strong> is in. Since it\'s a custom request, ' +
+      'there\'s nothing to pay yet — we\'ll review it and send you a quote, usually within 24 hours.</p>';
+    orderPopupActions.innerHTML = '<button type="button" class="btn btn-primary" id="order-popup-done">Done</button>';
+    orderPopupActions.querySelector("#order-popup-done").addEventListener("click", finishAndClose);
+  }
+
+  function renderPaymentProofStep(state) {
+    orderPopupBody.innerHTML =
+      '<p>Order <strong>' + escapeHtml(state.orderId) + '</strong> — scan to pay <strong>' + peso(state.payNowTotal) + '</strong> ' +
+      'via GCash, then tell us the reference number and attach your payment screenshot below.</p>' +
+      '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
+      '<div class="field"><label for="pp-ref">GCash reference number</label><input class="input" id="pp-ref" placeholder="e.g. 8017 442 99331" /></div>' +
+      '<div class="field"><label for="pp-amount">Amount you sent (₱)</label><input class="input" id="pp-amount" type="number" min="0" step="0.01" value="' + state.payNowTotal + '" /></div>' +
+      '<div class="field"><label for="pp-file">Payment screenshot</label><input class="input" id="pp-file" type="file" accept="image/png,image/jpeg,image/webp" /></div>' +
+      '<p class="order-popup-error" id="pp-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+      '<p style="font-size:12.5px;opacity:0.75;margin-top:var(--space-2)">Trouble uploading? Message us at ' +
+      '<a href="mailto:' + ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + state.orderId + " — payment proof") + '">' + escapeHtml(ORDER_EMAIL) + '</a> ' +
+      'with your order ID and screenshot instead.</p>';
+    orderPopupActions.innerHTML =
+      '<button type="button" class="btn btn-secondary" id="order-popup-later">I\'ll send it later</button>' +
+      '<button type="button" class="btn btn-primary" id="order-popup-submit-proof">Submit payment proof</button>';
+    orderPopupActions.querySelector("#order-popup-later").addEventListener("click", finishAndClose);
+    orderPopupActions.querySelector("#order-popup-submit-proof").addEventListener("click", function () {
+      submitPaymentProof(state);
+    });
+  }
+
+  function renderProofSubmittedConfirmation(state) {
+    orderPopupBody.innerHTML =
+      '<p>Payment proof received for order <strong>' + escapeHtml(state.orderId) + '</strong> — ' +
+      'we\'ll verify it and confirm your order, usually within 48 hours.</p>';
+    orderPopupActions.innerHTML = '<button type="button" class="btn btn-primary" id="order-popup-done">Done</button>';
+    orderPopupActions.querySelector("#order-popup-done").addEventListener("click", finishAndClose);
+  }
+
+  // Two-step per submitPaymentProof.js: (1) POST ref/amount/contentType,
+  // get back a pre-signed S3 PUT URL; (2) PUT the actual file bytes
+  // straight to S3 (never through the Lambda — presigned URLs exist so the
+  // API doesn't have to proxy the upload).
+  function submitPaymentProof(state) {
+    var refEl = document.getElementById("pp-ref");
+    var amountEl = document.getElementById("pp-amount");
+    var fileEl = document.getElementById("pp-file");
+    var errorEl = document.getElementById("pp-error");
+    var ref = (refEl.value || "").trim();
+    var amount = parseFloat(amountEl.value);
+    var file = fileEl.files && fileEl.files[0];
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+    errorEl.style.display = "none";
+
+    if (!ref) { showError("Please enter the GCash reference number."); return; }
+    if (!(amount > 0)) { showError("Please enter the amount you sent."); return; }
+    if (!file) { showError("Please attach a screenshot of your payment."); return; }
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { showError("Screenshot must be a JPG, PNG, or WEBP image."); return; }
+
+    var submitBtn = document.getElementById("order-popup-submit-proof");
+    var origText = submitBtn.textContent;
+    submitBtn.disabled = true; submitBtn.textContent = "Submitting…";
+
+    var headers = { "Content-Type": "application/json" };
+    var token = accessToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    fetch(CHECKOUT_API_BASE + "/orders/" + encodeURIComponent(state.orderId) + "/payment-proof", {
+      method: "POST", headers: headers,
+      body: JSON.stringify({ gcashRefNumber: ref, claimedAmount: amount, contentType: file.type }),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Could not submit payment proof (" + res.status + ")");
+        return data;
+      });
+    }).then(function (data) {
+      return fetch(data.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file }).then(function (uploadRes) {
+        if (!uploadRes.ok) throw new Error("Screenshot upload failed — please try again.");
+      });
+    }).then(function () {
+      renderProofSubmittedConfirmation(state);
+    }).catch(function (err) {
+      showError(err.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    });
+  }
+
+  // Cart -> the shape create-order.js's Lambda expects. `id` is the
+  // catalog/product id (skuCard()/quoteCard() set it via addToCart's `id`
+  // field) — the Lambda's own field name for it is `sku`, so it's renamed
+  // here at the one boundary that needs to know both names.
+  function cartForCheckout() {
+    return cart.map(function (i) {
+      return {
+        type: i.type, sku: i.id, name: i.name, qty: i.qty, unitPrice: i.unitPrice,
+        variantLabel: i.variantLabel || null, shirt: !!i.shirt, shirtColor: i.shirtColor || null,
+        designRef: i.designRef || null, designName: i.designName || null,
+      };
+    });
   }
 
   function submitOrder() {
@@ -1547,7 +1608,33 @@
       shipping = { courier: courierEl ? courierEl.value : "Grab", address: address, landmark: landmark };
     }
 
-    openOrderPopup(buildOrderEmail(name, contact, fulfill, notes, shipping));
+    var placeBtn = document.getElementById("place-order");
+    var placeBtnOrigText = placeBtn ? placeBtn.textContent : "";
+    if (placeBtn) { placeBtn.disabled = true; placeBtn.textContent = "Placing order…"; }
+
+    var headers = { "Content-Type": "application/json" };
+    var token = accessToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    fetch(CHECKOUT_API_BASE + "/orders", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        customerName: name, customerContact: contact, fulfillment: fulfill,
+        shipping: shipping, notes: notes, cart: cartForCheckout(),
+      }),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Order failed (" + res.status + ")");
+        return data;
+      });
+    }).then(function (data) {
+      openOrderPopup({ orderId: data.orderId, payNowTotal: data.payNowTotal });
+    }).catch(function (err) {
+      alert("We couldn't place your order right now (" + err.message + "). Please try again in a moment, or message us directly at " + ORDER_EMAIL + ".");
+    }).then(function () {
+      if (placeBtn) { placeBtn.disabled = false; placeBtn.textContent = placeBtnOrigText; }
+    });
   }
 
   function openDrawer() {

@@ -51,6 +51,56 @@
     "FINISHING-01": "Finishing / Packing",
   };
   const PLANNED_HOURS_PER_WEEK = { "PRESS-01": 40, "DIGITAL-01": 32, "3DPRINT-01": 60, "HEATPRESS-01": 36, "FINISHING-01": 30 };
+
+  /* ---- live backend (Milestone 1.3) ----
+     getAllOrders/getOrder/verifyPayment/rejectPayment/advanceLineItem are
+     the only functions in this file that hit a real backend — everything
+     else here (metrics, inventory, clients, mail, manual-order entry,
+     rework/spoilage) stays on the localStorage mock, matching the
+     roadmap's explicit 1.3 checklist scope.
+
+     Uses the ID token (not the access token) from sessionStorage's
+     kcmps_tokens — the JWT authorizer and the Lambdas' role checks both
+     need `aud` and `cognito:groups`, which only the ID token carries. */
+  const API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  const TOKEN_STORAGE_KEY = "kcmps_tokens";
+  function idToken() {
+    try {
+      const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      const tokens = raw ? JSON.parse(raw) : null;
+      return tokens && tokens.id_token ? tokens.id_token : null;
+    } catch { return null; }
+  }
+  function authHeaders() {
+    const token = idToken();
+    return token ? { Authorization: "Bearer " + token } : {};
+  }
+  async function apiFetch(path, opts) {
+    const res = await fetch(API_BASE + path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts && opts.headers) },
+    });
+    let body = {};
+    try { body = await res.json(); } catch { /* empty/non-JSON body */ }
+    if (!res.ok) throw new Error(body.error || res.statusText);
+    return body;
+  }
+
+  // Real orders (create-order.js) don't share every field name the mock
+  // seed data uses — normalize here, once, so no .html needs to know the
+  // difference. `li.name` -> `li.description`, synthesize a flat
+  // `order.client.name` from `order.customerContact`/`customerName` since
+  // real orders have no nested client object.
+  function normalizeOrder(order) {
+    order.client = order.client || { name: order.customerName };
+    (order.lineItems || []).forEach((li) => { li.description = li.description || li.name; });
+    return order;
+  }
+
+  // Populated by the last getAllOrders()/getOrder() call so getEventsFor()
+  // (called synchronously right after, by job-detail.html's render()) can
+  // serve real EVENT# records without a second round trip.
+  let liveOrdersCache = null;
   const SPOILAGE_REASONS = [
     { code: "registration", label: "Registration / misalignment" },
     { code: "ink", label: "Ink / colour" },
@@ -68,226 +118,46 @@
   function daysFromNow(n) { return new Date(Date.now() + n * 24 * 3600 * 1000).toISOString(); }
   function uid(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
-  /* ---- seed data: representative of a small Manila print/merch shop ---- */
-  function buildSeed() {
-    const clients = [
-      { id: "C-001", name: "Ateneo Dev Society", type: "B2B", totalRevenue: 48200, lastOrderAt: daysAgo(3), reorderIntervalDays: 30 },
-      { id: "C-002", name: "Miguel Santos", type: "B2C", totalRevenue: 1450, lastOrderAt: daysAgo(1), reorderIntervalDays: null },
-      { id: "C-003", name: "Grind Coffee Co.", type: "B2B", totalRevenue: 91300, lastOrderAt: daysAgo(52), reorderIntervalDays: 30 },
-      { id: "C-004", name: "Bea Fernandez", type: "B2C", totalRevenue: 890, lastOrderAt: daysAgo(9), reorderIntervalDays: null },
-      { id: "C-005", name: "QC South Barangay Sports Fest", type: "B2B", totalRevenue: 22100, lastOrderAt: daysAgo(14), reorderIntervalDays: 90 },
-      { id: "C-006", name: "JM Studio Design", type: "B2B", totalRevenue: 15600, lastOrderAt: daysAgo(61), reorderIntervalDays: 45 },
-    ];
-
-    const inventory = [
-      { sku: "INV-DTFROLL", name: "DTF film roll (30cm)", qty: 4, reorderPoint: 5, unit: "roll", avgDailyUse: 0.6 },
-      { sku: "INV-INKWHT", name: "White DTF ink (L)", qty: 2.4, reorderPoint: 3, unit: "L", avgDailyUse: 0.35 },
-      { sku: "INV-SHIRTBLK-M", name: "Blank shirt — Black, M", qty: 38, reorderPoint: 24, unit: "pc", avgDailyUse: 3.1 },
-      { sku: "INV-SHIRTWHT-L", name: "Blank shirt — White, L", qty: 12, reorderPoint: 24, unit: "pc", avgDailyUse: 2.8 },
-      { sku: "INV-PLA-BLK", name: "PLA filament — Black (kg)", qty: 6.2, reorderPoint: 4, unit: "kg", avgDailyUse: 0.4 },
-      { sku: "INV-PETG-WHT", name: "PETG filament — White (kg)", qty: 1.1, reorderPoint: 3, unit: "kg", avgDailyUse: 0.3 },
-      { sku: "INV-LAMFILM", name: "Lamination film (roll)", qty: 7, reorderPoint: 4, unit: "roll", avgDailyUse: 0.2 },
-      { sku: "INV-USB32", name: "Flash drive 32GB (blank)", qty: 46, reorderPoint: 20, unit: "pc", avgDailyUse: 1.5 },
-    ];
-
-    let orders = [];
-    let events = [];
-    let lineSeq = 1;
-
-    function pushEvent(orderId, lineItemId, from, to, station, meta, at) {
-      events.push({
-        pk: "ORDER#" + orderId, sk: "EVENT#" + (at || nowIso()) + "#" + lineItemId,
-        orderId, lineItemId, from, to, actorSub: "seed-actor", actorName: "System (seed)",
-        station: station || null, at: at || nowIso(), meta: meta || {},
-      });
-    }
-
-    function makeOrder(opts) {
-      const orderId = opts.orderId || uid("ORD");
-      const client = opts.client;
-      const createdAt = opts.createdAt || daysAgo(1);
-      const originalPromisedDate = opts.originalPromisedDate;
-      const lineItems = opts.lineItems.map((li) => {
-        const lineItemId = "L" + lineSeq++;
-        return Object.assign({
-          lineItemId, orderId,
-          type: "sku", qty: 1, priceEach: 0, amount: 0,
-          spoilage: [], setupMinutes: null, station: null,
-          enteredStatusAt: createdAt, notes: "",
-        }, li, { lineItemId });
-      });
-      const order = {
-        orderId, client, customerSub: opts.customerSub || uid("sub"),
-        createdAt, originalPromisedDate, lineItems,
-        payment: opts.payment || null, // order-level GCash bridge payment — see header note
-        correspondenceLog: [], // manual order↔email linking notes — see docs/roadmap.md "Order↔email linking"
-      };
-      order.orderStatus = deriveOrderStatus(order);
-      orders.push(order);
-      return order;
-    }
-
-    // Shapes the order.payment.submittedAt/claimedAmount/gcashRefNumber/
-    // screenshotRef/verifiedBy/verifiedAt/rejectionReason fields exactly as
-    // specified in the Payment System file's "Data Model Addition" section.
-    function gcashProof(claimedAmount, gcashRefNumber, submittedAt, opts) {
-      opts = opts || {};
-      return {
-        method: "gcash_manual", claimedAmount, gcashRefNumber,
-        screenshotRef: opts.screenshotRef || `s3://kcmps-uploads/payments/${gcashRefNumber}.jpg`,
-        submittedAt,
-        verifiedBy: opts.verifiedBy || null,
-        verifiedAt: opts.verifiedAt || null,
-        rejectionReason: opts.rejectionReason || null,
-      };
-    }
-
-    // 1) Pending Payment Verification — GCash proof submitted, aging.
-    //    The proof lives on order.payment (one GCash transaction can cover
-    //    several sku line items on the same order); each affected line
-    //    item just carries the status + its own enteredStatusAt for aging.
-    makeOrder({
-      client: clients[1], createdAt: hoursAgo(6), originalPromisedDate: daysFromNow(2),
-      payment: gcashProof(350, "GC-88213", hoursAgo(6)),
-      lineItems: [{ description: "Custom shirt — 'Barkada Trip 2026' design, size M", type: "sku", sku: "PRINT-DTF-SHIRT", qty: 1, priceEach: 350, amount: 350, status: "Pending Payment Verification", enteredStatusAt: hoursAgo(6) }],
-    });
-    makeOrder({
-      client: clients[3], createdAt: hoursAgo(3), originalPromisedDate: daysFromNow(1),
-      payment: gcashProof(840, "GC-88240", hoursAgo(3)),
-      lineItems: [{ description: "3 pcs 32GB custom-printed flash drive", type: "sku", sku: "MERCH-USB32", qty: 3, priceEach: 280, amount: 840, status: "Pending Payment Verification", enteredStatusAt: hoursAgo(3) }],
-    });
-    // one that's over-SLA (past 4 working hours) to show red state
-    makeOrder({
-      client: clients[4], createdAt: hoursAgo(9), originalPromisedDate: daysFromNow(3),
-      payment: gcashProof(2600, "GC-88190", hoursAgo(9)),
-      lineItems: [{ description: "40 pcs event lanyard + ID print", type: "sku", sku: "PRINT-LANYARD", qty: 40, priceEach: 65, amount: 2600, status: "Pending Payment Verification", enteredStatusAt: hoursAgo(9) }],
-    });
-
-    // 2) Awaiting Quote — custom items at 'Quoted'
-    makeOrder({
-      client: clients[2], createdAt: hoursAgo(20), originalPromisedDate: daysFromNow(5),
-      lineItems: [{ description: "Custom: 60 branded ceramic mugs w/ logo — spec TBD", type: "custom", status: "Quoted", enteredStatusAt: hoursAgo(20), notes: "Client sent vector logo, needs mug sourcing quote." }],
-    });
-    makeOrder({
-      client: clients[5], createdAt: hoursAgo(2), originalPromisedDate: daysFromNow(6),
-      lineItems: [{ description: "Custom: 3D-printed award trophies x12, PLA gold finish", type: "custom", status: "Quoted", enteredStatusAt: hoursAgo(2), notes: "Awaiting material cost check for gold PLA." }],
-    });
-
-    // 3) Awaiting Customer Payment — Priced, link sent
-    makeOrder({
-      client: clients[0], createdAt: daysAgo(3), originalPromisedDate: daysFromNow(4),
-      lineItems: [{ description: "Org shirts — 80 pcs DTF front+back, mixed sizes", type: "custom", status: "Priced", enteredStatusAt: hoursAgo(50), priceEach: 320, qty: 80, amount: 25600, notes: "Payment link sent 07-22." }],
-    });
-
-    // 4) Ready to Produce — Confirmed, not yet started
-    makeOrder({
-      client: clients[1], createdAt: daysAgo(1), originalPromisedDate: daysFromNow(2),
-      lineItems: [{ description: "Custom shirt — 'Coffee Run' design, size L", type: "sku", sku: "PRINT-DTF-SHIRT", qty: 1, priceEach: 350, amount: 350, status: "Confirmed", enteredStatusAt: hoursAgo(14) }],
-    });
-
-    // 5) In Production — some due today at risk, some on track
-    makeOrder({
-      client: clients[0], createdAt: daysAgo(2), originalPromisedDate: daysFromNow(0),
-      lineItems: [{ description: "Org shirts batch A — 40 pcs DTF, size run", type: "custom", status: "In Production", station: "HEATPRESS-01", enteredStatusAt: hoursAgo(5), priceEach: 300, qty: 40, amount: 12000, setupMinutes: 18 }],
-    });
-    makeOrder({
-      client: clients[4], createdAt: daysAgo(4), originalPromisedDate: daysFromNow(3),
-      lineItems: [{ description: "Sports fest medals — 3D print, 25 pcs", type: "custom", status: "In Production", station: "3DPRINT-01", enteredStatusAt: hoursAgo(30), priceEach: 95, qty: 25, amount: 2375, setupMinutes: 12 }],
-    });
-
-    // 6) QC Hold / Rework — always red
-    makeOrder({
-      client: clients[2], createdAt: daysAgo(5), originalPromisedDate: daysAgo(1),
-      lineItems: [{ description: "Café menu boards — laminated A2, 10 pcs", type: "custom", status: "Rework", station: "FINISHING-01", enteredStatusAt: hoursAgo(4), priceEach: 220, qty: 10, amount: 2200, notes: "Lamination bubbling on 3 boards — reprint queued." }],
-    });
-
-    // 7) Ready for Dispatch
-    makeOrder({
-      client: clients[3], createdAt: daysAgo(2), originalPromisedDate: daysFromNow(1),
-      lineItems: [{ description: "Custom tumbler print x2", type: "sku", sku: "MERCH-TUMBLER", qty: 2, priceEach: 260, amount: 520, status: "Ready for Dispatch", enteredStatusAt: hoursAgo(2) }],
-    });
-
-    // 8) Mixed cart — the exact worked example from the Payment System file's
-    //    "Core Design: One Cart, Two Item Types" section: one paid-and-shipped
-    //    sku item plus one in-progress custom item, same orderId. orderStatus
-    //    derives to "Partially Fulfilled" — never set by hand (§5.1 Ops
-    //    Dashboard file: "orderStatus is a derived rollup, never set directly").
-    makeOrder({
-      client: clients[3], createdAt: daysAgo(4), originalPromisedDate: daysFromNow(2),
-      payment: gcashProof(150, "GC-88055", daysAgo(4), { verifiedBy: "Ken", verifiedAt: daysAgo(4) }),
-      lineItems: [
-        { description: "3D-Printed Cup Holder", type: "sku", sku: "SKU-CUPHOLDER-01", qty: 1, priceEach: 150, amount: 150, status: "Delivered", station: "3DPRINT-01", enteredStatusAt: daysAgo(1), setupMinutes: 8 },
-        { description: "Custom 3D Print — client STL, PLA, qty 5", type: "custom", station: "3DPRINT-01", qty: 5, priceEach: 180, amount: 900, status: "In Production", enteredStatusAt: hoursAgo(7), setupMinutes: 20, notes: "Client-provided dimensions; fileRef s3://kcmps-uploads/custom-001.stl" },
-      ],
-    });
-
-    // 9) Delivered yesterday (for "output yesterday" + cash collected metrics)
-    makeOrder({
-      client: clients[0], createdAt: daysAgo(3), originalPromisedDate: daysAgo(1),
-      lineItems: [{ description: "Org shirts — 30 pcs DTF", type: "custom", status: "Delivered", station: "HEATPRESS-01", enteredStatusAt: daysAgo(1), priceEach: 300, qty: 30, amount: 9000, setupMinutes: 15 }],
-    });
-    makeOrder({
-      client: clients[1], createdAt: daysAgo(2), originalPromisedDate: daysAgo(1),
-      lineItems: [{ description: "Custom shirt — 'Solo Trip' design, size S", type: "sku", sku: "PRINT-DTF-SHIRT", qty: 1, priceEach: 350, amount: 350, status: "Delivered", station: "HEATPRESS-01", enteredStatusAt: daysAgo(1), setupMinutes: 10 }],
-    });
-
-    // build event history for the two Delivered + one Rework line so cycle-time / spoilage aren't empty
-    const delivered1 = orders[orders.length - 2].lineItems[0];
-    pushEvent(delivered1.orderId, delivered1.lineItemId, null, "Confirmed", null, {}, daysAgo(3));
-    pushEvent(delivered1.orderId, delivered1.lineItemId, "Confirmed", "In Production", "HEATPRESS-01", { setupMinutes: 15 }, daysAgo(2));
-    pushEvent(delivered1.orderId, delivered1.lineItemId, "In Production", "QC", "HEATPRESS-01", {}, hoursAgo(30));
-    pushEvent(delivered1.orderId, delivered1.lineItemId, "QC", "Ready for Dispatch", "HEATPRESS-01", {}, hoursAgo(28));
-    pushEvent(delivered1.orderId, delivered1.lineItemId, "Ready for Dispatch", "Delivered", "HEATPRESS-01", {}, daysAgo(1));
-
-    const reworkLi = orders.find((o) => o.lineItems.some((li) => li.status === "Rework")).lineItems[0];
-    pushEvent(reworkLi.orderId, reworkLi.lineItemId, "In Production", "QC", "FINISHING-01", {}, hoursAgo(6));
-    pushEvent(reworkLi.orderId, reworkLi.lineItemId, "QC", "Rework", "FINISHING-01", { spoilageUnits: 3, spoilageReason: "material", spoilageValue: 660 }, hoursAgo(4));
-    reworkLi.spoilage.push({ units: 3, reasonCode: "material", valuePhp: 660, at: hoursAgo(4) });
-
-    orders.forEach((o) => { o.orderStatus = deriveOrderStatus(o); });
-
-    // metrics rollups — mirrors METRIC#DAY# / METRIC#MONTH# items from the Streams handler
-    const today = isoDay(nowIso());
-    const yesterday = isoDay(daysAgo(1));
-    const thisMonth = isoMonth(nowIso());
-    const metrics = {
-      day: {
-        [yesterday]: { jobsCompleted: 2, unitsOut: 31, spoilageUnits: 0, spoilageValue: 0, reworkOpened: 0, cashCollected: 9350, quotesSent: 3, quotesAccepted: 1, otifHits: 2, otifMisses: 0 },
-        [today]: { jobsCompleted: 0, unitsOut: 0, spoilageUnits: 3, spoilageValue: 660, reworkOpened: 1, cashCollected: 0, quotesSent: 1, quotesAccepted: 0, otifHits: 0, otifMisses: 0 },
-      },
-      station: {
-        [yesterday]: {
-          "HEATPRESS-01": { productionMinutes: 260, setupMinutes: 25, jobsRun: 2 },
-          "3DPRINT-01": { productionMinutes: 420, setupMinutes: 12, jobsRun: 1 },
-        },
-        [today]: {
-          "HEATPRESS-01": { productionMinutes: 90, setupMinutes: 18, jobsRun: 1 },
-          "3DPRINT-01": { productionMinutes: 180, setupMinutes: 12, jobsRun: 1 },
-          "FINISHING-01": { productionMinutes: 60, setupMinutes: 8, jobsRun: 1 },
-        },
-      },
-      month: {
-        [thisMonth]: {
-          summary: { revenue: 214800, materialCost: 68300, laborCost: 41200, jobCount: 46, estimatedCost: 105000, actualCost: 109500, otifHits: 41, otifMisses: 5, nrftCount: 4, spoilageValue: 4200, cashCollected: 189000, cashOutstanding: 25800 },
-          pillar: {
-            PRINT: { revenue: 128400, materialCost: 41200, laborCost: 22800, jobCount: 30, estimatedCost: 60000, actualCost: 63000 },
-            STUDIO: { revenue: 36600, materialCost: 4100, laborCost: 12400, jobCount: 8, estimatedCost: 15000, actualCost: 16200 },
-            HARDWARE: { revenue: 49800, materialCost: 23000, laborCost: 6000, jobCount: 8, estimatedCost: 30000, actualCost: 30300 },
-          },
-        },
-      },
+  // Shapes the order.payment.submittedAt/claimedAmount/gcashRefNumber/
+  // screenshotRef/verifiedBy/verifiedAt/rejectionReason fields exactly as
+  // specified in the Payment System file's "Data Model Addition" section.
+  // Module-scoped (not nested in buildSeed()) because createManualOrder()
+  // needs it too, for staff-entered orders with GCash proof already in hand.
+  function gcashProof(claimedAmount, gcashRefNumber, submittedAt, opts) {
+    opts = opts || {};
+    return {
+      method: "gcash_manual", claimedAmount, gcashRefNumber,
+      screenshotRef: opts.screenshotRef || `s3://kcmps-uploads/payments/${gcashRefNumber}.jpg`,
+      submittedAt,
+      verifiedBy: opts.verifiedBy || null,
+      verifiedAt: opts.verifiedAt || null,
+      rejectionReason: opts.rejectionReason || null,
     };
+  }
 
-    const blockers = [
-      { id: uid("BLK"), text: "White DTF ink running low mid-batch — had to pause a job", owner: "Ken", dueDate: isoDay(daysFromNow(1)), tag: "ink-supply", createdAt: hoursAgo(20), resolved: false },
-      { id: uid("BLK"), text: "White DTF ink ran out again on second station", owner: "Ken", dueDate: isoDay(daysFromNow(0)), tag: "ink-supply", createdAt: hoursAgo(3), resolved: false },
-      { id: uid("BLK"), text: "Heat press #2 thermostat reading inconsistent", owner: "Mikko", dueDate: isoDay(daysFromNow(2)), tag: "heatpress-maintenance", createdAt: hoursAgo(10), resolved: false },
-    ];
-
-    const mailboxes = seedMailboxes();
-    const emails = seedEmails(orders);
-
-    return { orders, events, metrics, blockers, inventory, clients, mailboxes, emails, stations: STATIONS, seededAt: nowIso() };
+  /* ---- seed data: empty by default ----
+     Was a large hand-written demo dataset (orders/clients/inventory/
+     blockers/metrics) used to develop every dashboard page before any real
+     backend existed. Milestone 1.3 cut jobs.html/job-detail.html over to
+     the real API — every OTHER page (Today/Week/Month/Clients/Inventory/
+     Email/Settings) still reads only this local blob. Per explicit request
+     (2026-07-31), a fresh dashboard now starts genuinely empty rather than
+     pre-populated with fake demo tickets — mailboxes are the one exception,
+     kept as bare folder scaffolding (no messages) since email.html's layout
+     assumes at least one mailbox exists. */
+  function buildSeed() {
+    return {
+      orders: [],
+      events: [],
+      metrics: { day: {}, station: {}, month: {} },
+      blockers: [],
+      inventory: [],
+      clients: [],
+      mailboxes: seedMailboxes(),
+      emails: [],
+      stations: STATIONS,
+      seededAt: nowIso(),
+    };
   }
 
   /* ---- seed data: staff mailboxes + mock mail ----
@@ -485,11 +355,12 @@
   function resetSeed() { const seed = buildSeed(); save(seed); return seed; }
 
   /* ---- derived helpers ---- */
-  function allLineItems(state) {
+  function allLineItemsFrom(orders) {
     const out = [];
-    state.orders.forEach((o) => o.lineItems.forEach((li) => out.push(Object.assign({ order: o }, li))));
+    orders.forEach((o) => o.lineItems.forEach((li) => out.push(Object.assign({ order: o }, li))));
     return out;
   }
+  function allLineItems(state) { return allLineItemsFrom(state.orders); }
   function agingHours(li) { return (Date.now() - new Date(li.enteredStatusAt).getTime()) / 3600000; }
   function sortByAging(list) { return list.slice().sort((a, b) => new Date(a.enteredStatusAt) - new Date(b.enteredStatusAt)); }
 
@@ -499,9 +370,14 @@
     "Priced": { warn: 36, red: 48, expire: 168 },
   };
 
-  function getQueues() {
-    const state = load();
-    const items = allLineItems(state);
+  // Async because it now merges in real orders (Milestone 1.3's
+  // getAllOrders() already merges those with any mock-only manual orders) —
+  // a real order advanced via job-detail.html only ever lands in DynamoDB,
+  // never in the localStorage blob `load()` reads, so reading `state.orders`
+  // alone here would silently never reflect it.
+  async function getQueues() {
+    const orders = await getAllOrders();
+    const items = allLineItemsFrom(orders);
     const q = {
       pendingPaymentVerification: items.filter((li) => li.status === "Pending Payment Verification"),
       awaitingQuote: items.filter((li) => li.type === "custom" && li.status === "Quoted"),
@@ -539,9 +415,15 @@
     });
   }
 
-  function getTodayNumbers() {
+  // Async for the same reason as getQueues() above — dueToday/wipCount need
+  // real line-item statuses, not just the (now-empty-by-default) mock blob.
+  // The yesterday/today spoilage/cash/output rollups still come from
+  // state.metrics — no live METRIC# rollup Lambda exists yet (see
+  // backend/CLAUDE.md's jobs/ section), so those stay a known, accepted gap.
+  async function getTodayNumbers() {
     const state = load();
-    const items = allLineItems(state);
+    const orders = await getAllOrders();
+    const items = allLineItemsFrom(orders);
     const todayKey = isoDay(nowIso());
     const yestKey = isoDay(daysAgo(1));
     const dayY = state.metrics.day[yestKey] || { jobsCompleted: 0, unitsOut: 0, spoilageUnits: 0, spoilageValue: 0, reworkOpened: 0, cashCollected: 0 };
@@ -612,8 +494,28 @@
     "Dispatched": "Delivered",
   };
 
-  function advanceLineItem(orderId, lineItemId, opts) {
+  // Manual orders (createManualOrder, below) have no backend Lambda in
+  // 1.3's scope and only ever exist in the mock — real orders are never
+  // written there. Check the mock first so a manual order's buttons keep
+  // working exactly as before, and only real orders go over the wire.
+  function isMockOnlyOrder(orderId) {
+    return !!load().orders.find((o) => o.orderId === orderId);
+  }
+
+  async function advanceLineItem(orderId, lineItemId, opts) {
     opts = opts || {};
+    if (isMockOnlyOrder(orderId)) return advanceLineItemMock(orderId, lineItemId, opts);
+    if (!opts.to) throw new Error("advanceLineItem requires opts.to — no caller depends on the mock's NEXT_STATUS fallback, and the real API doesn't guess.");
+    return apiFetch("/line-items/" + encodeURIComponent(lineItemId) + "/advance", {
+      method: "POST",
+      body: JSON.stringify({
+        orderId, lineItemId, to: opts.to,
+        station: opts.station, setupMinutes: opts.setupMinutes, meta: opts.meta,
+      }),
+    });
+  }
+
+  function advanceLineItemMock(orderId, lineItemId, opts) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     const li = order && order.lineItems.find((x) => x.lineItemId === lineItemId);
@@ -642,7 +544,15 @@
      (or rejects) every `sku` line item on that order still sitting in
      `Pending Payment Verification`, and stamps the audit fields on
      order.payment (verifiedBy/verifiedAt, or rejectionReason). ---- */
-  function verifyPayment(orderId, staffName) {
+  // `staffName` is accepted for call-site compatibility but not sent — the
+  // real Lambda derives the actor from the verified JWT claims server-side,
+  // which is strictly more trustworthy than a client-supplied name.
+  async function verifyPayment(orderId, staffName) {
+    if (isMockOnlyOrder(orderId)) return verifyPaymentMock(orderId, staffName);
+    return apiFetch("/orders/" + encodeURIComponent(orderId) + "/verify-payment", { method: "POST", body: "{}" });
+  }
+
+  function verifyPaymentMock(orderId, staffName) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     if (!order) throw new Error("Order not found: " + orderId);
@@ -670,11 +580,19 @@
     return order;
   }
 
-  function rejectPayment(orderId, rejectionReason, staffName) {
+  async function rejectPayment(orderId, rejectionReason, staffName) {
+    if (!rejectionReason) throw new Error("A rejection reason is required.");
+    if (isMockOnlyOrder(orderId)) return rejectPaymentMock(orderId, rejectionReason, staffName);
+    return apiFetch("/orders/" + encodeURIComponent(orderId) + "/reject-payment", {
+      method: "POST",
+      body: JSON.stringify({ reason: rejectionReason }),
+    });
+  }
+
+  function rejectPaymentMock(orderId, rejectionReason, staffName) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     if (!order) throw new Error("Order not found: " + orderId);
-    if (!rejectionReason) throw new Error("A rejection reason is required.");
     const pending = order.lineItems.filter((li) => li.status === "Pending Payment Verification");
     if (!pending.length) throw new Error("No line items on this order are awaiting verification.");
     const now = nowIso();
@@ -852,9 +770,138 @@
     save(state);
     return state.inventory;
   }
-  function getOrder(orderId) { return load().orders.find((o) => o.orderId === orderId); }
-  function getAllOrders() { return load().orders.slice(); }
-  function getEventsFor(orderId) { return load().events.filter((e) => e.orderId === orderId).sort((a, b) => new Date(a.at) - new Date(b.at)); }
+  async function getAllOrders() {
+    const { orders } = await apiFetch("/orders", { method: "GET" });
+    const normalized = (orders || []).map(normalizeOrder);
+    // createManualOrder() (below) still writes mock-only orders — it has
+    // no backend Lambda in 1.3's scope. Merge them in so "Log a manual
+    // order" doesn't silently vanish from the live jobs list; real orders
+    // never carry source:"manual", so there's no collision risk.
+    const manualOnly = load().orders.filter((o) => o.source === "manual");
+    const merged = normalized.concat(manualOnly);
+    liveOrdersCache = merged;
+    return merged;
+  }
+  async function getOrder(orderId) {
+    const orders = await getAllOrders();
+    return orders.find((o) => o.orderId === orderId);
+  }
+  // Synchronous by design — job-detail.html's render() calls this
+  // immediately after `await getOrder(orderId)`, so liveOrdersCache is
+  // already populated from that same fetch.
+  function getEventsFor(orderId) {
+    // Only real (non-manual) orders carry a real .events array from the
+    // backend — a manual order found in the cache (merged in above) has no
+    // .events property at all, so it correctly falls through to the mock.
+    const live = liveOrdersCache && liveOrdersCache.find((o) => o.orderId === orderId && o.events);
+    if (live) return live.events.slice().sort((a, b) => new Date(a.at) - new Date(b.at));
+    return load().events.filter((e) => e.orderId === orderId).sort((a, b) => new Date(a.at) - new Date(b.at));
+  }
+
+  /* ---- manual order entry ----
+     For clients who order by chat/DM/in person rather than the storefront
+     cart — jobs.html's "Log a manual order" form is the only caller. Produces
+     the exact same ORDER#/LINEITEM# shape `makeOrder()` builds for seed data
+     (plus a `source: "manual"` flag so the UI can badge it), so every queue,
+     the Jobs list, and job-detail.html's advance-this-job actions treat it
+     identically to a checkout-originated order — no separate code path
+     downstream of creation.
+
+     Status is restricted to values that don't imply an in-app step that
+     didn't happen (e.g. never "Ready for Dispatch" straight out of the
+     gate). "Pending Payment Verification" always requires a GCash ref +
+     claimed amount so order.payment is populated exactly like the real
+     checkout bridge — otherwise the ticket's own "Verify payment" button
+     would throw (verifyPayment() requires order.payment to exist).
+
+     "Confirmed" covers payment already in hand by ANY method — talk-in/DM
+     clients often pay cash on the spot, not just GCash. Cash has no proof
+     object to verify (there's no screenshot/ref number to cross-check), so
+     it's recorded as a plain note on the line item instead of forcing it
+     through the GCash-shaped order.payment object job-detail.html renders
+     with GCash-specific labels (reference number, claimed amount). ---- */
+  const MANUAL_ORDER_STATUSES = {
+    sku: ["Pending Payment Verification", "Confirmed"],
+    custom: ["Quoted", "Priced", "Confirmed"],
+  };
+
+  function createManualOrder(opts) {
+    opts = opts || {};
+    const description = (opts.description || "").trim();
+    if (!description) throw new Error("A description is required.");
+    if (!opts.promisedDate) throw new Error("A promised date is required.");
+
+    const state = load();
+    let client;
+    if (opts.newClientName && opts.newClientName.trim()) {
+      client = {
+        id: uid("C"), name: opts.newClientName.trim(),
+        type: opts.newClientType === "B2B" ? "B2B" : "B2C",
+        totalRevenue: 0, lastOrderAt: nowIso(), reorderIntervalDays: null,
+      };
+      state.clients.push(client);
+    } else {
+      client = state.clients.find((c) => c.id === opts.clientId);
+      if (!client) throw new Error("Select an existing client or enter a new client name.");
+    }
+
+    const type = opts.type === "custom" ? "custom" : "sku";
+    const allowedStatuses = MANUAL_ORDER_STATUSES[type];
+    const status = allowedStatuses.includes(opts.status) ? opts.status : allowedStatuses[0];
+    const qty = Math.max(1, parseInt(opts.qty, 10) || 1);
+    const priceEach = opts.priceEach !== "" && opts.priceEach != null && !isNaN(parseFloat(opts.priceEach))
+      ? parseFloat(opts.priceEach) : null;
+    const amount = priceEach != null ? Math.round(priceEach * qty * 100) / 100 : 0;
+
+    let payment = null;
+    if (status === "Pending Payment Verification") {
+      const ref = (opts.gcashRefNumber || "").trim();
+      const claimed = parseFloat(opts.claimedAmount);
+      if (!ref) throw new Error("A GCash reference number is required for Pending Payment Verification.");
+      if (!(claimed > 0)) throw new Error("A claimed amount is required for Pending Payment Verification.");
+      payment = gcashProof(claimed, ref, nowIso());
+    }
+
+    // Confirmed = already paid, by whatever method — logged as a note since
+    // cash has no proof object to attach (see header note above).
+    let notes = (opts.notes || "").trim();
+    if (status === "Confirmed" && opts.paidVia) {
+      const viaLabel = opts.paidVia === "cash" ? "Cash" : opts.paidVia === "gcash" ? "GCash" : "Other";
+      const ref = (opts.paidRef || "").trim();
+      const paidNote = "Paid via " + viaLabel + (ref ? " (ref " + ref + ")" : "") + ".";
+      notes = notes ? paidNote + " " + notes : paidNote;
+    }
+
+    const now = nowIso();
+    const orderId = uid("ORD");
+    const lineItemId = uid("L");
+    const lineItem = {
+      lineItemId, orderId, type, qty,
+      priceEach: priceEach != null ? priceEach : 0, amount,
+      sku: (opts.sku || "").trim() || undefined,
+      description, status, station: null, setupMinutes: null,
+      spoilage: [], enteredStatusAt: now,
+      notes,
+    };
+    const order = {
+      orderId, client, customerSub: null, createdAt: now,
+      originalPromisedDate: opts.promisedDate, lineItems: [lineItem],
+      payment, correspondenceLog: [], source: "manual",
+    };
+    order.orderStatus = deriveOrderStatus(order);
+    state.orders.push(order);
+    client.lastOrderAt = now;
+
+    state.events.push({
+      pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#" + lineItemId,
+      orderId, lineItemId, from: null, to: status,
+      actorSub: "current-user", actorName: opts.actorName || "You",
+      station: null, at: now, meta: { via: "manualOrder" },
+    });
+
+    save(state);
+    return order;
+  }
 
   // Manual order↔email linking: staff log a note referencing a Spacemail
   // thread (never the email body itself — no mail content is stored here).
@@ -1009,6 +1056,7 @@
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondenceLog,
+    createManualOrder,
     resetSeed,
   };
 })(window);

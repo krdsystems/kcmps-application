@@ -342,16 +342,11 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 .order-popup::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-text) 40%, transparent); }
 .order-popup-qr { display: block; margin: var(--space-2) auto; width: 200px; height: auto; border-radius: var(--radius-md); }
-.order-popup-format-wrap { position: relative; }
-.order-popup-format { background: color-mix(in srgb, var(--color-text) 6%, transparent); border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3); padding-right: 36px; font-size: 12.5px; line-height: 1.6; margin: 0; }
-.btn-icon-copy {
-  position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: grid; place-items: center;
-  border: none; border-radius: var(--radius-sm); cursor: pointer;
-  background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text);
-}
-.btn-icon-copy:hover { background: color-mix(in srgb, var(--color-text) 18%, transparent); }
-.btn-icon-copy.is-copied { background: var(--color-green); color: #fff; }
+/* Payment-proof form fields (store.js renderPaymentProofStep) — same
+   scoped spacing pattern as .checkout-view .field, since .dialog-body's
+   own children don't inherit .order-popup's flex `gap` (that only applies
+   between the popup's direct children: title/body/actions). */
+.order-popup .field { margin-bottom: var(--space-3); }
 @media (max-width: 480px) { .order-popup-backdrop { padding: var(--space-2); } .order-popup { max-height: 94vh; } }
 
 /* — capacity soft-cap popup (store.js requestQty/openCapPopup) — same

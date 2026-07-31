@@ -1663,6 +1663,434 @@ Open Graph data per URL independently of any TTL, so a URL that was ever scraped
 this change can keep showing a stale preview until manually re-scraped ("Scrape Again" in the
 debugger) — passive waiting does not force a refresh.
 
+### 43. Manual order entry for talk-in/DM/phone clients (2026-07-31)
+
+The dashboard had no way to log a job for a customer who orders by chat, DM, or in person
+rather than through the storefront cart — `jobs.html`'s own copy used to say "the wizard/
+checkout submission is the ticket, nothing here is retyped," which stopped being true the
+moment staff needed exactly that.
+
+**Added a "Log a manual order" form to `jobs.html`.** Staff pick an existing client or add a
+new one inline (name + B2B/B2C), choose SKU or custom-request, qty/price/promised date, and a
+status constrained to what's actually true: awaiting GCash payment (requires a ref number +
+claimed amount, so the ticket is indistinguishable from a real checkout-originated one once
+created — see below) or confirmed/already paid by **cash or GCash** (logged as a plain note,
+since cash has no proof object to attach). New function `createManualOrder()` in
+`dashboard-data.js` produces the exact same `ORDER#`/`LINEITEM#` shape a checkout would, plus a
+`source: "manual"` flag so `jobs.html`'s list and `job-detail.html`'s ticket head can badge it
+— every queue, verify/reject action, and advance-this-job button treats it identically to any
+other ticket, no separate code path downstream of creation.
+
+**Bug caught during in-browser verification, not just eyeballing the diff:** `gcashProof()` —
+the helper that shapes the `payment` sub-object — was nested inside `buildSeed()`'s local
+scope, unreachable from the new `createManualOrder()`. Submitting a manual order with GCash
+proof threw `ReferenceError: gcashProof is not defined` inside the try/catch, surfacing only as
+a blocked native `alert()` dialog that hung the browser-automation tab (looked like a frozen
+page, not a script error, until console/`javascript_tool` inspection found the actual
+exception). Fixed by hoisting `gcashProof()` to module scope, above `buildSeed()`, so both the
+seed data and `createManualOrder()` share one definition. Re-verified the full loop afterward:
+create a manual order with GCash proof → ticket renders correctly → "Verify payment" → status
+moves to `Confirmed` with `verifiedAt`/`verifiedBy` stamped, same as a real checkout order.
+
+### 44. Checkout Lambda drafts: `createOrder` and `submitPaymentProof` (2026-07-31)
+
+`docs/roadmap.md`'s Milestone 1 tracker had one Lambda literally marked "not yet drafted in the
+repo" — `createOrder`, the actual checkout endpoint — while every dashboard-side Lambda already
+had a draft in `ops-dashboard/infra/logic-inputs/`. `submitPaymentProof` (the customer-facing
+counterpart that creates the GCash proof `api-verify-payment.js` reads) was in the same state.
+
+**Drafted both at `backend/checkout/`** — the first Lambda source anywhere in the repo written
+against `backend/lib/`'s shared conventions (`baseItem()`, `buildEvent()`, the PK/SK builders,
+GSI1 sparse-index helpers) instead of hand-rolling keys and status logic inline like the older
+`ops-dashboard/infra/logic-inputs/*.js` drafts do. Added a third helper to `backend/lib` itself,
+`order-status.js`'s `deriveOrderStatus()` — the line-items-to-order-status rollup rule already
+existed as two independent hand-copies (`dashboard-data.js`, `streams-handler.js`); any new
+Lambda should import this one instead of writing a fourth. 6 new tests for it, all passing
+(`node --test backend/lib/` — 23 total).
+
+**Two deliberate scope calls, both flagged in the files' own headers so they don't read as
+oversights later:**
+- **Guest checkout preserved.** The storefront has never required login to check out — a
+  Bearer token is verified if the customer happens to be logged in, but its absence never
+  blocks `createOrder`, and `submitPaymentProof` does no ownership check against the caller at
+  all (there's no reliable identity to check against for a guest order, and the orderId isn't
+  meant to be a secret — it's echoed back to the customer specifically so they can use it
+  here). The actual trust boundary stays where it already was: staff cross-check the typed
+  GCash reference number against real transaction history before verifying, never on the
+  submitted data alone.
+- **Money stays peso floats, not `backend/lib/money.js`'s integer centavos.** The centavo
+  convention is real and eventually correct (ERP file §2.3.4), but `streams-handler.js`,
+  `api-get-orders.js`, and the entire dashboard mock/frontend still assume raw peso numbers —
+  converting only these two new files would silently multiply every downstream metric by 100x.
+  Left as a deliberately deferred, coordinated migration rather than a partial one started here.
+
+### 45. Infra state audit + payment-uploads S3 bucket provisioned (2026-07-31)
+
+Before provisioning new infra, took a full read-only snapshot of what actually exists in AWS
+(account `600929977538`, `kcmps-claude-priv`) to cross-check against what the docs claim —
+"architecture backup" before any mutating call, not a literal screenshot.
+
+**Confirmed consistent with docs:** `kcmps-foundation` stack (`kcmps` DynamoDB table + GSI1 +
+Streams + PITR + deletion protection; 5 Cognito groups) and `kcmps-dev-domain` stack both
+`CREATE_COMPLETE`/`UPDATE_COMPLETE`; `kcmps.com` verified as an SES sending identity, still in
+sandbox (`ProductionAccessEnabled: false`, matching the pending-request note in
+`docs/roadmap.md`'s "SES relay" section); production S3 bucket confirmed in `ap-southeast-1`
+with the documented `Assets/`/`assets/` split.
+
+**Two things found live in AWS with no mention anywhere in this repo's docs:**
+- A **Google identity provider** is configured on the Cognito user pool (`ProviderName:
+  Google`, added 2026-07-22), with a corresponding auto-created
+  `ap-southeast-1_iDvAEumNp_Google` group. No `.md` file or code comment anywhere describes a
+  Google sign-in option — worth confirming with whoever set it up whether this is intentional
+  in-progress work or a stale experiment, before anything (docs or code) is built assuming it.
+- **`admin@kcmps.com` is its own separately-verified SES identity**, alongside the `kcmps.com`
+  domain identity `docs/roadmap.md` already documents. Functionally redundant (verifying the
+  domain already covers any `@kcmps.com` address) but not harmful — noting it here so a future
+  reader isn't confused about why two identities exist for overlapping coverage.
+
+**Also surfaced: the manual-order-entry feature (entry 43) and checkout Lambda drafts (entry
+44) exist only in the local working tree, not on either S3 environment** —
+`dashboard/jobs.html` on the live production bucket (checked via `aws s3 cp ... | grep
+manual-order-toggle`) predates both features. Not a bug, just a reminder that this session's
+frontend/backend work hasn't gone through the `dev.kcmps.com` → production sync workflow yet.
+
+**Provisioned:** `kcmps-payment-uploads-est-2026`, the private S3 bucket
+`submitPaymentProof`'s presigned upload URLs will target — `ap-southeast-1`, all public access
+blocked, ACLs disabled (`BucketOwnerEnforced`), versioned, SSE-S3 encrypted, noncurrent
+versions expiring after 90 days. Created via plain CLI calls, not CloudFormation, since it's a
+single standalone resource with no stack dependencies yet — see `backend/infra/README.md`'s
+"Payment uploads bucket" section for the full rationale and verify commands. **SES was
+deliberately left untouched** — production access is still pending AWS review, and
+`submit-payment-proof.js` already degrades gracefully (skips the confirmation email) when no
+`FROM_EMAIL` is configured, so nothing here is blocked on it.
+
+### 46. Checkout Lambdas deployed to AWS, and a project-wide destructive-command guardrail (2026-07-31)
+
+**Guardrail added first, before any more infra work:** `.claude/settings.json` gained an `ask`
+permission list — every `rm -rf`/`-fr`/`-Rf`/`-fR`/`-r`/`-R` variant, `sudo rm`, `find -delete`,
+`git clean -f`, and `rimraf` on the filesystem side, plus every delete-shaped AWS CLI call this
+project's actual stack can reach (S3 `rb`/`rm`/`delete-bucket`/`-object(s)`, DynamoDB
+`delete-table` and `update-table` — the latter because that's also the command that strips
+`DeletionProtectionEnabled` before a delete — CloudFormation `delete-stack`, IAM
+`delete-role`/`-user`/`-policy`/`-role-policy`, Lambda `delete-function`, API Gateway
+`delete-api`, Cognito `delete-user-pool`/`-group`/`-identity-provider`, CloudFront
+`delete-distribution`, SES/SESv2 identity deletion, EventBridge `delete-rule`, CloudWatch Logs
+`delete-log-group`). These now force a stop-and-confirm prompt even under auto-mode, on top of
+(not instead of) the pre-existing hard `deny` on literal `rm -rf /*`.
+
+**Then deployed the two checkout Lambdas drafted in entry 44** — `kcmps-create-order` and
+`kcmps-submit-payment-proof`, both live in `ap-southeast-1` (account `600929977538`) via
+`kcmps-claude-priv`.
+
+**Found during this pass: `kcmps-claude-priv` already has `AdministratorAccess` attached**,
+alongside its narrower inline policies — not previously documented anywhere (the
+`storefront-infra/CLAUDE.md` IAM notes describe requesting scoped grants per-task, which reads
+as though the profile were least-privilege). Worth a look at whether that's intentional or a
+leftover from earlier setup. Regardless, the Lambdas' own **execution role** was built
+least-privilege from scratch (`kcmps-checkout-lambda-role`, scoped to exactly the table/bucket/
+SES-identity ARNs each function touches) — the deploying profile's permissions and what the
+deployed function can do are two separate things, and the latter matters far more once the
+function is live and reachable.
+
+**Packaging note for next time:** each Lambda is a self-contained zip — the handler with its
+`require("../lib")` rewritten to `require("./lib")` for the flattened layout, a copy of
+`backend/lib/` (minus the test file), and `node_modules` from a small per-function
+`package.json`. No Lambda Layer yet, two functions didn't justify one.
+
+**Smoke-tested against the real table, not just unit-level.** Direct `aws lambda invoke` (no
+API Gateway exists yet, so no HTTP path to test) with a synthetic guest cart: `create-order`
+wrote the `ORDER#`/`LINEITEM#`/`EVENT#` items correctly, `GSI1PK`/`GSI1SK` present on the
+active line item, `customerSub: null` confirming guest checkout actually works end-to-end (not
+just in the code review). Then `submit-payment-proof` against that same order returned a real
+working presigned S3 PUT URL and wrote the `payment` sub-object with the right shape. Deleted
+all 3 test items afterward — table's `ItemCount` is back to 0, same as before the test.
+
+**Still not done:** neither Lambda is reachable except by direct invoke — no API Gateway HTTP
+API, no JWT authorizer, no routes, and the storefront's `submitOrder()` still points at
+`mailto:`. That's the next milestone-1.1/1.2 step, not part of this pass.
+
+### 47. API Gateway stood up, storefront wired to the real checkout API, mailto: retired (2026-07-31)
+
+Continuation of entry 46 — the two deployed Lambdas were only reachable via direct `aws lambda
+invoke`. This entry makes `kcmps-create-order` a real public endpoint and points the storefront
+at it.
+
+**API Gateway**: `kcmps-checkout-api`, an HTTP API (`6msg2uho6c`, `ap-southeast-1`) with two
+routes — `POST /orders` and `POST /orders/{orderId}/payment-proof` — each a direct `AWS_PROXY`
+integration (payload format 2.0) to its Lambda, `$default` stage with auto-deploy. **No JWT
+authorizer on either route, on purpose**: guest checkout is a hard requirement, so both routes
+must stay publicly callable; each Lambda already does its own optional Bearer-token check
+internally (see entry 44). CORS allows the production/dev storefront origins plus two local-dev
+ports — which surfaced a small pre-existing inconsistency: `README.md`/`CLAUDE.md` document
+`localhost:5500` (also what's registered as a Cognito callback URL), but this repo's actual
+`.claude/launch.json` defaults to `5501`. Not something this change caused or tried to fix,
+just added both to CORS so local testing works either way — worth reconciling the docs
+separately sometime.
+
+**Storefront wiring** (`store.js`): `submitOrder()` now POSTs to the real API instead of
+composing a `mailto:` — the header comment's own long-standing "BACKEND MIGRATION POINTS"
+note for checkout is now marked done. Cart items are mapped to the Lambda's expected shape at
+one boundary (`cartForCheckout()` — the cart's `id` field becomes the Lambda's `sku` field,
+everything else is a rename-free pass-through). An access token is attached as a Bearer header
+*if* a Cognito session already exists (read directly from `sessionStorage`'s `kcmps_tokens`
+key, the same key `index.html`'s auth script and `dashboard-shell.js` already use — no shared
+export needed, they're all just reading the same key independently), but its absence never
+blocks the request. On success, the existing GCash popup opens exactly as before, now carrying
+the real `orderId` (added as a 6th `buildOrderEmail()` param, appears in both the subject line
+and a new "Order ID:" header line — useful for staff to cross-reference the emailed proof
+against the real DynamoDB record). On failure, an alert names the problem and the cart is left
+untouched — no silent fallback to the old `mailto:` path, since running two order-of-record
+systems side by side would be worse than a visible failure.
+
+**CSP**: `index.html`'s `connect-src` gained the API's origin.
+
+**Verified in a real browser, not just via `curl`.** `curl` first confirmed the API and CORS
+preflight both work; then a full browser session (`window.KCMPS_STORE.addToCart()` to seed a
+cart, click through to checkout, fill the form, click "Place order") confirmed the actual
+`fetch()` fires, the popup shows the real `orderId`, the "Place order" button correctly
+re-enables afterward, and the order lands in DynamoDB with `customerSub: null` — guest checkout
+genuinely works end to end, not just in the Lambda's own unit-style smoke test. Deleted the
+test order afterward.
+
+**Still not done:** `submitPaymentProof` has no UI wired to it — the GCash popup is still the
+front-end-only interim step from entry 22 (QR + copy-paste instructions, customer emails the
+screenshot manually). Building the real screenshot-upload + typed-reference-number checkout UI
+is the next piece of Milestone 1.2.
+
+### 48. Real GCash payment-proof upload UI, retiring the copy-to-clipboard/mailto: interim (2026-07-31)
+
+Closes out Milestone 1.2 (see entry 47's "still not done") — the post-checkout popup collected
+nothing real; it just showed a QR and a block of text for the customer to paste into an email
+manually (`docs/history.md` entry 22, 2026-07-28). `submitPaymentProof.js` had existed since
+entry 44 with no UI calling it.
+
+**Redesigned `store.js`'s popup around two states**, chosen by whether the order has anything
+to pay right now:
+- `renderPaymentProofStep()` — orders with `sku` lines. QR, a **typed** GCash reference number
+  field (the Payment System file's explicit requirement — "not just visible in the screenshot
+  — needed so staff can cross-check against actual GCash transaction history; screenshots
+  alone are editable"), a claimed-amount field prefilled from the server's real `payNowTotal`
+  but left editable, and a real `<input type="file">` constrained to `image/png|jpeg|webp`.
+  `submitPaymentProof()` does the two real calls: `POST /orders/{orderId}/payment-proof` for a
+  pre-signed S3 PUT URL, then a direct browser→S3 upload of the file — the Lambda never sees
+  the image bytes, matching what `submit-payment-proof.js` was built for.
+- `renderCustomOnlyConfirmation()` — an all-`custom` order has nothing to pay yet, so it skips
+  straight to "we'll send you a quote," no payment UI at all.
+
+**Retired**: `buildOrderEmail()`, the old `.order-popup-format`/copy-to-clipboard button, and
+the `COPY_ICON` SVG constant it used — all dead code once the real order record + real proof
+upload existed, since their whole job was compensating for there being no backend yet.
+`ORDER_EMAIL` survives only as a "trouble uploading? message us" fallback link. Mirrored the
+CSS cleanup into `design-system/KCMPS Redesign/styles.css` per the usual convention, and added
+a scoped `.order-popup .field` spacing rule (the popup's `dialog-body` doesn't inherit
+`.order-popup`'s flex `gap`, which only applies between its direct children).
+
+**A real debugging detour worth recording**: verifying this in the browser preview kept
+showing the *old* popup markup no matter how many times the page was reloaded. Tracing it
+down: the python `http.server` process on the port I was testing against (`5502`) belonged to
+a **completely different git worktree** (`storefront-design-eval`) — my own attempt to start a
+server on that port had silently lost a bind race, and every `curl`/browser check against
+`localhost:5502` had been hitting someone else's stale checkout the whole time. Confirmed via
+`/proc/<pid>/cwd`, not guesswork. Moved to a genuinely free port (`5510`) and the new code
+showed up immediately. Lesson for next time testing locally in this repo: **check
+`/proc/<pid>/cwd` before trusting that a `curl 200` on a chosen port means you reached your own
+worktree** — a port conflict here fails silently (the older server just keeps answering),
+never with a bind error visible to the tool that "started" the new one.
+
+**Verified thoroughly, both from the API side and inside a real page**: the two-step upload
+chain via direct API calls first (order → proof → real image lands in
+`kcmps-payment-uploads-est-2026` → correctly-shaped `payment` sub-object), then the actual UI
+in a browser — both popup branches render with the right content, the validation cascade
+blocks submission one missing field at a time with inline errors, and "I'll send it later"
+correctly clears the cart and closes both the popup and the drawer. All test orders and the
+one real S3 test object were deleted afterward.
+
+**Still open**: SES confirmation email stays unsent until production access clears (unrelated,
+already degrades gracefully); the GCash matching-mechanism decision (unique-centavo variance
+vs. order-ID-as-note) is unrelated to this UI and still undecided either way.
+
+### 49. Milestone 1.3 — staff dashboard cut over to the real backend, login/signup re-enabled (2026-07-31)
+
+Re-enabled the storefront's `Login / Sign-up` button (`website/index.html`) — it had been
+`disabled` since auth was built ahead of a real backend to verify against. Un-disabling it was
+a two-line change (the static button, and `renderLoggedOut()`'s re-render); the underlying
+Cognito Hosted-UI popup flow was already fully built and untouched.
+
+Ported the three drafted dashboard Lambdas
+(`ops-dashboard/infra/logic-inputs/api-{get-orders,advance-line-item,verify-payment}.js`) to
+`backend/lib/` conventions, matching `backend/checkout/`'s style rather than their old hand-
+rolled key/status/claims-parsing — `backend/staff-api/{get-orders,advance-line-item,verify-payment}.js`.
+Did the same for `streams-handler.js`/`expire-pending-orders.js` → `backend/jobs/`, using
+`backend/lib/order-status.js`'s `deriveOrderStatus()` instead of a fourth copy of the same
+rollup rule. `get-orders.js` also now attaches each order's `EVENT#` records
+(`order.events`) — a small addition beyond the original drafts, so the dashboard's event
+timeline isn't silently empty for a real order.
+
+**Deployed**: 2 new least-privilege IAM roles (`kcmps-staff-api-lambda-role`,
+`kcmps-jobs-lambda-role`), 5 new Lambdas, a DynamoDB Streams event source mapping (filtered to
+`LINEITEM#` writes) on `kcmps-streams-handler`, a 15-minute EventBridge cron on
+`kcmps-expire-pending-orders`, and — on the existing `kcmps-checkout-api` — a Cognito JWT
+authorizer plus 4 new routes (`GET /orders`, `POST /line-items/{lineItemId}/advance`, `POST
+/orders/{orderId}/verify-payment`, `POST /orders/{orderId}/reject-payment`).
+
+**Three real bugs found — two in code I'd just ported, one in code from an earlier session —
+plus one IAM gap, all fixed before shipping:**
+
+1. **`getGroups()`'s comma-string assumption was wrong.** `backend/lib/auth.js` handled a true
+   array or a clean comma-join, but never handled what API Gateway's HTTP API JWT authorizer
+   *actually* sends for a multi-value `cognito:groups` claim — confirmed live, via a
+   temporarily-redeployed debug `console.log` on `kcmps-get-orders`, to be a bracketed,
+   **space**-separated string: `"[Staff Admin]"`, not `"[Staff, Admin]"` or `"Staff,Admin"`.
+   A single-group case (`"[Admin]"`) happened to still parse correctly under the old code by
+   coincidence (no delimiter needed), which is exactly why the bug stayed hidden through an
+   earlier single-group smoke test in this same session and only surfaced once a second group
+   was added to the test user. Fixed by splitting on `/[,\s]+/` after stripping the brackets —
+   a strict superset of every previously-handled form. Added a regression test to
+   `backend/lib/lib.test.js` asserting the exact live-observed format.
+2. **`STATUS.DISPATCH` collapsed two real dashboard statuses into one.** `backend/lib/
+   constants.js` (written in an earlier session, before any Lambda used this specific value)
+   had a single `DISPATCH: "Dispatch"`, but the dashboard's actual UI
+   (`job-detail.html`/`jobs.html`, `dashboard-data.js`'s `NEXT_STATUS`) has always used two
+   distinct stages, `"Ready for Dispatch"` → `"Dispatched"`. Porting `advance-line-item.js`
+   faithfully copied the wrong value from `constants.js` rather than the *original* draft's
+   correct 3-stage chain. Harmless until now (nothing had ever written `"Dispatch"` to the
+   table) — would have silently broken the QC→Dispatch→Delivered button flow the moment this
+   Lambda went live. Fixed by splitting `constants.js` into `READY_FOR_DISPATCH`/`DISPATCHED`
+   and correcting `LEGAL_TRANSITIONS` to match.
+3. **Real line items/orders don't share the mock's exact field names.**
+   `backend/checkout/create-order.js` (already live, unrelated to this pass) writes `li.name`
+   and a flat order (no nested `client`), while the mock/dashboard UI reads `li.description`
+   and `order.client.name`. Rather than touch any `.html` or the already-shipped
+   `create-order.js`, normalized both inside `dashboard-data.js`'s new fetch wrapper — the same
+   "one seam absorbs the shape difference" principle already used everywhere else in this file.
+4. **IAM gap (not a code bug):** both new Lambda roles granted `dynamodb:TransactWriteItems`
+   but not the underlying `dynamodb:PutItem` — DynamoDB requires the constituent action
+   permission too for each operation *inside* a transaction, not just the transact-level
+   action. Surfaced as an `AccessDeniedException` on the very first live `verifyPayment` call
+   (which writes an `EVENT#` item via `Put` inside its `TransactWriteItems`). Added `PutItem` to
+   both roles' inline policies.
+
+**Cut the dashboard over**: `getAllOrders`/`getOrder`/`verifyPayment`/`rejectPayment`/
+`advanceLineItem` in `dashboard-data.js` now `fetch()` the real API, reading the **ID** token
+(not the access token) from `kcmps_tokens` — the JWT authorizer and every Lambda's role check
+both need `aud`/`cognito:groups`, which only the ID token carries. `jobs.html`'s one call site
+and `job-detail.html`'s 5 call sites became `async`/`await`; both pages' CSP gained a
+`connect-src` for the API origin (confirmed, while investigating: **no** dashboard page had
+had a `connect-src` at all before this — they were all implicitly same-origin-only). A real
+regression caught before shipping: `createManualOrder` (chat/DM/phone orders, still mock-only,
+no Lambda built for it) would have silently vanished from the jobs list the moment
+`getAllOrders` only read the live backend — fixed by merging mock `source: "manual"` orders
+into the same list, and by branching `verifyPayment`/`rejectPayment`/`advanceLineItem` to their
+original mock bodies for any order still found in the mock store (real orders never are).
+
+**Verification — deliberately minimal AWS round-trips, one throwaway test user, real code
+path**: minted one Cognito test user (`Admin` + legacy `Staff` groups, the second needed only
+because `dashboard-shell.js`'s own client-side redirect gate still checks the literal `Staff`
+group), and reused the previous session's leftover "Proof UI Test" order (`ORD-FAA9QJ`,
+confirmed test debris, not a real customer order) as a live fixture. **The sandboxed test
+browser blocks all outbound cross-origin `fetch()`** — confirmed independent of any app code,
+since even `fetch("https://example.com")` failed identically from inside it — so the actual
+`dashboard-data.js` file was instead run for real in Node (via a small `vm`-free harness
+stubbing `sessionStorage`/`localStorage`, using Node's native `fetch`), hitting the live API
+exactly as a browser would. Proved: `getAllOrders()` returns the real order with the
+`name`→`description`/`client.name` shims and real `events` attached; `verifyPayment()` moved a
+real line item `Pending Payment Verification → Confirmed`; two `advanceLineItem()` calls moved
+it `→ Scheduled → In Production`; `orderStatus` and GSI1 both caught up correctly a few seconds
+later via the Streams handler. All test artifacts (order items, the synthetic `payment` object
+added mid-test, both Cognito test users — including one leftover from an earlier interrupted
+attempt in this same session) deleted afterward; table back to 0 items.
+
+**Still open, deliberately out of scope for this pass**: `sendToRework`/`setSetupMinutes` stay
+mock-only (no Lambda built for spoilage/rework tracking); the dashboard's local-dev fake-login
+bypass no longer works specifically on `jobs.html`/`job-detail.html` (correctly — it's not a
+validly-signed JWT, so the real authorizer 401s it; every other dashboard page is unaffected);
+`store.js` sends the *access* token as the checkout Bearer while `create-order.js`'s verifier
+expects the *ID* token (pre-existing, unrelated to staff-side 1.3 — likely means `customerSub`
+is always `null` today even for a logged-in customer, worth its own look later); SES
+confirmation email and the GCash matching-mechanism decision remain open from 1.2.
+
+### 50. Cognito group cleanup + a real test-staff account (2026-07-31)
+
+Follow-up after 1.3 went live, prompted by a "why does the dashboard still show mock data
+after logging in as a real staff account" question. Root cause was expected behavior, not a
+bug: only `jobs.html`/`job-detail.html` were cut over in 1.3 — every other dashboard page
+(Today, Week, Month, Clients, Inventory, Email, Settings) is still 100% mock by design, and
+`jobs.html` was correctly showing an empty list at the time since the table had 0 real items
+(all test data from entry 49's verification pass had already been cleaned up).
+
+While auditing the pool to answer this, found the legacy `Customers` (plural) group — flagged
+in `backend/infra/README.md`'s "Legacy groups" section as deprecated but never actually
+retired — still had one real member: a Google-federated customer account. Migrated it to the
+new `Customer` (singular) group (`admin-add-user-to-group` + `admin-remove-user-from-group`),
+confirmed `Customers` empty via `list-users-in-group`, then deleted the group. `Staff`
+(precedence 10) is explicitly **not** retired — it's still checked by `dashboard-shell.js`'s
+client-side gate and used as a fallback by every 1.3 Lambda's `isStaff()` check; both real
+staff accounts are deliberately in both `Staff` and `Admin` during this transitional period.
+
+Created a real (non-throwaway) test-staff account, `admin.kcmps.cognito.test`, in both `Staff`
+and `Admin` groups, so future testing sessions don't need the mint-a-throwaway-Cognito-user
+dance from entry 49 every time.
+
+Post-cleanup pool state: `Admin`, `Production`, `Sales`, `Finance`, `Customer` (the 5-role
+model), `Staff` (legacy, still vital), `ap-southeast-1_iDvAEumNp_Google` (Cognito-managed, not
+an app group — leave alone).
+
+### 51. Payment-proof CORS fix, screenshot preview, and Today wired to real orders (2026-07-31)
+
+Four bugs reported after the first live test of the full checkout → verify flow.
+
+**1. "Failed to fetch" on the GCash proof popup despite the order actually saving.**
+`submitPaymentProof()` (`website/store.js`) is a two-step flow: POST to
+`backend/checkout/submit-payment-proof.js` (writes `order.payment` to DynamoDB and returns a
+pre-signed S3 PUT URL), then a direct browser→S3 `PUT` of the screenshot using that URL. The
+Lambda step was succeeding every time (hence the data showing up in the dashboard); the second
+step — a cross-origin `PUT` straight to `kcmps-payment-uploads-est-2026`'s S3 origin — was being
+silently blocked by the browser because **the bucket had no CORS configuration at all**
+(confirmed via `aws s3api get-bucket-cors` → `NoSuchCORSConfiguration`). Fixed by
+`aws s3api put-bucket-cors` on the bucket, allowing `PUT` from the same origin set already used
+for the checkout API's CORS (`kcmps.com`/`www.kcmps.com`/`site.kcmps.com`/`dev.kcmps.com`/
+`localhost:5500`/`localhost:5501`), `content-type` header only. No code change needed — this was
+purely a missing piece of infra, not an app bug.
+
+**2. Payment-proof screenshot showed only as an `s3://…` text string on `job-detail.html`.**
+`order.payment.screenshotRef` is an `s3://bucket/key` URI — never directly loadable by a
+browser `<img>`, and staff need to actually see the image to cross-check it, not just its key.
+Rather than push S3 credentials into the dashboard's client-side JS, `backend/staff-api/get-orders.js`
+now presigns a short-lived (`15 min`) GET URL server-side (`withScreenshotUrl()`, new
+`s3:GetObject` grant on `kcmps-staff-api-lambda-role` scoped to `.../payments/*` only) and
+returns it as `payment.screenshotUrl`. `job-detail.html` renders that as a real `<img>` (wrapped
+in a link to open full-size), falling back to the old text string for mock/manual orders that
+have no live screenshotUrl. `job-detail.html`'s CSP `img-src` had to allow the bucket's S3 host
+for this to load. Redeployed `kcmps-get-orders` with the new `@aws-sdk/client-s3` +
+`@aws-sdk/s3-request-presigner` deps — the earlier deploy mistake from entry 49 (zipping only
+`index.js`, not the flattened `lib/` copy) was deliberately avoided this time by rebuilding the
+full package directory again.
+
+**3. Mock/demo data was cluttering every non-1.3-cutover dashboard page.** Per explicit request,
+`dashboard-data.js`'s `buildSeed()` — previously ~200 lines hand-building 13 demo orders, 6
+demo clients, 8 demo inventory SKUs, 3 demo blockers, and fake metrics rollups — now returns
+empty collections for everything except `mailboxes` (kept as bare folder scaffolding since
+`email.html`'s layout assumes at least one mailbox exists; no messages are seeded). A fresh
+`localStorage` blob is now genuinely empty rather than demo-populated. This does NOT retroactively
+clear an existing browser's already-seeded blob — that's a same-origin `localStorage` key
+(`kcmps_dashboard_mock_v1`) this session cannot reach into someone else's browser to delete;
+clearing it requires running `localStorage.removeItem("kcmps_dashboard_mock_v1")` in that
+browser's own console (or DevTools → Application → Local Storage), then reloading.
+
+**4. Advancing a real order's line item on `job-detail.html` never showed up on `today.html`.**
+`getQueues()`/`getTodayNumbers()` (`dashboard-data.js`) only ever read `state.orders` off the
+localStorage mock via `load()` — a real order advanced through `advanceLineItem()` writes
+straight to DynamoDB and never touches that blob, so Today's queues/tiles had no way to reflect
+it. Both are now `async`, calling the same `getAllOrders()` used by `jobs.html` (which already
+merges live API orders with any mock-only manual orders) instead of `state.orders` directly —
+added `allLineItemsFrom(orders)` as the shared helper (`allLineItems(state)` is now a thin
+wrapper over it). `today.html`'s `renderQueues()`/`renderTiles()` were made `async` to match, and
+its CSP got the same `connect-src` addition `jobs.html`/`job-detail.html` already have. The
+day/month metrics rollups (spoilage, cash collected, output yesterday) still come from
+`state.metrics` — no live `METRIC#` rollup Lambda exists yet (`backend/jobs/streams-handler.js`'s
+header notes this as deferred) — so those numbers stay a known, accepted mock-only gap, now that
+they default to zero instead of seeded fake values.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

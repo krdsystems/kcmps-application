@@ -12,6 +12,7 @@ const keys = require("./keys");
 const { buildEvent } = require("./events");
 const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
+const { deriveOrderStatus } = require("./order-status");
 
 // ---- money.js ----
 
@@ -135,7 +136,8 @@ test("ACTIVE_STATUSES excludes exactly the terminal statuses", () => {
   }
   const active = [
     STATUS.QUOTED, STATUS.PRICED, STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.CONFIRMED,
-    STATUS.PAYMENT_REJECTED, STATUS.SCHEDULED, STATUS.IN_PRODUCTION, STATUS.QC, STATUS.DISPATCH,
+    STATUS.PAYMENT_REJECTED, STATUS.SCHEDULED, STATUS.IN_PRODUCTION, STATUS.QC,
+    STATUS.READY_FOR_DISPATCH, STATUS.DISPATCHED,
   ];
   for (const s of active) {
     assert.equal(ACTIVE_STATUSES.has(s), true, `${s} should be active`);
@@ -152,6 +154,14 @@ test("getGroups handles both the comma-string and array forms of cognito:groups"
   assert.deepEqual(getGroups(null), []);
 });
 
+test("getGroups strips API Gateway HTTP API's bracketed list-claim serialization", () => {
+  assert.deepEqual(getGroups({ "cognito:groups": "[Admin]" }), ["Admin"]);
+  assert.deepEqual(getGroups({ "cognito:groups": "[Admin, Sales]" }), ["Admin", "Sales"]);
+  // Confirmed live (2026-07-31): API Gateway actually space-separates, not
+  // comma-separates, multi-value claims — "[Staff Admin]", not "[Staff, Admin]".
+  assert.deepEqual(getGroups({ "cognito:groups": "[Staff Admin]" }), ["Staff", "Admin"]);
+});
+
 test("hasRole checks membership regardless of cognito:groups form", () => {
   assert.equal(hasRole({ "cognito:groups": "Production,Admin" }, ROLES.ADMIN), true);
   assert.equal(hasRole({ "cognito:groups": ["Production"] }, ROLES.ADMIN), false);
@@ -163,4 +173,35 @@ test("isStaff is true for any non-Customer role, false for Customer-only or no c
   assert.equal(isStaff({ "cognito:groups": "Finance,Admin" }), true);
   assert.equal(isStaff({ "cognito:groups": "Customer" }), false);
   assert.equal(isStaff({}), false);
+});
+
+// ---- order-status.js ----
+
+test("deriveOrderStatus: all Delivered -> Delivered", () => {
+  assert.equal(deriveOrderStatus(["Delivered", "Delivered"]), "Delivered");
+});
+
+test("deriveOrderStatus: one Delivered + one still active -> Partially Fulfilled", () => {
+  assert.equal(deriveOrderStatus(["Delivered", "In Production"]), "Partially Fulfilled");
+});
+
+test("deriveOrderStatus: Delivered alongside a terminal non-Delivered status is NOT partial", () => {
+  // A cancelled/expired line item isn't "still being fulfilled" — the mixed-cart
+  // worked example (dashboard-data.js) never exercises this combination directly,
+  // but the rule mirrors dashboard-data.js's deriveOrderStatus() exactly.
+  assert.equal(deriveOrderStatus(["Delivered", "Cancelled"]), "Delivered");
+});
+
+test("deriveOrderStatus: any Pending Payment Verification line wins over other active statuses", () => {
+  assert.equal(deriveOrderStatus(["Pending Payment Verification", "In Production"]), "Pending Payment Verification");
+});
+
+test("deriveOrderStatus: Quoted-only -> Awaiting Quote, Priced-only -> Awaiting Payment", () => {
+  assert.equal(deriveOrderStatus(["Quoted"]), "Awaiting Quote");
+  assert.equal(deriveOrderStatus(["Priced"]), "Awaiting Payment");
+});
+
+test("deriveOrderStatus: falls back to the single status, or Unknown for an empty list", () => {
+  assert.equal(deriveOrderStatus(["Confirmed"]), "Confirmed");
+  assert.equal(deriveOrderStatus([]), "Unknown");
 });

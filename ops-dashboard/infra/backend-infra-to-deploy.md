@@ -257,6 +257,10 @@ them alongside the checkout flow, not this dashboard:
   `payment` object in the first place (pre-signed S3 upload URL for the
   screenshot, writes `gcashRefNumber`/`claimedAmount`). `api-verify-payment.js`
   above is the Lambda that *reads and updates* what this one wrote.
+  **Drafted 2026-07-31** at
+  [`backend/checkout/submit-payment-proof.js`](../../backend/checkout/submit-payment-proof.js)
+  (alongside `create-order.js`, the checkout Lambda itself) — not deployed, and not part of
+  this dashboard build; see `backend/CLAUDE.md`'s `checkout/` section.
 - **`payCustomItem`** — the customer-facing endpoint hit via the emailed
   per-line-item payment link once staff prices a `custom` item (`Priced` →
   `Confirmed`). On the dashboard side, that transition is just a plain

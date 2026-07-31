@@ -1,0 +1,13 @@
+{
+  "name": "kcmps-checkout-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/checkout/*.js (Module 1 — Sales & Order, the customer-facing checkout half). Deploy each .js file as its own Lambda function (or bundle with esbuild/Lambda layers) — this package.json is a single reference for `npm install` before zipping/uploading. Also requires ../lib (backend/lib) alongside on the Lambda's module path.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "@aws-sdk/client-ses": "^3.600.0",
+    "aws-jwt-verify": "^4.0.1"
+  }
+}

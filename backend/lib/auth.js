@@ -33,16 +33,21 @@ function extractClaims(event) {
     event.requestContext.authorizer.jwt && event.requestContext.authorizer.jwt.claims) || null;
 }
 
-// API Gateway's JWT authorizer flattens multi-value `cognito:groups` into a
-// comma-joined string; a locally-constructed claims object (tests, local
-// dev) may already hand it over as an array. Handle both, like
-// api-verify-payment.js / api-get-orders.js already do inline.
+// API Gateway's HTTP API JWT authorizer flattens a multi-value
+// `cognito:groups` claim into a bracketed, SPACE-separated string —
+// confirmed live: "[Staff Admin]" for two groups, "[Admin]" for one (not
+// a comma-join, despite that being the more commonly-documented
+// behavior). Strip one optional wrapping "[" / "]" then split on any
+// run of commas/whitespace, so a plain comma-string (tests, local dev)
+// still works too. A locally-constructed claims object may already hand
+// it over as a real array, handled first.
 function getGroups(claims) {
   const groups = claims && claims["cognito:groups"];
   if (!groups) return [];
   if (Array.isArray(groups)) return groups;
   if (typeof groups === "string") {
-    return groups.split(",").map((g) => g.trim()).filter(Boolean);
+    const stripped = groups.replace(/^\[/, "").replace(/\]$/, "");
+    return stripped.split(/[,\s]+/).map((g) => g.trim()).filter(Boolean);
   }
   return [];
 }

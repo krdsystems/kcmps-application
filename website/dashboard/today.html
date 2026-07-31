@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Today — KCMPS Ops</title>
 <link rel="stylesheet" href="../styles.css" />
 <link rel="stylesheet" href="dashboard.css" />
@@ -87,8 +87,8 @@
     { key: "readyForDispatch", title: "Ready for Dispatch", empty: "Nothing waiting on handoff." },
   ];
 
-  function renderQueues() {
-    const queues = KCMPS_DASH.getQueues();
+  async function renderQueues() {
+    const queues = await KCMPS_DASH.getQueues();
     const grid = document.getElementById("queue-grid");
     grid.innerHTML = QUEUE_DEFS.map((def) => {
       const items = queues[def.key] || [];
@@ -126,8 +126,8 @@
     return `<div class="card tile${tone ? " " + tone : ""}"><div class="t-label">${label}</div><div class="t-value">${value}</div>${sub ? `<div class="t-sub">${sub}</div>` : ""}</div>`;
   }
 
-  function renderTiles() {
-    const n = KCMPS_DASH.getTodayNumbers();
+  async function renderTiles() {
+    const n = await KCMPS_DASH.getTodayNumbers();
     const tiles = [
       tile("Jobs due today", n.dueToday, `${n.dueTodayAtRisk} not yet in production`, n.dueTodayAtRisk > 0 ? "bad" : "good"),
       tile("Output yesterday", n.outputYesterdayUnits + " units", n.outputYesterdayJobs + " jobs completed"),
@@ -185,6 +185,7 @@
   renderBlockers();
   renderStock();
 })();
+
 </script>
 </body>
 </html>

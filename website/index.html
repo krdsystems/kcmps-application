@@ -11,14 +11,18 @@
      load from and — importantly — where the page may SEND data
      (connect-src), so an injected script cannot exfiltrate tokens to
      an attacker-controlled host. Origins are the exact ones this page
-     already uses: Cognito (token exchange), Google Fonts, and the
-     base44 image CDN. Referrer-Policy keeps the OAuth ?code=/&state=
-     in the redirect URL from leaking to third parties via Referer.
+     already uses: Cognito (token exchange), Google Fonts, the base44
+     image CDN, and the checkout API (store.js's submitOrder(), see
+     docs/roadmap.md Milestone 1.1 — kcmps-checkout-api, HTTP API id
+     6msg2uho6c in ap-southeast-1, routes POST /orders and
+     POST /orders/{orderId}/payment-proof). Referrer-Policy keeps the
+     OAuth ?code=/&state= in the redirect URL from leaking to third
+     parties via Referer.
      NOTE: frame-ancestors and X-Frame-Options are ignored in a <meta>
      tag — set them as real response headers at CloudFront for full
      clickjacking protection.
      ============================================================ -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 <title>KCMPS — Kaalyados Creatives</title>
@@ -430,12 +434,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </button>
 
     <!-- Auth area: swaps between the "Login / Sign-up" button and the
-         logged-in user's name + logout. Populated by the auth script.
-         Login/Sign-up is disabled for now (feature under development) —
-         title lives on the wrapping span, not the disabled button itself,
-         since disabled elements don't reliably fire hover/title in Firefox. -->
-    <span id="auth-area" title="Currently under development">
-      <button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>
+         logged-in user's name + logout. Populated by the auth script. -->
+    <span id="auth-area">
+      <button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>
     </span>
   </div>
 </nav>
@@ -2105,9 +2106,8 @@ async function exchangeCodeForTokens(code) {
 /* ---- UI updates (site design system) ---- */
 function renderLoggedOut() {
   const area = document.getElementById("auth-area");
-  area.title = "Currently under development";
   area.innerHTML =
-    '<button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>';
+    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
   document.getElementById("auth-btn").addEventListener("click", startLogin);
   document.getElementById("dashboard-link").classList.add("is-hidden");
 }

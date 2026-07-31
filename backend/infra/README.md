@@ -97,24 +97,29 @@ aws cognito-idp admin-list-groups-for-user \
 | `GSI1Name` output (`GSI1`) | Every Lambda that queries the sparse status index (`api-get-orders.js`, `api-advance-line-item.js`'s queue reads, `expire-pending-orders.js`) |
 | Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) | JWT `cognito:groups` claim checks inside every `api-*.js` Lambda and the HTTP API's JWT authorizer setup (§4 of `backend-infra-to-deploy.md`) — dashboard routes currently gate on `Staff`-shaped access; map that check to "any of Production/Sales/Finance/Admin" when wiring the authorizer |
 
-### Legacy groups — deprecate, don't reuse
+### Legacy groups — `Customers` retired, `Staff` still vital (2026-07-31)
 
-The pool already had two groups from before this stack existed:
-`Staff` (precedence 10 — what `dashboard-shell.js` currently checks
-client-side) and `Customers` (precedence 100, plural). Both are superseded
-by this template's groups (`Admin` and `Customer` respectively) and should
-be **retired, not built on** — don't add new users to `Staff`/`Customers`,
-and don't design new authorization logic around them. Migration is two
-steps, done once real users are already sorted into the new groups:
+The pool had two groups from before this stack existed: `Staff` (precedence
+10) and `Customers` (precedence 100, plural).
 
-1. Move any users still in `Staff` into the appropriate new group
-   (`Admin`/`Production`/`Sales`/`Finance` — `Staff` doesn't distinguish
-   role, so this requires a human decision per user) and any users in
-   `Customers` into `Customer`.
-2. Update `dashboard-shell.js`'s client-side gate (see root `CLAUDE.md`'s
-   Cognito row) to check the new group set, then delete the `Staff` and
-   `Customers` groups from the pool (`aws cognito-idp delete-group`) —
-   outside this template's scope since it never created them.
+**`Customers` (plural) is now retired** — its one real member (a
+Google-federated customer account) was moved into `Customer` (singular) via
+`admin-add-user-to-group`/`admin-remove-user-from-group`, confirmed empty via
+`list-users-in-group`, then deleted with `aws cognito-idp delete-group`.
+
+**`Staff` is NOT retired — it's still load-bearing, do not delete it.**
+Two things depend on it today: `dashboard-shell.js`'s client-side gate
+(`requireStaffAuth()`) checks for the literal `"Staff"` group and redirects
+non-members to `?dashboard=forbidden`, and every Milestone 1.3 Lambda
+(`backend/lib/auth.js`'s `isStaff()` check, OR'd with the legacy group — see
+`get-orders.js`/`advance-line-item.js`/`verify-payment.js`) accepts it as a
+fallback. Both real staff accounts (`admin.kcmps.cognito`,
+`admin.kcmps.cognito.test`) are correctly in **both** `Staff` and `Admin` —
+that dual membership is the deliberate transitional state, not a mistake to
+"fix" by removing one. Only retire `Staff` once `dashboard-shell.js`'s gate
+is rewritten to check the new role set instead, and every account that needs
+dashboard access has been confirmed to already hold one of
+`Admin`/`Production`/`Sales`/`Finance`.
 
 ## Rollback
 
@@ -149,6 +154,220 @@ stack. If you actually want the table gone:
 Do this only if you're certain — there is no CloudFormation undo once the
 table is gone, and PITR backups expire per DynamoDB's normal retention
 window, not indefinitely.
+
+## Payment uploads bucket (not part of this CloudFormation stack)
+
+`kcmps-payment-uploads-est-2026` — the private S3 bucket
+`backend/checkout/submit-payment-proof.js`'s `UPLOADS_BUCKET` env var will point at once that
+Lambda is deployed. **Provisioned manually via CLI (2026-07-31), not CloudFormation** — this
+is a plain, standalone bucket with no other stack dependencies, so a template felt like
+ceremony for one resource; if it ever grows a lifecycle policy tied to other resources
+(matching the design-asset-library bucket's planned lifecycle, `docs/roadmap.md` "Parallel
+track — Design Asset Library"), reconsider folding it into a template then.
+
+- Region: `ap-southeast-1` (same as the `kcmps` table and the production S3 bucket — no
+  cross-region data transfer).
+- Public access fully blocked (`BlockPublicAcls`/`IgnorePublicAcls`/`BlockPublicPolicy`/
+  `RestrictPublicBuckets`, all `true`) and ACLs disabled entirely
+  (`ObjectOwnership: BucketOwnerEnforced`) — screenshots of GCash payment confirmations are
+  never public, unlike the storefront's asset bucket.
+- Versioning enabled, SSE-S3 default encryption, noncurrent versions expire after 90 days
+  (a superseded/re-uploaded screenshot has no reason to live longer than that once its order's
+  payment is verified or rejected).
+- **No bucket policy or IAM grant applied yet** — that's the Lambda execution role's job at
+  actual deploy time (see `backend-infra-to-deploy.md` §7's IAM sketch: `s3:PutObject` scoped
+  to this bucket's ARN, presigned-URL generation needs no broader grant than that).
+- **CORS (added 2026-07-31, found missing during 1.3 live verification)**: the checkout flow's
+  `submit-payment-proof.js` hands the browser a presigned `PUT` URL and the browser uploads
+  the screenshot directly to this bucket's S3 origin, cross-origin from the storefront — that
+  requires a bucket-level CORS rule, which didn't exist (the DynamoDB write succeeded every
+  time; only the direct-to-S3 `PUT` was silently blocked, surfacing to the customer as
+  "Failed to fetch" despite their order having actually saved — see `docs/history.md` entry
+  51). Rule: `AllowedMethods: ["PUT"]`, `AllowedOrigins` matching the checkout API's own CORS
+  origin set (`kcmps.com`/`www.kcmps.com`/`site.kcmps.com`/`dev.kcmps.com`/`localhost:5500`/
+  `localhost:5501`), `AllowedHeaders: ["content-type"]`.
+  ```bash
+  aws s3api put-bucket-cors --bucket kcmps-payment-uploads-est-2026 --cors-configuration '{"CORSRules":[{"AllowedOrigins":["https://kcmps.com","https://www.kcmps.com","https://site.kcmps.com","https://dev.kcmps.com","http://localhost:5500","http://localhost:5501"],"AllowedMethods":["PUT"],"AllowedHeaders":["content-type"],"MaxAgeSeconds":300}]}' --profile kcmps-claude-priv
+  ```
+- **`kcmps-staff-api-lambda-role` also has `s3:GetObject`** on
+  `kcmps-payment-uploads-est-2026/payments/*` (added 2026-07-31, inline policy
+  `kcmps-staff-api-s3-read`) — `get-orders.js` presigns a 15-minute GET URL for
+  `order.payment.screenshotRef` so `job-detail.html` can render the actual screenshot image
+  instead of a plain `s3://` string (see `docs/history.md` entry 51).
+
+Verify:
+
+```bash
+aws s3api get-bucket-location --bucket kcmps-payment-uploads-est-2026 --profile kcmps-claude-priv
+aws s3api get-public-access-block --bucket kcmps-payment-uploads-est-2026 --profile kcmps-claude-priv
+aws s3api get-bucket-cors --bucket kcmps-payment-uploads-est-2026 --profile kcmps-claude-priv
+```
+
+## Checkout Lambdas — deployed (2026-07-31)
+
+`kcmps-create-order` and `kcmps-submit-payment-proof`, both `nodejs20.x`/`arm64` in
+`ap-southeast-1`, built from `backend/checkout/*.js` (see that folder's header comments for
+what each does). Neither is reachable from the internet yet — no API Gateway route exists, so
+they can only be invoked directly (`aws lambda invoke`) or by whatever wires the storefront to
+them next.
+
+**Execution role**: `kcmps-checkout-lambda-role`, least-privilege regardless of what the
+deploying profile (`kcmps-claude-priv`) itself can do — an inline policy scoped to:
+- `dynamodb:GetItem`/`Query`/`PutItem`/`UpdateItem`/`TransactWriteItems` on the `kcmps` table
+  and its indexes only (not `*`)
+- `s3:PutObject` on `kcmps-payment-uploads-est-2026/payments/*` only
+- `ses:SendEmail` on the `kcmps.com` identity only (unused today — no `FROM_EMAIL` env var is
+  set on `kcmps-submit-payment-proof` yet, since SES is still sandboxed; the permission is
+  there for when it's turned on, not because it's needed now)
+- CloudWatch Logs (`CreateLogGroup`/`CreateLogStream`/`PutLogEvents`)
+
+**Packaging**: each function is a self-contained zip — `index.js` (the handler, `require`
+rewritten from `../lib` to `./lib` for the packaged layout), a flattened copy of `backend/lib/`
+(minus `lib.test.js`), and its own `node_modules` from a small per-function `package.json`. No
+Lambda Layer — not worth the setup for two small functions; revisit if a third checkout Lambda
+shows up.
+
+**Smoke test performed, then cleaned up**: invoked `kcmps-create-order` with a synthetic guest
+cart, confirmed the `ORDER#`/`LINEITEM#`/`EVENT#` items and `GSI1PK`/`GSI1SK` landed correctly
+via a live `dynamodb query`, then invoked `kcmps-submit-payment-proof` against that same order
+and confirmed the `payment` sub-object and a working presigned S3 URL. Deleted all 3 test items
+afterward (`dynamodb delete-item` × 3) — the table's `ItemCount` is back to what it was before.
+
+Redeploy after a code change (no infra change needed — same role, same env vars):
+
+```bash
+cd backend/checkout
+# rebuild the zip the same way as the first deploy (see git history / this README's own
+# packaging notes above), then:
+aws lambda update-function-code \
+  --function-name kcmps-create-order \
+  --zip-file fileb://create-order.zip \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+## API Gateway — deployed (2026-07-31)
+
+`kcmps-checkout-api` — an HTTP API (not REST API, per `backend-infra-to-deploy.md` §4's
+cheaper-and-sufficient recommendation), id `6msg2uho6c`, `ap-southeast-1`, base URL
+`https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com`.
+
+| Method | Route | Integration |
+|---|---|---|
+| POST | `/orders` | `kcmps-create-order` (payload format 2.0) |
+| POST | `/orders/{orderId}/payment-proof` | `kcmps-submit-payment-proof` (payload format 2.0) |
+
+**No JWT authorizer on either route, deliberately** — both must stay publicly callable since
+guest checkout is a hard requirement (see `create-order.js`'s header). Each Lambda does its own
+*optional* Bearer-token verification internally; API Gateway here is just the public front
+door, not an auth gate. (This is different from the dashboard's staff-only routes in
+`backend-infra-to-deploy.md` §4, which *do* need a JWT authorizer once built — don't copy this
+API's no-authorizer pattern over there.)
+
+**CORS**: `AllowOrigins` covers the production storefront (`kcmps.com`, `www.kcmps.com`,
+`site.kcmps.com`), the dev domain (`dev.kcmps.com`), and two local-dev ports —
+`localhost:5500` (the port documented in the main `README.md`/`CLAUDE.md` and registered with
+Cognito) and `localhost:5501` (this repo's actual `.claude/launch.json` default, which doesn't
+match that documentation — a pre-existing inconsistency, not something this change introduced;
+worth reconciling those two docs at some point, but out of scope here). `AllowMethods: [POST,
+OPTIONS]`, `AllowHeaders: [content-type, authorization]`.
+
+**Stage**: `$default` with auto-deploy — a route change takes effect immediately, no separate
+deploy step.
+
+**Lambda invoke permissions**: each function has a `lambda:AddPermission` grant scoped to this
+API's ARN + its specific route path (not a wildcard `*` route), so neither Lambda is invocable
+via some other API Gateway that happened to get created later.
+
+**index.html's CSP** `connect-src` includes this API's origin (see the `<head>` comment
+pointing back here). If this API is ever torn down and recreated, its id changes — update both
+the CSP and `store.js`'s `CHECKOUT_API_URL` together, they're documented as a pair in each
+file's own comments.
+
+Recreate the API from scratch if needed (routes/integrations/permissions, in order):
+
+```bash
+API_ID=$(aws apigatewayv2 create-api --name kcmps-checkout-api --protocol-type HTTP \
+  --cors-configuration '{"AllowOrigins":["https://kcmps.com","https://www.kcmps.com","https://site.kcmps.com","https://dev.kcmps.com","http://localhost:5500","http://localhost:5501"],"AllowMethods":["POST","OPTIONS"],"AllowHeaders":["content-type","authorization"],"MaxAge":300}' \
+  --region ap-southeast-1 --profile kcmps-claude-priv --query ApiId --output text)
+
+for FN in kcmps-create-order kcmps-submit-payment-proof; do
+  aws apigatewayv2 create-integration --api-id "$API_ID" --integration-type AWS_PROXY \
+    --integration-uri "arn:aws:lambda:ap-southeast-1:600929977538:function:$FN" \
+    --payload-format-version 2.0 --region ap-southeast-1 --profile kcmps-claude-priv
+done
+# then create-route + add-permission for each (see git history for the exact route keys/ARNs used)
+aws apigatewayv2 create-stage --api-id "$API_ID" --stage-name '$default' --auto-deploy \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+## Staff API Lambdas, Streams, cron, and the JWT authorizer — deployed (2026-07-31)
+
+**Execution roles** (least-privilege, independent of each other and of the checkout role):
+- `kcmps-staff-api-lambda-role` (`kcmps-get-orders`, `kcmps-advance-line-item`,
+  `kcmps-verify-payment`): `dynamodb:{Get,Put,Update}Item`/`Query`/`Scan`/`TransactWriteItems`
+  on the `kcmps` table + GSI1, CloudWatch Logs. **`PutItem` is required alongside
+  `TransactWriteItems`** — DynamoDB needs the constituent action permission for each operation
+  inside a transaction, not just the transact-level action; this was missed on the first pass
+  and surfaced as a live `AccessDeniedException` on the first real `verifyPayment` call (it
+  writes an `EVENT#` item via `Put` inside its transaction) — fixed by adding `PutItem` to the
+  role.
+- `kcmps-jobs-lambda-role` (`kcmps-streams-handler`, `kcmps-expire-pending-orders`): same table
+  permissions (including `PutItem`) plus `dynamodb:{DescribeStream,GetRecords,GetShardIterator,
+  ListStreams}` scoped to the table's stream ARN, and `ses:SendEmail`/`SendRawEmail` scoped to
+  the `kcmps.com` identity (unused today, same "sandboxed SES" reasoning as the checkout role).
+
+**DynamoDB Streams**: an event source mapping on `kcmps-streams-handler` against the
+foundation stack's `TableStreamArn` output, `STARTING_POSITION=LATEST`, batch size 10, filter
+criteria restricting it to records where `SK` begins with `LINEITEM#` (so it never fires on
+`META`/`EVENT#` writes).
+
+**EventBridge cron**: `kcmps-expire-pending-orders-schedule`, `rate(15 minutes)`, targets
+`kcmps-expire-pending-orders` with a scoped `lambda:AddPermission` grant (`source-arn` = the
+rule's ARN, not a wildcard).
+
+**API Gateway**: added to the *same* `kcmps-checkout-api` (`6msg2uho6c`) rather than a new API
+— a Cognito JWT authorizer (`kcmps-cognito-jwt`, `Issuer` = the user pool's issuer URL,
+`Audience` = the app client id `95rrk0mflffentqdiomg1fipc`), and 4 new routes, each with that
+authorizer attached (unlike the two 1.1/1.2 routes, which stay authorizer-free for guest
+checkout):
+
+| Method | Route | Integration |
+|---|---|---|
+| GET | `/orders` | `kcmps-get-orders` |
+| POST | `/line-items/{lineItemId}/advance` | `kcmps-advance-line-item` |
+| POST | `/orders/{orderId}/verify-payment` | `kcmps-verify-payment` |
+| POST | `/orders/{orderId}/reject-payment` | `kcmps-verify-payment` |
+
+CORS `AllowMethods` extended to `[GET, POST, OPTIONS]` (was `[POST, OPTIONS]`). Each Lambda got
+its own scoped `lambda:AddPermission` (`source-arn` = this API's ARN + the specific route path).
+
+**The JWT authorizer's claims shape is not what the more commonly-documented behavior
+suggests.** A multi-value `cognito:groups` claim arrives at
+`event.requestContext.authorizer.jwt.claims["cognito:groups"]` as a bracketed,
+**space**-separated string — confirmed live: `"[Staff Admin]"` for two groups, `"[Admin]"` for
+one. `backend/lib/auth.js`'s `getGroups()` handles this (strips the brackets, splits on
+`/[,\s]+/`); if you're debugging a "staff can't see any orders" report, check this first before
+assuming an IAM/role problem.
+
+**Dashboard's own client-side gate is separate and still checks the legacy group.**
+`dashboard-shell.js`'s `mount()` redirects to `index.html?dashboard=forbidden` unless the
+caller's `cognito:groups` includes the literal string `"Staff"` — this is a UI convenience
+gate, not a security boundary (the Lambdas' own `isStaff()`/legacy-group check is the real
+one), but a test/staff account needs to be in **both** `Staff` (dashboard UI gate) and one of
+`Production`/`Sales`/`Finance`/`Admin` (if you want `isStaff()` to pass without relying on the
+legacy-group fallback) until `Staff` is formally retired (see "Legacy groups" above).
+
+Verified end-to-end with a real, throwaway Cognito test user (created via
+`admin-create-user`/`admin-set-user-password`/`admin-add-user-to-group`/`admin-initiate-auth`,
+deleted after): a real order fetched, its GCash payment verified (`Pending Payment
+Verification → Confirmed`), its line item advanced twice more (`→ Scheduled → In Production`),
+and `orderStatus`/GSI1 both confirmed to catch up correctly via the Streams handler a few
+seconds later.
+
+Redeploy any of the 5 Lambdas after a code change the same way as the checkout Lambdas
+(rebuild the zip — `index.js` + a flattened `lib/` copy + `node_modules` from that folder's own
+`package.json` — then `aws lambda update-function-code`); no infra change needed unless the
+route/role/permission set itself changes.
 
 ## Re-running / updates
 

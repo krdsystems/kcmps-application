@@ -14,4 +14,5 @@ module.exports = {
   ...require("./events"),
   ...require("./auth"),
   ...require("./gsi"),
+  ...require("./order-status"),
 };

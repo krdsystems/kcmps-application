@@ -180,3 +180,50 @@ select.input { appearance: auto; }
 .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
 
 .empty-state { text-align: center; padding: var(--space-8) var(--space-3); color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+/* — email panel (email.html) —
+   Two panes inside the shell: message list + read pane. Both scroll
+   independently, so the container needs a real height. `.dash-content` caps
+   width at 1320px and `.q-list` caps height at 320px — both actively fight a
+   full-height mail layout, so both are overridden here, SCOPED so no other
+   page's queue cards regress. The calc() below subtracts the sticky topbar +
+   .dash-content padding + the toolbar row; it is a measured constant, not a
+   guess — re-check it if .dash-topbar padding changes. */
+/* the generous bottom padding .dash-content uses for scrolling pages would
+   push this fixed-height layout past the viewport for no reason */
+.mail-wide { max-width: none; display: flex; flex-direction: column; padding-bottom: var(--space-4); }
+.mail-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.mail-toolbar select.input { max-width: 260px; }
+.mail-toolbar .mail-search { max-width: 280px; margin-left: auto; }
+.mail-3pane { display: grid; grid-template-columns: 340px 1fr; gap: var(--space-3); height: calc(100dvh - 136px); min-height: 420px; }
+.mail-list, .mail-read { overflow-y: auto; padding: var(--space-3); min-height: 0; }
+.mail-list .q-list { max-height: none; }
+.mail-list .q-item { min-width: 0; }
+.mail-list .q-item .q-line1 > span:first-child,
+.mail-list .q-item .q-line2 > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-item.is-open { background: var(--color-accent-2-100); border-left-color: var(--color-accent-2); }
+.mail-body { white-space: pre-wrap; word-break: break-word; font-family: var(--font-body); font-size: 13.5px; line-height: 1.6; margin: 0; }
+.mail-reply { display: grid; gap: 8px; margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-divider); }
+.mail-notice { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--color-accent-100); color: var(--color-accent-800); margin-bottom: var(--space-3); }
+.mail-back { display: none; }
+
+/* .badge-soon in ../styles.css is neutral-on-neutral — near-invisible on the
+   dark sidebar. Overridden HERE rather than in styles.css so the storefront is
+   untouched and no design-system mirror update is required. */
+.dash-navlink.is-soon { opacity: 0.62; }
+.dash-navlink.is-soon:hover, .dash-navlink.is-soon.is-active { opacity: 1; }
+.dash-navlink.is-soon .badge-soon { margin-left: auto; background: color-mix(in srgb, #fff 18%, transparent); color: #fff; border-color: transparent; }
+
+@media (max-width: 900px) {
+  /* the sidebar is an off-canvas drawer at this width — 240px freed up */
+  .mail-3pane { grid-template-columns: 280px 1fr; height: calc(100dvh - 172px); }
+}
+@media (max-width: 760px) {
+  /* one pane at a time; .show-read is toggled from email.html */
+  .mail-3pane { grid-template-columns: 1fr; }
+  .mail-3pane .mail-read { display: none; }
+  .mail-3pane.show-read .mail-list { display: none; }
+  .mail-3pane.show-read .mail-read { display: block; }
+  .mail-toolbar .mail-search { margin-left: 0; max-width: none; flex: 1 1 100%; }
+  .mail-back { display: inline-flex; margin-bottom: var(--space-2); }
+}

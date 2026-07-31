@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Email — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content mail-wide">
+      <div class="mail-toolbar">
+        <label for="mb-select" class="hint" style="font-size:12.5px">Mailbox</label>
+        <select class="input" id="mb-select"></select>
+        <span class="queue-count" id="mb-unread">0</span>
+        <input type="search" class="input mail-search" id="mail-search" placeholder="Search subject or sender" />
+      </div>
+
+      <div class="mail-3pane" id="mail-3pane">
+        <aside class="card mail-list"><div class="q-list" id="mail-list"></div></aside>
+        <section class="card mail-read" id="mail-read"></section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("email");
+  if (!claims) return;
+  const { escapeHtml, fmtDateTime } = KCMPS_DASH_SHELL;
+
+  /* dashboard-data.js is deliberately identity-free, so the personal mailbox
+     is seeded with a fixed address. The signed-in identity is used HERE, and
+     only as a display label. */
+  const myName = claims.name || claims.email || "Staff";
+
+  let currentMailboxId = null;
+  let currentMessageId = null;
+  let search = "";
+  let replyDraft = "";
+
+  const pane = document.getElementById("mail-3pane");
+  const listEl = document.getElementById("mail-list");
+  const readEl = document.getElementById("mail-read");
+  const selectEl = document.getElementById("mb-select");
+  const unreadEl = document.getElementById("mb-unread");
+  const searchEl = document.getElementById("mail-search");
+
+  function relAge(iso) {
+    const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (mins < 60) return mins + "m";
+    if (mins < 60 * 24) return Math.round(mins / 60) + "h";
+    return Math.round(mins / 1440) + "d";
+  }
+  function senderOf(m) { return m.from.name || m.from.address; }
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+    return (Math.round(bytes / 104857.6) / 10) + " MB";
+  }
+
+  /* ---- mailbox selector ---- */
+  function renderMailboxSelector() {
+    const boxes = KCMPS_DASH.getMailboxes();
+    if (!currentMailboxId) currentMailboxId = boxes[0].id;
+    selectEl.innerHTML = boxes.map((mb) => {
+      const label = mb.kind === "personal" ? myName + " — " + mb.address : mb.label + " — " + mb.address;
+      const badge = mb.unreadCount ? " (" + mb.unreadCount + ")" : "";
+      return `<option value="${escapeHtml(mb.id)}"${mb.id === currentMailboxId ? " selected" : ""}>${escapeHtml(label)}${badge}</option>`;
+    }).join("");
+    const active = boxes.find((mb) => mb.id === currentMailboxId);
+    unreadEl.textContent = active ? active.unreadCount + " unread" : "0 unread";
+    unreadEl.classList.toggle("has-red", !!(active && active.unreadCount));
+  }
+
+  /* ---- message list ---- */
+  function renderList() {
+    const res = KCMPS_DASH.getMessages(currentMailboxId, { search });
+    if (!res.messages.length) {
+      listEl.innerHTML = '<p class="q-empty">' + (search ? "No messages match that search." : "Inbox is empty.") + "</p>";
+      return;
+    }
+    listEl.innerHTML = res.messages.map((m) => {
+      const cls = "q-item" + (m.flags.seen ? "" : " sla-warn") + (m.messageId === currentMessageId ? " is-open" : "");
+      const marks = m.flags.answered ? "replied" : "";
+      return (
+        `<div class="${cls}" data-msg="${escapeHtml(m.messageId)}" role="button" tabindex="0">` +
+        `<div class="q-line1"><span>${escapeHtml(senderOf(m))}</span><span class="q-age">${relAge(m.date)}</span></div>` +
+        `<div class="q-line2"><span>${escapeHtml(m.subject)} — ${escapeHtml(m.snippet)}</span><span>${marks}</span></div>` +
+        "</div>"
+      );
+    }).join("");
+
+    listEl.querySelectorAll("[data-msg]").forEach((row) => {
+      const open = () => openMessage(row.dataset.msg);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+  }
+
+  function openMessage(messageId) {
+    currentMessageId = messageId;
+    replyDraft = "";
+    KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
+    pane.classList.add("show-read");
+    renderMailboxSelector();
+    renderList();
+    renderRead();
+  }
+
+  /* ---- read pane ----
+     SAFETY: every field below is attacker-controlled (a display name, a
+     subject, an attachment filename), so all of it goes through escapeHtml.
+     v1 deliberately renders NOTHING but plain text:
+       - HTML parts are never rendered (an iframe is ruled out in
+         docs/roadmap.md, and a hand-maintained sanitizer is not worth the
+         risk for a triage panel) — a notice is shown instead
+       - remote images are never loaded; the page CSP (img-src 'self' data:)
+         fails closed anyway, and remote images are tracking pixels
+       - attachments are metadata-only; there is no download path yet
+       - URLs are not auto-linkified; auto-<a> on arbitrary mail is a
+         phishing amplifier                                               ---- */
+  function renderRead() {
+    const mb = KCMPS_DASH.getMailboxes().find((x) => x.id === currentMailboxId);
+    const m = currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : null;
+    if (!m) {
+      readEl.innerHTML = '<div class="empty-state">Select a message to read it.</div>';
+      return;
+    }
+
+    const thread = KCMPS_DASH.getThread(currentMailboxId, m.threadId).filter((t) => t.messageId !== m.messageId);
+    const parts = [];
+
+    parts.push('<button type="button" class="btn btn-ghost mail-back" id="mail-back">&larr; Back to list</button>');
+
+    parts.push(
+      '<div class="ticket-head"><h2 style="margin:0;font-size:19px">' + escapeHtml(m.subject) + "</h2>" +
+      '<span class="status-pill ' + (m.flags.answered ? "st-good" : "st-neutral") + '">' +
+      (m.flags.answered ? "Replied" : "Read") + "</span></div>"
+    );
+
+    const meta =
+      '<div class="m-block"><h4>From</h4><p>' + escapeHtml(senderOf(m)) + "</p></div>" +
+      '<div class="m-block"><h4>Address</h4><p>' + escapeHtml(m.from.address) + "</p></div>" +
+      '<div class="m-block"><h4>Received</h4><p>' + fmtDateTime(m.date) + "</p></div>" +
+      (m.relatedOrderId
+        ? '<div class="m-block"><h4>Related order</h4><p><a href="job-detail.html?order=' +
+          encodeURIComponent(m.relatedOrderId) + '">' + escapeHtml(m.relatedOrderId) + "</a></p></div>"
+        : "");
+    parts.push('<div class="ticket-meta">' + meta + "</div>");
+
+    if (m.hasHtmlPart) {
+      parts.push('<p class="mail-notice">This message has an HTML version. KCMPS Ops shows the plain-text version only, and never loads remote images.</p>');
+    }
+
+    parts.push('<pre class="mail-body">' + escapeHtml(m.bodyText) + "</pre>");
+
+    if (m.attachments && m.attachments.length) {
+      parts.push(
+        '<div style="margin-top:var(--space-3)">' +
+        m.attachments.map((a) =>
+          '<span class="tag tag-outline">' + escapeHtml(a.filename) + " · " + fmtSize(a.sizeBytes) + "</span> "
+        ).join("") +
+        '<p class="q-empty">Attachments are listed for reference only — open them in your mail client for now.</p></div>'
+      );
+    }
+
+    if (thread.length) {
+      parts.push(
+        '<h3 style="margin:var(--space-5) 0 var(--space-2);font-size:14px">Earlier in this thread</h3><div class="timeline">' +
+        thread.map((t) =>
+          '<div class="timeline-row"><span class="tl-time">' + fmtDateTime(t.date) + "</span>" +
+          '<span class="tl-transition">' + escapeHtml(senderOf(t)) + "</span>" +
+          "<span>" + escapeHtml(t.snippet) + "</span></div>"
+        ).join("") + "</div>"
+      );
+    }
+
+    if (mb && mb.canSend) {
+      parts.push(
+        '<div class="mail-reply"><label class="hint" for="reply-body" style="font-size:12.5px">Reply to ' +
+        escapeHtml(senderOf(m)) + "</label>" +
+        '<textarea class="input" id="reply-body" rows="5" placeholder="Type your reply…">' + escapeHtml(replyDraft) + "</textarea>" +
+        '<div class="action-bar"><button type="button" class="btn btn-primary" id="reply-send">Send reply</button>' +
+        '<button type="button" class="btn btn-ghost" id="reply-discard">Discard</button></div></div>'
+      );
+    } else {
+      parts.push('<p class="mail-notice">This mailbox is read-only — replies are disabled.</p>');
+    }
+
+    readEl.innerHTML = parts.join("");
+    readEl.scrollTop = 0;
+
+    document.getElementById("mail-back").addEventListener("click", () => {
+      pane.classList.remove("show-read");
+    });
+
+    const bodyInput = document.getElementById("reply-body");
+    if (bodyInput) {
+      bodyInput.addEventListener("input", () => { replyDraft = bodyInput.value; });
+      document.getElementById("reply-send").addEventListener("click", () => {
+        try {
+          KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
+        } catch (err) {
+          alert(err.message);
+          return;
+        }
+        replyDraft = "";
+        renderAll();
+      });
+      document.getElementById("reply-discard").addEventListener("click", () => {
+        replyDraft = "";
+        bodyInput.value = "";
+      });
+    }
+  }
+
+  function renderAll() {
+    renderMailboxSelector();
+    renderList();
+    renderRead();
+  }
+
+  selectEl.addEventListener("change", () => {
+    currentMailboxId = selectEl.value;
+    currentMessageId = null;
+    replyDraft = "";
+    pane.classList.remove("show-read");
+    renderAll();
+  });
+  searchEl.addEventListener("input", () => { search = searchEl.value; renderList(); });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

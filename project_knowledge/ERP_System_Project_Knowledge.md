@@ -245,6 +245,24 @@ New at ERP scope:
 - **Which accounting platform to integrate** for Module 6 — must be BIR CAS-ready/accredited and expose an API the event backbone can feed. Shortlist and pick before Phase 7.
 - **Is KCMPS a covered taxpayer for the EIS Dec-2026 e-invoicing deadline?** Determines urgency of the accounting-integration phase — confirm with the accountant/BIR RDO.
 - **When does the first non-founder hire land?** Triggers real role enforcement (Part 5) and eventually HR/payroll (Module 7).
+- **Does Spacemail support app-specific/application passwords?** Gates the staff email panel's credential-handling design (`docs/roadmap.md`, "Parallel track — Staff email panel") — without them the fallback is a materially weaker design.
+- **Max upload size / file types for the design asset library** (`docs/roadmap.md`, "Parallel track — Design Asset Library") — decide before building so a presigned single-PUT upload doesn't turn out to need multipart mid-build.
+
+## Part 10 — Two 2026-07-30 additions outside the numbered module map
+Two features requested directly (not derived from the module map) extend existing modules
+rather than adding new ones — see their full specs in `docs/roadmap.md`'s "Parallel track"
+sections, added because both had a real unmet need today and neither depends on Milestone 1:
+- **Design Asset Library** — extends Module 1 (Sales & Order): the supply side of the existing
+  design picker. Private S3 for originals + the existing public assets bucket for derived
+  images, metadata in the same foundation DynamoDB table, category reuses the storefront
+  catalog's leaf taxonomy, access reuses the existing Production/Sales/Admin Cognito groups.
+- **Staff email panel** — extends Module 9 (Platform/Admin): an IMAP/SMTP-backed inbox panel
+  in the dashboard, not an embedded webmail iframe (blocked by every provider's clickjacking
+  defenses, and undesirable even where technically possible — see the roadmap section for why).
+  It is a *supporting surface*, not a module: staff communication attached to Module 1's order
+  flow, which is why the Email page links a message to its `ORDER#` when one is identifiable.
+  **Status (2026-07-31):** the dashboard page ships on mock data; the IMAP/SMTP Lambdas and the
+  credential design are still gated on the Spacemail app-password question in Part 9.
 - **Multi-site on the horizon?** If a second location is plausible within ~2 years, `siteId` stays reserved (already is); if not, it's still cheap insurance.
 - **Internalize invoicing ever, or integrate permanently?** A Stage-3 decision, but worth a rough volume threshold now so it's a trigger, not a debate.
 

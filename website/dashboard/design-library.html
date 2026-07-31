@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Design Library — KCMPS Ops</title>
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Design asset library <span class="badge-soon">Soon</span></h2>
+          <span class="hint">Planned — see docs/roadmap.md "Parallel track — Design Asset Library"</span>
+        </div>
+        <div class="card" style="padding: var(--space-5)">
+          <p>One home for every design file, so nothing lives only on a laptop and past work can be found again.</p>
+          <p><strong>Upload once, publish everywhere.</strong> Drop a source file (PSD/AI/PDF) with a name,
+          description, and category. Originals go to a private, versioned S3 bucket that is never public;
+          a web-optimised copy is derived automatically and published to the storefront's assets path.</p>
+          <p><strong>Categories are the catalog leaves you already use</strong> — the same list the storefront's
+          product sections are built from, so the library and the shop can never drift apart. Files are renamed
+          on save through the shared naming convention, which is what lets a newly published design appear in
+          the product offerings with no code deploy.</p>
+          <p><strong>Searchable history.</strong> Browse and filter by category, tag, or uploader to reference
+          past work instead of rebuilding it.</p>
+          <p class="hint">Access will reuse the existing staff roles — Production, Sales, and Admin can upload;
+          no new role is being added.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => { KCMPS_DASH_SHELL.mount("design"); })();
+</script>
+</body>
+</html>

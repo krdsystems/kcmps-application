@@ -120,6 +120,7 @@
         orderId, client, customerSub: opts.customerSub || uid("sub"),
         createdAt, originalPromisedDate, lineItems,
         payment: opts.payment || null, // order-level GCash bridge payment — see header note
+        correspondenceLog: [], // manual order↔email linking notes — see docs/roadmap.md "Order↔email linking"
       };
       order.orderStatus = deriveOrderStatus(order);
       orders.push(order);
@@ -283,7 +284,154 @@
       { id: uid("BLK"), text: "Heat press #2 thermostat reading inconsistent", owner: "Mikko", dueDate: isoDay(daysFromNow(2)), tag: "heatpress-maintenance", createdAt: hoursAgo(10), resolved: false },
     ];
 
-    return { orders, events, metrics, blockers, inventory, clients, stations: STATIONS, seededAt: nowIso() };
+    const mailboxes = seedMailboxes();
+    const emails = seedEmails(orders);
+
+    return { orders, events, metrics, blockers, inventory, clients, mailboxes, emails, stations: STATIONS, seededAt: nowIso() };
+  }
+
+  /* ---- seed data: staff mailboxes + mock mail ----
+     Shapes mirror an IMAP FETCH deliberately (see the "mail" section further
+     down) so swapping these mock functions for real Lambda calls is a
+     function-body change with no caller/UI change.
+
+     NOTE: this file must stay identity-free. It loads BEFORE
+     dashboard-shell.js, so it cannot read Cognito claims — the personal
+     mailbox is seeded with a fixed address and email.html overrides only its
+     display label from the signed-in claims. ---- */
+  function seedMailboxes() {
+    return [
+      { id: "order@kcmps.com", address: "order@kcmps.com", label: "Orders", kind: "shared", canSend: true },
+      { id: "info@kcmps.com", address: "info@kcmps.com", label: "General enquiries", kind: "shared", canSend: true },
+      { id: "me@kcmps.com", address: "me@kcmps.com", label: "My mailbox", kind: "personal", canSend: true },
+    ];
+  }
+
+  function seedEmails(orders) {
+    const ord = (i) => (orders && orders[i] ? orders[i].orderId : null);
+    const threadA = uid("THR");
+    const msg = (o) => Object.assign({
+      messageId: uid("MSG"), uid: 0, folder: "INBOX", threadId: uid("THR"),
+      to: [{ name: "", address: o.mailboxId }], cc: [],
+      snippet: "", hasHtmlPart: false, attachments: [],
+      flags: { seen: true, answered: false, flagged: false }, relatedOrderId: null,
+    }, o, { snippet: (o.snippet || o.bodyText || "").replace(/\s+/g, " ").slice(0, 140) });
+
+    let n = 10400;
+    const withUid = (m) => Object.assign(m, { uid: n++ });
+
+    return [
+      /* — order@kcmps.com — */
+      withUid(msg({
+        mailboxId: "order@kcmps.com", threadId: threadA,
+        from: { name: "Mika Reyes", address: "mika.reyes@gmail.com" },
+        subject: "Follow up po sa 30 pcs DTF shirts",
+        date: hoursAgo(2), relatedOrderId: ord(0),
+        flags: { seen: false, answered: false, flagged: false },
+        bodyText: "Hi KCMPS!\n\nNag-place po ako ng order kahapon for 30 pcs DTF shirts, black.\nNakapag-GCash na po ako kaninang umaga. Pwede po bang ma-confirm kung na-receive niyo na?\n\nSalamat po!\nMika",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com",
+        from: { name: "GCash", address: "no-reply@gcash.com" },
+        subject: "You have received PHP 9,000.00",
+        date: hoursAgo(3),
+        flags: { seen: false, answered: false, flagged: false },
+        bodyText: "You have received PHP 9,000.00 from MIKA R.\nReference No. 8017 442 99331\nDate: today\n\nThis is an automated notification. Do not reply to this message.",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com",
+        from: { name: "Ateneo Dev Society", address: "events@ateneodev.org" },
+        subject: "Pwede pa bang mag-add ng 10 pcs?",
+        date: hoursAgo(7), relatedOrderId: ord(1),
+        flags: { seen: false, answered: false, flagged: false },
+        bodyText: "Good afternoon,\n\nMay we add 10 more pieces to our existing order? Same design, sizes L and XL.\nIf it delays the schedule we can also do it as a separate batch.\n\nThank you,\nPaolo",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com",
+        from: { name: "Bea Fernandez", address: "bea.fernandez@yahoo.com" },
+        subject: "Ready na po ba for pickup?",
+        date: daysAgo(1),
+        bodyText: "Hello po, tanong ko lang kung pwede na po ma-pickup yung tote bags ko this week? Salamat!",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com",
+        from: { name: "GCash", address: "no-reply@gcash.com" },
+        subject: "You have received PHP 2,450.00",
+        date: daysAgo(1),
+        bodyText: "You have received PHP 2,450.00 from BEA F.\nReference No. 8017 118 20044\n\nThis is an automated notification. Do not reply to this message.",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com",
+        from: { name: "Grind Coffee Co.", address: "ops@grindcoffee.ph" },
+        subject: "Reorder — 50 pcs staff aprons",
+        date: daysAgo(2),
+        bodyText: "Hi team,\n\nSame spec as our last run — 50 pcs, embroidered logo, charcoal.\nPlease send a quote and we'll process payment right away.\n\nRegards,\nDenise",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com", threadId: threadA,
+        from: { name: "KCMPS Orders", address: "order@kcmps.com" },
+        subject: "Re: Follow up po sa 30 pcs DTF shirts",
+        folder: "SENT", date: hoursAgo(26),
+        bodyText: "Hi Mika,\n\nReceived po ang order niyo. Under verification pa po ang payment — we'll confirm within 24 hours.\n\nSalamat po!\nKCMPS",
+      })),
+      withUid(msg({
+        mailboxId: "order@kcmps.com", threadId: threadA,
+        from: { name: "Mika Reyes", address: "mika.reyes@gmail.com" },
+        subject: "Re: Follow up po sa 30 pcs DTF shirts",
+        date: hoursAgo(28),
+        bodyText: "Sending po the GCash screenshot. Reference number is 8017 442 99331.\n\nThanks!",
+        attachments: [{ filename: "gcash-receipt.jpg", sizeBytes: 284310, mimeType: "image/jpeg" }],
+      })),
+
+      /* — info@kcmps.com — */
+      withUid(msg({
+        mailboxId: "info@kcmps.com",
+        from: { name: "Sunrise Ink Supply", address: "sales@sunriseink.com.ph" },
+        subject: "Quotation — DTF film & white ink (Q3 pricing)",
+        date: hoursAgo(5),
+        flags: { seen: false, answered: false, flagged: false },
+        bodyText: "Good day KCMPS,\n\nAttached is our updated quotation for DTF film rolls and white ink.\nPrices are valid for 30 days. Free delivery within Metro Manila for orders over PHP 15,000.\n\nBest regards,\nArnel Cruz\nSunrise Ink Supply",
+        attachments: [{ filename: "sunrise-quotation-q3.pdf", sizeBytes: 141882, mimeType: "application/pdf" }],
+      })),
+      withUid(msg({
+        mailboxId: "info@kcmps.com",
+        from: { name: "HeatPro Parts", address: "support@heatpro.asia" },
+        subject: "Backorder notice — thermostat assembly",
+        date: daysAgo(2),
+        bodyText: "Dear customer,\n\nThe thermostat assembly you ordered is on backorder until the 18th.\nWe can ship the rest of your order now, or hold it complete. Please advise.\n\nHeatPro Parts",
+      })),
+      withUid(msg({
+        mailboxId: "info@kcmps.com",
+        from: { name: "PrintTech Expo", address: "news@printtechexpo.com" },
+        subject: "Last call: exhibitor booths for 2026",
+        date: daysAgo(4), hasHtmlPart: true,
+        bodyText: "View this email in your browser. Book your booth before slots run out.",
+      })),
+      withUid(msg({
+        mailboxId: "info@kcmps.com",
+        from: { name: "QC South Barangay", address: "sportsfest@qcsouth.gov.ph" },
+        subject: "Request for quotation — 200 pcs event shirts",
+        date: daysAgo(5),
+        bodyText: "Magandang araw,\n\nWe are canvassing suppliers for 200 pcs event shirts for our sports fest.\nKindly send your quotation with unit price and lead time.\n\nSalamat,\nBarangay QC South",
+      })),
+
+      /* — personal — */
+      withUid(msg({
+        mailboxId: "me@kcmps.com",
+        from: { name: "Mikko Dela Cruz", address: "mikko@kcmps.com" },
+        subject: "Heat press #2 — still inconsistent",
+        date: hoursAgo(9),
+        flags: { seen: false, answered: false, flagged: false },
+        bodyText: "Boss, yung heat press #2 pa rin. Nag-vary ng 15 degrees kanina mid-run.\nBaka kailangan na talaga i-replace yung thermostat. Nag-email na ako sa HeatPro.\n\n- Mikko",
+      })),
+      withUid(msg({
+        mailboxId: "me@kcmps.com",
+        from: { name: "Spaceship Billing", address: "billing@spaceship.com" },
+        subject: "Your invoice is ready",
+        date: daysAgo(6),
+        bodyText: "Your monthly invoice for kcmps.com services is now available in your account dashboard.",
+      })),
+    ];
   }
 
   function deriveOrderStatus(order) {
@@ -298,11 +446,36 @@
     return statuses[0] || "Unknown";
   }
 
-  /* ---- persistence ---- */
+  /* ---- persistence ----
+     ADDITIVE MIGRATION, not a key bump. When a new top-level collection is
+     added to buildSeed(), anyone with an existing STORAGE_KEY blob would read
+     it as `undefined`. Bumping STORAGE_KEY would fix that by throwing away
+     every tester's in-progress mock state (advanced jobs, logged spoilage,
+     blockers) for a feature that has nothing to do with orders — so instead
+     ensureCollections() backfills just the missing collection and saves.
+     Follow this pattern for the next collection (Design Library), and keep
+     the backfill's related collections under ONE guard so a partial blob
+     can't produce e.g. mailboxes-without-messages. ---- */
+  function ensureCollections(state) {
+    let dirty = false;
+    if (!Array.isArray(state.mailboxes) || !Array.isArray(state.emails)) {
+      state.mailboxes = seedMailboxes();
+      state.emails = seedEmails(state.orders);
+      dirty = true;
+    }
+    state.orders.forEach((o) => {
+      if (!Array.isArray(o.correspondenceLog)) { o.correspondenceLog = []; dirty = true; }
+    });
+    if (dirty) save(state);
+    return state;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      // ensureCollections runs ONLY here, never in buildSeed() — buildSeed
+      // already includes every collection, so calling it there double-seeds.
+      if (raw) return ensureCollections(JSON.parse(raw));
     } catch (e) { console.warn("[dash-data] corrupt state, reseeding", e); }
     const seed = buildSeed();
     save(seed);
@@ -683,13 +856,159 @@
   function getAllOrders() { return load().orders.slice(); }
   function getEventsFor(orderId) { return load().events.filter((e) => e.orderId === orderId).sort((a, b) => new Date(a.at) - new Date(b.at)); }
 
+  // Manual order↔email linking: staff log a note referencing a Spacemail
+  // thread (never the email body itself — no mail content is stored here).
+  // See docs/roadmap.md "Order↔email linking" for why this replaced the
+  // SES-relay/Google-Workspace approach.
+  function addCorrespondenceLog(orderId, note, actorName) {
+    const state = load();
+    const order = state.orders.find((o) => o.orderId === orderId);
+    if (!order) throw new Error("Order not found: " + orderId);
+    if (!note || !note.trim()) throw new Error("A note is required.");
+    if (!Array.isArray(order.correspondenceLog)) order.correspondenceLog = [];
+    order.correspondenceLog.push({ at: nowIso(), note: note.trim(), actorName: actorName || "—" });
+    save(state);
+    return order.correspondenceLog;
+  }
+
+  /* ============================================================
+     MAIL — staff email panel (mock; see docs/roadmap.md "Parallel track —
+     Staff email panel")
+     ============================================================
+     Every shape here is chosen to be directly derivable from a real IMAP
+     response, so the eventual swap to getInboxMessages/sendEmail Lambdas is a
+     function-BODY change only:
+
+       messageId  <- RFC822 Message-ID      uid       <- IMAP UID (stable cursor)
+       from/to/cc <- ENVELOPE               date      <- INTERNALDATE
+       snippet    <- BODY.PEEK[1]<0.200>    bodyText  <- text/plain part
+       flags      <- \Seen \Answered \Flagged
+       hasHtmlPart / attachments <- BODYSTRUCTURE
+
+     The envelope/body split is deliberate: real IMAP fetches the list
+     (ENVELOPE) and the body (BODY[]) in two round-trips, so getMessages()
+     omits bodyText/attachments and getMessage() adds them. Mirroring that now
+     means the list view never has to change shape later.
+     ============================================================ */
+
+  function findMailbox(state, mailboxId) {
+    const mb = state.mailboxes.find((m) => m.id === mailboxId);
+    if (!mb) throw new Error("Unknown mailbox: " + mailboxId);
+    return mb;
+  }
+  function isInbox(m) { return m.folder === "INBOX"; }
+  function envelopeOf(m) {
+    // strip the body-only fields — the list must not depend on them
+    const e = Object.assign({}, m);
+    delete e.bodyText;
+    delete e.attachments;
+    return e;
+  }
+
+  function getMailboxes() {
+    const state = load();
+    return state.mailboxes.map((mb) => {
+      const mine = state.emails.filter((m) => m.mailboxId === mb.id && isInbox(m));
+      return Object.assign({}, mb, {
+        total: mine.length,
+        unreadCount: mine.filter((m) => !m.flags.seen).length,
+      });
+    });
+  }
+
+  function getMessages(mailboxId, opts) {
+    const o = opts || {};
+    const folder = o.folder || "INBOX";
+    const limit = o.limit || 50;
+    const search = (o.search || "").trim().toLowerCase();
+    const state = load();
+    findMailbox(state, mailboxId);
+
+    let rows = state.emails.filter((m) => m.mailboxId === mailboxId && m.folder === folder);
+    const total = rows.length;
+    const unreadCount = rows.filter((m) => !m.flags.seen).length;
+    if (search) {
+      rows = rows.filter((m) =>
+        (m.subject || "").toLowerCase().includes(search) ||
+        (m.from.name || "").toLowerCase().includes(search) ||
+        (m.from.address || "").toLowerCase().includes(search) ||
+        (m.snippet || "").toLowerCase().includes(search)
+      );
+    }
+    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const page = rows.slice(0, limit);
+    return {
+      mailboxId, folder, total, unreadCount,
+      messages: page.map(envelopeOf),
+      // real backend: lowest UID in the page, fed back as opts.cursor
+      nextCursor: rows.length > limit ? page[page.length - 1].uid : null,
+    };
+  }
+
+  function getMessage(mailboxId, messageId) {
+    const state = load();
+    findMailbox(state, mailboxId);
+    return state.emails.find((m) => m.mailboxId === mailboxId && m.messageId === messageId);
+  }
+
+  function getThread(mailboxId, threadId) {
+    const state = load();
+    findMailbox(state, mailboxId);
+    return state.emails
+      .filter((m) => m.mailboxId === mailboxId && m.threadId === threadId)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }
+
+  function markMessageRead(mailboxId, messageId, seen) {
+    const state = load();
+    findMailbox(state, mailboxId);
+    const m = state.emails.find((x) => x.mailboxId === mailboxId && x.messageId === messageId);
+    if (!m) throw new Error("Unknown message: " + messageId);
+    m.flags.seen = seen !== false;
+    save(state);
+    return getMessages(mailboxId);
+  }
+
+  function sendReply(mailboxId, messageId, payload) {
+    const p = payload || {};
+    const bodyText = (p.bodyText || "").trim();
+    if (!bodyText) throw new Error("Reply body cannot be empty.");
+    const state = load();
+    const mb = findMailbox(state, mailboxId);
+    if (!mb.canSend) throw new Error("This mailbox is read-only.");
+    const original = state.emails.find((x) => x.mailboxId === mailboxId && x.messageId === messageId);
+    if (!original) throw new Error("Unknown message: " + messageId);
+
+    const subject = /^re:/i.test(original.subject) ? original.subject : "Re: " + original.subject;
+    const sent = {
+      messageId: uid("MSG"),
+      uid: Math.max.apply(null, state.emails.map((m) => m.uid)) + 1,
+      mailboxId, folder: "SENT", threadId: original.threadId,
+      from: { name: "KCMPS", address: mb.address },
+      to: [original.from], cc: p.cc || [],
+      subject, date: nowIso(),
+      snippet: bodyText.replace(/\s+/g, " ").slice(0, 140),
+      bodyText, hasHtmlPart: false, attachments: [],
+      flags: { seen: true, answered: false, flagged: false },
+      relatedOrderId: original.relatedOrderId || null,
+    };
+    // The three side effects a real send performs: SMTP send, IMAP APPEND to
+    // Sent, and STORE +FLAGS (\Answered) on the original.
+    state.emails.push(sent);
+    original.flags.answered = true;
+    original.flags.seen = true;
+    save(state);
+    return { sent, list: getMessages(mailboxId) };
+  }
+
   global.KCMPS_DASH = {
     STORAGE_KEY, STATIONS, STATION_LABELS,
+    getMailboxes, getMessages, getMessage, getThread, markMessageRead, sendReply,
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
     advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, rejectPayment,
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
-    getOrder, getAllOrders, getEventsFor,
+    getOrder, getAllOrders, getEventsFor, addCorrespondenceLog,
     resetSeed,
   };
 })(window);

@@ -26,6 +26,14 @@ none of it is deployed or running today.
   `api-advance-line-item.js` / `api-verify-payment.js` (role-filtered, state-machine-
   validated API handlers — **JWT must be verified server-side here**, never trust
   client-decoded claims from the frontend).
+- **Queued, not yet written** — the staff email panel's Lambdas (`getInboxMessages`,
+  `sendEmail`, `putEmailCredential`) belong in `infra/logic-inputs/` alongside the above when
+  they're built. The dashboard's Email page (`website/dashboard/email.html`) already exists on
+  mock data with IMAP-shaped return values, so these three only have to match those shapes.
+  Same server-side-JWT rule applies, and it bites hardest on `putEmailCredential`: derive the
+  staff `sub` from the **verified** token, never from the request body, or any staff member can
+  overwrite anyone else's stored mailbox credential. Spec: `docs/roadmap.md`, "Parallel track —
+  Staff email panel".
 - `user-test/README.md` — a manual test script for a non-technical user to verify the
   dashboard's *design logic* (state transitions, SLA aging, spoilage capture, mixed-cart
   rollup), not just that pages render.
@@ -36,5 +44,9 @@ none of it is deployed or running today.
   checklist, then wire `infra/logic-inputs/*.js` in as Lambdas.
 - Changing the mock data shape in `website/dashboard/dashboard-data.js` → check
   `backend-infra-to-deploy.md` and `project_knowledge/Payment_System_Project_Knowledge.md`
-  first so the mock stays in sync with the real schema it's meant to mirror.
+  first so the mock stays in sync with the real schema it's meant to mirror. The mail functions
+  (`getMailboxes`/`getMessages`/`getMessage`/`getThread`/`markMessageRead`/`sendReply`) mirror an
+  IMAP `FETCH` rather than the DynamoDB schema — the envelope-vs-body split across
+  `getMessages()`/`getMessage()` exists because real IMAP needs two round-trips, so don't
+  collapse it.
 - QA'ing dashboard behavior → follow `user-test/README.md`.

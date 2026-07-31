@@ -39,6 +39,14 @@
   const orderId = params.get("order");
   const lineId = params.get("line");
 
+  // Order↔email linking (no IMAP/SES integration — see docs/roadmap.md
+  // "Order↔email linking"): admin@kcmps.com receives every staff mailbox's
+  // forwarded mail, so a plain webmail search by order ID finds the thread.
+  // {q} is the only stable part of the URL confirmed against a live search —
+  // Spacemail's other query params (e.g. a folder/message-list id) were
+  // observed to change between searches and were dropped.
+  const SPACEMAIL_SEARCH_URL = "https://spacemail.com/mail/?f=INBOX&search={q}";
+
   function statusTone(status) {
     if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
     if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
@@ -109,6 +117,26 @@
         (order.payment.rejectionReason ? `<div class="m-block" style="flex-basis:100%"><h4>Rejection reason</h4><p style="font-weight:400">${escapeHtml(order.payment.rejectionReason)}</p></div>` : "") +
         `</div>` : "") +
 
+      `<div class="card" style="margin-bottom:var(--space-4)">` +
+      `<div style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-2)">` +
+      `<h3 style="margin:0">Customer correspondence</h3>` +
+      `<button type="button" class="btn btn-secondary" id="search-spacemail-btn">Search Spacemail for this order</button>` +
+      `</div>` +
+      `<p class="text-muted" style="font-size:12px;margin:0 0 var(--space-2)">Log entries are notes only — no email content is stored here. Use the search button to open the actual thread in admin@kcmps.com.</p>` +
+      `<div id="correspondence-list">` +
+      (order.correspondenceLog && order.correspondenceLog.length
+        ? order.correspondenceLog.slice().reverse().map((c) =>
+            `<div style="border-left:3px solid var(--accent, #ff7a1a);padding:6px 10px;margin-bottom:6px;font-size:13px;background:var(--surface-2, #fafbfd);border-radius:0 6px 6px 0">` +
+            `<div class="text-muted" style="font-size:11px;margin-bottom:2px">${fmtDateTime(c.at)} — ${escapeHtml(c.actorName)}</div>` +
+            `${escapeHtml(c.note)}</div>`
+          ).join("")
+        : `<p class="q-empty" style="margin:0">No logged correspondence yet.</p>`) +
+      `</div>` +
+      `<div style="display:flex;gap:8px;margin-top:var(--space-2)">` +
+      `<input class="input" id="correspondence-input" style="flex:1" placeholder="e.g. Customer approved design via email, ref subject [${escapeHtml(order.orderId)}]" />` +
+      `<button type="button" class="btn btn-primary" id="correspondence-add-btn">Log</button>` +
+      `</div></div>` +
+
       (li.spoilage && li.spoilage.length ? `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Spoilage on this line</h3>` +
         li.spoilage.map((s) => `<p style="margin:4px 0;font-size:13.5px">${s.units} unit(s) — ${escapeHtml(s.reasonCode)} — ${fmtPeso(s.valuePhp)} — ${fmtDateTime(s.at)}</p>`).join("") +
         `</div>` : "") +
@@ -127,6 +155,22 @@
         `<span class="text-muted">${e.station ? "station " + escapeHtml(e.station) + " · " : ""}${escapeHtml(e.actorName || "")}</span></div>`
       )).join("") : '<p class="q-empty">No recorded transitions yet.</p>') +
       `</div></div>`;
+
+    document.getElementById("search-spacemail-btn").addEventListener("click", () => {
+      const url = SPACEMAIL_SEARCH_URL.replace("{q}", encodeURIComponent(order.orderId));
+      window.open(url, "_blank", "noopener");
+    });
+    document.getElementById("correspondence-add-btn").addEventListener("click", () => {
+      const input = document.getElementById("correspondence-input");
+      const note = input.value.trim();
+      if (!note) return;
+      try { KCMPS_DASH.addCorrespondenceLog(order.orderId, note, claims.name || claims.email); }
+      catch (err) { alert(err.message); return; }
+      render();
+    });
+    document.getElementById("correspondence-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("correspondence-add-btn").click();
+    });
 
     const formHost = document.getElementById("action-form");
     document.querySelectorAll("#action-bar [data-idx]").forEach((btn) => {

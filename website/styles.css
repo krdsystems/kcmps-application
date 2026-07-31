@@ -143,9 +143,12 @@ figcaption {
   background: transparent; border: 1px solid transparent;
   padding: var(--space-2) calc(var(--space-3) * 1.2);
   border-radius: var(--radius-md);
+  transition: background-color 0.15s ease, transform 0.12s ease-out;
 }
 .btn svg { display: block; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .btn { transition: background-color 0.15s ease; } .btn:active:not(:disabled) { transform: none; } }
 .btn-primary { background: var(--color-accent); color: #ffffff; }
 .btn-primary:hover { background: var(--color-accent-600); }
 .btn-primary:active { background: var(--color-accent-700); }
@@ -333,7 +336,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   padding: var(--space-4); border-radius: var(--radius-lg);
   background: var(--color-surface); box-shadow: var(--shadow-lg);
   scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-text) 25%, transparent) transparent;
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
 }
+.order-popup-backdrop.is-open .order-popup { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .order-popup { transition: none; } }
 .order-popup::-webkit-scrollbar { width: 6px; }
 .order-popup::-webkit-scrollbar-track { background: transparent; }
 .order-popup::-webkit-scrollbar-thumb {
@@ -371,7 +377,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4); border-radius: var(--radius-lg);
   background: var(--color-surface); box-shadow: var(--shadow-lg);
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
 }
+.cap-popup-backdrop.is-open .cap-popup { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .cap-popup { transition: none; } }
 @media (max-width: 480px) { .cap-popup-backdrop { padding: var(--space-2); } }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -702,13 +711,23 @@ textarea.input { min-height: 90px; resize: vertical; }
 .product-price { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }
 .product-price small { font-weight: 600; font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 .qty-stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
-.qty-stepper button { width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1; }
+.qty-stepper button { width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1;
+  transition: background-color 0.15s ease, transform 0.12s ease-out; }
 .qty-stepper button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.qty-stepper button:active { transform: scale(0.94); }
+@media (prefers-reduced-motion: reduce) { .qty-stepper button { transition: background-color 0.15s ease; } .qty-stepper button:active { transform: none; } }
 .qty-stepper .qval { width: 30px; min-width: 30px; height: 32px; text-align: center; font-family: var(--font-heading);
   font-weight: 700; font-size: 14px; color: var(--color-text); border: none; background: transparent; padding: 0;
   -moz-appearance: textfield; appearance: textfield; }
 .qty-stepper .qval::-webkit-outer-spin-button, .qty-stepper .qval::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .qty-stepper .qval:focus { outline: 2px solid var(--color-accent-2); outline-offset: -2px; }
+@media (max-width: 760px) {
+  /* 30x32px is under the ~40-44px touch-target minimum (Apple HIG / Material) —
+     widen the tap area on touch without changing the stepper's visual size on
+     desktop, where a mouse pointer doesn't need the extra margin. */
+  .qty-stepper button { width: 40px; height: 40px; }
+  .qty-stepper .qval { width: 34px; min-width: 34px; height: 40px; }
+}
 .product.product-custom { border: 1.5px dashed color-mix(in srgb, var(--color-accent-2) 40%, transparent); background: var(--color-bg); }
 .product-custom .product-thumb { background: repeating-linear-gradient(45deg, var(--color-accent-2-100), var(--color-accent-2-100) 10px, var(--color-surface) 10px, var(--color-surface) 20px); }
 
@@ -718,15 +737,18 @@ textarea.input { min-height: 90px; resize: vertical; }
 .cart-overlay.is-open { opacity: 1; visibility: visible; }
 .cart-drawer { position: fixed; top: 0; right: 0; z-index: 101; height: 100%; width: min(420px, 100%);
   display: flex; flex-direction: column; background: var(--color-bg); box-shadow: var(--shadow-lg);
-  transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); }
+  transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
 .cart-drawer.is-open { transform: translateX(0); }
 @media (prefers-reduced-motion: reduce) { .cart-drawer, .cart-overlay { transition: none; } }
 @media (max-width: 480px) { .cart-drawer { width: 100vw; } }
 .cart-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4);
   border-bottom: 1px solid var(--color-divider); }
 .cart-head h3 { margin: 0; font-size: 18px; color: var(--color-accent-2-800); }
-.cart-close { width: 34px; height: 34px; border: none; background: transparent; cursor: pointer; border-radius: var(--radius-sm); color: var(--color-text); font-size: 20px; line-height: 1; }
+.cart-close { width: 34px; height: 34px; border: none; background: transparent; cursor: pointer; border-radius: var(--radius-sm); color: var(--color-text); font-size: 20px; line-height: 1;
+  transition: background-color 0.15s ease, transform 0.12s ease-out; }
 .cart-close:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.cart-close:active { transform: scale(0.94); }
+@media (prefers-reduced-motion: reduce) { .cart-close { transition: background-color 0.15s ease; } .cart-close:active { transform: none; } }
 .cart-body { flex: 1; overflow-y: auto; padding: var(--space-3) var(--space-4); }
 .cart-empty { text-align: center; color: color-mix(in srgb, var(--color-text) 55%, transparent); font-size: 14px; padding: var(--space-8) var(--space-3); }
 .cart-line { display: grid; grid-template-columns: 1fr auto; gap: 4px var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); }

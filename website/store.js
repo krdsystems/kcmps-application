@@ -228,12 +228,20 @@
   function clearCart() { cart = []; saveCart(cart); syncUI(); }
 
   /* ---------- badge (reuses the auth-era nav elements) ---------- */
+  var lastBadgeCount = null;
   function updateBadge() {
     var badge = document.getElementById("cart-badge");
     if (!badge) return;
     var n = itemCount();
     if (n > 0) { badge.textContent = n; badge.classList.remove("is-hidden"); }
     else { badge.classList.add("is-hidden"); }
+    if (lastBadgeCount !== null && n > lastBadgeCount) {
+      badge.classList.remove("is-pulsing");
+      void badge.offsetWidth; // restart the transition if it's already mid-pulse
+      badge.classList.add("is-pulsing");
+      setTimeout(function () { badge.classList.remove("is-pulsing"); }, 160);
+    }
+    lastBadgeCount = n;
   }
 
   /* ---------- catalog rendering ---------- */

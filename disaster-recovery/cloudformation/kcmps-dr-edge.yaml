@@ -1,15 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  KCMPS DR — EDGE stack. Deploy in us-east-1 (CloudFront/ACM/WAFv2 are only
-  creatable from us-east-1 regardless of where the distribution actually
-  serves traffic). Creates: the shared Origin Access Control, the two
-  CloudFront Functions (prod's site.kcmps.com redirect, dev's basic-auth
-  gate), the dev response-headers policy, a WAFv2 WebACL (3 AWS managed
-  rule groups, matching what's live on prod today) attached only to the
-  prod distribution, both CloudFront distributions, and the S3 bucket
-  policy (lives here, not in the core stack, because it needs both
-  distributions' ARNs). Deploy AFTER kcmps-dr-core.yaml, passing its
-  BucketName + BucketRegionalDomainName outputs in.
+  KCMPS DR — EDGE stack (prod only). Deploy in us-east-1 (CloudFront/ACM/
+  WAFv2 are only creatable from us-east-1). Creates the shared Origin
+  Access Control, the prod redirect Function, a WAFv2 WebACL on the prod
+  distribution, the prod distribution itself, and the prod statement of
+  the S3 bucket policy. Deploy AFTER kcmps-dr-core.yaml. Does NOT cover
+  dev.kcmps.com — that's storefront-infra/dev-domain.cfn.yaml, the single
+  source of truth for dev; see ../README.md "Recovering dev.kcmps.com".
 
 Parameters:
   BucketName:
@@ -29,21 +26,6 @@ Parameters:
       this ARN. Only reissue (DNS-validated against the zone in the
       260866268499 account) if the certificate itself was deleted, then
       override this parameter with the new ARN.
-
-  DevBasicAuthCredential:
-    Type: String
-    NoEcho: true
-    Description: >
-      Base64 of "username:password" for the dev.kcmps.com basic-auth gate,
-      e.g. output of `echo -n 'user:pass' | base64`. Not defaulted here on
-      purpose — the real current value is a live credential; retrieve/rotate
-      it out of band (e.g. a password manager or SSM SecureString) and pass
-      it at deploy time. Leave blank to deploy the dev site with no gate
-      (not recommended — see root CLAUDE.md, dev is meant to stay unindexed
-      and ungated pages would be publicly browsable WIP).
-
-Conditions:
-  HasDevBasicAuth: !Not [!Equals [!Ref DevBasicAuthCredential, ""]]
 
 Resources:
   SiteOriginAccessControl:
@@ -91,49 +73,6 @@ Resources:
 
             return request;
         }
-
-  DevBasicAuthFunction:
-    Type: AWS::CloudFront::Function
-    Condition: HasDevBasicAuth
-    Properties:
-      Name: kcmps-dev-basic-auth
-      FunctionConfig:
-        Comment: Basic-auth gate for dev.kcmps.com so WIP isn't publicly browsable.
-        Runtime: cloudfront-js-2.0
-      AutoPublish: true
-      FunctionCode: !Sub |
-        function handler(event) {
-            var request = event.request;
-            var headers = request.headers;
-            var expected = "Basic ${DevBasicAuthCredential}";
-
-            if (
-                typeof headers.authorization === "undefined" ||
-                headers.authorization.value !== expected
-            ) {
-                return {
-                    statusCode: 401,
-                    statusDescription: "Unauthorized",
-                    headers: {
-                        "www-authenticate": { value: 'Basic realm="KCMPS dev"' }
-                    }
-                };
-            }
-
-            return request;
-        }
-
-  DevNoIndexResponseHeadersPolicy:
-    Type: AWS::CloudFront::ResponseHeadersPolicy
-    Properties:
-      ResponseHeadersPolicyConfig:
-        Name: kcmps-dev-noindex
-        Comment: Belt-and-suspenders — keeps dev out of search indexes even though it's auth-gated.
-        CustomHeadersConfig:
-          Items:
-            - Header: X-Robots-Tag
-              Value: "noindex, nofollow, noarchive"
-              Override: true
 
   ProdWebAcl:
     Type: AWS::WAFv2::WebACL
@@ -214,42 +153,14 @@ Resources:
             - EventType: viewer-request
               FunctionARN: !GetAtt SiteRedirectFunction.FunctionMetadata.FunctionARN
 
-  DevDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Enabled: true
-        Comment: kcmps dev/staging site
-        DefaultRootObject: index.html
-        HttpVersion: http2
-        IPV6Enabled: true
-        PriceClass: PriceClass_100
-        Aliases: [dev.kcmps.com]
-        ViewerCertificate:
-          AcmCertificateArn: !Ref AcmCertificateArn
-          SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1.2_2021
-        Origins:
-          - Id: dev-origin
-            DomainName: !Ref BucketRegionalDomainName
-            OriginPath: /dev-site
-            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id
-            S3OriginConfig:
-              OriginAccessIdentity: ""
-        DefaultCacheBehavior:
-          TargetOriginId: dev-origin
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD]
-          CachedMethods: [GET, HEAD]
-          Compress: true
-          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # AWS managed "CachingDisabled"
-          ResponseHeadersPolicyId: !Ref DevNoIndexResponseHeadersPolicy
-          FunctionAssociations: !If
-            - HasDevBasicAuth
-            - - EventType: viewer-request
-                FunctionARN: !GetAtt DevBasicAuthFunction.FunctionMetadata.FunctionARN
-            - []
-
+  # Prod's statement only. The dev distribution's read-access statement is
+  # added as a separate manual `aws s3api put-bucket-policy` step (full
+  # replace, both statements present) AFTER deploying
+  # storefront-infra/dev-domain.cfn.yaml — see storefront-infra/CLAUDE.md
+  # "Bucket policy is NOT CloudFormation-managed" for why that stack can't
+  # own it either (AWS::S3::BucketPolicy's Create handler refuses to touch
+  # a bucket that already has an externally-applied policy), and
+  # ../README.md "Recovering dev.kcmps.com" for the exact command.
   SiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -267,15 +178,6 @@ Resources:
             Condition:
               StringEquals:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${ProdDistribution}"
-          - Sid: AllowCloudFrontServicePrincipalDev
-            Effect: Allow
-            Principal:
-              Service: cloudfront.amazonaws.com
-            Action: s3:GetObject
-            Resource: !Sub "arn:aws:s3:::${BucketName}/*"
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${DevDistribution}"
 
 Outputs:
   ProdDistributionId:
@@ -283,8 +185,10 @@ Outputs:
   ProdDistributionDomainName:
     Description: Feed into kcmps-dns-records.yaml's CloudFrontDomainName parameter.
     Value: !GetAtt ProdDistribution.DomainName
-  DevDistributionId:
-    Value: !Ref DevDistribution
-  DevDistributionDomainName:
-    Description: Feed into kcmps-dns-records.yaml's DevCloudFrontDomainName parameter.
-    Value: !GetAtt DevDistribution.DomainName
+  OriginAccessControlId:
+    Description: >
+      Feed into storefront-infra/dev-domain.cfn.yaml's OriginAccessControlId
+      parameter when recreating dev.kcmps.com after a full recovery — that
+      template defaults to today's OAC id (E233V4Y9BPPX6H), which won't
+      exist anymore if this stack had to recreate the OAC from scratch.
+    Value: !GetAtt SiteOriginAccessControl.Id

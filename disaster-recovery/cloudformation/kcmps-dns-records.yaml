@@ -1,13 +1,16 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   KCMPS DR — Route 53 alias/CNAME records for kcmps.com/www.kcmps.com/
-  site.kcmps.com/dev.kcmps.com pointing at the two CloudFront distributions.
-  Deploy this THIRD (after kcmps-dr-core.yaml, then kcmps-dr-edge.yaml),
-  against the 260866268499 account's "default" AWS CLI profile — NOT the
-  kcmps-claude-priv profile the other two stacks use. Only touches these
-  four records; mail (MX/SPF/DKIM/autodiscover) is untouched by design.
-  Requires kcmps-dr-edge.yaml's ProdDistributionDomainName and (optionally)
-  DevDistributionDomainName outputs.
+  site.kcmps.com/dev.kcmps.com pointing at their CloudFront distributions.
+  Deploy this LAST — after kcmps-dr-core.yaml, then kcmps-dr-edge.yaml, and
+  (if dev.kcmps.com also needs recovering) storefront-infra/dev-domain.cfn.yaml
+  — against the 260866268499 account's "default" AWS CLI profile, NOT the
+  kcmps-claude-priv profile the other stacks use. Only touches these four
+  records; mail (MX/SPF/DKIM/autodiscover) is untouched by design.
+  CloudFrontDomainName comes from kcmps-dr-edge.yaml's
+  ProdDistributionDomainName output; DevCloudFrontDomainName (optional)
+  comes from storefront-infra/dev-domain.cfn.yaml's DevDistributionDomainName
+  output, NOT from this repo's edge stack.
 
 Parameters:
   HostedZoneId:

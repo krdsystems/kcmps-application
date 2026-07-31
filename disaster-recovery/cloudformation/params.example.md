@@ -16,14 +16,24 @@ are live secrets.
 ]
 ```
 
-## `kcmps-dr-edge.yaml` (deploy to us-east-1, after core)
+## `kcmps-dr-edge.yaml` (deploy to us-east-1, after core — prod only)
 
 ```json
 [
   { "ParameterKey": "BucketName", "ParameterValue": "kcmps-online-bucket-est-2026" },
   { "ParameterKey": "BucketRegionalDomainName", "ParameterValue": "<core stack output>" },
-  { "ParameterKey": "AcmCertificateArn", "ParameterValue": "arn:aws:acm:us-east-1:600929977538:certificate/c2758183-3a3a-43b2-bdd6-f6c0848edfb6" },
-  { "ParameterKey": "DevBasicAuthCredential", "ParameterValue": "REPLACE-ME (base64 of user:pass)" }
+  { "ParameterKey": "AcmCertificateArn", "ParameterValue": "arn:aws:acm:us-east-1:600929977538:certificate/c2758183-3a3a-43b2-bdd6-f6c0848edfb6" }
+]
+```
+
+## `storefront-infra/dev-domain.cfn.yaml` (only if dev.kcmps.com also needs recovering — see ../README.md)
+
+```json
+[
+  { "ParameterKey": "BucketName", "ParameterValue": "kcmps-online-bucket-est-2026" },
+  { "ParameterKey": "BucketRegionalDomainName", "ParameterValue": "<core stack output>" },
+  { "ParameterKey": "OriginAccessControlId", "ParameterValue": "<edge stack OriginAccessControlId output>" },
+  { "ParameterKey": "BasicAuthPassword", "ParameterValue": "REPLACE-ME (min 8 chars)" }
 ]
 ```
 
@@ -32,6 +42,6 @@ are live secrets.
 ```json
 [
   { "ParameterKey": "CloudFrontDomainName", "ParameterValue": "<edge stack ProdDistributionDomainName output>" },
-  { "ParameterKey": "DevCloudFrontDomainName", "ParameterValue": "<edge stack DevDistributionDomainName output>" }
+  { "ParameterKey": "DevCloudFrontDomainName", "ParameterValue": "<dev-domain.cfn.yaml stack DevDistributionDomainName output, if deployed>" }
 ]
 ```

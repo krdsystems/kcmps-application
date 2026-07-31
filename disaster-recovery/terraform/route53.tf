@@ -52,11 +52,11 @@ resource "aws_route53_record" "site" {
 }
 
 resource "aws_route53_record" "dev" {
-  count    = var.manage_dns ? 1 : 0
+  count    = var.manage_dns && var.dev_distribution_domain_name != "" ? 1 : 0
   provider = aws.dns
   zone_id  = var.hosted_zone_id
   name     = "dev.kcmps.com"
   type     = "CNAME"
   ttl      = 300
-  records  = [aws_cloudfront_distribution.dev.domain_name]
+  records  = [var.dev_distribution_domain_name]
 }

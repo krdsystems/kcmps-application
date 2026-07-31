@@ -1618,6 +1618,51 @@ ever transferred into `600929977538` after the transfer lock clears, the decoy `
 hosted zone already sitting in that account should be deleted rather than reused — it doesn't
 have the mail/SPF/DKIM records and would silently drop them if it became authoritative.
 
+### 42. High-quality logo replacement, icon-only crop, and social preview meta tags (2026-07-31)
+
+Owner supplied a new high-resolution logo PNG from the design artist (8785x7975, properly
+removed background) to replace the old `logo-mark.png` (249x219, visibly compressed).
+
+**Logo swap.** Rather than adding a new filename and rewiring every reference, the new source
+was resized down and saved over the existing `website/assets/logo-mark.png` path — no
+HTML/JS changes needed since `index.html` (nav brand, footer) and `dashboard-shell.js`
+(dashboard nav) already pointed at that one file.
+
+**Icon-vs-wordmark mixup, caught after the fact.** The first pass used the full lockup
+(icon + "KCMPS KAALYADOS CREATIVES..." wordmark baked into the image) for `logo-mark.png`,
+`favicon.ico`, `favicon.png`, and `apple-touch-icon.png`. That's wrong for `logo-mark.png`
+specifically: the nav brand link renders the image *next to* its own "KCMPS | Kaalyados
+Creatives..." text span, so the baked-in wordmark visually duplicated the adjacent text.
+Fixed by finding the transparent gap in the source between the graphic (droplet/gear/pencil/
+spark) and the wordmark below it (row-alpha-sum scan found a fully-transparent band around
+y=4690–4780 in the 7975px-tall source), cropping to the graphic-only region, and regenerating
+all four assets from that crop instead. The cropped graphic-only PNG is kept at
+`design-system/assets/kcmps-icon-only.png` (not deployed) as the source for any future icon
+regeneration — don't re-derive the crop bounds from scratch, reuse this file.
+
+**Social link previews were showing the old jagged favicon.** Testing a link share (iMessage)
+surfaced a stale, jagged image in the preview card — not `logo-mark.png` at all, but
+`apple-touch-icon.png`/`favicon.png`, which predated the new logo and had never been
+regenerated from a clean source. Root cause was two-fold: (1) those icon files were still the
+old low-res exports even after the `logo-mark.png` swap, and (2) `index.html` had no
+`og:image` meta tag, so crawlers (Facebook, iMessage, Slack) were left to guess which image to
+use and picked an icon file never designed for a wide preview card. Fixed by regenerating the
+icon trio from the icon-only crop (square canvas, 6% transparent margin, LANCZOS downsample;
+`favicon.ico` needs `Image.save(..., sizes=[(16,16),(32,32),(48,48)])` called directly on the
+source image — pre-resizing each size into a list and passing that list does *not* embed
+multiple sizes, `PIL` silently keeps only the first) and adding an explicit 1200x630
+`website/assets/og-image.jpg` (icon + wordmark centered as one measured group on a navy
+gradient, not fixed-position — an earlier version anchored the icon near the left edge with
+text trailing it, leaving lopsided margins) referenced via `og:image`/`twitter:image` meta
+tags in `index.html`'s `<head>`.
+
+**Facebook Sharing Debugger flagged `fb:app_id` as a missing required property** — this is a
+warning tied to Facebook Insights/domain analytics, not a blocker for the preview card itself;
+ignore it unless a Facebook App integration is added later. Facebook also caches scraped
+Open Graph data per URL independently of any TTL, so a URL that was ever scraped/shared before
+this change can keep showing a stale preview until manually re-scraped ("Scrape Again" in the
+debugger) — passive waiting does not force a refresh.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

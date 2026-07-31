@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (git-ignored) and fill in real values.
+# Never commit the filled-in file — it holds live secrets.
+
+# primary_profile = "kcmps-claude-priv"
+# dns_profile     = "default"
+
+# google_client_id     = "REPLACE-ME.apps.googleusercontent.com"
+# google_client_secret = "REPLACE-ME"
+
+# dev_basic_auth_credential = "REPLACE-ME (base64 of user:pass)"

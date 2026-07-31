@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  KCMPS DR — Route 53 alias/CNAME records for kcmps.com/www.kcmps.com/
+  site.kcmps.com/dev.kcmps.com pointing at the two CloudFront distributions.
+  Deploy this THIRD (after kcmps-dr-core.yaml, then kcmps-dr-edge.yaml),
+  against the 260866268499 account's "default" AWS CLI profile — NOT the
+  kcmps-claude-priv profile the other two stacks use. Only touches these
+  four records; mail (MX/SPF/DKIM/autodiscover) is untouched by design.
+  Requires kcmps-dr-edge.yaml's ProdDistributionDomainName and (optionally)
+  DevDistributionDomainName outputs.
+
+Parameters:
+  HostedZoneId:
+    Type: String
+    Default: Z06397161LBTJCRTPLL62
+    Description: The REAL kcmps.com hosted zone in this account (not the decoy zone in 600929977538).
+
+  CloudFrontDomainName:
+    Type: String
+    Description: e.g. d370ib8wcl1f2f.cloudfront.net — ProdDistributionDomainName output of kcmps-dr-edge.yaml.
+
+  DevCloudFrontDomainName:
+    Type: String
+    Default: ""
+    Description: >
+      e.g. ds2x71y4pbzj3.cloudfront.net — DevDistributionDomainName output of
+      kcmps-dr-edge.yaml. Leave blank to skip the dev.kcmps.com record.
+
+  # Every CloudFront distribution has this as its fixed hosted zone ID.
+  CloudFrontHostedZoneId:
+    Type: String
+    Default: Z2FDTNDATAQYW2
+
+Conditions:
+  HasDevRecord: !Not [!Equals [!Ref DevCloudFrontDomainName, ""]]
+
+Resources:
+  ApexRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: kcmps.com
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: !Ref CloudFrontHostedZoneId
+        EvaluateTargetHealth: false
+
+  WwwRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: www.kcmps.com
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: !Ref CloudFrontHostedZoneId
+        EvaluateTargetHealth: false
+
+  SiteRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: site.kcmps.com
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: !Ref CloudFrontHostedZoneId
+        EvaluateTargetHealth: false
+
+  DevRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDevRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: dev.kcmps.com
+      Type: CNAME
+      TTL: "300"
+      ResourceRecords:
+        - !Ref DevCloudFrontDomainName

@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  KCMPS DR — CORE stack. Deploy in ap-southeast-1 (must match the real S3
+  bucket/Cognito region). Creates the S3 origin bucket (no policy yet — the
+  edge stack owns that, since it needs the distribution ARNs) and the
+  Cognito User Pool/Client/Domain/Google IdP. Deploy FIRST, then feed
+  BucketName + BucketRegionalDomainName into kcmps-dr-edge.yaml (us-east-1).
+  See ../README.md for the full runbook, deploy order, and caveats this
+  template cannot paper over (Cognito user data cannot be restored by IaC;
+  the Google OAuth client secret lives in Google Cloud Console, not here).
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: kcmps-online-bucket-est-2026
+
+  CognitoUserPoolName:
+    Type: String
+    Default: kcmps-user-pool
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: >
+      Cognito Hosted UI domain prefix. Real deployment uses
+      "ap-southeast-1idvaeumnp" (Cognito's auto-generated default domain for
+      pool ap-southeast-1_iDvAEumNp) — irrelevant if that pool still exists.
+      If recreating the pool from scratch, this auto-generated form isn't
+      reproducible verbatim (it's derived from the new pool's own ID); pick
+      a custom prefix instead and update website/index.html +
+      website/login-test.html's COGNITO_CONFIG afterward.
+    Default: kcmps-storefront-auth
+
+  CallbackUrls:
+    Type: CommaDelimitedList
+    Default: "https://kcmps.com/,https://www.kcmps.com/,https://site.kcmps.com/,http://localhost:5500/"
+
+  LogoutUrls:
+    Type: CommaDelimitedList
+    Default: "https://kcmps.com/,https://www.kcmps.com/,https://site.kcmps.com/,http://localhost:5500/"
+
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: >
+      OAuth 2.0 Web Client ID from the Google Cloud Console project backing
+      "Continue with Google" (a real Google IdP is live on the production
+      pool today). Leave blank to skip creating it.
+
+  GoogleClientSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >
+      OAuth 2.0 Client Secret from the same Google Cloud Console project.
+      Retrieve it from Google Cloud Console > APIs & Services > Credentials
+      (or wherever your team stores it — it is NOT recoverable from AWS,
+      Cognito only stores it write-only). Pass at deploy time
+      (--parameter-overrides / a non-committed parameters file), never
+      commit the real value.
+
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref BucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Ref CognitoUserPoolName
+      DeletionProtection: ACTIVE
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: CreateGoogleIdp
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "profile email openid"
+      AttributeMapping:
+        email: email
+        username: sub
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: kcmps-web-client
+      GenerateSecret: false
+      SupportedIdentityProviders: !If
+        - CreateGoogleIdp
+        - [COGNITO, Google]
+        - [COGNITO]
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [email, openid, profile, phone]
+      CallbackURLs: !Ref CallbackUrls
+      LogoutURLs: !Ref LogoutUrls
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+    DependsOn:
+      - GoogleIdentityProvider
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
+  StaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: Staff
+      Description: Unlocks the staff ops-dashboard UI (COGNITO_CONFIG.staffGroupName).
+      Precedence: 10
+
+Conditions:
+  CreateGoogleIdp: !Not [!Equals [!Ref GoogleClientId, ""]]
+
+Outputs:
+  BucketName:
+    Value: !Ref SiteBucket
+  BucketRegionalDomainName:
+    Description: Feed this into kcmps-dr-edge.yaml's BucketRegionalDomainName parameter.
+    Value: !GetAtt SiteBucket.RegionalDomainName
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoHostedUiDomain:
+    Value: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com"

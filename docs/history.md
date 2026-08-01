@@ -2240,6 +2240,17 @@ only, deliberately leaving the real backend for a separate future session with f
 caveat above), the GCash open-decision marked resolved, and a new "Status" note added atop the
 Design Asset Library section pointing at this entry.
 
+### 56. Re-enabled login/signup on `index.html` for dev testing (2026-08-02)
+
+Entry 54 disabled the storefront's `Login / Sign-up` button ahead of a production deploy (owner's
+call, unrelated to that entry's changes) — this landed on `main` and was still in effect when
+entry 55's work merged, so `dev.kcmps.com` inherited a disabled login button and the new
+customer-facing features (My Orders, `orders.html`) couldn't be tested live. Removed the two
+`disabled` attributes on `#auth-btn` (the static button in the nav markup and its
+`renderLoggedOut()` re-render) to re-enable it — same two-line toggle entries 49/52/54 already
+describe, just flipped back. Deployed to `dev.kcmps.com` only, per explicit instruction; whether
+login stays enabled on a future production sync is the owner's call, same as entry 54.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

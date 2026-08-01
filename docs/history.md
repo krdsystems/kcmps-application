@@ -2129,6 +2129,31 @@ This is App-Client config, not code — no file in this repo changes as a result
 never hit this because it has its own explicitly-registered callback URL
 (`localhost:5500/login-test.html`).
 
+### 53. Storefront motion polish + studio address (2026-08-01)
+
+Two small, unrelated changes landed together:
+
+**Motion/interaction polish**, from an animation audit (Emil Kowalski-derived rules — easing,
+duration, physicality, cohesion) against `website/index.html`/`store.js`/`styles.css`, scoped
+to leave color and layout untouched: buttons, the qty-stepper, and `.cart-close` had **zero
+transition** on hover/active while every other control on the page already faded smoothly —
+added a shared `background-color 0.15s ease` + `transform 0.12s ease-out` press-feedback
+(`scale(0.97)`/`0.94`) convention. The cart drawer's slide easing swapped from Material's flat
+`cubic-bezier(0.4,0,0.2,1)` to an iOS-style `cubic-bezier(0.32, 0.72, 0, 1)`. The cart badge
+(`#cart-badge`) now pulses (`scale(1.3)`, 160ms) on increment via a `.is-pulsing` class toggled
+in `store.js`'s `updateBadge()`, instead of silently teleporting the count. The GCash/capacity
+popups (`.order-popup`/`.cap-popup`) now scale in from 0.95→1 instead of a flat opacity fade.
+The qty-stepper's touch target was widened to 40×40px under `@media (max-width: 760px)` (was
+30×32, under the ~40-44px Apple HIG/Material minimum). All additions are gated under
+`prefers-reduced-motion` alongside the site's existing reduced-motion rules, and mirrored into
+`design-system/KCMPS Redesign/styles.css` per its mirror convention (see that folder's
+`CLAUDE.md`). Deployed to `dev.kcmps.com` only.
+
+**Studio address**: added `15A Imugan St., Santol, Quezon City, Metro Manila, 1113` as a new
+"Studio address" `.info-block` in the `#contact` ("Manila HQ") section of `index.html`, above
+the existing "Studio hours" block — the site previously named the city ("Manila HQ", footer's
+"Manila, Philippines") but never gave a street address.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

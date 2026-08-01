@@ -1048,8 +1048,19 @@
     return { sent, list: getMessages(mailboxId) };
   }
 
+  /* ---- Design Asset Library (skeleton only — Milestone: Design Asset Library) ----
+     Placeholder behind the same KCMPS_DASH seam so design-library.html has a real
+     function to call. Returns an empty list — no backend exists yet (no S3 bucket,
+     no Lambdas, no DynamoDB DESIGN# items). Swap the body for a real fetch() to
+     GET /designs once backend/design-library/ is built; the .html should not need
+     to change. See docs/roadmap.md "Parallel track — Design Asset Library". */
+  async function getDesigns() {
+    return [];
+  }
+
   global.KCMPS_DASH = {
     STORAGE_KEY, STATIONS, STATION_LABELS,
+    getDesigns,
     getMailboxes, getMessages, getMessage, getThread, markMessageRead, sendReply,
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
     advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, rejectPayment,

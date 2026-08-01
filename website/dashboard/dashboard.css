@@ -82,6 +82,9 @@ body { margin: 0; background-attachment: fixed; }
 .tile.bad .t-value { color: #c0392b; }
 .tile.good .t-value { color: var(--color-green); }
 
+/* — design library skeleton (Design Asset Library milestone, backend not built yet) — */
+.design-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
+
 /* — queue lists — */
 .queue-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-3); }
 .queue-card { padding: var(--space-3); }

@@ -2164,6 +2164,82 @@ callback URLs, and `renderLoggedIn()` are untouched — an already-logged-in ses
 isolated `login-test.html` reference page) is unaffected; this only removes the entry point
 for a new login from the main storefront nav.
 
+### 55. Milestone 1.4 (customer order tracking) + Design Asset Library skeleton (2026-08-01)
+
+Planned overnight (solo — user was asleep, explicit instruction not to ask for approval) as a
+4-part plan, then executed the next day with 3 explicit scope corrections from the user before
+starting: (1) skip the planned GCash Order-ID-in-note addition entirely — the existing typed
+reference number is already enough friction/verification, no UI change needed; (2) proceed with
+1.4 in full as planned; (3) build the Design Asset Library as a minimal, non-functional skeleton
+only, deliberately leaving the real backend for a separate future session with fuller context.
+
+**1.4 fix + build:**
+- The real bug flagged in entry 51/roadmap 1.3: `store.js`'s `accessToken()` sent the *access*
+  token as Bearer on both checkout calls, but `create-order.js`'s `aws-jwt-verify` config
+  requires `tokenUse: "id"` — an access token fails verification silently (`tryGetSub()` catches
+  and returns `null`), so `customerSub` has been `null` for every order since 1.1, logged in or
+  not. Renamed `accessToken()` → `idToken()` (reads `id_token`, mirroring the already-correct
+  pattern in `dashboard-data.js`), switched both `submitOrder()` and `submitPaymentProof()` call
+  sites. No backend change — `create-order.js` already expected this.
+- New `website/orders.html`: a plain storefront page (not a dashboard page — no
+  `dashboard-shell.js`), reusing `styles.css`'s existing card/button classes. Reads
+  `sessionStorage.kcmps_tokens`, redirects to `index.html?login=required` if no session, calls
+  the already-staff-api-hosted `GET /orders` (already filtered server-side by `customerSub` via
+  `getOrdersForSub()`, built in 1.3 but unusable until the token fix above). Renders a 6-stage
+  progress bar per the Payment System file's spec, with a `Payment Rejected` branch and each
+  line item's own status listed underneath (mixed-cart orders can have items at different
+  stages).
+- `index.html`'s `renderLoggedIn()` gained an `#orders-link` ("My Orders"), shown to every
+  logged-in user — unlike `#dashboard-link`, which stays Staff-group-gated.
+- Verified in-browser (`localhost:5500`): `orders.html` correctly redirects an unauthenticated
+  visitor to `index.html?login=required`, no console errors.
+- **Live end-to-end pass (2026-08-02), against a real, kept-around Cognito test user.** Created
+  `test-customer` (email `testcustomer@kcmps.com`, password set by the user, `Customer` group)
+  via `admin-create-user`/`admin-set-user-password` — **deliberately not deleted afterward**, so
+  it stays available for future re-testing. The pool's password policy
+  (`RequireUppercase`/`RequireSymbols`, `describe-user-pool` confirmed) rejected the user's first
+  choice of password; user picked an adjusted one that satisfies it.
+  Completed a real Hosted-UI login as this user (PKCE authorize URL built via `buildAuthorizeUrl()`
+  in the browser console, navigated to it directly rather than through the popup — the sandboxed
+  test browser can't reliably drive a real popup window, and the popup script's own
+  `window.close()` closed the tab once the code exchange finished, which is expected popup
+  behavior but meant the tokens landed in `localStorage`'s `kcmps_auth_result` instead of a live
+  session; copied them into `sessionStorage.kcmps_tokens` manually to finish what `openLoginPopup`
+  normally does automatically). Confirmed the ID token's `cognito:groups` correctly read
+  `["Customer"]`. Placed a real order (`ORD-AMT5L9`) via a direct authenticated `fetch()` to
+  `POST /orders`, then confirmed via `aws dynamodb get-item` that `customerSub` now equals the
+  test user's real `sub` (previously always `null` — this is the regression check that proves
+  the token fix). Loaded `orders.html` and confirmed it rendered `ORD-AMT5L9` with the correct
+  "Payment Verification" stage highlighted. **Order `ORD-AMT5L9` and user `test-customer` are
+  both left in place** per explicit instruction, for reuse in future testing — not cleaned up
+  like every other test artifact this session.
+
+**Design Asset Library — skeleton only, by explicit request:**
+- `website/dashboard/design-library.html`'s placeholder prose replaced with real markup: an
+  upload form (category `<select>` sourced live from `KCMPS_STORE_DATA.leaves`, so it can never
+  list a category the storefront doesn't have) and a library grid — but the submit button is
+  `disabled` and the form's `submit` handler only calls `preventDefault()`, since no
+  `backend/design-library/` Lambda exists yet to call.
+- `dashboard-data.js` gained a `getDesigns()` stub behind the `KCMPS_DASH` seam (returns `[]`) so
+  the page has a real function to call; swapping its body for a real fetch is the only change
+  a future session needs to make to go live.
+- Added `.design-grid` to `dashboard.css` (mirrors `.tile-grid`'s `auto-fit` pattern).
+- **A real correction to the original roadmap plan, found before writing any code:**
+  `store.js`'s `buildDesignGrid()` reads a static, hand-edited `images[]` array per product in
+  `products.js` — there is no manifest-fetch mechanism for design images today (unlike the hero
+  carousel's proven `HERO_MANIFEST_URL` same-origin fetch). This means a future publish-design
+  Lambda writing files to S3 alone would NOT make a new design appear in the storefront picker,
+  contrary to the original plan's assumption. Documented in `docs/roadmap.md` so the future
+  session building the real backend does this `store.js` manifest-merge change as part of that
+  work, rather than shipping a Lambda that silently doesn't achieve the stated goal.
+- Verified in-browser: page renders with no console errors, category dropdown correctly
+  populated from the real catalog leaves (`print-office`, `dtf`, `subli`, `hotmelt`, `3dprint`,
+  `souvenir`, `network`, `storage`).
+
+**Docs:** `docs/roadmap.md`'s 1.4 checklist marked done (with the still-owed live-verification
+caveat above), the GCash open-decision marked resolved, and a new "Status" note added atop the
+Design Asset Library section pointing at this entry.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

@@ -21,7 +21,7 @@
         POSTs to CHECKOUT_API_BASE/orders (backend/checkout/create-order.js behind
         kcmps-checkout-api, see backend/infra/README.md) instead of composing a
         mailto:. Guest checkout unchanged — the Bearer token is attached only if
-        a Cognito session already exists (accessToken() below), never required.
+        a Cognito session already exists (idToken() below), never required.
         The post-checkout popup then collects the GCash reference number, claimed
         amount, and a screenshot upload, POSTs to submit-payment-proof.js for a
         pre-signed S3 URL, then PUTs the file straight to S3 — see
@@ -53,11 +53,14 @@
   // (TOKEN_STORAGE_KEY there) — read independently here rather than via a
   // shared export, matching how dashboard-shell.js already does this.
   var AUTH_TOKEN_KEY = "kcmps_tokens";
-  function accessToken() {
+  // ID token, not access token — the checkout API's JWT verifier requires
+  // tokenUse: "id" (needs aud/cognito:groups, only on the ID token). Sending
+  // the access token verifies-but-fails silently, leaving customerSub null.
+  function idToken() {
     try {
       var raw = sessionStorage.getItem(AUTH_TOKEN_KEY);
       var tokens = raw ? JSON.parse(raw) : null;
-      return tokens && tokens.access_token ? tokens.access_token : null;
+      return tokens && tokens.id_token ? tokens.id_token : null;
     } catch (e) { return null; }
   }
 
@@ -1561,7 +1564,7 @@
     submitBtn.disabled = true; submitBtn.textContent = "Submitting…";
 
     var headers = { "Content-Type": "application/json" };
-    var token = accessToken();
+    var token = idToken();
     if (token) headers["Authorization"] = "Bearer " + token;
 
     fetch(CHECKOUT_API_BASE + "/orders/" + encodeURIComponent(state.orderId) + "/payment-proof", {
@@ -1621,7 +1624,7 @@
     if (placeBtn) { placeBtn.disabled = true; placeBtn.textContent = "Placing order…"; }
 
     var headers = { "Content-Type": "application/json" };
-    var token = accessToken();
+    var token = idToken();
     if (token) headers["Authorization"] = "Bearer " + token;
 
     fetch(CHECKOUT_API_BASE + "/orders", {

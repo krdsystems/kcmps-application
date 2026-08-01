@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>My Orders — KCMPS</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .orders-wrap { max-width: 880px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
+  .orders-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); gap: var(--space-3); }
+  .order-card + .order-card { margin-top: var(--space-4); }
+  .order-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+  .order-id { font-family: var(--font-heading); font-weight: 700; }
+  .progress { display: flex; gap: 4px; margin: var(--space-3) 0; }
+  .progress-step { flex: 1; height: 6px; border-radius: 999px; background: var(--color-border, #e4e4e7); }
+  .progress-step.is-done { background: var(--color-accent); }
+  .progress-step.is-rejected { background: #c0392b; }
+  .stage-label { font-size: 12.5px; color: var(--color-text-muted, #666); margin-top: 4px; }
+  .line-list { margin-top: var(--space-3); display: flex; flex-direction: column; gap: 6px; }
+  .line-row { display: flex; justify-content: space-between; font-size: 13.5px; padding: 6px 0; border-top: 1px solid var(--color-border, #eee); }
+  .line-row:first-child { border-top: none; }
+  .orders-empty, .orders-loading, .orders-error { text-align: center; color: var(--color-text-muted, #666); padding: var(--space-6) 0; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="index.html" class="nav-brand" style="text-decoration:none">
+    <img src="assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
+  <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
+    <a href="index.html">Back to shop</a>
+    <button type="button" id="logout-btn" class="btn btn-ghost">Logout</button>
+  </div>
+</nav>
+
+<main class="orders-wrap">
+  <div class="orders-head">
+    <h1 style="margin:0">My Orders</h1>
+  </div>
+  <div id="orders-root"><div class="orders-loading">Loading your orders&hellip;</div></div>
+</main>
+
+<script>
+(function () {
+  const COGNITO_CONFIG = {
+    domain: "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
+    clientId: "95rrk0mflffentqdiomg1fipc",
+    redirectUri: window.location.origin + "/",
+  };
+  const TOKEN_STORAGE_KEY = "kcmps_tokens";
+  const API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+
+  function loadTokens() {
+    const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function fmtPeso(n) { return "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDate(iso) { if (!iso) return "—"; try { return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }); } catch { return iso; } }
+
+  const tokens = loadTokens();
+  if (!tokens || !tokens.id_token) {
+    window.location.replace("index.html?login=required");
+    return;
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    clearTokens();
+    window.location.href = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
+      client_id: COGNITO_CONFIG.clientId,
+      logout_uri: COGNITO_CONFIG.redirectUri,
+    }).toString()}`;
+  });
+
+  // 6-stage customer-facing progress model (Payment System spec):
+  // Order Placed -> Payment Verification -> Confirmed -> In Production -> QC -> Delivered.
+  // Every backend order-status value maps into one of these 6 slots (or the
+  // Rejected branch, which isn't a numbered stage — it's a stop sign at stage 1).
+  const STAGES = ["Order Placed", "Payment Verification", "Confirmed", "In Production", "Quality Check", "Delivered"];
+  const STATUS_TO_STAGE = {
+    "Quoted": 0, "Priced": 0,
+    "Pending Payment Verification": 1,
+    "Payment Rejected": 1, // branch — rendered separately, not just index 1
+    "Confirmed": 2, "Scheduled": 2,
+    "In Production": 3,
+    "QC": 4, "Rework": 4,
+    "Ready for Dispatch": 5, "Dispatched": 5, "Delivered": 5,
+    "Cancelled": 5, "Auto-Cancelled": 5, "Quote Expired": 5,
+  };
+
+  function renderProgress(status) {
+    const rejected = status === "Payment Rejected";
+    const stageIdx = STATUS_TO_STAGE[status] != null ? STATUS_TO_STAGE[status] : 0;
+    const steps = STAGES.map((_, i) => {
+      const cls = rejected && i === 1 ? "is-rejected" : i <= stageIdx ? "is-done" : "";
+      return `<div class="progress-step ${cls}"></div>`;
+    }).join("");
+    const label = rejected
+      ? "Payment rejected — please resubmit your GCash proof, or contact us if you need help."
+      : STAGES[stageIdx];
+    return `<div class="progress">${steps}</div><div class="stage-label">${escapeHtml(label)}</div>`;
+  }
+
+  function renderOrder(order) {
+    const lines = (order.lineItems || []).map((li) => (
+      `<div class="line-row"><span>${escapeHtml(li.description || li.name || "Item")}</span><span>${escapeHtml(li.status || "—")}</span></div>`
+    )).join("");
+    return (
+      `<div class="card order-card">` +
+        `<div class="order-top">` +
+          `<span class="order-id">Order ${escapeHtml((order.PK || "").replace("ORDER#", "") || order.orderId || "")}</span>` +
+          `<span class="text-muted">${fmtDate(order.createdAt)}</span>` +
+        `</div>` +
+        renderProgress(order.orderStatus) +
+        (lines ? `<div class="line-list">${lines}</div>` : "") +
+      `</div>`
+    );
+  }
+
+  fetch(API_BASE + "/orders", {
+    headers: { Authorization: "Bearer " + tokens.id_token },
+  }).then((res) => {
+    if (res.status === 401) { clearTokens(); window.location.replace("index.html?login=required"); return null; }
+    return res.json();
+  }).then((body) => {
+    if (!body) return;
+    const root = document.getElementById("orders-root");
+    const orders = body.orders || [];
+    if (!orders.length) { root.innerHTML = '<div class="orders-empty">No orders yet — start one from the shop.</div>'; return; }
+    root.innerHTML = orders.map(renderOrder).join("");
+  }).catch(() => {
+    document.getElementById("orders-root").innerHTML = '<div class="orders-error">Couldn’t load your orders right now. Please try again shortly.</div>';
+  });
+})();
+</script>
+</body>
+</html>

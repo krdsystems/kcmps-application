@@ -78,7 +78,7 @@ html { overflow-x: hidden; }
 @media (max-width: 760px) {
   .nav-links a:not(.btn) { display: none; }
   .nav-links .btn-primary { display: none; }
-  #dashboard-link { display: none !important; }
+  #dashboard-link, #orders-link { display: none !important; }
   .nav { gap: var(--space-2); }
   .nav-links { gap: var(--space-2); }
   .auth-user-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
@@ -422,8 +422,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <a href="#contact">Contact</a>
     <a href="#storefront" class="btn btn-primary">Start your order</a>
 
-    <!-- Dashboard link — shown only for users in the "Staff" Cognito group.
-         Real routing to /dashboard/* doesn't exist yet, so it just logs. -->
+    <!-- My Orders — shown for any logged-in user, staff or not. -->
+    <a href="orders.html" id="orders-link" class="btn btn-ghost is-hidden">My Orders</a>
+
+    <!-- Dashboard link — shown only for users in the "Staff" Cognito group. -->
     <a href="#" id="dashboard-link" class="btn btn-ghost is-hidden">Dashboard</a>
 
     <!-- Cart button — stubbed. See CART INTEGRATION POINT in the auth script
@@ -2110,6 +2112,7 @@ function renderLoggedOut() {
     '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
   document.getElementById("auth-btn").addEventListener("click", startLogin);
   document.getElementById("dashboard-link").classList.add("is-hidden");
+  document.getElementById("orders-link").classList.add("is-hidden");
 }
 
 function renderLoggedIn(claims) {
@@ -2122,6 +2125,9 @@ function renderLoggedIn(claims) {
     '</span>';
   area.querySelector(".auth-user-name").textContent = name; // textContent = safe, no escaping
   document.getElementById("logout-btn").addEventListener("click", logout);
+
+  // My Orders is visible to every logged-in user, staff or not.
+  document.getElementById("orders-link").classList.remove("is-hidden");
 
   // Group-based UI branching: Staff group => show the Dashboard link.
   const groups = claims["cognito:groups"] || [];

@@ -23,32 +23,68 @@
     <main class="dash-content">
       <section class="dsec">
         <div class="dsec-head">
-          <h2>Design asset library <span class="badge-soon">Soon</span></h2>
-          <span class="hint">Planned — see docs/roadmap.md "Parallel track — Design Asset Library"</span>
+          <h2>Design asset library <span class="badge-soon">Skeleton</span></h2>
+          <span class="hint">UI structure only — no backend yet. See docs/roadmap.md "Parallel track — Design Asset Library"</span>
         </div>
+
+        <!-- Upload form is a structural placeholder: fields match the planned
+             DESIGN# item shape (name/description/category/tags + original +
+             web-ready file) but submit has no backend to call yet — a future
+             session wires this to POST /designs/upload-url once
+             backend/design-library/ exists. Category options are sourced from
+             the same catalog leaves the storefront uses so they can't drift. -->
+        <div class="card" style="padding: var(--space-5); margin-bottom: var(--space-4)">
+          <h3 style="margin-top:0">Upload a design</h3>
+          <form id="design-upload-form">
+            <div class="field"><label for="d-name">Name</label><input class="input" id="d-name" required /></div>
+            <div class="field"><label for="d-desc">Description</label><input class="input" id="d-desc" /></div>
+            <div class="field"><label for="d-category">Category</label><select class="input" id="d-category" required></select></div>
+            <div class="field"><label for="d-tags">Tags (comma separated)</label><input class="input" id="d-tags" /></div>
+            <div class="field"><label for="d-original">Original file (private)</label><input class="input" id="d-original" type="file" required /></div>
+            <div class="field"><label for="d-web">Web-ready image (published)</label><input class="input" id="d-web" type="file" /></div>
+            <button type="submit" class="btn btn-primary" disabled title="Backend not built yet">Upload (not wired yet)</button>
+          </form>
+        </div>
+
         <div class="card" style="padding: var(--space-5)">
-          <p>One home for every design file, so nothing lives only on a laptop and past work can be found again.</p>
-          <p><strong>Upload once, publish everywhere.</strong> Drop a source file (PSD/AI/PDF) with a name,
-          description, and category. Originals go to a private, versioned S3 bucket that is never public;
-          a web-optimised copy is derived automatically and published to the storefront's assets path.</p>
-          <p><strong>Categories are the catalog leaves you already use</strong> — the same list the storefront's
-          product sections are built from, so the library and the shop can never drift apart. Files are renamed
-          on save through the shared naming convention, which is what lets a newly published design appear in
-          the product offerings with no code deploy.</p>
-          <p><strong>Searchable history.</strong> Browse and filter by category, tag, or uploader to reference
-          past work instead of rebuilding it.</p>
-          <p class="hint">Access will reuse the existing staff roles — Production, Sales, and Admin can upload;
-          no new role is being added.</p>
+          <h3 style="margin-top:0">Library</h3>
+          <div class="design-grid" id="design-grid"><!-- design cards render here --></div>
         </div>
       </section>
     </main>
   </div>
 </div>
 
+<script src="../products.js"></script>
 <script src="dashboard-data.js"></script>
 <script src="dashboard-shell.js"></script>
 <script>
-(() => { KCMPS_DASH_SHELL.mount("design"); })();
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("design");
+  if (!claims) return;
+
+  const categorySel = document.getElementById("d-category");
+  const leaves = (window.KCMPS_STORE_DATA && window.KCMPS_STORE_DATA.leaves) || {};
+  categorySel.innerHTML = Object.keys(leaves).map((key) => (
+    `<option value="${key}">${leaves[key].label || key}</option>`
+  )).join("");
+
+  async function renderGrid() {
+    const designs = await KCMPS_DASH.getDesigns();
+    const grid = document.getElementById("design-grid");
+    grid.innerHTML = designs.length
+      ? designs.map((d) => `<div class="card">${d.name}</div>`).join("")
+      : '<p class="q-empty">No designs uploaded yet.</p>';
+  }
+
+  // Structural only — actual upload needs backend/design-library/'s
+  // get-upload-url.js Lambda, which doesn't exist yet.
+  document.getElementById("design-upload-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+  });
+
+  renderGrid();
+})();
 </script>
 </body>
 </html>

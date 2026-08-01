@@ -184,10 +184,9 @@ can't be fulfilled from an online order alone.
   production-access request** (`docs/roadmap.md` "SES relay" section, status pending as of
   2026-07-31). `submit-payment-proof.js` degrades gracefully without it (skips the email,
   proof is still recorded) so this doesn't block anything above.
-- [ ] GCash matching mechanism still undecided either way (unique-centavo variance **or**
-  Order ID as the payment note — see [open decisions](#open-decisions-that-gate-milestone-1));
-  today the typed reference number is the only cross-check field, which is what the flow above
-  already collects regardless of which matching mechanism is eventually chosen.
+- [x] GCash matching mechanism decided (2026-08-01): keep the typed reference number as the
+  only cross-check field — see [open decisions](#open-decisions-that-gate-milestone-1). No
+  further implementation needed.
 - [x] SES: "Order received — under verification, we'll confirm within [X] hours." — sent from
   `submit-payment-proof.js` above when `customerContact` looks like an email address (checkout's
   contact field is free text; a phone number can't receive an SES email, so it's skipped rather
@@ -243,11 +242,23 @@ can't be fulfilled from an online order alone.
   In Production`), confirmed `orderStatus` and GSI1 caught up correctly a few seconds later via
   the Streams handler. All test data (order items, Cognito test users) deleted afterward.
 
-### 1.4 — Customer order tracking (closes the loop, makes it "feel complete")
-- [ ] Logged-in customer sees their orders + the payment→production progress bar
-  (`Order Placed → Payment Verification → Confirmed → In Production → QC → Delivered`, Payment
-  System file). `GET /orders` filtered to the caller's `sub`. This is the visible payoff that
-  turns "I emailed an order" into "I placed an order and can watch it."
+### 1.4 — Customer order tracking (closes the loop, makes it "feel complete") ✅ done (2026-08-01)
+- [x] Fixed the pre-existing bug from 1.3's notes: `store.js` was sending the *access* token as
+  Bearer on checkout while `create-order.js`'s verifier requires the *ID* token — `customerSub`
+  was silently `null` for every order, logged in or not. `store.js`'s `accessToken()` renamed to
+  `idToken()` (reads `id_token`, mirroring `dashboard-data.js`'s existing helper) and both
+  checkout call sites (`submitOrder`, `submitPaymentProof`) switched over.
+- [x] New [`website/orders.html`](../website/orders.html) — logged-in customer sees their orders
+  + a 6-stage progress bar (`Order Placed → Payment Verification → Confirmed → In Production →
+  QC → Delivered`, Payment System file), plus a rejected-payment branch and each line item's own
+  status underneath. Calls the existing `GET /orders` route (already filtered server-side via
+  `getOrdersForSub()`), Bearer = ID token. Redirects to `index.html?login=required` if no session.
+- [x] "My Orders" nav link added to `index.html`'s `renderLoggedIn()`, visible to every
+  logged-in user (unlike the Staff-gated Dashboard link).
+- Verified in-browser that `orders.html` redirects correctly to `index.html?login=required` with
+  no session. **Still needs a live end-to-end pass** (real Cognito customer test user, real
+  order, confirm `customerSub` populates and the correct stage renders) before this is fully
+  proven — not yet done as of this entry.
 
 **Definition of done for Milestone 1:** a real order in DynamoDB, a GCash proof on S3, a staff
 verify/reject that moves real statuses, an auto-expiry cron, and a customer who can see the
@@ -256,6 +267,25 @@ result. `mailto:` checkout retired.
 ---
 
 ## Parallel track — Design Asset Library (no dependency on Milestone 1)
+**Status (2026-08-01): UI skeleton only, no backend.** A minimal, non-functional structure was
+built deliberately small so a future session can implement the real backend (S3 buckets,
+Lambdas, IAM, API routes) with full context in one pass, rather than half-building it here:
+- [`website/dashboard/design-library.html`](../website/dashboard/design-library.html) — real
+  upload-form markup (name/description/category/tags/original-file/web-ready-file, category
+  options sourced from `KCMPS_STORE_DATA.leaves` so they can't drift from the storefront) and a
+  library grid, both wired to `dashboard-data.js`. Submit button is disabled ("Backend not built
+  yet") — no Lambda exists to call.
+- [`dashboard-data.js`](../website/dashboard/dashboard-data.js)'s `getDesigns()` — stub behind
+  the same `KCMPS_DASH` seam, returns `[]`. Swap its body for a real `GET /designs` fetch once
+  `backend/design-library/` exists; the `.html` shouldn't need to change.
+- **Correction found during planning:** `buildDesignGrid()` in `store.js` reads a static,
+  hardcoded `images[]` array per product in `products.js` — there is no manifest fetch for
+  design images today (unlike the hero carousel's `HERO_MANIFEST_URL`). A future publish-design
+  Lambda writing to S3 alone cannot make a new design appear in the storefront picker; a
+  one-time `store.js` change (merge each product's static `images[]` with a fetched
+  `design-manifest.json`, mirroring the hero carousel's proven pattern) is required first. Not
+  yet implemented — flagged here so the next session doesn't rediscover it from scratch.
+
 **Trigger (2026-07-30):** the designer has no home for source files today — no versioned
 storage, no way to browse past work, and publishing a new design to the storefront is a manual
 file-drop that only scales because the catalog is still small. This is a real, currently-unmet
@@ -513,8 +543,10 @@ Reserved seats in the data model, dark until their trigger fires:
 ## Open decisions that gate Milestone 1
 Carried from the Payment System + ERP files' open-questions sections. These change *what you
 build in M1*, so decide before/at 1.2:
-1. **GCash matching mechanism:** unique-centavo variance vs. Order-ID-as-note. (Affects the
-   checkout UI and how staff cross-check.)
+1. **GCash matching mechanism: decided 2026-08-01 — keep the existing GCash reference-number
+   field as the only cross-check.** Typing the last digits of the GCash reference is already
+   enough friction/verification for staff to match a payment; no Order-ID-in-note addition or
+   centavo-variance pricing change needed. No implementation follows from this.
 2. **Verification SLA window** in hours — drives the SES copy and the `expire-pending-orders`
    cutoff (draft assumes 48h).
 3. **Deposit vs. pay-on-quote for `custom` items** (current assumption: pay-on-quote, no

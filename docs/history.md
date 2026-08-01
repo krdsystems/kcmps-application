@@ -2129,6 +2129,66 @@ This is App-Client config, not code — no file in this repo changes as a result
 never hit this because it has its own explicitly-registered callback URL
 (`localhost:5500/login-test.html`).
 
+### 53. Milestone 1.4 (customer order tracking) + Design Asset Library skeleton (2026-08-01)
+
+Planned overnight (solo — user was asleep, explicit instruction not to ask for approval) as a
+4-part plan, then executed the next day with 3 explicit scope corrections from the user before
+starting: (1) skip the planned GCash Order-ID-in-note addition entirely — the existing typed
+reference number is already enough friction/verification, no UI change needed; (2) proceed with
+1.4 in full as planned; (3) build the Design Asset Library as a minimal, non-functional skeleton
+only, deliberately leaving the real backend for a separate future session with fuller context.
+
+**1.4 fix + build:**
+- The real bug flagged in entry 51/roadmap 1.3: `store.js`'s `accessToken()` sent the *access*
+  token as Bearer on both checkout calls, but `create-order.js`'s `aws-jwt-verify` config
+  requires `tokenUse: "id"` — an access token fails verification silently (`tryGetSub()` catches
+  and returns `null`), so `customerSub` has been `null` for every order since 1.1, logged in or
+  not. Renamed `accessToken()` → `idToken()` (reads `id_token`, mirroring the already-correct
+  pattern in `dashboard-data.js`), switched both `submitOrder()` and `submitPaymentProof()` call
+  sites. No backend change — `create-order.js` already expected this.
+- New `website/orders.html`: a plain storefront page (not a dashboard page — no
+  `dashboard-shell.js`), reusing `styles.css`'s existing card/button classes. Reads
+  `sessionStorage.kcmps_tokens`, redirects to `index.html?login=required` if no session, calls
+  the already-staff-api-hosted `GET /orders` (already filtered server-side by `customerSub` via
+  `getOrdersForSub()`, built in 1.3 but unusable until the token fix above). Renders a 6-stage
+  progress bar per the Payment System file's spec, with a `Payment Rejected` branch and each
+  line item's own status listed underneath (mixed-cart orders can have items at different
+  stages).
+- `index.html`'s `renderLoggedIn()` gained an `#orders-link` ("My Orders"), shown to every
+  logged-in user — unlike `#dashboard-link`, which stays Staff-group-gated.
+- Verified in-browser (`localhost:5501`, Python dev server): `orders.html` correctly redirects
+  an unauthenticated visitor to `index.html?login=required`, no console errors. **Not yet
+  verified end-to-end with a real logged-in customer placing a real order** — that pass (mint a
+  `Customer`-group Cognito test user, place an order, confirm `customerSub` populates,
+  confirm the correct stage renders, clean up test data) is still owed before calling this fully
+  proven.
+
+**Design Asset Library — skeleton only, by explicit request:**
+- `website/dashboard/design-library.html`'s placeholder prose replaced with real markup: an
+  upload form (category `<select>` sourced live from `KCMPS_STORE_DATA.leaves`, so it can never
+  list a category the storefront doesn't have) and a library grid — but the submit button is
+  `disabled` and the form's `submit` handler only calls `preventDefault()`, since no
+  `backend/design-library/` Lambda exists yet to call.
+- `dashboard-data.js` gained a `getDesigns()` stub behind the `KCMPS_DASH` seam (returns `[]`) so
+  the page has a real function to call; swapping its body for a real fetch is the only change
+  a future session needs to make to go live.
+- Added `.design-grid` to `dashboard.css` (mirrors `.tile-grid`'s `auto-fit` pattern).
+- **A real correction to the original roadmap plan, found before writing any code:**
+  `store.js`'s `buildDesignGrid()` reads a static, hand-edited `images[]` array per product in
+  `products.js` — there is no manifest-fetch mechanism for design images today (unlike the hero
+  carousel's proven `HERO_MANIFEST_URL` same-origin fetch). This means a future publish-design
+  Lambda writing files to S3 alone would NOT make a new design appear in the storefront picker,
+  contrary to the original plan's assumption. Documented in `docs/roadmap.md` so the future
+  session building the real backend does this `store.js` manifest-merge change as part of that
+  work, rather than shipping a Lambda that silently doesn't achieve the stated goal.
+- Verified in-browser: page renders with no console errors, category dropdown correctly
+  populated from the real catalog leaves (`print-office`, `dtf`, `subli`, `hotmelt`, `3dprint`,
+  `souvenir`, `network`, `storage`).
+
+**Docs:** `docs/roadmap.md`'s 1.4 checklist marked done (with the still-owed live-verification
+caveat above), the GCash open-decision marked resolved, and a new "Status" note added atop the
+Design Asset Library section pointing at this entry.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

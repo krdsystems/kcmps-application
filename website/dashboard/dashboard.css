@@ -8,6 +8,16 @@
 html.dash-gate-hide body { visibility: hidden; }
 html.dash-ready body { visibility: visible; }
 
+/* Inline busy indicator for action buttons that call the API (verify/reject/
+   advance) — see job-detail.html's withBusy(). Prevents a slow request from
+   reading as "nothing happened", which is what invites a double-click. */
+.btn-spinner {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent; opacity: 0.6;
+  animation: btn-spin 0.7s linear infinite; vertical-align: -1px;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
 * , *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background-attachment: fixed; }
 

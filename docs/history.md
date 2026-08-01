@@ -2251,6 +2251,71 @@ customer-facing features (My Orders, `orders.html`) couldn't be tested live. Rem
 describe, just flipped back. Deployed to `dev.kcmps.com` only, per explicit instruction; whether
 login stays enabled on a future production sync is the owner's call, same as entry 54.
 
+### 57. First-round feedback from dev testing: nav-logo bug, order thumbnails, reject-payment blocker, double-click guards, live dashboard refresh (2026-08-02)
+
+Owner testing `orders.html`/the dashboard on dev surfaced 5 issues in one pass.
+
+1. **Giant logo on `orders.html`.** The `.nav-brand img` sizing rule (`height: 28px`) has always
+   lived in `index.html`'s own inline `<style>`, never in the shared `styles.css` — every other
+   page that reuses the `.nav-brand` nav markup (dashboard pages) never actually renders a real
+   `<img>` inside it, so this never surfaced until `orders.html` (a plain storefront page reusing
+   the same markup) shipped. Moved `.nav-brand { display:flex; ... }` + `.nav-brand img { height:
+   28px; ... }` into `website/styles.css` (mirrored into `design-system/KCMPS Redesign/
+   styles.css` per that folder's convention) so any future page gets it for free; `index.html`'s
+   now-redundant inline copy was left alone rather than removed, to avoid touching a file with
+   its own separate "login re-enabled" state mid-fix.
+2. **No product image on My Orders.** `orders.html` only ever showed text. Added a
+   `lineImage()` lookup mirroring `store.js`'s `thumbImage()`: a line item's own `designRef` (a
+   real image path already chosen at checkout) wins, else the matching `products.js` catalog
+   entry's `image`, else its leaf's fallback image, else an initials placeholder — same fallback
+   chain the storefront itself already uses, so a design-picker order and a plain-SKU order both
+   get a real thumbnail. Required adding `<script src="products.js">` to `orders.html`.
+   Redesigned the order card layout with Shopee/Lazada's list-view conventions in mind (function
+   and visual principle only, not literal styling): a slim header (order id/date + one at-a-
+   glance status pill) and item rows anchored on a 52px thumbnail rather than a wall of text —
+   the 6-stage progress bar moved below the item list instead of competing with it for the top
+   of the card.
+3. **Reject-payment was permanently stuck on "no GCash file attached."** Root cause:
+   `backend/staff-api/verify-payment.js` line 60 (pre-fix) unconditionally required
+   `order.payment` to be truthy before EITHER verifying or rejecting — but `create-order.js`
+   writes `payment: null` on every order at checkout, and sku line items enter "Pending Payment
+   Verification" immediately at checkout, well before `submit-payment-proof.js` ever runs. So an
+   order with no GCash proof submitted yet (or one where the customer never will) could never be
+   rejected — staff had no way to close it out except waiting for the 15-minute auto-expiry cron,
+   and the same "no GCash file" error kept firing on every retry because nothing about the retry
+   changed the missing precondition. Fixed: the `order.payment` check now only applies to
+   *verify* (which genuinely needs a real screenshot/reference to check against) — reject no
+   longer requires it. Also fixed a second-order bug this surfaced: the reject path's DynamoDB
+   update (`SET payment.rejectionReason = ...`) assumes `payment` is already a map — but when no
+   proof was ever submitted, `payment` is the NULL scalar `create-order.js` wrote, and you cannot
+   set a nested path on a non-map attribute (this would have thrown once the first check was
+   removed). Fixed by replacing the whole `payment` attribute with a fully-null-filled object
+   (all proof fields null, `rejectionReason` set) in that specific case, and keeping the original
+   nested-field patch for the case where real proof does exist. Verified via a direct
+   `aws lambda invoke` against `kcmps-verify-payment` with a synthetic staff JWT claims payload
+   (no staff password available to log in through the real Hosted UI) on a real, no-payment test
+   order — confirmed a 200 response and the correct null-filled `payment.rejectionReason` in
+   DynamoDB afterward; test order deleted post-verification.
+4. **Staff could double-click Verify/Reject/Advance while the API call was in flight**, since
+   nothing on the button indicated a request was already running. Added a shared `withBusy(btn,
+   fn)` helper in `job-detail.html` — disables the button and swaps its label for a small spinner
+   (`.btn-spinner`, new in `dashboard.css`) for the duration of the call, restoring it in a
+   `finally` block. Wrapped all 4 API-calling click handlers (verify-confirm, reject-confirm,
+   adv-confirm, and the no-form default advance click) — these were the only action buttons in
+   the dashboard that hit the network; `jobs.html`/`today.html` have no equivalent buttons.
+5. **Dashboard didn't reflect a job another staff member (or the auto-expiry cron) just changed,
+   without a manual refresh.** No WebSocket/SSE backend exists for a real push channel, so added
+   plain polling instead — `setInterval` re-fetches and re-renders every 20s on `today.html`
+   (`renderQueues`/`renderTiles` — blockers/stock stay local-only mock data, no need to repoll)
+   and `jobs.html` (`init()`, which re-runs `allRows()` + the current search/status filter).
+   Cheap and good enough at this order volume; revisit if/when a real event-driven channel
+   exists.
+
+Also, per explicit instruction, cleared every `ORDER#` item (META/LINEITEM#/EVENT#, 61 items
+total — all previous test-session leftovers, including the two just-created for the reject-
+payment test above) from DynamoDB so the dashboard starts clean. The `test-customer` Cognito
+account itself was left untouched.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

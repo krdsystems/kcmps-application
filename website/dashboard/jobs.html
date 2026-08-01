@@ -186,6 +186,13 @@
   }
   init();
 
+  // Live-ish refresh: staff shouldn't have to hit F5 to see a job another
+  // teammate just advanced. Re-fetches and re-renders on an interval rather
+  // than a real push channel (no WebSocket/SSE backend exists) — cheap and
+  // good enough at this order volume. Filters/search stay put since render()
+  // just re-reads the current input values.
+  setInterval(init, 20000);
+
   /* ---- manual order form ---- */
   const moForm = document.getElementById("manual-order-form");
   const moToggle = document.getElementById("manual-order-toggle");

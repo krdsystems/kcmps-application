@@ -57,7 +57,13 @@ exports.handler = async (event) => {
   ]);
   const order = orderRes.Item;
   if (!order) return response(404, { error: "Order not found" });
-  if (!order.payment) return response(409, { error: "Order has no GCash payment proof on file" });
+  // Verifying needs a real GCash screenshot/reference to check against, but
+  // rejecting doesn't — staff must be able to reject an order for any reason
+  // (customer never paid, wrong item, etc.) even before any proof was ever
+  // submitted, since sku line items enter "Pending Payment Verification"
+  // immediately at checkout (create-order.js), well before submit-payment-
+  // proof.js ever runs.
+  if (!isReject && !order.payment) return response(409, { error: "Order has no GCash payment proof on file" });
 
   const pendingLineItems = (lineItemsRes.Items || []).filter((li) => li.status === STATUS.PENDING_PAYMENT_VERIFICATION);
   if (!pendingLineItems.length) return response(409, { error: "No line items on this order are awaiting verification" });
@@ -94,16 +100,34 @@ exports.handler = async (event) => {
     });
   });
 
+  // When rejecting an order that never had any GCash proof submitted,
+  // `payment` is still the NULL scalar create-order.js writes at checkout —
+  // `SET payment.rejectionReason = ...` would fail (can't set a nested path
+  // on a non-map attribute), so replace the whole attribute in that case
+  // instead of patching a nested field.
+  const paymentUpdate = isReject && !order.payment
+    ? {
+        UpdateExpression: "SET payment = :payment",
+        ExpressionAttributeValues: {
+          ":payment": {
+            method: null, claimedAmount: null, gcashRefNumber: null, screenshotRef: null,
+            submittedAt: null, verifiedBy: null, verifiedAt: null, rejectionReason: body.reason,
+          },
+        },
+      }
+    : {
+        UpdateExpression: isReject
+          ? "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
+          : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.rejectionReason = :null",
+        ExpressionAttributeValues: isReject
+          ? { ":reason": body.reason, ":null": null }
+          : { ":staff": staffName, ":now": now, ":null": null },
+      };
   transactItems.push({
     Update: {
       TableName: TABLE,
       Key: { PK: pk, SK: metaSk() },
-      UpdateExpression: isReject
-        ? "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
-        : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.rejectionReason = :null",
-      ExpressionAttributeValues: isReject
-        ? { ":reason": body.reason, ":null": null }
-        : { ":staff": staffName, ":now": now, ":null": null },
+      ...paymentUpdate,
     },
   });
 

@@ -7,19 +7,42 @@
 <title>My Orders — KCMPS</title>
 <link rel="stylesheet" href="styles.css" />
 <style>
+  /* Order-card layout takes cues from Shopee/Lazada's order list: a slim
+     header (order id/date + an at-a-glance status pill), item rows built
+     around a thumbnail (never a wall of text with no visual anchor), and
+     the progress detail below the fold rather than competing with the
+     items for attention. */
   .orders-wrap { max-width: 880px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
   .orders-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); gap: var(--space-3); }
   .order-card + .order-card { margin-top: var(--space-4); }
-  .order-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+  .order-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border, #eee); }
   .order-id { font-family: var(--font-heading); font-weight: 700; }
-  .progress { display: flex; gap: 4px; margin: var(--space-3) 0; }
+  .order-status-pill {
+    font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 999px;
+    background: var(--color-accent-100); color: var(--color-accent-800);
+  }
+  .order-status-pill.is-rejected { background: #fbe4e1; color: #c0392b; }
+  .order-status-pill.is-done { background: var(--color-green-100, #e3f6ea); color: var(--color-green, #1f8a4c); }
+  .line-list { margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+  .line-row { display: flex; align-items: center; gap: var(--space-3); font-size: 13.5px; padding: 6px 0; }
+  .line-thumb {
+    width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+  }
+  .line-thumb-fallback {
+    width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+    background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--color-text-muted, #999);
+  }
+  .line-info { flex: 1; min-width: 0; }
+  .line-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line-meta { font-size: 12px; color: var(--color-text-muted, #666); margin-top: 2px; }
+  .line-status { font-size: 12px; font-weight: 600; color: var(--color-text-muted, #666); white-space: nowrap; }
+  .progress { display: flex; gap: 4px; margin: var(--space-3) 0 0; }
   .progress-step { flex: 1; height: 6px; border-radius: 999px; background: var(--color-border, #e4e4e7); }
   .progress-step.is-done { background: var(--color-accent); }
   .progress-step.is-rejected { background: #c0392b; }
   .stage-label { font-size: 12.5px; color: var(--color-text-muted, #666); margin-top: 4px; }
-  .line-list { margin-top: var(--space-3); display: flex; flex-direction: column; gap: 6px; }
-  .line-row { display: flex; justify-content: space-between; font-size: 13.5px; padding: 6px 0; border-top: 1px solid var(--color-border, #eee); }
-  .line-row:first-child { border-top: none; }
   .orders-empty, .orders-loading, .orders-error { text-align: center; color: var(--color-text-muted, #666); padding: var(--space-6) 0; }
 </style>
 </head>
@@ -45,6 +68,7 @@
   <div id="orders-root"><div class="orders-loading">Loading your orders&hellip;</div></div>
 </main>
 
+<script src="products.js"></script>
 <script>
 (function () {
   const COGNITO_CONFIG = {
@@ -97,6 +121,30 @@
     "Cancelled": 5, "Auto-Cancelled": 5, "Quote Expired": 5,
   };
 
+  // Product image lookup — mirrors store.js's thumbImage(): a line item's own
+  // designRef (a real image path already chosen at checkout) wins, else fall
+  // back to the matching catalog product's image, else its leaf's image.
+  const DATA = (window.KCMPS_STORE_DATA) || { products: [], leaves: {} };
+  const productBySku = {};
+  (DATA.products || []).forEach((p) => { productBySku[p.id] = p; });
+  function lineImage(li) {
+    if (li.designRef) return li.designRef;
+    const p = li.sku ? productBySku[li.sku] : null;
+    if (p && p.image) return p.image;
+    const leaf = p ? DATA.leaves[p.leaf] : null;
+    return (leaf && leaf.image) || null;
+  }
+  function initials(name) {
+    return String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  }
+
+  function overallStatusPill(status) {
+    const rejected = status === "Payment Rejected";
+    const done = status === "Delivered";
+    const cls = rejected ? "is-rejected" : done ? "is-done" : "";
+    return `<span class="order-status-pill ${cls}">${escapeHtml(status || "Order Placed")}</span>`;
+  }
+
   function renderProgress(status) {
     const rejected = status === "Payment Rejected";
     const stageIdx = STATUS_TO_STAGE[status] != null ? STATUS_TO_STAGE[status] : 0;
@@ -111,17 +159,27 @@
   }
 
   function renderOrder(order) {
-    const lines = (order.lineItems || []).map((li) => (
-      `<div class="line-row"><span>${escapeHtml(li.description || li.name || "Item")}</span><span>${escapeHtml(li.status || "—")}</span></div>`
-    )).join("");
+    const lines = (order.lineItems || []).map((li) => {
+      const name = li.description || li.name || "Item";
+      const img = lineImage(li);
+      const thumb = img
+        ? `<img class="line-thumb" src="${escapeHtml(img)}" alt="" loading="lazy" />`
+        : `<span class="line-thumb-fallback">${escapeHtml(initials(name))}</span>`;
+      return (
+        `<div class="line-row">${thumb}` +
+        `<div class="line-info"><div class="line-name">${escapeHtml(name)}</div>` +
+        `<div class="line-meta">Qty ${li.qty || 1}${li.amount ? " · " + fmtPeso(li.amount) : ""}</div></div>` +
+        `<span class="line-status">${escapeHtml(li.status || "—")}</span></div>`
+      );
+    }).join("");
     return (
       `<div class="card order-card">` +
         `<div class="order-top">` +
-          `<span class="order-id">Order ${escapeHtml((order.PK || "").replace("ORDER#", "") || order.orderId || "")}</span>` +
-          `<span class="text-muted">${fmtDate(order.createdAt)}</span>` +
+          `<span class="order-id">Order ${escapeHtml((order.PK || "").replace("ORDER#", "") || order.orderId || "")} <span class="text-muted" style="font-weight:400">· ${fmtDate(order.createdAt)}</span></span>` +
+          overallStatusPill(order.orderStatus) +
         `</div>` +
-        renderProgress(order.orderStatus) +
         (lines ? `<div class="line-list">${lines}</div>` : "") +
+        renderProgress(order.orderStatus) +
       `</div>`
     );
   }

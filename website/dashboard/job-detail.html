@@ -77,6 +77,19 @@
     }
   }
 
+  // Disables the clicked button and swaps its label to a spinner while an
+  // API call is in flight, so a slow verify/reject/advance can't be double-
+  // clicked into firing twice. Always restores on completion, even on error
+  // (render() usually replaces the DOM anyway, but the restore still matters
+  // for the brief window before that happens).
+  async function withBusy(btn, fn) {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Working&hellip;';
+    try { await fn(); }
+    finally { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
   async function render() {
     const order = await KCMPS_DASH.getOrder(orderId);
     const body = document.getElementById("detail-body");
@@ -186,10 +199,12 @@
           formHost.innerHTML =
             `<p style="font-size:13px;margin:0 0 var(--space-2)">This confirms the GCash payment covering every sku item on order ${escapeHtml(order.orderId)} still awaiting verification — not just this line.</p>` +
             `<button type="button" class="btn btn-primary" id="verify-confirm">Confirm — verify payment</button>`;
-          document.getElementById("verify-confirm").addEventListener("click", async () => {
-            try { await KCMPS_DASH.verifyPayment(order.orderId, claims.name || claims.email); }
-            catch (err) { alert(err.message); }
-            await render();
+          document.getElementById("verify-confirm").addEventListener("click", async (e) => {
+            await withBusy(e.currentTarget, async () => {
+              try { await KCMPS_DASH.verifyPayment(order.orderId, claims.name || claims.email); }
+              catch (err) { alert(err.message); }
+              await render();
+            });
           });
           return;
         }
@@ -198,12 +213,14 @@
             `<div class="field" style="margin-bottom:var(--space-3)"><label for="rej-reason">Rejection reason (sent to the customer)</label>` +
             `<textarea class="input" id="rej-reason" rows="2" placeholder="e.g. reference number doesn't match any GCash transaction on file"></textarea></div>` +
             `<button type="button" class="btn btn-secondary" id="reject-confirm">Confirm — reject payment</button>`;
-          document.getElementById("reject-confirm").addEventListener("click", async () => {
+          document.getElementById("reject-confirm").addEventListener("click", async (e) => {
             const reason = document.getElementById("rej-reason").value.trim();
             if (!reason) { alert("A rejection reason is required."); return; }
-            try { await KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email); }
-            catch (err) { alert(err.message); }
-            await render();
+            await withBusy(e.currentTarget, async () => {
+              try { await KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email); }
+              catch (err) { alert(err.message); }
+              await render();
+            });
           });
           return;
         }
@@ -229,20 +246,22 @@
             (action.needsStation ? `<div class="field"><label>Station</label><select class="input" id="adv-station">${stations.map((s) => `<option value="${s.id}"${li.station === s.id ? " selected" : ""}>${s.label}</option>`).join("")}</select></div>` : "") +
             (action.needsSetup ? `<div class="field"><label>Setup minutes (start-setup → start-run tap)</label><input class="input" id="adv-setup" type="number" min="0" placeholder="e.g. 15" /></div>` : "") +
             `</div><button type="button" class="btn btn-primary" id="adv-confirm">Confirm — ${action.label}</button>`;
-          document.getElementById("adv-confirm").addEventListener("click", async () => {
+          document.getElementById("adv-confirm").addEventListener("click", async (e) => {
             const station = action.needsStation ? document.getElementById("adv-station").value : undefined;
             const setupMinutes = action.needsSetup ? parseInt(document.getElementById("adv-setup").value, 10) || 0 : undefined;
-            try { await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes }); }
-            catch (err) { alert(err.message); }
-            await render();
+            await withBusy(e.currentTarget, async () => {
+              try { await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes }); }
+              catch (err) { alert(err.message); }
+              await render();
+            });
           });
           return;
         }
-        (async () => {
+        withBusy(btn, async () => {
           try { await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to }); }
           catch (err) { alert(err.message); }
           await render();
-        })();
+        });
       });
     });
   }

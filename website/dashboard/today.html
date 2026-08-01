@@ -184,6 +184,12 @@
   renderTiles();
   renderBlockers();
   renderStock();
+
+  // Live-ish refresh of the real order data (queues/tiles) so a payment
+  // verified or a job advanced elsewhere shows up without an F5 — see the
+  // matching note in jobs.html. Blockers/stock stay local-only, no need to
+  // re-poll those.
+  setInterval(() => { renderQueues(); renderTiles(); }, 20000);
 })();
 
 </script>

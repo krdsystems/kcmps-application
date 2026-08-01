@@ -255,10 +255,12 @@ can't be fulfilled from an online order alone.
   `getOrdersForSub()`), Bearer = ID token. Redirects to `index.html?login=required` if no session.
 - [x] "My Orders" nav link added to `index.html`'s `renderLoggedIn()`, visible to every
   logged-in user (unlike the Staff-gated Dashboard link).
-- Verified in-browser that `orders.html` redirects correctly to `index.html?login=required` with
-  no session. **Still needs a live end-to-end pass** (real Cognito customer test user, real
-  order, confirm `customerSub` populates and the correct stage renders) before this is fully
-  proven — not yet done as of this entry.
+- **Verified end-to-end live (2026-08-02)** against a real, permanent Cognito test user
+  (`test-customer`, `Customer` group — kept, not deleted, for future re-testing) and a real
+  order (`ORD-AMT5L9`): logged in via the real Hosted UI, placed a real order as that customer,
+  confirmed via `dynamodb get-item` that `customerSub` now populates (previously always `null`),
+  and confirmed `orders.html` fetched and rendered the order with the correct "Payment
+  Verification" stage highlighted. No console errors.
 
 **Definition of done for Milestone 1:** a real order in DynamoDB, a GCash proof on S3, a staff
 verify/reject that moves real statuses, an auto-expiry cron, and a customer who can see the

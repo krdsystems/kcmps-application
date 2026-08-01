@@ -2156,12 +2156,28 @@ only, deliberately leaving the real backend for a separate future session with f
   stages).
 - `index.html`'s `renderLoggedIn()` gained an `#orders-link` ("My Orders"), shown to every
   logged-in user — unlike `#dashboard-link`, which stays Staff-group-gated.
-- Verified in-browser (`localhost:5501`, Python dev server): `orders.html` correctly redirects
-  an unauthenticated visitor to `index.html?login=required`, no console errors. **Not yet
-  verified end-to-end with a real logged-in customer placing a real order** — that pass (mint a
-  `Customer`-group Cognito test user, place an order, confirm `customerSub` populates,
-  confirm the correct stage renders, clean up test data) is still owed before calling this fully
-  proven.
+- Verified in-browser (`localhost:5500`): `orders.html` correctly redirects an unauthenticated
+  visitor to `index.html?login=required`, no console errors.
+- **Live end-to-end pass (2026-08-02), against a real, kept-around Cognito test user.** Created
+  `test-customer` (email `testcustomer@kcmps.com`, password set by the user, `Customer` group)
+  via `admin-create-user`/`admin-set-user-password` — **deliberately not deleted afterward**, so
+  it stays available for future re-testing. The pool's password policy
+  (`RequireUppercase`/`RequireSymbols`, `describe-user-pool` confirmed) rejected the user's first
+  choice of password; user picked an adjusted one that satisfies it.
+  Completed a real Hosted-UI login as this user (PKCE authorize URL built via `buildAuthorizeUrl()`
+  in the browser console, navigated to it directly rather than through the popup — the sandboxed
+  test browser can't reliably drive a real popup window, and the popup script's own
+  `window.close()` closed the tab once the code exchange finished, which is expected popup
+  behavior but meant the tokens landed in `localStorage`'s `kcmps_auth_result` instead of a live
+  session; copied them into `sessionStorage.kcmps_tokens` manually to finish what `openLoginPopup`
+  normally does automatically). Confirmed the ID token's `cognito:groups` correctly read
+  `["Customer"]`. Placed a real order (`ORD-AMT5L9`) via a direct authenticated `fetch()` to
+  `POST /orders`, then confirmed via `aws dynamodb get-item` that `customerSub` now equals the
+  test user's real `sub` (previously always `null` — this is the regression check that proves
+  the token fix). Loaded `orders.html` and confirmed it rendered `ORD-AMT5L9` with the correct
+  "Payment Verification" stage highlighted. **Order `ORD-AMT5L9` and user `test-customer` are
+  both left in place** per explicit instruction, for reuse in future testing — not cleaned up
+  like every other test artifact this session.
 
 **Design Asset Library — skeleton only, by explicit request:**
 - `website/dashboard/design-library.html`'s placeholder prose replaced with real markup: an

@@ -439,7 +439,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     <!-- Auth area: swaps between the "Login / Sign-up" button and the
          logged-in user's name + logout. Populated by the auth script. -->
     <span id="auth-area">
-      <button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>
+      <button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>
     </span>
   </div>
 </nav>
@@ -2114,7 +2114,7 @@ async function exchangeCodeForTokens(code) {
 function renderLoggedOut() {
   const area = document.getElementById("auth-area");
   area.innerHTML =
-    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
+    '<button type="button" id="auth-btn" class="btn btn-secondary" disabled>Login / Sign-up</button>';
   document.getElementById("auth-btn").addEventListener("click", startLogin);
   document.getElementById("dashboard-link").classList.add("is-hidden");
 }

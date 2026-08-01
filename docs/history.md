@@ -2154,6 +2154,16 @@ The qty-stepper's touch target was widened to 40×40px under `@media (max-width:
 the existing "Studio hours" block — the site previously named the city ("Manila HQ", footer's
 "Manila, Philippines") but never gave a street address.
 
+### 54. Login/signup disabled again ahead of a production deploy (2026-08-01)
+
+Re-disabled the storefront's `Login / Sign-up` button (`website/index.html`) ahead of
+promoting entry 53's changes to production — the owner's call, requested independently of
+those changes. Same two-line toggle as entries 49/52 describe in reverse: added `disabled`
+back to the static button and to `renderLoggedOut()`'s re-render. The Cognito Hosted-UI flow,
+callback URLs, and `renderLoggedIn()` are untouched — an already-logged-in session (or the
+isolated `login-test.html` reference page) is unaffected; this only removes the entry point
+for a new login from the main storefront nav.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

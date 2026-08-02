@@ -104,3 +104,13 @@ Event-driven, not API-Gateway-invoked.
 
 `ops-dashboard/infra/logic-inputs/*.js`'s originals are now superseded reference material only
 — don't edit them expecting it to affect anything deployed; edit `staff-api/`/`jobs/` instead.
+
+## Cost convention: set log retention at creation
+
+Every one of the 7 deployed Lambdas' CloudWatch log groups was found with **no retention
+policy** (unbounded storage, i.e. never expires) during the 2026-08-02 cost-governance audit —
+fixed then via `aws logs put-retention-policy --retention-in-days 30`. Any new Lambda must set
+30-day retention as part of its own creation (CLI `--retention-in-days 30` right after
+`aws logs create-log-group`, or the CloudFormation `AWS::Logs::LogGroup` resource's
+`RetentionInDays: 30` property if provisioned via template) instead of relying on a future
+audit to catch it. See [docs/cost-governance.md](../docs/cost-governance.md) for the reasoning.

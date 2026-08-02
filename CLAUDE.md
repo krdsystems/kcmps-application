@@ -22,6 +22,15 @@ Stack: vanilla HTML5, ES6, Tailwind via CDN (storefront) / hand-written `styles.
 system tokens + components, no utility framework). No `package.json`, no npm install, no
 build — edits are live on refresh.
 
+## Cost governance
+
+Target AWS spend is a **soft cap for review, not a hard stop**: ₱500/mo (~US$9) pre-revenue,
+rising once revenue flows to `max(₱500/mo, 3% of trailing-30-day gross revenue)`. Staying under
+it needs no extra justification; going over it is fine as long as any change pushing spend past
+the line states what it costs and why it's worth it, rather than shipping silently. Full
+formula, current spend baseline, and a decision log of past cost calls →
+[docs/cost-governance.md](docs/cost-governance.md).
+
 ## Key files — feature → location
 
 | Need to touch...              | Go to |
@@ -62,6 +71,7 @@ build — edits are live on refresh.
 | Payment/GCash logic spec      | `project_knowledge/Payment_System_Project_Knowledge.md` |
 | ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
 | Roadmap / next goals          | `docs/roadmap.md` — current-state → prioritized milestones; current focus is Milestone 1, the simple payment backend |
+| Cost budget / spend history    | `docs/cost-governance.md` |
 | Design system full reference  | `design-system/KCMPS Redesign/readme.md` (see also its own `CLAUDE.md`) |
 
 Prefer this table + `Grep`/`Glob` over reading whole files or the README for orientation.

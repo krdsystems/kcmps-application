@@ -269,7 +269,11 @@ result. `mailto:` checkout retired.
 ---
 
 ## Parallel track — Design Asset Library (no dependency on Milestone 1)
-**Status (2026-08-01): UI skeleton only, no backend.** A minimal, non-functional structure was
+Cost impact of the plan below is tracked in [docs/cost-governance.md](cost-governance.md)'s
+decision log — check it before deviating from the storage/lifecycle choices here.
+
+**Status (2026-08-02): architecture finalized below, still no backend built.** A minimal,
+non-functional structure was
 built deliberately small so a future session can implement the real backend (S3 buckets,
 Lambdas, IAM, API routes) with full context in one pass, rather than half-building it here:
 - [`website/dashboard/design-library.html`](../website/dashboard/design-library.html) — real
@@ -300,49 +304,100 @@ and the S3/manifest pattern already proven for the hero carousel
 (`storefront-infra/logic-inputs/generate-asset-manifest.js`), so it can be built before, during,
 or after Milestone 1 — nothing here blocks or is blocked by the payment work.
 
-**Architecture:**
-- Two S3 buckets: a **private** originals bucket (PSD/AI/PDF/whatever the designer works in —
-  "virtually unlimited" via a standard→IA→Glacier lifecycle policy, never public) and the
-  **existing public** storefront assets bucket for the derived, web-optimized copy.
-- Metadata lives as `DESIGN#<id>` items in the same foundation table, stamped via
-  `backend/lib/item.js`'s `baseItem()` (tenantId/schemaVersion/soft-delete) and logged via
-  `events.js`'s `buildEvent()` — same conventions as orders, not a separate schema style.
-- **Category = an existing catalog leaf** from `products.js` (per 2026-07-30 decision) — one
-  naming/category vocabulary end to end, not a second taxonomy to keep in sync.
-- **Access = existing Production/Sales/Admin Cognito groups** (per 2026-07-30 decision) — no
-  new 6th role; reuses the 5-role model already provisioned in
-  [`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml).
-- Autonaming reuses `window.KCMPS_TEXT.titleFromFilename()`'s existing filename→display-title
-  convention (`products.js`) so the library and the storefront can never drift into two
-  different naming schemes.
+**Architecture (finalized 2026-08-02 — this is the spec a future implementation session builds
+from; no code/CloudFormation/frontend changes were made this session):**
+
+*Storage — two buckets, deliberately asymmetric:*
+- New **private** bucket, e.g. `kcmps-design-originals-est-2026`, for source files
+  (PSD/AI/PDF). Versioning ON. Public access blocked entirely. No CloudFront in front of it —
+  staff-only, low-frequency, authenticated access via presigned URLs only, same pattern as
+  [`backend/checkout/submit-payment-proof.js`](../backend/checkout/submit-payment-proof.js). A
+  CDN here would add a second distribution for zero caching benefit.
+- **Existing public** bucket (`kcmps-online-bucket-est-2026`) for the derived web-ready image,
+  same as every other storefront asset — reuses the existing CloudFront distribution and the
+  manifest pattern already proven for the hero carousel
+  ([`storefront-infra/assets-bucket-structure.md`](../storefront-infra/assets-bucket-structure.md),
+  `generate-asset-manifest.js`).
+- **No server-side image processing.** `design-library.html`'s upload form already collects
+  both an original file and a web-ready file directly from the designer — keep it that way,
+  don't add a Lambda-side resize pipeline (see the cost-governance decision log entry).
+
+*Upload path — direct-to-S3 presigned PUT*, mirroring `submit-payment-proof.js`:
+1. `getUploadUrl` Lambda (JWT-verified, Production/Sales/Admin group) returns presigned PUT URLs
+   for both files, 300MB size ceiling each (single PUT, no multipart needed at that ceiling).
+2. Browser PUTs directly to S3 for both files — never proxied through Lambda.
+3. `publishDesign` Lambda writes the `DESIGN#<id>` META item (`name`/`description`/`category`/
+   `tags`/`uploadedBy`/`s3KeyOriginal`/`s3KeyWeb`/`status`; `category` = an existing catalog
+   leaf from `products.js`), copies the web-ready file into the public bucket, and regenerates
+   `design-manifest.json` (same short-`Cache-Control`, no-invalidation pattern as the hero
+   carousel's manifest) — this is what makes the storefront "auto-update" without a code
+   deploy.
+
+*Metadata:* reuse the existing single `kcmps` DynamoDB table, stamped via `backend/lib/item.js`'s
+`baseItem()` and logged via `events.js`'s `buildEvent()` — same conventions as orders. **No new
+GSI yet** — `Scan` + client-side filter is fine at current volume; add a category GSI only once
+the catalog exceeds ~500 items or scan latency is visibly bad.
+
+*Recycle bin — soft delete, two independent layers* (owner's explicit requirement: an
+accidental dashboard delete must always be recoverable):
+1. **App-level:** "Delete" flips `DESIGN#<id>` to `status: "archived"` + `deletedAt` (same
+   convention as `baseItem()`). Dashboard adds a "Recycle bin" tab with one-click Restore. S3
+   objects are never touched by this action. A 15-minute-cron Lambda (same shape as
+   [`backend/jobs/expire-pending-orders.js`](../backend/jobs/expire-pending-orders.js)) sweeps
+   archived items older than 90 days and hard-deletes both the DynamoDB item and both S3
+   objects — the actual permanent purge.
+2. **S3-level:** versioning on the originals bucket with `NoncurrentVersionTransition` to
+   Glacier at 30 days, and `NoncurrentVersionExpiration` with `NewerNoncurrentVersions: 5` —
+   keeps the 5 most recent prior revisions indefinitely, caps runaway growth from repeated
+   re-uploads.
+
+*Lambda sizing:* default 128–256MB, no provisioned concurrency — staff-admin actions, not a
+customer-facing critical path (see cost-governance decision log).
+
+*API surface:* routes on the **existing** HTTP API Gateway (no second API Gateway):
+`POST /designs/upload-url`, `POST /designs`, `GET /designs`, `PATCH /designs/{id}`, plus the
+non-API-routed purge cron.
+
+*Access = existing Production/Sales/Admin Cognito groups* (per 2026-07-30 decision) — no new
+6th role; reuses the 5-role model already provisioned in
+[`backend/infra/foundation.cfn.yaml`](../backend/infra/foundation.cfn.yaml).
+
+*Autonaming* reuses `window.KCMPS_TEXT.titleFromFilename()`'s existing filename→display-title
+convention (`products.js`) so the library and the storefront can never drift into two different
+naming schemes.
 
 **Checklist:**
-- [ ] Private S3 bucket for originals — versioned, lifecycle to IA/Glacier, bucket policy
-  denies all public access
+- [ ] Private S3 bucket `kcmps-design-originals-est-2026` — versioned, public access blocked,
+  `NoncurrentVersionTransition` to Glacier at 30 days + `NoncurrentVersionExpiration`
+  `NewerNoncurrentVersions: 5`
 - [ ] `DESIGN#<id>` META shape: `name`, `description`, `category` (=leaf id), `tags`,
   `uploadedBy` (Cognito `sub`), `s3KeyOriginal`, `s3KeyWeb`, `status` (`draft`/`published`/
-  `archived`)
+  `archived`), `deletedAt` (soft-delete only)
 - [ ] `getUploadUrl` Lambda — presigned PUT to the private bucket, key
-  `designs/<category>/<uuid>-<sanitized-name>.<ext>`
-- [ ] `publishDesign` Lambda — on upload confirm: derives a web-optimized image, renames it
-  through the same `titleFromFilename()` convention, copies it into the public storefront
-  assets path, writes the `DESIGN#` record, and regenerates the design-grid manifest (same
-  pattern as the hero carousel's manifest, new leaf) — this is what makes the storefront
-  "auto-update" without a code deploy
+  `designs/<category>/<uuid>-<sanitized-name>.<ext>`, 300MB size ceiling, single PUT
+- [ ] `publishDesign` Lambda — on upload confirm: copies the caller-supplied web-ready file
+  (no server-side resize) into the public storefront assets path via `titleFromFilename()`,
+  writes the `DESIGN#` record, and regenerates the design-grid manifest (same pattern as the
+  hero carousel's manifest, new leaf)
+- [ ] Recycle-bin sweep Lambda (15-min cron, shape of `expire-pending-orders.js`) — archives
+  older than 90 days get hard-deleted from both DynamoDB and both S3 objects
+- [ ] Wire the 4 API routes (`POST /designs/upload-url`, `POST /designs`, `GET /designs`,
+  `PATCH /designs/{id}`) onto the existing HTTP API Gateway, JWT-authorizer-gated
 - [x] A **"Soon"-badged placeholder page exists**: `website/dashboard/design-library.html`
   (nav key `design`, 2026-07-31). It already carries the correct shell, `mount("design")`, and
   topbar title — building the real page means replacing its `<main>` contents, nothing else.
 - [ ] Dashboard "Design Library" page: upload form (category dropdown sourced straight from
-  `products.js`'s leaves) + browsable/searchable grid (filter by category, tag, uploader).
-  Scan+filter is fine at current volume — add a category GSI only if/when volume actually
-  demands it, not before (same "don't build the index before the need" rule as the rest of the
-  table)
-- [ ] Verify `buildDesignGrid()`/the design picker need zero `.html`/`store.js` changes to pick
-  up a newly published design — they should only need the manifest to change
+  `products.js`'s leaves) + browsable/searchable grid (filter by category, tag, uploader) +
+  Recycle bin tab with Restore
+- [ ] **One-time `store.js` change (not yet implemented, see "Correction found during
+  planning" above):** `buildDesignGrid()` must merge each product's static `images[]` with a
+  fetched `design-manifest.json`, mirroring `HERO_MANIFEST_URL`'s pattern — without it,
+  `publishDesign` alone can't make new designs appear in the storefront picker
+- [ ] Verify `buildDesignGrid()`/the design picker need zero further `.html`/`store.js` changes
+  beyond the manifest-merge above to pick up a newly published design
 
-**Open decision:** max upload size / allowed file types (PSD/AI originals can be large —
-decide the presigned-URL size ceiling before building, so multipart upload isn't a surprise
-requirement mid-build).
+**Resolved decision (2026-08-02):** max upload size is 300MB per file via a single presigned
+PUT — no multipart upload needed at that ceiling.
 
 ---
 

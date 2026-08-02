@@ -190,14 +190,22 @@
   // distinction. `back(finalQty)` fires synchronously if no popup is needed,
   // or once the shopper answers it otherwise — callers don't need to know
   // which happened.
+  //
+  // The over-ceiling (blocked) branch is checked and clamped on EVERY call,
+  // acknowledged or not — capAcknowledgedByKey only ever skips the "extra
+  // lead time, agree or keep at cap" popup for a product that already had it
+  // once, never the ceiling itself. Without this split, a single "I agree"
+  // on a product would permanently disable all validation for that product's
+  // qty field, letting later input (a fat-fingered or adversarial huge
+  // number) sail past the "hard ceiling, no agree path" straight into the
+  // cart with no further check — see docs/history.md for the incident.
   function requestQty(cap, requestedQty, back, key) {
     key = key == null ? cap : key;
-    if (!cap || capAcknowledgedByKey[key] || requestedQty <= cap) { back(requestedQty); return; }
+    if (!cap || requestedQty <= cap) { back(requestedQty); return; }
     var info = capInfo(requestedQty, cap);
-    openCapPopup(info, key, function (agreed) {
-      if (info.blocked) { back(info.ceilingQty); return; }
-      back(agreed ? requestedQty : info.cap);
-    });
+    if (info.blocked) { openCapPopup(info, key, function () { back(info.ceilingQty); }); return; }
+    if (capAcknowledgedByKey[key]) { back(requestedQty); return; }
+    openCapPopup(info, key, function (agreed) { back(agreed ? requestedQty : info.cap); });
   }
 
   /* ---------- cart state ---------- */
@@ -405,6 +413,11 @@
       var current = lightboxControls;
       commitLightboxQty(function () {
         if (lightboxControls !== current) return; // lightbox closed/reopened while the popup was up
+        // Commit the design being viewed right now, exactly like clicking
+        // "Select this design" would — otherwise Add to cart reads whatever
+        // design the card's thumb last had selected (e.g. the default) and
+        // silently attaches a different design than the one on screen.
+        if (lightboxOnSelect) lightboxOnSelect(lightboxIndex);
         current.onAddToCart();
         closeLightbox();
       });

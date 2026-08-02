@@ -74,6 +74,13 @@ table write, even though nothing uses most of them yet.
     Both are deprecated in favor of `Admin`/`Customer` — see "Legacy groups" in
     `backend/infra/README.md` for the retirement steps (migrate members, then update
     `dashboard-shell.js`'s client-side check, then delete the two old groups).
+  - **`Customer` membership auto-assigned (2026-08-03):** the group sat permanently empty
+    until now — no `PostConfirmation` trigger existed, so a self-signup landed with zero
+    groups (harmless in practice, since `backend/lib/auth.js`'s `isStaff()` check means "not
+    staff" already reads as customer everywhere, but a future feature checking for `Customer`
+    explicitly would have silently broken). New `backend/auth/post-confirmation.js`, deployed
+    as `kcmps-post-confirmation` and wired via the user pool's `LambdaConfig`. See
+    `docs/history.md` entry 62.
 - [ ] Stamp `tenantId`/`siteId` = `SITE#MNL`, `schemaVersion`, money as **integer centavos** +
   explicit `currency`, `status` + soft-delete (never hard-delete) on every item — enforced in
   code via [`backend/lib/item.js`](../backend/lib/item.js)'s `baseItem()`, not by the table

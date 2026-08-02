@@ -8,14 +8,15 @@ Lambdas behind one API Gateway, modules as code/key-prefix boundaries, not separ
 material only — never synced to the `website/` S3 bucket. See the root `CLAUDE.md`'s "Hard
 constraint: what's deployed" section.
 
-## Current state: foundation + checkout + staff-api + jobs, all deployed
+## Current state: foundation + checkout + staff-api + jobs + auth, all deployed
 
 `checkout/` (Module 1 — Sales & Order, customer-facing half) and `staff-api/`/`jobs/`
 (dashboard-side, staff-facing) are both deployed as real Lambdas (see `infra/README.md`'s
 "Checkout Lambdas" and "Staff API Lambdas" sections). All four modules are written against
 `lib/` conventions — the old hand-rolled drafts at `ops-dashboard/infra/logic-inputs/*.js` have
 been superseded (kept there for historical reference only; see `docs/history.md` entry 49 for
-the migration).
+the migration). `auth/` (Cognito Lambda triggers, invoked by Cognito directly rather than API
+Gateway) joined the same pattern in `docs/history.md` entry 62.
 
 `infra/foundation.cfn.yaml` provisions the DynamoDB table + Cognito groups these Lambdas
 target — written but not yet applied; see `infra/README.md` for the owner-run apply/rollback
@@ -107,6 +108,25 @@ Event-driven, not API-Gateway-invoked.
 |---|---|
 | `streams-handler.js` | DynamoDB Streams trigger (filtered to `LINEITEM#` writes) — derives `orderStatus` via `order-status.js`'s `deriveOrderStatus()`, maintains GSI1 sparse-index hygiene via `gsi.js`. METRIC# rollups deferred (see `docs/roadmap.md`). |
 | `expire-pending-orders.js` | 15-minute EventBridge cron — two GSI1-driven sweeps: 48h `Pending Payment Verification` → `Auto-Cancelled`, 7-day `Priced` → `Quote Expired`. SES notice is best-effort (degrades gracefully like `submit-payment-proof.js`). |
+
+## `auth/` — what's in it
+
+Cognito Lambda triggers — invoked by Cognito itself as part of the auth flow, not by API
+Gateway or an event source mapping.
+
+| File | Purpose |
+|---|---|
+| `post-confirmation.js` | Cognito User Pool `PostConfirmation` trigger — adds a newly-confirmed self-signup to the `Customer` group (`AdminAddUserToGroup`). Filters to `triggerSource === "PostConfirmation_ConfirmSignUp"` only. Never throws — every failure path (including the group-add itself) is caught and logged instead of re-thrown, since an error returned from this trigger fails the client's `ConfirmSignUp` call even though Cognito already confirmed the user server-side by that point. See `docs/history.md` entry 62. |
+
+Wired via the user pool's `LambdaConfig`, not an API Gateway route or event source mapping —
+redeploying a code change is the same zip-and-`update-function-code` pattern as every other
+Lambda here, but re-pointing *which* Lambda handles the trigger (or adding a second trigger
+like `PreSignUp`) means `aws cognito-idp update-user-pool --lambda-config ...`. `update-user-pool`
+isn't a partial-patch API in the way `update-function-code` is — it wasn't worth the risk of
+finding out the hard way whether an omitted field resets to a default, so build the payload
+from a fresh `describe-user-pool` (every current mutable setting, plus just the `LambdaConfig`
+field changing) rather than a hand-written partial one, and diff before/after to confirm
+nothing else moved — see entry 62 for the exact approach.
 
 ## Where this is going (not now)
 

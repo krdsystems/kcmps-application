@@ -369,6 +369,71 @@ Redeploy any of the 5 Lambdas after a code change the same way as the checkout L
 `package.json` — then `aws lambda update-function-code`); no infra change needed unless the
 route/role/permission set itself changes.
 
+## `auth/` — Cognito PostConfirmation trigger (deployed 2026-08-03)
+
+`kcmps-post-confirmation`, `nodejs20.x`/`arm64`, `ap-southeast-1`, built from
+`backend/auth/post-confirmation.js`. Auto-adds every self-signup to the `Customer` Cognito
+group — see `docs/history.md` entry 62 for the full trigger, including why the handler
+deliberately never throws.
+
+**Execution role**: `kcmps-post-confirmation-lambda-role`, scoped to exactly
+`cognito-idp:AdminAddUserToGroup` on the one user pool ARN
+(`arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_iDvAEumNp`), plus
+CloudWatch Logs on this function's own log group only.
+
+**Packaging**: same pattern as every other Lambda here — `index.js` (require rewritten from
+`../lib` to `./lib`), a flattened copy of `backend/lib/` (minus `lib.test.js`), and
+`node_modules` from `backend/auth/package.json`.
+
+**Wiring is different from every other Lambda in this repo**: not an API Gateway route, not an
+event source mapping — a Cognito User Pool `LambdaConfig` entry. `lambda:AddPermission` grants
+`cognito-idp.amazonaws.com` invoke rights, `source-arn` scoped to the user pool ARN:
+
+```bash
+aws lambda add-permission \
+  --function-name kcmps-post-confirmation \
+  --statement-id kcmps-cognito-post-confirmation \
+  --action lambda:InvokeFunction \
+  --principal cognito-idp.amazonaws.com \
+  --source-arn arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_iDvAEumNp \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Then the trigger itself, via `update-user-pool`. **This call is not a partial patch** — treat
+it like it might reset any field you don't explicitly pass back. Build the payload from a
+fresh `describe-user-pool` rather than hand-writing just the changed field:
+
+```bash
+aws cognito-idp describe-user-pool --user-pool-id ap-southeast-1_iDvAEumNp \
+  --region ap-southeast-1 --profile kcmps-claude-priv --output json > pool.json
+# then construct an update payload carrying every mutable field from pool.json's UserPool
+# (Policies, DeletionProtection, AutoVerifiedAttributes, VerificationMessageTemplate,
+# UserAttributeUpdateSettings, MfaConfiguration, DeviceConfiguration, EmailConfiguration,
+# UserPoolTags, AdminCreateUserConfig, AccountRecoverySetting) forward unchanged, merging in
+# only LambdaConfig.PostConfirmation = the function's ARN
+aws cognito-idp update-user-pool --cli-input-json file://update-user-pool.json \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Verify nothing else moved with a before/after `describe-user-pool` diff — entry 62's deploy
+confirmed exactly one field changed (`LambdaConfig`).
+
+**Verified**: direct `aws lambda invoke` against a real (admin-created) throwaway Cognito user
+with a synthetic `PostConfirmation_ConfirmSignUp` event — `admin-list-groups-for-user` showed
+`[]` before, `["Customer"]` after; test user deleted afterward. A genuine self-signup
+end-to-end test (via the public `sign-up` API) is still owed — see entry 62's verification
+notes for why it wasn't completed in that pass.
+
+Redeploy after a code change (no infra change needed):
+```bash
+cd backend/auth
+# rebuild the zip the same way as the first deploy (index.js + flattened lib/ + node_modules)
+aws lambda update-function-code \
+  --function-name kcmps-post-confirmation \
+  --zip-file fileb://post-confirmation.zip \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
 ## Observability — Milestone 1.5 (deployed 2026-08-02)
 
 Closes the backend audit's R4/R6/R7 findings: zero alerting, no retry/DLQ policy on the async

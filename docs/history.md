@@ -2316,6 +2316,82 @@ total — all previous test-session leftovers, including the two just-created fo
 payment test above) from DynamoDB so the dashboard starts clean. The `test-customer` Cognito
 account itself was left untouched.
 
+### 58. Adversarial UAT pass: capacity-cap ceiling bypass + lightbox stale-design fix, live checkout verified end-to-end (2026-08-02)
+
+Ran a skeptical-customer UAT pass against the local dev server (same client code as
+production — `CHECKOUT_API_BASE` in `store.js` always points at the real
+`kcmps-checkout-api`, regardless of which host serves the HTML/JS), targeting the documented
+"shipped as a bug once" gotchas plus the general categories in the storefront's known trouble
+spots (bulk pricing, capacity soft-cap, design picker/lightbox, shirt color, checkout,
+payment proof). Two real bugs found and fixed; everything else tested came back clean.
+
+1. **Capacity soft-cap ceiling was permanently bypassable after one "I agree."**
+   `requestQty()` (`store.js`) shortcut straight to `back(requestedQty)` whenever
+   `capAcknowledgedByKey[key]` was already true, with **no re-check of magnitude at all** —
+   not even against the 5× hard ceiling that the code's own comments describe as having "no
+   'I agree' path... always clamps." Repro: agree to a qty above a product's `softCap` once,
+   then type an arbitrary huge number (tested with 1×10²⁰) into the same field afterward — it
+   sailed straight through with zero popup, and Add to cart accepted it, rendering a cart
+   total of `₱352,000,000,000,000,000,000` with a live, submittable Checkout button. Root
+   cause: the acknowledgment flag gated the entire function, not just the "extra lead time,
+   agree or keep at cap" popup it was meant to gate. Fixed by splitting the two checks —
+   `requestQty()` now evaluates `capInfo().blocked` (over the 5× ceiling) on *every* call
+   regardless of prior acknowledgment and always clamps/reopens the blocking popup for it;
+   `capAcknowledgedByKey` now only ever skips the softer "big order, agree or keep at cap"
+   popup for values still under the ceiling. Verified live post-fix: acknowledging a qty just
+   over `softCap`, then requesting `cap × 5` worth of quintillions again, correctly re-shows
+   the "beyond what we can confirm online" popup and clamps to exactly `cap × 5`; a moderate
+   in-range bump on the same product after acknowledgment still sails through with no re-nag,
+   preserving the original UX intent.
+2. **Fullscreen lightbox "Add to cart" could attach a different design than the one on
+   screen.** Browsing to a design tile (e.g. "Brawlstar Shirt") opens the shared lightbox
+   fullscreen showing that design — but clicking the lightbox's own "Add to cart" button
+   (distinct from "Select this design", sitting right next to it) delegates to the card's
+   `addBtn.click()`, which reads `designRef` off `gallery.getIndex()`. That index is only ever
+   updated by the `onSelect` callback wired to "Select this design" — never by simply browsing
+   the lightbox — so a shopper who opened the lightbox on one design and hit its Add-to-cart
+   without first clicking Select got a cart line for whatever design the card's small thumb
+   happened to still be showing (in testing: the catalog's default first design, "Black Pink
+   Shirt," while fullscreen-viewing "Brawlstar Shirt"). Direct wrong-product/design-mismatch
+   risk — a customer could reasonably expect what's on their screen to be what they're buying.
+   Fixed: the lightbox's Add-to-cart handler now calls `lightboxOnSelect(lightboxIndex)`
+   (idempotent — the same thing "Select this design" does) immediately before
+   `onAddToCart()`, so the design actually being viewed is always what gets committed.
+   Verified live post-fix: adding to cart straight from the lightbox on "Brawlstar Shirt"
+   (without touching "Select this design") now correctly writes `designName: "Brawlstar
+   Shirt"` to the cart line.
+3. **Live checkout re-verified end-to-end against the real backend**, logged in as the
+   `test-customer` Cognito account from step 50/entry above (session tokens obtained by the
+   user completing the Hosted-UI login themselves and handing over the resulting
+   `sessionStorage.kcmps_tokens` payload — Claude does not type credentials into login forms,
+   full stop, so this handoff is the standing pattern for any future session that needs an
+   authenticated live test). Placed a real minimal order (Document Printing × 20, ₱80) →
+   `POST /orders` succeeded as **`ORD-C4JPHN`**, correctly routed to the GCash payment-proof
+   step (not the custom-only confirmation, since the line has a real price). Re-verified the
+   payment-proof validation cascade against the live popup in order — empty ref, ref-only, ref
+   + amount with no file, then a `.pdf` upload — each blocked with its own correct inline
+   error before the next check ran; a valid PNG then completed the real two-step S3 upload and
+   returned the "payment proof received... within 48 hours" confirmation. `orders.html`
+   correctly showed `ORD-C4JPHN` under this customer's own orders afterward, at "Pending
+   Payment Verification," ₱80.00 — scoped correctly, no cross-customer leakage from the two
+   older test orders also on the account. No further bugs found in this path. Per explicit
+   instruction, `ORD-C4JPHN` was left in DynamoDB (unverified) rather than cleaned up, for
+   reuse in future testing — same disposition as the `ORD-AMT5L9` order from entry 50.
+4. Everything else covered in this pass came back clean, verified either live or by reading
+   the relevant code path: negative-qty clamping, decimal-qty flooring (works, though silent —
+   worth a UX pass someday, not a bug), per-product cap-popup isolation (agreeing on one
+   product's cap never unlocked a different product's), the shirt "Custom" color two-step
+   commit (never applies from the swatch's own click, only "Use this color"), design-tile
+   clicks always opening the lightbox rather than selecting instantly, the payment-proof
+   cascade's error ordering, `submitOrder()`'s disable-during-flight double-submit guard, and
+   the mobile (375px) scroll-indicator actually going `display:none` (not just visually
+   covered) while the cart drawer is open. Cross-browser and 390px-viewport passes, plus the
+   motion/craft review of the hero card-deck and lightbox transitions, were not completed this
+   session — the sandboxed test browser's render pipeline stalled for the whole session
+   (`computer`/screenshot calls timed out; a CSS transition was later found frozen mid-state
+   and only resolved once forced via inline `!important`, confirming it was a stalled
+   compositor rather than a real site bug) — worth a follow-up pass with a healthy renderer.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

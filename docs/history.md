@@ -2577,6 +2577,51 @@ originalPromisedDate`/SES-email additions still work correctly layered on top. W
 for any future session merging into a shared `main` with backend changes: diff the merged
 source against the **live** Lambda code, not just against git, before considering a deploy done.
 
+### 62. New self-signups auto-assigned to the Customer Cognito group (2026-08-03)
+
+**Trigger:** a conversation surfaced that `backend/infra/foundation.cfn.yaml`'s `Customer`
+group (Milestone 1.0) had never actually been wired to anything — `describe-user-pool` showed
+`LambdaConfig: {}`, confirming no `PostConfirmation` trigger existed. A brand-new self-signup
+via the storefront's Hosted UI landed with **zero** Cognito groups. This turned out not to be a
+functional bug (`backend/lib/auth.js`'s `isStaff()` check means "not staff" already reads as
+customer everywhere in the deployed Lambdas — nothing today actually requires `Customer`
+membership), but it left the group permanently empty and would silently break any future
+feature that *does* check for it.
+
+**Built:** new `backend/auth/post-confirmation.js` — a Cognito `PostConfirmation` Lambda
+trigger that calls `AdminAddUserToGroup` (`GroupName: Customer`) for the user who just
+confirmed sign-up. Filters to `event.triggerSource === "PostConfirmation_ConfirmSignUp"` only
+(ignores the forgot-password-flow trigger source Cognito also routes through this same hook).
+**Deliberately never throws** — every failure path (including the group-add itself) is caught
+and logged rather than re-thrown, because a `PostConfirmation` trigger that returns an error
+fails the client's `ConfirmSignUp` call even though Cognito has already confirmed the user
+server-side by that point — a confusing false-failure for someone who just signed up
+successfully. A missed group-add is trivially recoverable later (`admin-add-user-to-group`);
+a bricked signup flow is not.
+
+**Deployed** (`ap-southeast-1`): Lambda `kcmps-post-confirmation` (`nodejs20.x`/`arm64`, 128MB,
+10s timeout), execution role `kcmps-post-confirmation-lambda-role` scoped to exactly
+`cognito-idp:AdminAddUserToGroup` on the one user pool ARN plus CloudWatch Logs, 30-day log
+retention set at creation per this repo's cost convention. Wired via `update-user-pool
+--lambda-config PostConfirmation=<arn>` — built the update payload from the pool's own
+`describe-user-pool` output (every other mutable setting — password policy, MFA, email config,
+etc. — passed back unchanged) specifically so a config update aimed at one field couldn't
+silently reset an unrelated one; confirmed with a before/after `describe-user-pool` diff
+showing exactly one line changed (`LambdaConfig`).
+
+**Verified two ways, live:** (1) direct `aws lambda invoke` against a real (admin-created)
+throwaway Cognito user with a synthetic event matching Cognito's actual `PostConfirmation`
+payload shape — `admin-list-groups-for-user` showed `[]` before, `["Customer"]` after; test
+user deleted afterward. (2) A real self-signup end-to-end test (`sign-up` API) was attempted
+but blocked by this session's sandbox as an account-creation action — the direct-invoke test
+above plus the `describe-user-pool` diff together stand in as the verification for the actual
+Cognito-triggers-Lambda wiring, which is standard AWS config (not custom code) and lower-risk
+than the trigger body itself. **Worth a real signup smoke test from outside this sandbox before
+fully trusting the auto-fire path.** Also checked all 5 existing pool users
+(`list-users`/`admin-list-groups-for-user`) for pre-trigger organic signups that might need a
+backfill — none found; the only non-admin-created account (`google_...`, a federated Google
+sign-in) already carries `Customer`, added manually before this trigger existed.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

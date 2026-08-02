@@ -1,0 +1,8 @@
+{
+  "name": "kcmps-auth-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/auth/*.js (Cognito Lambda triggers, invoked by Cognito directly — not API Gateway). Deploy each .js file as its own Lambda function — this package.json is a single reference for `npm install` before zipping/uploading. Also requires ../lib (backend/lib) alongside on the Lambda's module path.",
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0"
+  }
+}

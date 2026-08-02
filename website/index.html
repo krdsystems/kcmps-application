@@ -445,6 +445,15 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </span>
   </div>
 </nav>
+
+<!-- Shown when orders.html/order-detail.html redirect here with
+     ?login=required because the visitor had no session — previously this
+     param was silently dropped and the visitor just landed on the
+     homepage with no explanation. See initAuth()'s Case 3 below. -->
+<div id="login-required-banner" class="is-hidden" style="background:var(--color-accent-100);color:var(--color-accent-800);padding:var(--space-2) var(--space-4);text-align:center;font-size:13.5px">
+  Sign in to see your orders. <button type="button" id="login-required-btn" class="btn btn-ghost" style="padding:2px 8px">Sign in</button>
+</div>
+
 <script>
 (() => {
   const nav = document.querySelector('.nav');
@@ -2227,6 +2236,24 @@ function logout() {
     renderLoggedOut();
   }
   refreshCartBadge();
+
+  // orders.html/order-detail.html redirect here with ?login=required when
+  // there's no session. If one exists now (rare race — e.g. two tabs), just
+  // send them back; otherwise show the banner and route "Sign in" straight
+  // into the same popup login as the nav button.
+  if (new URLSearchParams(window.location.search).get("login") === "required") {
+    try { history.replaceState(null, "", window.location.pathname); } catch {}
+    if (tokens) {
+      window.location.href = "orders.html";
+    } else {
+      const banner = document.getElementById("login-required-banner");
+      banner.classList.remove("is-hidden");
+      document.getElementById("login-required-btn").addEventListener("click", async () => {
+        await startLogin();
+        if (loadTokens()) window.location.href = "orders.html";
+      });
+    }
+  }
 })();
 </script>
 </body>

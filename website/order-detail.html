@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Order details — KCMPS</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <a href="index.html" class="nav-brand" style="text-decoration:none">
+    <img src="assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
+  <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
+    <a href="index.html">Back to shop</a>
+    <button type="button" id="cart-btn" class="btn btn-icon btn-secondary" aria-label="Cart" title="Cart">
+      <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M222.14,58.87A8,8,0,0,0,216,56H54.68L49.79,29.14A16,16,0,0,0,34.05,16H16a8,8,0,0,0,0,16h18l25.16,138.28A24,24,0,0,0,82.76,190H197.2a24,24,0,0,0,23.6-19.71l12.16-66.86A8,8,0,0,0,222.14,58.87ZM96,224a16,16,0,1,1-16-16A16,16,0,0,1,96,224Zm104,0a16,16,0,1,1-16-16A16,16,0,0,1,200,224Z"/></svg>
+      <span id="cart-badge" class="is-hidden">0</span>
+    </button>
+    <button type="button" id="logout-btn" class="btn btn-ghost">Logout</button>
+  </div>
+</nav>
+
+<main class="orders-wrap">
+  <a href="orders.html" class="order-detail-back">&larr; My Orders</a>
+  <div id="order-root"><div class="orders-loading">Loading order&hellip;</div></div>
+</main>
+
+<script src="products.js"></script>
+<script src="store.js"></script>
+<script src="orders-data.js"></script>
+<script>
+(function () {
+  var O = window.KCMPS_ORDERS;
+  var session = O.requireSession();
+  if (!session) return;
+
+  document.getElementById("logout-btn").addEventListener("click", O.logout);
+
+  var orderId = new URLSearchParams(window.location.search).get("id") || "";
+  var root = document.getElementById("order-root");
+
+  function renderItem(li) {
+    var thumb = li.image
+      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="" loading="lazy" />'
+      : '<span class="line-thumb-fallback">' + O.escapeHtml((li.name || "?").charAt(0).toUpperCase()) + '</span>';
+    var meta = [li.variantLabel, li.shirtColor ? "Shirt: " + li.shirtColor : null, li.designName]
+      .filter(Boolean).map(O.escapeHtml).join(" · ");
+    return (
+      '<div class="line-row">' + thumb +
+      '<div class="line-info"><div class="line-name">' + O.escapeHtml(li.name) + '</div>' +
+      '<div class="line-meta">Qty ' + (li.qty || 1) + (li.priceEach ? " · " + O.fmtPeso(li.priceEach) + " each" : "") + (meta ? " · " + meta : "") + '</div></div>' +
+      '<span class="tone-pill tone-' + li.status.tone + '">' + O.escapeHtml(li.status.label || li.status.raw) + '</span></div>'
+    );
+  }
+
+  function renderPaymentCard(order) {
+    var p = order.payment;
+    if (!p) return '<div class="card"><p class="detail-card-title">Payment</p><p class="card-body">No payment on file yet.</p></div>';
+    var rows = '';
+    if (p.rejectionReason) rows += '<div class="rejection-note">' + O.escapeHtml(p.rejectionReason) + '</div>';
+    rows += '<div class="detail-row"><span class="k">GCash reference</span><span>' + O.escapeHtml(p.gcashRefNumber || "—") + '</span></div>';
+    rows += '<div class="detail-row"><span class="k">Amount sent</span><span>' + O.fmtPeso(p.claimedAmount) + '</span></div>';
+    rows += '<div class="detail-row"><span class="k">Submitted</span><span>' + O.fmtDateTime(p.submittedAt) + '</span></div>';
+    if (p.verifiedAt) rows += '<div class="detail-row"><span class="k">Verified</span><span>' + O.fmtDateTime(p.verifiedAt) + '</span></div>';
+    var shot = p.screenshotUrl
+      ? '<img class="payment-screenshot" src="' + O.escapeHtml(p.screenshotUrl) + '" alt="Your submitted payment screenshot" onerror="this.style.display=\'none\'" />'
+      : '';
+    return '<div class="card"><p class="detail-card-title">Payment</p>' + rows + shot + '</div>';
+  }
+
+  function renderFulfillmentCard(order) {
+    var rows = '<div class="detail-row"><span class="k">Method</span><span>' + O.escapeHtml(order.fulfillment || "Pickup") + '</span></div>';
+    if (order.fulfillment === "Delivery" && order.shipping) {
+      rows += '<div class="detail-row"><span class="k">Courier</span><span>' + O.escapeHtml(order.shipping.courier || "—") + '</span></div>';
+      rows += '<div class="detail-row"><span class="k">Address</span><span>' + O.escapeHtml(order.shipping.address || "—") + '</span></div>';
+      if (order.shipping.landmark) rows += '<div class="detail-row"><span class="k">Landmark</span><span>' + O.escapeHtml(order.shipping.landmark) + '</span></div>';
+    }
+    return '<div class="card"><p class="detail-card-title">Fulfillment</p>' + rows + '</div>';
+  }
+
+  function renderTotalsCard(order) {
+    return (
+      '<div class="card"><p class="detail-card-title">Total</p>' +
+      '<div class="totals-row"><span>Items</span><span>' + O.fmtPeso(order.total) + '</span></div>' +
+      (order.paidTotal ? '<div class="totals-row"><span>Paid</span><span>' + O.fmtPeso(order.paidTotal) + '</span></div>' : '') +
+      '<div class="totals-row is-total"><span>' + (order.amountDue > 0 ? "Amount due" : "Total") + '</span><span>' + O.fmtPeso(order.amountDue > 0 ? order.amountDue : order.total) + '</span></div>' +
+      '</div>'
+    );
+  }
+
+  function renderTimeline(order) {
+    var items = O.timelineFor(order);
+    if (!items.length) return '';
+    var html = items.map(function (ev) {
+      return (
+        '<div class="timeline-item"><div class="timeline-dot tone-' + ev.tone + '"></div>' +
+        '<div class="timeline-body"><div class="timeline-label">' + O.escapeHtml(ev.label) + '</div>' +
+        '<div class="timeline-at">' + O.fmtDateTime(ev.at) + '</div>' +
+        (ev.detail ? '<div class="timeline-detail">' + O.escapeHtml(ev.detail) + '</div>' : '') +
+        '</div></div>'
+      );
+    }).join("");
+    return '<div class="card"><p class="detail-card-title">Timeline</p><div class="timeline">' + html + '</div></div>';
+  }
+
+  function renderProgress(order) {
+    if (order.bucket === "cancelled") return "";
+    var stageIdx = order.status.stageIndex != null ? order.status.stageIndex : 0;
+    var steps = O.STAGES.map(function (_, i) {
+      var cls = i <= stageIdx ? "is-done" : "";
+      if (order.status.tone === "bad" && i === stageIdx) cls = "is-bad";
+      return '<div class="progress-step ' + cls + '"></div>';
+    }).join("");
+    return '<div class="order-progress">' + steps + '</div>';
+  }
+
+  function renderActions(order) {
+    var buttons = '';
+    if (order.actions.resubmitProof) buttons += '<button type="button" class="btn btn-primary" id="act-resubmit">Resubmit payment proof</button>';
+    if (order.actions.reorder) buttons += '<button type="button" class="btn btn-secondary" id="act-reorder">Reorder</button>';
+    if (order.actions.cancel) buttons += '<button type="button" class="btn btn-secondary" id="act-cancel">Cancel order</button>';
+    buttons += '<a class="btn btn-secondary" href="mailto:' + O.ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + order.orderId) + '">Contact us</a>';
+    return '<div class="order-actions">' + buttons + '</div><div class="reorder-report" id="reorder-report"></div>';
+  }
+
+  function wireActions(order) {
+    var reorderBtn = document.getElementById("act-reorder");
+    if (reorderBtn) reorderBtn.addEventListener("click", function () {
+      reorderBtn.disabled = true; reorderBtn.textContent = "Adding…";
+      O.reorder(order).then(function (result) {
+        var report = document.getElementById("reorder-report");
+        var lines = [];
+        if (result.added.length) lines.push(result.added.length + " item" + (result.added.length === 1 ? "" : "s") + " added to your cart.");
+        result.added.forEach(function (a) { if (a.note) lines.push('<span class="skip">' + O.escapeHtml(a.note) + '</span>'); });
+        result.skipped.forEach(function (s) { lines.push('<span class="skip">' + O.escapeHtml(s.name) + " — " + O.escapeHtml(s.reason) + '</span>'); });
+        if (result.priceChanged.length) lines.push("Note: pricing has changed since this order for " + result.priceChanged.map(O.escapeHtml).join(", ") + ".");
+        report.innerHTML = lines.join("<br>");
+        reorderBtn.textContent = "Reorder"; reorderBtn.disabled = false;
+        if (result.added.length) window.KCMPS_STORE.open();
+      }).catch(function (err) {
+        document.getElementById("reorder-report").textContent = err.message;
+        reorderBtn.textContent = "Reorder"; reorderBtn.disabled = false;
+      });
+    });
+
+    var resubmitBtn = document.getElementById("act-resubmit");
+    if (resubmitBtn) resubmitBtn.addEventListener("click", function () { openResubmitForm(order); });
+
+    var cancelBtn = document.getElementById("act-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", function () {
+      if (!window.confirm("Cancel order " + order.orderId + "? This can't be undone.")) return;
+      var reason = window.prompt("Optional — let us know why (helps us improve):", "") || "";
+      cancelBtn.disabled = true; cancelBtn.textContent = "Cancelling…";
+      O.cancel(order.orderId, reason).then(function () {
+        return O.refresh();
+      }).then(function () {
+        load();
+      }).catch(function (err) {
+        document.getElementById("reorder-report").textContent = err.message;
+        cancelBtn.disabled = false; cancelBtn.textContent = "Cancel order";
+      });
+    });
+  }
+
+  function openResubmitForm(order) {
+    var card = document.getElementById("resubmit-card");
+    card.innerHTML =
+      '<p class="detail-card-title">Resubmit payment proof</p>' +
+      '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
+      '<div class="field"><label for="rs-ref">GCash reference number</label><input class="input" id="rs-ref" placeholder="e.g. 8017 442 99331" /></div>' +
+      '<div class="field"><label for="rs-amount">Amount you sent (₱)</label><input class="input" id="rs-amount" type="number" min="0" step="0.01" value="' + (order.amountDue || order.total) + '" /></div>' +
+      '<div class="field"><label for="rs-file">Payment screenshot</label><input class="input" id="rs-file" type="file" accept="image/png,image/jpeg,image/webp" /></div>' +
+      '<p class="order-popup-error" id="rs-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+      '<button type="button" class="btn btn-primary btn-block" id="rs-submit">Submit payment proof</button>';
+    card.style.display = "";
+    document.getElementById("rs-submit").addEventListener("click", function () {
+      var ref = (document.getElementById("rs-ref").value || "").trim();
+      var amount = parseFloat(document.getElementById("rs-amount").value);
+      var file = document.getElementById("rs-file").files[0];
+      var errorEl = document.getElementById("rs-error");
+      var btn = document.getElementById("rs-submit");
+      errorEl.style.display = "none";
+      btn.disabled = true; btn.textContent = "Submitting…";
+      O.submitProof(order.orderId, ref, amount, file, function (err) {
+        if (err) {
+          errorEl.textContent = err.message; errorEl.style.display = "";
+          btn.disabled = false; btn.textContent = "Submit payment proof";
+          return;
+        }
+        card.innerHTML = '<p class="detail-card-title">Resubmit payment proof</p><p class="card-body">Received — we’ll verify it, usually within 48 hours.</p>';
+        O.refresh().then(function () { load(); });
+      });
+    });
+  }
+
+  function renderOrder(order) {
+    root.innerHTML =
+      '<div class="order-detail-head">' +
+        '<div><h1 style="margin:0">Order ' + O.escapeHtml(order.orderId) + '</h1>' +
+        '<p class="card-body">Placed ' + O.fmtDate(order.createdAt) + (order.promisedDate ? ' · Expected by ' + O.fmtDate(order.promisedDate) : '') + '</p></div>' +
+        '<span class="tone-pill tone-' + order.status.tone + '">' + O.escapeHtml(order.status.label || order.status.raw) + '</span>' +
+      '</div>' +
+      renderProgress(order) +
+      (order.status.next ? '<p class="card-body" style="margin-top:var(--space-2)">' + O.escapeHtml(order.status.next) + '</p>' : '') +
+      renderActions(order) +
+      '<div class="card" id="resubmit-card" style="display:none;margin-top:var(--space-3)"></div>' +
+      '<div class="card" style="margin-top:var(--space-4)"><p class="detail-card-title">Items</p><div class="line-list">' +
+        order.lineItems.map(renderItem).join("") + '</div></div>' +
+      '<div class="order-detail-grid">' +
+        renderPaymentCard(order) + renderFulfillmentCard(order) + renderTotalsCard(order) + renderTimeline(order) +
+      '</div>';
+    wireActions(order);
+  }
+
+  function load() {
+    if (!orderId) { root.innerHTML = '<div class="orders-error">No order specified.</div>'; return; }
+    O.get(orderId).then(function (order) {
+      if (!order) { root.innerHTML = '<div class="orders-error">We couldn’t find that order on your account.</div>'; return; }
+      renderOrder(order);
+    }).catch(function (err) {
+      root.innerHTML = '<div class="orders-error">' + O.escapeHtml(err.message || "Couldn't load this order right now.") + '</div>';
+    });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

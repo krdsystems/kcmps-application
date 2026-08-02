@@ -266,6 +266,96 @@ can't be fulfilled from an online order alone.
 verify/reject that moves real statuses, an auto-expiry cron, and a customer who can see the
 result. `mailto:` checkout retired.
 
+### 1.5 — My Orders expansion (closes real gaps found in 1.4's UAT pass) ✅ done (2026-08-02)
+
+1.4 shipped the minimum: an order ID, a status pill, and a progress bar that was actually buggy.
+`GET /orders` already returned the full event timeline, GCash payment detail, and delivery
+address to the customer — none of it was rendered. Phased so the bulk of the customer value
+shipped with zero backend changes; Phases 2–3 below closed the rest.
+
+**Phase 1 (frontend only):**
+- [x] New [`website/orders-data.js`](../website/orders-data.js) — the `window.KCMPS_ORDERS` seam
+  (mirrors `KCMPS_STORE`/`KCMPS_DASH`). Owns session handling, fetch/cache (30s, no polling —
+  `getOrdersForSub()` is a table Scan), and one canonical status model covering both the
+  line-item and order-rollup vocabularies — the previous `orders.html` keyed its stage map on the
+  wrong one, so `Awaiting Quote`/`Awaiting Payment`/`Partially Fulfilled`/`Unknown` all silently
+  collapsed to stage 0, and `Cancelled` rendered as a fully-filled "Delivered" bar. Both fixed.
+- [x] `website/orders.html` rebuilt as bucketed tabs (Action needed / In progress / Completed /
+  Cancelled, Shopee/Lazada-style) with search. New [`website/order-detail.html`](../website/order-detail.html)
+  — deep-linkable `?id=ORD-XXXX`, with order total, full timeline, GCash payment card, and the
+  delivery address (captured at checkout, previously rendered nowhere in the app, staff side
+  included).
+- [x] Reorder (zero backend — re-adds via the real `KCMPS_STORE.addToCart`, always re-priced from
+  the live catalog, never the stored `priceEach`) and resubmit-payment-proof (reuses
+  `POST /orders/{id}/payment-proof` verbatim) — the rejected-payment message used to say "please
+  resubmit your GCash proof" with no way to actually do that anywhere on the site.
+- [x] `store.js`'s post-checkout popup now links to the order-detail page; `index.html`'s
+  `?login=required` redirect now shows a sign-in banner instead of silently dropping the visitor
+  on the homepage.
+
+**Phase 2 (existing Lambdas, no new routes) — verified live against real orders, then redeployed:**
+- [x] `backend/staff-api/get-orders.js` now redacts staff-internal fields (`li.station`,
+  `li.setupMinutes`, `li.spoilage`, `order.correspondenceLog`, event `actorSub`/`actorName`/
+  `station`/`meta` beyond `rejectionReason`) for non-staff callers, and sorts newest-first
+  server-side. The redaction is pure and shared via new
+  [`backend/lib/customer-view.js`](../backend/lib/customer-view.js) (`redactForCustomer`,
+  `contactsMatch`) — covered by `backend/lib/lib.test.js`. This data was already reaching the
+  customer's browser unrendered; now it doesn't leave the Lambda at all for a non-staff caller.
+- [x] `backend/checkout/create-order.js` stamps `originalPromisedDate` (business-day offset from
+  `BASE_LEAD_BUSINESS_DAYS = 3`, skips weekends) on SKU-only orders — real orders previously had
+  no ETA at all (`originalPromisedDate` was mock-data-only). Left `null` for any order containing
+  a custom line, since those have no price or production slot yet to promise a date against.
+  Frozen at creation, never overwritten (OTIF per the ERP file is measured against the original
+  promise).
+- [x] `backend/staff-api/verify-payment.js` sends the two customer emails the Payment System spec
+  always called for but never had (`verifyPayment`/`rejectPayment` sent nothing; only the
+  "under verification" email at submission existed). Same best-effort pattern as
+  `submit-payment-proof.js` — gated on `FROM_EMAIL`, which is still unset (SES remains sandboxed,
+  `ProductionAccessEnabled: false`, confirmed via `sesv2 get-account`), so this ships dark and
+  activates the moment that env var is set.
+
+**Phase 3 (two new routes on the existing `kcmps-checkout-api`, id `6msg2uho6c`):**
+- [x] `POST /orders/lookup` → new `kcmps-lookup-order` Lambda
+  ([`backend/checkout/lookup-order.js`](../backend/checkout/lookup-order.js)) — guest order
+  lookup by `{orderId, contact}`. `orderId` alone isn't a meaningful secret (6-char base36, same
+  tradeoff `submit-payment-proof.js` already accepts), so the contact match is the real
+  authentication: identical generic 404 for both a wrong order ID and a wrong contact (no
+  enumeration oracle), a 300ms artificial delay on both failure paths, route throttled to
+  5 req/s (burst 10) — tighter than the other two no-authorizer routes. Recovers a customer
+  segment that was previously locked out of `GET /orders` forever (guest orders have
+  `customerSub: null`).
+- [x] `POST /orders/{orderId}/cancel` → new `kcmps-cancel-order` Lambda
+  ([`backend/checkout/cancel-order.js`](../backend/checkout/cancel-order.js)) — authorizes via a
+  Bearer ID token matching `customerSub`, or the same contact-match fallback for guests. Only
+  allowed while every line item is `Quoted`/`Priced`/`Pending Payment Verification`/
+  `Payment Rejected`; the moment anything is `Confirmed` or beyond, KCMPS has committed
+  material/schedule, so it 409s pointing at support instead. Same `TransactWriteItems` +
+  optimistic-lock shape as `verify-payment.js`; never writes `orderStatus` (streams-handler.js
+  stays the only writer). Wired into `order-detail.html` as a "Cancel order" button, gated on the
+  same cancellable-status set client-side (UI-only — the backend re-checks authoritatively).
+- Both routes reuse the existing API (same origin already in the CSP `connect-src` of both order
+  pages — no CSP change needed) and the existing `kcmps-checkout-lambda-role` (already had exactly
+  the DynamoDB permissions both new Lambdas need — no new IAM role).
+- **Verified live end-to-end** through the real public HTTPS endpoint (not just direct Lambda
+  invoke): a real order created, looked up with the correct contact (succeeds) and an incorrect
+  one (byte-identical 404 to a nonexistent order ID), cancelled while pre-production (succeeds,
+  line item → `Cancelled`, `GSI1PK` correctly removed) and rejected once advanced to `Confirmed`
+  (409, correct message). All throwaway test orders deleted afterward, matching this repo's
+  established smoke-test convention (see 1.3's notes in `backend/infra/README.md`).
+- **Not built**: a guest-facing UI for `/orders/lookup` (a "track your order without logging in"
+  entry point) — the backend route is live and tested, but wiring it up is a new page/nav entry,
+  not a button on an already-authenticated page, so it's left for a follow-up request rather than
+  folded into this pass.
+
+**Known pre-existing issue found, not fixed (out of scope for this pass):**
+`create-order.js` and `verify-payment.js`'s `TransactionCanceledException` handling throws an
+`Error` with a `.statusCode` property attached, but nothing in either handler catches it — it
+propagates as an unhandled Lambda error instead of the intended JSON 409, so a real concurrent
+edit on either route surfaces as a raw 500-class error rather than the documented conflict
+message. `cancel-order.js` (new in this pass) does not repeat the pattern — it catches the
+conflict inline and returns the proper 409. Worth a small fix in a future pass; not touched here
+since it's unrelated to what this pass set out to change.
+
 ---
 
 ## Parallel track — Design Asset Library (no dependency on Milestone 1)

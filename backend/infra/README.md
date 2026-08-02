@@ -369,6 +369,57 @@ Redeploy any of the 5 Lambdas after a code change the same way as the checkout L
 `package.json` — then `aws lambda update-function-code`); no infra change needed unless the
 route/role/permission set itself changes.
 
+## Guest order lookup + self-cancel Lambdas — deployed (2026-08-02)
+
+`kcmps-lookup-order` and `kcmps-cancel-order` (My Orders plan Phase 3), `backend/checkout/
+lookup-order.js` / `cancel-order.js`, added to the *same* `kcmps-checkout-api` (`6msg2uho6c`).
+Both reuse **`kcmps-checkout-lambda-role`** unchanged — it already had exactly the DynamoDB
+permissions (`GetItem`/`Query`/`PutItem`/`UpdateItem`/`TransactWriteItems`) either function
+needs, so no new IAM role.
+
+| Method | Route | Integration | Authorizer |
+|---|---|---|---|
+| POST | `/orders/lookup` | `kcmps-lookup-order` | none — `contactsMatch()` is the real auth boundary |
+| POST | `/orders/{orderId}/cancel` | `kcmps-cancel-order` | none — JWT sub-match, or `contactsMatch()` fallback for guests |
+
+Both deliberately **no authorizer**, same reasoning as the 1.1/1.2 routes: guest checkout means
+there's no reliable Cognito session to require. `lookup-order.js`'s and `cancel-order.js`'s own
+headers explain the two-tier authorization each does internally.
+
+**Route-level throttling** (tighter than the other two no-authorizer routes, since these two are
+specifically enumeration-risk — a wrong guess reveals nothing, but repeated guessing should be
+slow):
+```bash
+aws apigatewayv2 update-stage --api-id 6msg2uho6c --stage-name '$default' --route-settings '{
+  "POST /orders/lookup": {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5.0},
+  "POST /orders/{orderId}/cancel": {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5.0}
+}' --region ap-southeast-1 --profile kcmps-claude-priv
+```
+(That call replaces the whole `RouteSettings` map on the stage — include the existing
+`POST /orders`/`POST /orders/{orderId}/payment-proof` entries too if re-running this.)
+
+**Env vars**: `TABLE_NAME=kcmps` on both; `cancel-order.js` also needs `COGNITO_USER_POOL_ID`/
+`COGNITO_CLIENT_ID` (same values as `kcmps-create-order`) for its optional JWT verification.
+
+Recreate from scratch (after the Lambdas themselves exist):
+```bash
+for FN in kcmps-lookup-order kcmps-cancel-order; do
+  INTEG=$(aws apigatewayv2 create-integration --api-id 6msg2uho6c --integration-type AWS_PROXY \
+    --integration-uri "arn:aws:lambda:ap-southeast-1:600929977538:function:$FN" \
+    --payload-format-version 2.0 --integration-method POST \
+    --region ap-southeast-1 --profile kcmps-claude-priv --query IntegrationId --output text)
+  echo "$FN -> $INTEG"
+done
+# then create-route (POST /orders/lookup, POST /orders/{orderId}/cancel) + a scoped
+# lambda:AddPermission for each, same pattern as every other route in this file.
+```
+
+Verified live through the real public HTTPS endpoint (not just direct `lambda invoke`): a real
+order created, looked up with the correct contact (200, redacted shape) and an incorrect one
+(404, byte-identical to a lookup against a nonexistent order ID), cancelled while pre-production
+(200, line item → `Cancelled`, `GSI1PK` removed) and rejected once advanced past `Confirmed`
+(409). Throwaway orders deleted afterward, same convention as the smoke tests above.
+
 ## Re-running / updates
 
 `aws cloudformation deploy` is idempotent — re-running it with the same

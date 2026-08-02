@@ -54,6 +54,7 @@ with what it builds.
 | `auth.js` | The 5-role model (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) and claims helpers — run server-side only, on the already-JWT-verified `event.requestContext.authorizer.jwt.claims` |
 | `gsi.js` | GSI1 sparse-index hygiene — when to write `GSI1PK`/`GSI1SK`, and the attribute names to `REMOVE` on a terminal status |
 | `order-status.js` | `deriveOrderStatus()` — the line-item-statuses → order-level rollup rule (ERP file §2.4). A third independent copy of the same rule already exists in `dashboard-data.js` and `ops-dashboard/infra/logic-inputs/streams-handler.js` (predating this lib) — new Lambdas should import this one instead of adding a fourth |
+| `customer-view.js` | `redactForCustomer()` (strips staff-internal fields — station, setupMinutes, spoilage, correspondenceLog, event actor identity — from an order before a non-staff caller sees it) and `contactsMatch()` (the free-text-contact comparison every guest-facing endpoint authenticates against, since orderId alone isn't a meaningful secret) — shared by `staff-api/get-orders.js`, `checkout/lookup-order.js`, `checkout/cancel-order.js` |
 | `index.js` | Re-exports everything above from one require |
 
 Run the tests: `node --test backend/lib/`.
@@ -65,9 +66,11 @@ as opposed to `ops-dashboard/infra/logic-inputs/*.js`'s staff-facing dashboard L
 
 | File | Purpose |
 |---|---|
-| `create-order.js` | `POST /orders` — splits the cart into `sku`/`custom` line items, writes `ORDER#<id>` META + `LINEITEM#`/`EVENT#` items in one `TransactWriteItems`. Guest checkout preserved (Bearer token verified if present, never required) |
+| `create-order.js` | `POST /orders` — splits the cart into `sku`/`custom` line items, writes `ORDER#<id>` META + `LINEITEM#`/`EVENT#` items in one `TransactWriteItems`. Guest checkout preserved (Bearer token verified if present, never required). Also stamps a business-day `originalPromisedDate` for SKU-only orders (null if any custom line is present) |
 | `submit-payment-proof.js` | `POST /orders/{orderId}/payment-proof` — pre-signed S3 upload URL for the GCash screenshot, writes the `payment` sub-object, sends the "under verification" SES email when `customerContact` is email-shaped |
-| `package.json` | Lambda dependencies for this folder (S3 presigner + SES on top of `ops-dashboard/infra/logic-inputs/package.json`'s DynamoDB deps) |
+| `lookup-order.js` | `POST /orders/lookup` — guest order lookup by `{orderId, contact}`, no authorizer. `contactsMatch()` (`../lib/customer-view.js`) is the real auth boundary since orderId alone isn't a meaningful secret; identical generic 404 for wrong-id vs wrong-contact, artificial delay, tight route throttle (5 req/s) |
+| `cancel-order.js` | `POST /orders/{orderId}/cancel` — no authorizer; JWT sub-match if a Bearer token verifies, else the same `contactsMatch()` fallback as `lookup-order.js`. Only allowed while every line item is pre-production (`Quoted`/`Priced`/`Pending Payment Verification`/`Payment Rejected`) — 409 once anything is `Confirmed`+. Never writes `orderStatus` (streams-handler.js owns that) |
+| `package.json` | Lambda dependencies for this folder (S3 presigner + SES + `aws-jwt-verify` on top of `ops-dashboard/infra/logic-inputs/package.json`'s DynamoDB deps) |
 
 Both import `../lib` directly rather than hand-rolling keys/status — the first Lambdas in the
 repo to do so (see "Where this is going" below). Both keep money as peso floats, not `lib/
@@ -82,7 +85,7 @@ token; each Lambda itself checks the role/group — the authorizer never filters
 
 | File | Purpose |
 |---|---|
-| `get-orders.js` | `GET /orders` — staff (any of `backend/lib/auth.js`'s `isStaff()` roles, or the legacy `Staff` group) see every order; anyone else sees only their own (`customerSub`). Attaches each order's `LINEITEM#`/`EVENT#` items. |
+| `get-orders.js` | `GET /orders` — staff (any of `backend/lib/auth.js`'s `isStaff()` roles, or the legacy `Staff` group) see every order; anyone else sees only their own (`customerSub`). Attaches each order's `LINEITEM#`/`EVENT#` items, sorted newest-first, and redacts staff-internal fields via `../lib/customer-view.js`'s `redactForCustomer()` for non-staff callers. |
 | `advance-line-item.js` | `POST /line-items/{lineItemId}/advance` — validates the requested transition against `LEGAL_TRANSITIONS` (must match the *real* dashboard status vocabulary in `dashboard-data.js`'s `NEXT_STATUS` — see the `STATUS.READY_FOR_DISPATCH`/`DISPATCHED` split in `constants.js`, a bug found and fixed in this area), writes the line-item update + `EVENT#` atomically |
 | `verify-payment.js` | `POST /orders/{orderId}/verify-payment` \| `.../reject-payment` — order-level: one GCash payment covers every `sku` line item still `Pending Payment Verification` on that order, verified/rejected together |
 

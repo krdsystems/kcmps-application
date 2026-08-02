@@ -76,7 +76,7 @@ body { margin: 0; background-attachment: fixed; }
 }
 .dash-topbar-title h1 { margin: 0; font-size: 22px; color: var(--color-accent-2-800); }
 .dash-topbar-title p { margin: 2px 0 0; font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
-.dash-topbar-user { display: flex; align-items: center; gap: var(--space-2); }
+.dash-topbar-user { display: flex; align-items: center; gap: var(--space-2); flex: none; }
 .dash-user-name { font-family: var(--font-heading); font-weight: 600; font-size: 13.5px; color: var(--color-accent-2); }
 .dash-nav-toggle { display: none; }
 
@@ -95,10 +95,15 @@ body { margin: 0; background-attachment: fixed; }
   .dash-nav-toggle {
     display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
     border-radius: var(--radius-md); border: 1px solid var(--color-divider); background: transparent; cursor: pointer;
+    flex: none;
   }
   .dash-content { padding: var(--space-3) var(--space-3) calc(var(--space-8) * 1.4); }
-  .dash-topbar { padding: var(--space-3); }
-  .dash-topbar-title h1 { font-size: 18px; }
+  .dash-topbar { padding: var(--space-3); gap: var(--space-2); }
+  .dash-topbar-title { min-width: 0; }
+  .dash-topbar-title h1 {
+    font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dash-topbar-title p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* — section headers — */
@@ -201,6 +206,32 @@ body { margin: 0; background-attachment: fixed; }
 .pillar-table .pos { color: var(--color-green); }
 .pillar-table .neg { color: #c0392b; }
 .client-flag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--color-accent-100); color: var(--color-accent-800); }
+.client-cols-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+
+/* Card-stack layout for dense tables (clients, inventory, settings' SLA
+   table, month's pillar table) below phone width — a 5-6 column table has
+   no room to breathe at 320-375px, and the .card wrapper's overflow-x:auto
+   fallback works but turns every row into a sideways-scroll chore. Requires
+   `data-label` on every <td> (added in each page's render function) so the
+   stacked cell keeps its column context; a `<td>` with no data-label just
+   shows its value with no heading, and a genuinely empty <td> (nothing to
+   flag/no action) collapses out entirely via :empty. */
+@media (max-width: 640px) {
+  .table-mobile-stack thead { display: none; }
+  .table-mobile-stack, .table-mobile-stack tbody, .table-mobile-stack tr, .table-mobile-stack td { display: block; width: 100%; }
+  .table-mobile-stack tr { padding: var(--space-2) 0; border-bottom: 1px solid var(--color-divider); }
+  .table-mobile-stack tr:last-child { border-bottom: none; }
+  .table-mobile-stack td { padding: 3px 0; border-bottom: none; text-align: left; }
+  .table-mobile-stack td:empty { display: none; }
+  .table-mobile-stack td::before {
+    content: attr(data-label); display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 55%, transparent); margin-bottom: 1px;
+  }
+  /* label-above-value reads fine for prose (SLA table); short/numeric
+     values (client revenue, inventory counts) are still perfectly legible
+     this way and it keeps one pattern for every stacked table instead of
+     two competing layouts. */
+}
 
 /* — forms in dashboard context — */
 .dash-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
@@ -232,6 +263,33 @@ select.input { appearance: auto; }
 /* new-row highlight after "Create ticket" — see jobs.html's manual-order submit */
 .job-row.is-new { animation: dash-flash-settle 900ms ease; }
 @media (prefers-reduced-motion: reduce) { .job-row.is-new { animation: none; } }
+
+/* Phone layout: the 5-column grid (description/client/status/due/id) has no
+   room at 320-375px, so it restructures into a 2-row card — description +
+   status on top, client + due below. The column-header row above the list
+   (jobs.html's `.job-row-head`, plain text, no real cells) just hides:
+   headers don't mean anything once the list is stacked cards. The trailing
+   order/line-id column (5th child) is reference-only — dropped here, still
+   one tap away via job-detail.html. */
+@media (max-width: 640px) {
+  .job-row-head { display: none; }
+  .job-row {
+    grid-template-columns: 1fr auto; grid-template-areas: "desc status" "client due"; row-gap: 4px;
+  }
+  .job-row > span:nth-child(1) {
+    grid-area: desc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 600; font-size: 13.5px;
+  }
+  .job-row > span:nth-child(2) {
+    grid-area: client; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  }
+  .job-row > span:nth-child(3) { grid-area: status; justify-self: end; }
+  .job-row > span:nth-child(4) {
+    grid-area: due; justify-self: end; font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  }
+  .job-row > span:nth-child(5) { display: none; }
+}
 .status-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .status-pill.st-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
 .status-pill.st-warn { background: var(--color-accent-100); color: var(--color-accent-800); }
@@ -296,4 +354,25 @@ select.input { appearance: auto; }
   .mail-3pane.show-read .mail-read { display: block; }
   .mail-toolbar .mail-search { margin-left: 0; max-width: none; flex: 1 1 100%; }
   .mail-back { display: inline-flex; margin-bottom: var(--space-2); }
+}
+
+/* Phone-width layout pass, part 2: card grids drop to one column (auto-fit's
+   minmax floor would otherwise force horizontal page scroll once the
+   viewport is narrower than that floor — 300px/260px doesn't fit inside a
+   ~320-375px phone once .dash-content + .card padding are subtracted), and
+   the topbar/timeline shed anything that doesn't fit at the tightest widths.
+   Placed at the END of the file, deliberately — every rule overridden here
+   (`.queue-grid`, `.station-grid`, `.client-cols-grid`, `.timeline-row`) has
+   its unconditional base declared earlier in this file, and two rules with
+   equal specificity resolve by source order regardless of which one sits
+   inside a currently-matching @media block. An earlier attempt placed this
+   block up near the top (next to the 900px sidebar breakpoint) and every
+   rule in it was silently overridden by its own later base declaration —
+   caught by inspecting computed styles at 375px width, not by eye. */
+@media (max-width: 640px) {
+  .queue-grid, .station-grid, .client-cols-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .dash-user-name { display: none; }
+  .timeline-row { grid-template-columns: 1fr; gap: 2px; }
 }

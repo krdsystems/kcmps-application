@@ -37,7 +37,7 @@
         </div>
         <div class="card">
           <div style="overflow-x:auto">
-          <table class="table pillar-table">
+          <table class="table pillar-table table-mobile-stack">
             <thead><tr><th>Pillar</th><th class="num">Revenue</th><th class="num">Gross margin</th><th class="num">Margin %</th><th class="num">Est. vs actual cost</th></tr></thead>
             <tbody id="pillar-body"></tbody>
           </table>
@@ -47,7 +47,7 @@
 
       <section class="dsec">
         <div class="dsec-head"><h2>Client concentration &amp; quiet accounts</h2></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)" id="client-cols"></div>
+        <div class="client-cols-grid" id="client-cols"></div>
       </section>
 
     </main>
@@ -87,9 +87,11 @@
 
   const fmt = (n) => fmtPeso(n);
   document.getElementById("pillar-body").innerHTML = m.pillars.map((p) => (
-    `<tr><td>${escapeHtml(p.name)}</td><td class="num">${fmt(p.revenue)}</td><td class="num">${fmt(p.grossMargin)}</td>` +
-    `<td class="num ${p.marginPct >= 30 ? "pos" : "neg"}">${p.marginPct != null ? p.marginPct + "%" : "—"}</td>` +
-    `<td class="num ${p.costVariance <= 0 ? "pos" : "neg"}">${fmt(p.costVariance)} (${p.costVariancePct != null ? (p.costVariancePct > 0 ? "+" : "") + p.costVariancePct + "%" : "—"})</td></tr>`
+    `<tr><td data-label="Pillar">${escapeHtml(p.name)}</td>` +
+    `<td class="num" data-label="Revenue">${fmt(p.revenue)}</td>` +
+    `<td class="num" data-label="Gross margin">${fmt(p.grossMargin)}</td>` +
+    `<td class="num ${p.marginPct >= 30 ? "pos" : "neg"}" data-label="Margin %">${p.marginPct != null ? p.marginPct + "%" : "—"}</td>` +
+    `<td class="num ${p.costVariance <= 0 ? "pos" : "neg"}" data-label="Est. vs actual cost">${fmt(p.costVariance)} (${p.costVariancePct != null ? (p.costVariancePct > 0 ? "+" : "") + p.costVariancePct + "%" : "—"})</td></tr>`
   )).join("") || `<tr><td colspan="5" class="q-empty">No pillar data yet.</td></tr>`;
 
   const cols = document.getElementById("client-cols");

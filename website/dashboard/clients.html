@@ -27,7 +27,7 @@
           <span class="hint">Same ORDER# record as the customer sees, filtered by role — no separate CRM data entry</span>
         </div>
         <div class="card" style="overflow-x:auto">
-          <table class="table">
+          <table class="table table-mobile-stack">
             <thead><tr><th>Client</th><th>Type</th><th class="num">Lifetime revenue</th><th>Last order</th><th>Reorder interval</th><th></th></tr></thead>
             <tbody id="client-body"></tbody>
           </table>
@@ -48,9 +48,11 @@
   document.getElementById("client-body").innerHTML = clients.map((c) => {
     const quiet = c.reorderIntervalDays && (Date.now() - new Date(c.lastOrderAt).getTime()) / 86400000 > c.reorderIntervalDays;
     return (
-      `<tr><td>${escapeHtml(c.name)}</td><td><span class="tag ${c.type === "B2B" ? "tag-accent-2" : "tag-neutral"}">${c.type}</span></td>` +
-      `<td class="num">${fmtPeso(c.totalRevenue)}</td><td>${fmtDate(c.lastOrderAt)}</td>` +
-      `<td>${c.reorderIntervalDays ? c.reorderIntervalDays + " days" : "—"}</td>` +
+      `<tr><td data-label="Client">${escapeHtml(c.name)}</td>` +
+      `<td data-label="Type"><span class="tag ${c.type === "B2B" ? "tag-accent-2" : "tag-neutral"}">${c.type}</span></td>` +
+      `<td class="num" data-label="Lifetime revenue">${fmtPeso(c.totalRevenue)}</td>` +
+      `<td data-label="Last order">${fmtDate(c.lastOrderAt)}</td>` +
+      `<td data-label="Reorder interval">${c.reorderIntervalDays ? c.reorderIntervalDays + " days" : "—"}</td>` +
       `<td>${quiet ? '<span class="client-flag">reorder overdue</span>' : ""}</td></tr>`
     );
   }).join("");

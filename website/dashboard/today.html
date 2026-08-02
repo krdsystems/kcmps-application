@@ -88,8 +88,14 @@
   ];
 
   async function renderQueues() {
-    const queues = await KCMPS_DASH.getQueues();
     const grid = document.getElementById("queue-grid");
+    let queues;
+    try {
+      queues = await KCMPS_DASH.getQueues();
+    } catch (err) {
+      grid.innerHTML = '<div class="empty-state">Couldn’t load today’s queues — ' + escapeHtml(err.message) + '</div>';
+      return;
+    }
     grid.innerHTML = QUEUE_DEFS.map((def) => {
       const items = queues[def.key] || [];
       const hasRed = items.some((i) => i.slaState === "red");
@@ -127,7 +133,14 @@
   }
 
   async function renderTiles() {
-    const n = await KCMPS_DASH.getTodayNumbers();
+    const host = document.getElementById("today-tiles");
+    let n;
+    try {
+      n = await KCMPS_DASH.getTodayNumbers();
+    } catch (err) {
+      host.innerHTML = '<div class="empty-state">Couldn’t load today’s numbers — ' + escapeHtml(err.message) + '</div>';
+      return;
+    }
     const tiles = [
       tile("Jobs due today", n.dueToday, `${n.dueTodayAtRisk} not yet in production`, n.dueTodayAtRisk > 0 ? "bad" : "good"),
       tile("Output yesterday", n.outputYesterdayUnits + " units", n.outputYesterdayJobs + " jobs completed"),
@@ -136,7 +149,7 @@
       tile("Cash collected yesterday", fmtPeso(n.cashCollectedYesterday), "Verified GCash only", "good"),
       tile("WIP count", n.wipCount, "Confirmed → QC · pair with utilization on Week"),
     ];
-    document.getElementById("today-tiles").innerHTML = tiles.join("");
+    host.innerHTML = tiles.join("");
   }
 
   function renderBlockers() {
@@ -144,7 +157,7 @@
     const list = document.getElementById("blocker-list");
     if (!blockers.length) { list.innerHTML = '<p class="q-empty">No open blockers. Nice.</p>'; return; }
     list.innerHTML = blockers.map((b) => (
-      `<div class="blocker-row${b.recurring ? " recurring" : ""}">` +
+      `<div class="blocker-row${b.recurring ? " recurring" : ""}" data-id="${b.id}">` +
       `<span class="b-text">${escapeHtml(b.text)}${b.recurring ? ' <span class="tag tag-accent">Recurring — promote to weekly</span>' : ""}</span>` +
       `<span class="b-owner">${escapeHtml(b.owner)}</span>` +
       `<span class="b-due">Due ${fmtDate(b.dueDate)}</span>` +
@@ -152,8 +165,18 @@
       `</div>`
     )).join("");
     list.querySelectorAll(".btn-resolve").forEach((btn) => btn.addEventListener("click", () => {
-      KCMPS_DASH.resolveBlocker(btn.dataset.id);
-      renderBlockers();
+      btn.disabled = true;
+      const row = list.querySelector(`.blocker-row[data-id="${btn.dataset.id}"]`);
+      // Let the row fade/collapse out before it actually leaves the list —
+      // resolving a blocker is rare enough (a few/day) to earn a brief exit
+      // instead of an instant vanish. Falls back to an immediate re-render
+      // if the row is missing or the transition never fires.
+      if (!row) { KCMPS_DASH.resolveBlocker(btn.dataset.id); renderBlockers(); return; }
+      let done = false;
+      const finish = () => { if (done) return; done = true; KCMPS_DASH.resolveBlocker(btn.dataset.id); renderBlockers(); };
+      row.addEventListener("transitionend", finish, { once: true });
+      setTimeout(finish, 260);
+      row.classList.add("is-resolving");
     }));
   }
 
@@ -180,6 +203,11 @@
     )).join("");
   }
 
+  // Both pull from the real staff-api — show a loading placeholder for the
+  // brief window before the first fetch resolves rather than leaving the
+  // grid blank, which read identically to "nothing to do today."
+  document.getElementById("queue-grid").innerHTML = '<p class="q-empty">Loading queues&hellip;</p>';
+  document.getElementById("today-tiles").innerHTML = '<p class="q-empty">Loading numbers&hellip;</p>';
   renderQueues();
   renderTiles();
   renderBlockers();

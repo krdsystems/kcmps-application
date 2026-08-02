@@ -35,7 +35,8 @@
             </div>
             <button type="button" class="btn btn-secondary" id="manual-order-toggle">+ New manual order</button>
           </div>
-          <form class="dash-form-grid" id="manual-order-form" style="display:none;margin-top:var(--space-3)">
+          <div class="dash-collapsible" id="manual-order-collapsible"><div>
+          <form class="dash-form-grid" id="manual-order-form">
             <div class="field">
               <label for="mo-client">Client</label>
               <select class="input" id="mo-client"></select>
@@ -101,8 +102,10 @@
               <label for="mo-notes">Notes (optional)</label>
               <input class="input" id="mo-notes" placeholder="e.g. Ordered via FB Messenger DM" />
             </div>
+            <div id="mo-error" style="grid-column:1/-1"></div>
             <button type="submit" class="btn btn-primary" style="grid-column:1/-1;justify-self:start">Create ticket</button>
           </form>
+          </div></div>
         </div>
 
         <div class="card" style="margin-bottom:var(--space-3)">
@@ -128,7 +131,7 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("jobs");
   if (!claims) return;
-  const { fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+  const { fmtDate, escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
   function statusTone(status) {
     if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
@@ -155,6 +158,11 @@
     sel.value = statuses.includes(current) ? current : "";
   }
 
+  // Set right before a render() that should call out its result — a job
+  // just created via the manual-order form. Cleared after one render so the
+  // 20s poll refresh below doesn't keep re-flashing it.
+  let highlightOrderId = null;
+
   function render() {
     const q = document.getElementById("f-search").value.trim().toLowerCase();
     const statusFilter = document.getElementById("f-status").value;
@@ -167,7 +175,7 @@
     const list = document.getElementById("job-list");
     if (!filtered.length) { list.innerHTML = '<div class="empty-state">No jobs match.</div>'; return; }
     list.innerHTML = filtered.map(({ order, li }) => (
-      `<a class="job-row" style="text-decoration:none;color:inherit" href="job-detail.html?order=${encodeURIComponent(order.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
+      `<a class="job-row${order.orderId === highlightOrderId ? " is-new" : ""}" style="text-decoration:none;color:inherit" href="job-detail.html?order=${encodeURIComponent(order.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
       `<span>${escapeHtml(li.description)}${order.source === "manual" ? ' <span class="tag tag-neutral" style="font-size:10px">Manual</span>' : ""}</span>` +
       `<span>${escapeHtml(order.client ? order.client.name : "—")}</span>` +
       `<span class="status-pill ${statusTone(li.status)}">${li.status}</span>` +
@@ -175,12 +183,20 @@
       `<span class="text-muted" style="font-size:12px">${order.orderId} / ${li.lineItemId}</span>` +
       `</a>`
     )).join("");
+    highlightOrderId = null;
   }
   document.getElementById("f-search").addEventListener("input", render);
   document.getElementById("f-status").addEventListener("change", render);
 
   async function init() {
-    rows = await allRows();
+    const list = document.getElementById("job-list");
+    list.innerHTML = '<div class="empty-state">Loading jobs&hellip;</div>';
+    try {
+      rows = await allRows();
+    } catch (err) {
+      list.innerHTML = '<div class="empty-state">Couldn’t load jobs — ' + escapeHtml(err.message) + '</div>';
+      return;
+    }
     refreshStatusFilterOptions();
     render();
   }
@@ -195,11 +211,40 @@
 
   /* ---- manual order form ---- */
   const moForm = document.getElementById("manual-order-form");
+  const moCollapsible = document.getElementById("manual-order-collapsible");
   const moToggle = document.getElementById("manual-order-toggle");
+
+  // max-height is measured/set here rather than left to a CSS 0fr/1fr grid
+  // trick — that trick can't resolve a height inside this flex-column .card
+  // (see dashboard.css). Once open, the cap is released to "none" so fields
+  // that reveal more rows (e.g. picking "+ New client…") aren't clipped.
+  function openMoForm() {
+    moCollapsible.classList.add("is-open");
+    // Force the browser to register max-height:0 as the transition's "from"
+    // value before changing it — without this reflow, the class add and the
+    // maxHeight set below land in the same style recalc and the transition
+    // never registers a starting point (verified live: it silently stuck
+    // the element at 0 height instead of animating open).
+    void moCollapsible.offsetHeight;
+    moCollapsible.style.maxHeight = moCollapsible.scrollHeight + "px";
+    moCollapsible.addEventListener("transitionend", function onEnd(e) {
+      if (e.propertyName !== "max-height") return;
+      moCollapsible.removeEventListener("transitionend", onEnd);
+      if (moCollapsible.classList.contains("is-open")) moCollapsible.style.maxHeight = "none";
+    });
+    moToggle.textContent = "Cancel";
+  }
+  function closeMoForm() {
+    // Pin to a concrete pixel height first (it may currently be "none") so
+    // the browser has a defined value to transition down from.
+    moCollapsible.style.maxHeight = moCollapsible.scrollHeight + "px";
+    void moCollapsible.offsetHeight; // force layout to register that value
+    moCollapsible.classList.remove("is-open");
+    moCollapsible.style.maxHeight = "0px";
+    moToggle.textContent = "+ New manual order";
+  }
   moToggle.addEventListener("click", () => {
-    const open = moForm.style.display !== "none";
-    moForm.style.display = open ? "none" : "grid";
-    moToggle.textContent = open ? "+ New manual order" : "Cancel";
+    if (moCollapsible.classList.contains("is-open")) closeMoForm(); else openMoForm();
   });
 
   const moClient = document.getElementById("mo-client");
@@ -253,40 +298,46 @@
   moStatus.addEventListener("change", refreshPaymentFields);
   refreshStatusOptions();
 
+  const moErrorHost = document.getElementById("mo-error");
+  const moSubmitBtn = moForm.querySelector('button[type="submit"]');
   moForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    moErrorHost.innerHTML = "";
     const isNewClient = moClient.value === "__new__";
-    try {
-      KCMPS_DASH.createManualOrder({
-        clientId: isNewClient ? null : moClient.value,
-        newClientName: isNewClient ? document.getElementById("mo-newclient-name").value : "",
-        newClientType: document.getElementById("mo-newclient-type").value,
-        description: document.getElementById("mo-desc").value,
-        type: moType.value,
-        sku: document.getElementById("mo-sku").value,
-        qty: document.getElementById("mo-qty").value,
-        priceEach: document.getElementById("mo-price").value,
-        promisedDate: document.getElementById("mo-due").value,
-        status: moStatus.value,
-        gcashRefNumber: document.getElementById("mo-gcash-ref").value,
-        claimedAmount: document.getElementById("mo-gcash-amount").value,
-        paidVia: document.getElementById("mo-paidvia").value,
-        paidRef: document.getElementById("mo-paidref").value,
-        notes: document.getElementById("mo-notes").value,
-        actorName: claims.name || claims.email,
-      });
-    } catch (err) { alert(err.message); return; }
+    await withBusy(moSubmitBtn, async () => {
+      let newOrder;
+      try {
+        newOrder = KCMPS_DASH.createManualOrder({
+          clientId: isNewClient ? null : moClient.value,
+          newClientName: isNewClient ? document.getElementById("mo-newclient-name").value : "",
+          newClientType: document.getElementById("mo-newclient-type").value,
+          description: document.getElementById("mo-desc").value,
+          type: moType.value,
+          sku: document.getElementById("mo-sku").value,
+          qty: document.getElementById("mo-qty").value,
+          priceEach: document.getElementById("mo-price").value,
+          promisedDate: document.getElementById("mo-due").value,
+          status: moStatus.value,
+          gcashRefNumber: document.getElementById("mo-gcash-ref").value,
+          claimedAmount: document.getElementById("mo-gcash-amount").value,
+          paidVia: document.getElementById("mo-paidvia").value,
+          paidRef: document.getElementById("mo-paidref").value,
+          notes: document.getElementById("mo-notes").value,
+          actorName: claims.name || claims.email,
+        });
+      } catch (err) { showInlineError(moErrorHost, err.message); return; }
 
-    moForm.reset();
-    moForm.style.display = "none";
-    moToggle.textContent = "+ New manual order";
-    moNewNameField.style.display = "none";
-    moNewTypeField.style.display = "none";
-    refreshClientOptions();
-    refreshStatusOptions();
-    rows = await allRows();
-    refreshStatusFilterOptions();
-    render();
+      moForm.reset();
+      closeMoForm();
+      moNewNameField.style.display = "none";
+      moNewTypeField.style.display = "none";
+      refreshClientOptions();
+      refreshStatusOptions();
+      highlightOrderId = newOrder.orderId;
+      rows = await allRows();
+      refreshStatusFilterOptions();
+      render();
+    });
   });
 })();
 </script>

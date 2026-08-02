@@ -9,14 +9,35 @@ html.dash-gate-hide body { visibility: hidden; }
 html.dash-ready body { visibility: visible; }
 
 /* Inline busy indicator for action buttons that call the API (verify/reject/
-   advance) — see job-detail.html's withBusy(). Prevents a slow request from
-   reading as "nothing happened", which is what invites a double-click. */
+   advance/create/send) — see dashboard-shell.js's withBusy(). Prevents a slow
+   request from reading as "nothing happened", which is what invites a
+   double-click. */
 .btn-spinner {
   display: inline-block; width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid currentColor; border-top-color: transparent; opacity: 0.6;
   animation: btn-spin 0.7s linear infinite; vertical-align: -1px;
 }
 @keyframes btn-spin { to { transform: rotate(360deg); } }
+
+/* Inline, non-blocking error banner — replaces alert() everywhere an action
+   can fail (verify/reject/advance/reply/create). A native alert() blocks the
+   whole page and demands a dismiss click on an action staff repeat dozens of
+   times a day; this sits in the flow instead. */
+.dash-inline-error {
+  font-size: 12.5px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: #fbe6e4; color: #a5271b; margin-bottom: var(--space-2);
+}
+
+/* Brief, color-only settle used after a state change the staff just caused
+   (status pill after verify/reject/advance/reply, a just-created row). Never
+   movement — this fires on actions done tens of times a day, so it has to
+   stay near-imperceptible rather than showy. */
+@keyframes dash-flash-settle {
+  from { background-color: var(--flash-from, color-mix(in srgb, var(--color-accent) 22%, transparent)); }
+  to { background-color: var(--flash-to, transparent); }
+}
+.dash-flash { animation: dash-flash-settle 700ms ease; }
+@media (prefers-reduced-motion: reduce) { .dash-flash { animation: none; } }
 
 * , *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background-attachment: fixed; }
@@ -38,9 +59,11 @@ body { margin: 0; background-attachment: fixed; }
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md);
   color: color-mix(in srgb, #fff 78%, transparent); text-decoration: none;
   font-family: var(--font-heading); font-weight: 600; font-size: 14px;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 .dash-navlink svg { width: 18px; height: 18px; flex: none; }
 .dash-navlink:hover { background: color-mix(in srgb, #fff 8%, transparent); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .dash-navlink { transition: none; } }
 .dash-navlink.is-active { background: var(--color-accent); color: #fff; }
 .dash-back { margin-top: var(--space-4); border-top: 1px solid color-mix(in srgb, #fff 14%, transparent); padding-top: var(--space-3); color: color-mix(in srgb, #fff 60%, transparent); }
 
@@ -63,10 +86,12 @@ body { margin: 0; background-attachment: fixed; }
 @media (max-width: 900px) {
   .dash-shell { grid-template-columns: 1fr; }
   .dash-sidebar {
-    position: fixed; inset: 0 30% 0 0; transform: translateX(-100%); transition: transform 0.2s ease; z-index: 50;
+    position: fixed; inset: 0 30% 0 0; transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); z-index: 50;
     box-shadow: var(--shadow-lg); width: min(260px, 78vw); height: 100dvh;
   }
   .dash-sidebar.is-open { transform: translateX(0); }
+  @media (prefers-reduced-motion: reduce) { .dash-sidebar { transition: none; } }
   .dash-nav-toggle {
     display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
     border-radius: var(--radius-md); border: 1px solid var(--color-divider); background: transparent; cursor: pointer;
@@ -111,8 +136,11 @@ body { margin: 0; background-attachment: fixed; }
 .q-item {
   display: block; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--color-bg);
   border-left: 3px solid var(--color-divider); text-decoration: none; color: inherit;
+  transition: background-color 120ms ease;
 }
 .q-item:hover { background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg)); }
+.q-item:active { background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg)); }
+@media (prefers-reduced-motion: reduce) { .q-item { transition: none; } }
 .q-item.sla-warn { border-left-color: var(--color-accent); }
 .q-item.sla-red { border-left-color: #c0392b; background: color-mix(in srgb, #c0392b 8%, var(--color-bg)); }
 .q-item .q-line1 { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -123,11 +151,19 @@ body { margin: 0; background-attachment: fixed; }
 
 /* — blockers board — */
 .blocker-list { display: flex; flex-direction: column; gap: 8px; }
-.blocker-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: var(--space-2); padding: 10px; border-radius: var(--radius-md); background: var(--color-bg); }
+.blocker-row {
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: var(--space-2);
+  padding: 10px; border-radius: var(--radius-md); background: var(--color-bg);
+  overflow: hidden; max-height: 60px; opacity: 1;
+  transition: opacity 200ms ease-out, max-height 200ms ease-out, padding 200ms ease-out, margin 200ms ease-out;
+}
 .blocker-row .b-text { font-size: 13.5px; }
 .blocker-row .b-owner { font-size: 11.5px; font-family: var(--font-heading); font-weight: 700; color: var(--color-accent-2-700); background: var(--color-accent-2-100); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .blocker-row .b-due { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); white-space: nowrap; }
 .blocker-row.recurring { border: 1px solid var(--color-accent); }
+/* resolved row exits before removal — see today.html's Resolve handler */
+.blocker-row.is-resolving { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -8px; border-width: 0; }
+@media (prefers-reduced-motion: reduce) { .blocker-row { transition: opacity 200ms ease-out; } .blocker-row.is-resolving { max-height: 60px; } }
 .blocker-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; margin-top: var(--space-3); align-items: end; }
 .blocker-form .field label { display: block; font-size: 11px; margin-bottom: 4px; color: color-mix(in srgb, var(--color-text) 65%, transparent); }
 @media (max-width: 760px) { .blocker-form { grid-template-columns: 1fr; } .blocker-row { grid-template-columns: 1fr; justify-items: start; gap: 4px; } }
@@ -172,9 +208,30 @@ body { margin: 0; background-attachment: fixed; }
 .field label { font-size: 12px; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
 select.input { appearance: auto; }
 
+/* Collapsible reveal for occasional forms (e.g. jobs.html's "+ New manual
+   order"). max-height is measured/animated from JS (see jobs.html) rather
+   than the CSS grid-template-rows 0fr/1fr trick — that trick collapses to 0
+   here because .dash-collapsible sits inside a flex-column .card, where the
+   grid's own auto height can't resolve a size for the 1fr track to fill. A
+   hard display:none swap can't animate at all, so this stays in the DOM. */
+.dash-collapsible {
+  overflow: hidden; opacity: 0; margin-top: 0; max-height: 0;
+  transition: max-height 220ms ease-out, opacity 200ms ease-out, margin-top 220ms ease-out;
+}
+.dash-collapsible.is-open { opacity: 1; margin-top: var(--space-3); }
+@media (prefers-reduced-motion: reduce) { .dash-collapsible { transition: opacity 200ms ease-out; } }
+
 /* — job list / detail — */
-.job-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: var(--space-2); align-items: center; padding: 10px; border-radius: var(--radius-md); }
+.job-row {
+  display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: var(--space-2); align-items: center;
+  padding: 10px; border-radius: var(--radius-md); transition: background-color 120ms ease;
+}
 .job-row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.job-row:active { background: color-mix(in srgb, var(--color-text) 9%, transparent); }
+@media (prefers-reduced-motion: reduce) { .job-row { transition: none; } }
+/* new-row highlight after "Create ticket" — see jobs.html's manual-order submit */
+.job-row.is-new { animation: dash-flash-settle 900ms ease; }
+@media (prefers-reduced-motion: reduce) { .job-row.is-new { animation: none; } }
 .status-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .status-pill.st-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
 .status-pill.st-warn { background: var(--color-accent-100); color: var(--color-accent-800); }

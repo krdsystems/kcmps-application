@@ -42,7 +42,7 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("email");
   if (!claims) return;
-  const { escapeHtml, fmtDateTime } = KCMPS_DASH_SHELL;
+  const { escapeHtml, fmtDateTime, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
   /* dashboard-data.js is deliberately identity-free, so the personal mailbox
      is seeded with a fixed address. The signed-in identity is used HERE, and
@@ -135,7 +135,7 @@
        - attachments are metadata-only; there is no download path yet
        - URLs are not auto-linkified; auto-<a> on arbitrary mail is a
          phishing amplifier                                               ---- */
-  function renderRead() {
+  function renderRead(flash) {
     const mb = KCMPS_DASH.getMailboxes().find((x) => x.id === currentMailboxId);
     const m = currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : null;
     if (!m) {
@@ -150,7 +150,7 @@
 
     parts.push(
       '<div class="ticket-head"><h2 style="margin:0;font-size:19px">' + escapeHtml(m.subject) + "</h2>" +
-      '<span class="status-pill ' + (m.flags.answered ? "st-good" : "st-neutral") + '">' +
+      '<span class="status-pill ' + (m.flags.answered ? "st-good" : "st-neutral") + (flash ? " dash-flash" : "") + '">' +
       (m.flags.answered ? "Replied" : "Read") + "</span></div>"
     );
 
@@ -196,6 +196,7 @@
         '<div class="mail-reply"><label class="hint" for="reply-body" style="font-size:12.5px">Reply to ' +
         escapeHtml(senderOf(m)) + "</label>" +
         '<textarea class="input" id="reply-body" rows="5" placeholder="Type your reply…">' + escapeHtml(replyDraft) + "</textarea>" +
+        '<div id="reply-error"></div>' +
         '<div class="action-bar"><button type="button" class="btn btn-primary" id="reply-send">Send reply</button>' +
         '<button type="button" class="btn btn-ghost" id="reply-discard">Discard</button></div></div>'
       );
@@ -213,15 +214,19 @@
     const bodyInput = document.getElementById("reply-body");
     if (bodyInput) {
       bodyInput.addEventListener("input", () => { replyDraft = bodyInput.value; });
-      document.getElementById("reply-send").addEventListener("click", () => {
-        try {
-          KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
-        } catch (err) {
-          alert(err.message);
-          return;
-        }
-        replyDraft = "";
-        renderAll();
+      const replyErrorHost = document.getElementById("reply-error");
+      document.getElementById("reply-send").addEventListener("click", async (e) => {
+        replyErrorHost.innerHTML = "";
+        await withBusy(e.currentTarget, async () => {
+          try {
+            KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
+          } catch (err) {
+            showInlineError(replyErrorHost, err.message);
+            return;
+          }
+          replyDraft = "";
+          renderAll(true);
+        });
       });
       document.getElementById("reply-discard").addEventListener("click", () => {
         replyDraft = "";
@@ -230,10 +235,10 @@
     }
   }
 
-  function renderAll() {
+  function renderAll(flash) {
     renderMailboxSelector();
     renderList();
-    renderRead();
+    renderRead(flash);
   }
 
   selectEl.addEventListener("change", () => {

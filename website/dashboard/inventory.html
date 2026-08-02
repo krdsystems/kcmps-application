@@ -45,28 +45,58 @@
   if (!claims) return;
   const { escapeHtml } = KCMPS_DASH_SHELL;
 
+  // Which row (by sku) is mid-edit, if any — swaps that row's "on hand" cell
+  // into an inline input instead of using window.prompt(), which is an
+  // unstyled native dialog inconsistent with every other editing pattern
+  // in the dashboard.
+  let editingSku = null;
+
   function render() {
     const items = KCMPS_DASH.getInventoryAll();
     document.getElementById("inv-body").innerHTML = items.map((i) => {
       const low = i.qty <= i.reorderPoint;
       const cover = i.avgDailyUse > 0 ? Math.floor(i.qty / i.avgDailyUse) : null;
+      const isEditing = i.sku === editingSku;
+      const qtyCell = isEditing
+        ? `<input class="input" type="number" min="0" step="any" id="adj-qty" value="${i.qty}" style="width:100px;display:inline-block" /> ${i.unit}`
+        : `${i.qty} ${i.unit}`;
+      const actionCell = isEditing
+        ? `<button type="button" class="btn btn-primary btn-adjust-save" data-sku="${i.sku}">Save</button> ` +
+          `<button type="button" class="btn btn-ghost btn-adjust-cancel">Cancel</button>`
+        : `<button type="button" class="btn btn-secondary btn-adjust" data-sku="${i.sku}">Adjust</button>`;
       return (
         `<tr><td>${escapeHtml(i.name)}</td>` +
-        `<td class="num">${i.qty} ${i.unit}</td>` +
+        `<td class="num">${qtyCell}</td>` +
         `<td class="num">${i.reorderPoint} ${i.unit}</td>` +
         `<td class="num">${cover != null ? cover + "d" : "—"}</td>` +
         `<td>${low ? '<span class="client-flag">low stock</span>' : ""}</td>` +
-        `<td><button type="button" class="btn btn-secondary btn-adjust" data-sku="${i.sku}" data-qty="${i.qty}">Adjust</button></td></tr>`
+        `<td>${actionCell}</td></tr>`
       );
     }).join("");
+
     document.querySelectorAll(".btn-adjust").forEach((btn) => btn.addEventListener("click", () => {
-      const val = prompt("New on-hand quantity for this item:", btn.dataset.qty);
-      if (val === null) return;
-      const n = parseFloat(val);
-      if (Number.isNaN(n) || n < 0) return;
-      KCMPS_DASH.adjustInventory(btn.dataset.sku, n);
+      editingSku = btn.dataset.sku;
       render();
+      const input = document.getElementById("adj-qty");
+      if (input) { input.focus(); input.select(); }
     }));
+    const saveBtn = document.querySelector(".btn-adjust-save");
+    if (saveBtn) {
+      const commit = () => {
+        const input = document.getElementById("adj-qty");
+        const n = parseFloat(input.value);
+        editingSku = null;
+        if (!Number.isNaN(n) && n >= 0) KCMPS_DASH.adjustInventory(saveBtn.dataset.sku, n);
+        render();
+      };
+      saveBtn.addEventListener("click", commit);
+      document.getElementById("adj-qty").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") { editingSku = null; render(); }
+      });
+    }
+    const cancelBtn = document.querySelector(".btn-adjust-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", () => { editingSku = null; render(); });
   }
   render();
 })();

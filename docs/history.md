@@ -2494,6 +2494,89 @@ capture was unreliable this session, so every claim below is a measured value, n
    looking correct in isolation — check where its base rule sits in the cascade before assuming
    the selector or media condition is wrong.
 
+### 61. My Orders expansion — bucketed tracking page, backend redaction, guest lookup + self-cancel (2026-08-02)
+
+Full rebuild of the customer order-tracking experience, split into three independently-shippable
+phases (see `docs/roadmap.md` "1.5 — My Orders expansion" for the complete rationale and file
+list). The headline finding driving the whole pass: `GET /orders` already returned the full
+event timeline, GCash payment detail, and delivery address to the customer — none of it was
+rendered by the old `orders.html`, which showed only an order ID, a status pill, and a progress
+bar keyed on the wrong status vocabulary (rollup values like `Awaiting Payment`/`Partially
+Fulfilled` all silently collapsed to stage 0; `Cancelled` rendered as a fully-filled "Delivered"
+bar).
+
+1. **Phase 1 (frontend only)** — new `window.KCMPS_ORDERS` seam
+   (`website/orders-data.js`), rebuilt `orders.html` as bucketed tabs (Action needed / In
+   progress / Completed / Cancelled), and a new deep-linkable `order-detail.html`. Reorder and
+   payment-proof resubmission both ship with zero backend changes — reorder always re-prices
+   from the live catalog (never the order's stored `priceEach`), and explicitly skips rather
+   than mis-prices Document Printing's Color addon (its addon selection is folded into the same
+   `variantLabel` string as a bare variant would be, with no reliable way to tell the two apart
+   after the fact — caught by a Node-based unit test against the real `reorder()` logic before
+   it shipped, not discovered live).
+2. **Phase 2 (existing Lambdas, redeployed, no new routes)** — `get-orders.js` now redacts
+   staff-internal fields (station, setupMinutes, spoilage, correspondence log, event actor
+   identity) for non-staff callers via new `backend/lib/customer-view.js`; `create-order.js`
+   stamps a business-day `originalPromisedDate` on SKU-only orders (real orders had no ETA at
+   all before this); `verify-payment.js` sends the two customer emails the Payment System spec
+   always called for but never had (ships dark — SES is still sandboxed,
+   `ProductionAccessEnabled: false`, confirmed via `aws sesv2 get-account`).
+3. **Phase 3 (two new Lambdas + routes on the existing `kcmps-checkout-api`)** —
+   `POST /orders/lookup` (guest order lookup by orderId + contact, enumeration-safe: identical
+   404 for wrong-ID vs wrong-contact, artificial delay, tight route throttle) and
+   `POST /orders/{orderId}/cancel` (JWT-or-contact authorized, only while every line item is
+   pre-production). Both reuse the existing `kcmps-checkout-lambda-role` — it already had every
+   permission either Lambda needed, so no new IAM role. Wired `cancel` into `order-detail.html`
+   as a real button; the `lookup` endpoint is live and tested but has no guest-facing UI yet
+   (a "track your order" entry point is a new page/nav addition, left for a follow-up request).
+
+**Verification approach, given the sandboxed browser's popup blocker prevents a live Cognito
+login in this environment (same limitation noted in entry 58):** Node-based unit tests run
+directly against the real `orders-data.js`/`reorder()` source (46 assertions covering every row
+of the status-model table, both target bugs, and six real-catalog reorder scenarios — one of
+which, the Document Printing addon case above, failed on first run and got fixed before
+shipping), live DOM/CSS checks in the browser at 375px and 1280px using synthetic order data
+injected into the already-loaded page (confirming the two-column detail grid collapses
+correctly, tone-pill colors resolve, no horizontal overflow), and — for the backend — direct
+`aws lambda invoke` and real HTTPS calls against the **live production API and table**, using a
+mix of real existing orders (`ORD-C4JPHN`, read-only) and disposable throwaway orders created,
+exercised, and deleted via the same `dynamodb delete-item` cleanup convention entry 58 and the
+Milestone 1.3 smoke tests established. Confirmed live: redaction present for a customer token
+and absent for a staff token on the same real order; `originalPromisedDate` correctly lands on
+the next business day and correctly stays `null` for a mixed sku+custom cart; a full
+verify-payment cycle still transitions a line item to `Confirmed` after the email code was
+added; `lookup` succeeds for the right contact and returns byte-identical 404s for a wrong
+contact vs. a nonexistent order; `cancel` succeeds pre-production, and correctly 409s once staff
+have verified payment and advanced the order to `Confirmed`.
+
+**Pre-existing bug found, not fixed (out of scope for this pass):** `create-order.js` and
+`verify-payment.js` both throw an `Error` with a `.statusCode` property attached on a
+`TransactionCanceledException`, but neither handler actually catches that thrown error — it
+propagates unhandled, so a real concurrent-edit conflict on either route surfaces as a raw
+Lambda/API Gateway error instead of the intended JSON 409. `cancel-order.js` (new in this pass)
+does not repeat the pattern. Worth a small, separate fix later.
+
+**A parallel session's deploy got silently overwritten, then restored.** Merging this branch
+into `main` surfaced that a different concurrent session ("Milestone 1.5: fix order-system
+correctness bugs and add production observability") had committed real fixes to these same
+three Lambdas — a client-supplied idempotency key on `create-order.js` (so a lost response/
+double-click can't create two orders for one GCash payment), a wider order-ID space + a
+`ConditionExpression` collision backstop, and pagination on `get-orders.js`'s two Scans (a
+single un-paginated page could return partial/filtered-out results well before order volume
+looked "large" by count). Comparing the merged source against what was actually **live**
+(downloading each function's current deployment package via `aws lambda get-function
+--query Code.Location`) showed the running Lambdas had only this session's changes — the other
+session's fixes were git-committed but not reflected in the deployed code, whether because
+their own deploy happened before this session's `update-function-code` calls overwrote it, or
+because it was never deployed at all. Either way, production was silently missing real
+correctness fixes for a live payment flow. Fixed by rebuilding and redeploying all three
+Lambdas from the fully-merged source (not either branch alone), then re-verifying live: two
+identical requests with the same `idempotencyKey` now return the same `orderId` instead of a
+duplicate order, the wider order ID is in effect, and this session's redaction/`
+originalPromisedDate`/SES-email additions still work correctly layered on top. Worth remembering
+for any future session merging into a shared `main` with backend changes: diff the merged
+source against the **live** Lambda code, not just against git, before considering a deploy done.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

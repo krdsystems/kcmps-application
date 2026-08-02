@@ -20,6 +20,7 @@ const { DynamoDBDocumentClient, ScanCommand, QueryCommand } = require("@aws-sdk/
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { extractClaims, getGroups, isStaff } = require("../lib/auth");
+const { redactForCustomer } = require("../lib/customer-view");
 
 const TABLE = process.env.TABLE_NAME;
 const SCREENSHOT_URL_EXPIRY_SECONDS = 15 * 60;
@@ -40,6 +41,8 @@ exports.handler = async (event) => {
 
   const staff = isStaff(claims) || getGroups(claims).includes(LEGACY_STAFF_GROUP);
   const orders = staff ? await getAllOrders() : await getOrdersForSub(claims.sub);
+  if (!staff) orders.forEach(redactForCustomer);
+  orders.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   return response(200, { orders });
 };
 
@@ -82,6 +85,7 @@ async function scanAll(params) {
   } while (ExclusiveStartKey);
   return items;
 }
+
 
 async function attachLineItems(order) {
   const [lineItemsRes, eventsRes] = await Promise.all([

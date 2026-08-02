@@ -908,3 +908,79 @@ textarea.input { min-height: 90px; resize: vertical; }
   background: color-mix(in srgb, #fff 45%, transparent); transition: background 0.2s ease, width 0.2s ease;
 }
 .carousel-dot.is-active { background: #fff; width: 20px; border-radius: 999px; }
+
+/* — My Orders (orders.html / order-detail.html) — shared between both so
+   the tab bar, status pills, and cards don't drift out of sync. Card layout
+   takes cues from Shopee/Lazada's order list: a slim header (order id/date
+   + an at-a-glance status pill), item rows built around a thumbnail (never
+   a wall of text with no visual anchor), and progress detail below the
+   fold rather than competing with the items for attention. */
+.orders-wrap { max-width: 880px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
+.orders-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); gap: var(--space-3); flex-wrap: wrap; }
+.orders-toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.orders-search { width: 240px; max-width: 100%; }
+.order-card { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: var(--space-2); }
+.order-card + .order-card { margin-top: var(--space-3); }
+a.order-card:hover { background: color-mix(in srgb, var(--color-text) 5%, rgba(236, 238, 242, 0.82)); }
+.order-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border, #eee); }
+.order-id { font-family: var(--font-heading); font-weight: 700; }
+.order-total { font-family: var(--font-heading); font-weight: 700; }
+.tone-pill {
+  font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 999px; white-space: nowrap;
+  background: var(--color-accent-100); color: var(--color-accent-800);
+}
+.tone-pill.tone-warn { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tone-pill.tone-bad { background: #fbe4e1; color: #c0392b; }
+.tone-pill.tone-good { background: var(--color-green-100, #e3f6ea); color: var(--color-green, #1f8a4c); }
+.tone-pill.tone-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
+.line-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.line-row { display: flex; align-items: center; gap: var(--space-3); font-size: 13.5px; padding: 6px 0; }
+.line-thumb {
+  width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+  background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+}
+.line-thumb-fallback {
+  width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+  background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--color-text-muted, #999);
+}
+.line-info { flex: 1; min-width: 0; }
+.line-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-meta { font-size: 12px; color: var(--color-text-muted, #666); margin-top: 2px; }
+.line-status { font-size: 12px; font-weight: 600; color: var(--color-text-muted, #666); white-space: nowrap; }
+.order-progress { display: flex; gap: 4px; margin: var(--space-2) 0 0; }
+.progress-step { flex: 1; height: 6px; border-radius: 999px; background: var(--color-border, #e4e4e7); }
+.progress-step.is-done { background: var(--color-accent); }
+.progress-step.is-bad { background: #c0392b; }
+.stage-label { font-size: 12.5px; color: var(--color-text-muted, #666); margin-top: 4px; }
+.orders-empty, .orders-loading, .orders-error { text-align: center; color: var(--color-text-muted, #666); padding: var(--space-6) 0; }
+.order-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+
+/* — order-detail.html — */
+.order-detail-back { font-size: 13px; margin-bottom: var(--space-3); display: inline-block; }
+.order-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.order-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-4); }
+@media (max-width: 760px) { .order-detail-grid { grid-template-columns: 1fr; } }
+.detail-card-title { font-family: var(--font-heading); font-weight: 700; font-size: 14px; margin: 0 0 var(--space-1); }
+.detail-row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 13.5px; padding: 4px 0; }
+.detail-row .k { color: var(--color-text-muted, #666); }
+.totals-row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
+.totals-row.is-total { font-weight: 700; border-top: 1px solid var(--color-divider); margin-top: var(--space-1); padding-top: var(--space-2); }
+.payment-screenshot { max-width: 160px; border-radius: var(--radius-md); display: block; margin-top: var(--space-2); border: 1px solid var(--color-divider); }
+.rejection-note { background: #fbe4e1; color: #c0392b; padding: var(--space-2); border-radius: var(--radius-sm); font-size: 13px; margin: var(--space-2) 0; }
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.timeline-item { display: flex; gap: var(--space-3); padding-bottom: var(--space-3); position: relative; }
+.timeline-item::before {
+  content: ""; position: absolute; left: 5px; top: 16px; bottom: 0; width: 1px;
+  background: var(--color-divider);
+}
+.timeline-item:last-child::before { display: none; }
+.timeline-dot { width: 11px; height: 11px; border-radius: 999px; background: var(--color-accent); flex-shrink: 0; margin-top: 3px; z-index: 1; }
+.timeline-dot.tone-bad { background: #c0392b; }
+.timeline-dot.tone-neutral { background: var(--color-neutral-400); }
+.timeline-body { flex: 1; }
+.timeline-label { font-weight: 600; font-size: 13.5px; }
+.timeline-at { font-size: 12px; color: var(--color-text-muted, #666); }
+.timeline-detail { font-size: 12.5px; color: #c0392b; margin-top: 2px; }
+.reorder-report { font-size: 13px; margin-top: var(--space-2); }
+.reorder-report .skip { color: #c0392b; }

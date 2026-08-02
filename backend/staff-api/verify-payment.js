@@ -24,12 +24,19 @@
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, getGroups, isStaff, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const LEGACY_STAFF_GROUP = "Staff"; // see get-orders.js for why both are accepted
+// Same FROM_EMAIL/EMAIL_RE gate as submit-payment-proof.js — unset today
+// (SES is still sandboxed, see docs/roadmap.md), so this ships dark and
+// activates the moment that env var is set, no code change needed.
+const FROM_EMAIL = process.env.FROM_EMAIL;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const ses = new SESClient({});
 
 exports.handler = async (event) => {
   const claims = extractClaims(event);
@@ -141,11 +148,56 @@ exports.handler = async (event) => {
   // off the line-item writes above — same pattern as advance-line-item.js,
   // no duplicated rollup logic here.
 
+  // Two of the three customer notifications the Payment System spec calls
+  // for were missing (only the "under verification" email at submission
+  // time existed) — a customer whose payment was verified or rejected had
+  // no way to find out except by loading the tracking page. Best-effort,
+  // same pattern as submit-payment-proof.js: never fail the staff action
+  // over a notification, and skip silently for non-email contacts (the
+  // checkout contact field is free text — phone numbers can't receive SES).
+  if (FROM_EMAIL && EMAIL_RE.test(order.customerContact || "")) {
+    const send = isReject ? sendRejectedEmail : sendVerifiedEmail;
+    await send(order, orderId, body.reason).catch((err) => {
+      console.error(`verifyPayment: SES send failed (${isReject ? "reject" : "verify"}):`, err.message);
+    });
+  }
+
   return response(200, {
     orderId, action: isReject ? "rejected" : "verified",
     lineItemsAffected: pendingLineItems.map((li) => li.lineItemId), at: now,
   });
 };
+
+async function sendVerifiedEmail(order, orderId) {
+  await ses.send(new SendEmailCommand({
+    Source: FROM_EMAIL,
+    Destination: { ToAddresses: [order.customerContact] },
+    Message: {
+      Subject: { Data: `Order ${orderId} verified — payment confirmed` },
+      Body: { Text: { Data:
+        `Hi ${order.customerName},\n\n` +
+        `Payment confirmed for order ${orderId} — it's moving to production now.\n\n` +
+        `— KCMPS`
+      } },
+    },
+  }));
+}
+
+async function sendRejectedEmail(order, orderId, reason) {
+  await ses.send(new SendEmailCommand({
+    Source: FROM_EMAIL,
+    Destination: { ToAddresses: [order.customerContact] },
+    Message: {
+      Subject: { Data: `Order ${orderId} — we couldn't verify your payment` },
+      Body: { Text: { Data:
+        `Hi ${order.customerName},\n\n` +
+        `We couldn't verify your payment for order ${orderId}: ${reason}\n\n` +
+        `Please check the reference number and resubmit, or contact us if you need help.\n\n` +
+        `— KCMPS`
+      } },
+    },
+  }));
+}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

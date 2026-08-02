@@ -13,6 +13,7 @@ const { buildEvent } = require("./events");
 const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
+const { redactForCustomer } = require("./customer-view");
 
 // ---- money.js ----
 
@@ -211,4 +212,30 @@ test("deriveOrderStatus: Quoted-only -> Awaiting Quote, Priced-only -> Awaiting 
 test("deriveOrderStatus: falls back to the single status, or Unknown for an empty list", () => {
   assert.equal(deriveOrderStatus(["Confirmed"]), "Confirmed");
   assert.equal(deriveOrderStatus([]), "Unknown");
+});
+
+// ---- customer-view.js ----
+
+test("redactForCustomer strips staff-internal fields from line items and events", () => {
+  const order = {
+    orderId: "ORD-1",
+    correspondenceLog: [{ at: "2026-01-01T00:00:00Z", actorName: "Staffer", note: "called client" }],
+    lineItems: [
+      { lineItemId: "L1", name: "Document Printing", qty: 20, station: "PRESS-01", setupMinutes: 10, spoilage: [{ units: 1 }] },
+    ],
+    events: [
+      { at: "2026-01-01T00:00:00Z", from: null, to: "Quoted", actorSub: "sub-1", actorName: "Staffer", station: "PRESS-01", meta: { via: "createOrder" } },
+      { at: "2026-01-01T01:00:00Z", from: "Pending Payment Verification", to: "Payment Rejected", actorSub: "sub-1", actorName: "Staffer", meta: { via: "rejectPayment", rejectionReason: "Reference number doesn't match" } },
+    ],
+  };
+  const redacted = redactForCustomer(order);
+
+  assert.equal("correspondenceLog" in redacted, false);
+  assert.deepEqual(Object.keys(redacted.lineItems[0]).sort(), ["lineItemId", "name", "qty"]);
+  assert.equal(redacted.lineItems[0].qty, 20); // customer-relevant fields survive
+
+  assert.deepEqual(redacted.events[0], { at: "2026-01-01T00:00:00Z", from: null, to: "Quoted", meta: {} });
+  assert.deepEqual(redacted.events[1].meta, { rejectionReason: "Reference number doesn't match" });
+  assert.equal("actorName" in redacted.events[1], false);
+  assert.equal("station" in redacted.events[1], false);
 });

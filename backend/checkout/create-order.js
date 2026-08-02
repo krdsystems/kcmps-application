@@ -48,6 +48,13 @@ const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
 // 1 order + 2 items/line (LINEITEM# + EVENT#) + 1 optional idempotency
 // record must stay under TransactWriteItems' hard 100-item ceiling.
 const MAX_CART_LINES = 45;
+// Matches the "2-3 day turnaround" headline copy on the storefront (see
+// index.html's hero). A courtesy estimate, not a per-product SLA engine —
+// the cart payload carries no per-line softCap/lead-time data today (that
+// lives only in products.js on the frontend), so this is one flat business-
+// day offset for the whole order rather than a per-product calculation.
+// Refine if/when lead-time data starts flowing through checkout.
+const BASE_LEAD_BUSINESS_DAYS = 3;
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const verifier = USER_POOL_ID
@@ -146,13 +153,21 @@ exports.handler = async (event) => {
   });
 
   const orderStatus = deriveOrderStatus(lineItemsOut.map((li) => li.status));
+  // originalPromisedDate is frozen at creation and never overwritten by any
+  // later Lambda (see project_knowledge/ERP_System_Project_Knowledge.md —
+  // OTIF is measured against the ORIGINAL promise, not a revised one). Left
+  // null for orders containing any custom line — those have no price or
+  // production slot yet, so there's nothing to promise a date against until
+  // staff quote them.
+  const allSku = lineItemsOut.every((li) => li.type === "sku");
+  const originalPromisedDate = allSku ? addBusinessDays(now, BASE_LEAD_BUSINESS_DAYS) : null;
   const orderItem = {
     ...baseItem({ status: orderStatus, createdAt: now }),
     PK: pk, SK: metaSk(),
     orderId, customerSub, customerName, customerContact,
     fulfillment: isDelivery ? "Delivery" : "Pickup",
     shipping: isDelivery ? { courier: shipping.courier, address: shipping.address, landmark: shipping.landmark || null } : null,
-    orderStatus,
+    orderStatus, originalPromisedDate,
     payment: null, // submitPaymentProof.js attaches this once the customer submits GCash proof
     correspondenceLog: [],
   };
@@ -217,6 +232,17 @@ async function tryGetSub(event) {
     console.warn("createOrder: ignoring unverifiable token, proceeding as guest:", err.message);
     return null;
   }
+}
+
+function addBusinessDays(fromIso, days) {
+  const d = new Date(fromIso);
+  let remaining = days;
+  while (remaining > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const day = d.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    if (day !== 0 && day !== 6) remaining--;
+  }
+  return d.toISOString();
 }
 
 function response(statusCode, body) {

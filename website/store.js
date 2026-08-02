@@ -1522,10 +1522,21 @@
     closeDrawer();
   }
 
+  // Both the custom-only and proof-submitted confirmations include a link
+  // into the customer's own order history — previously the order ID was
+  // just bold text the customer was implicitly expected to write down (see
+  // the backdrop-dismiss comment above). orders.html isn't loaded on every
+  // page this popup can appear on, so the link is a plain href, not a
+  // KCMPS_ORDERS call.
+  function trackOrderLink(orderId) {
+    return '<p style="margin-top:var(--space-3)"><a href="order-detail.html?id=' + encodeURIComponent(orderId) + '">Track this order</a></p>';
+  }
+
   function renderCustomOnlyConfirmation(state) {
     orderPopupBody.innerHTML =
       '<p>Order <strong>' + escapeHtml(state.orderId) + '</strong> is in. Since it\'s a custom request, ' +
-      'there\'s nothing to pay yet — we\'ll review it and send you a quote, usually within 24 hours.</p>';
+      'there\'s nothing to pay yet — we\'ll review it and send you a quote, usually within 24 hours.</p>' +
+      trackOrderLink(state.orderId);
     orderPopupActions.innerHTML = '<button type="button" class="btn btn-primary" id="order-popup-done">Done</button>';
     orderPopupActions.querySelector("#order-popup-done").addEventListener("click", finishAndClose);
   }
@@ -1547,48 +1558,37 @@
       '<button type="button" class="btn btn-primary" id="order-popup-submit-proof">Submit payment proof</button>';
     orderPopupActions.querySelector("#order-popup-later").addEventListener("click", finishAndClose);
     orderPopupActions.querySelector("#order-popup-submit-proof").addEventListener("click", function () {
-      submitPaymentProof(state);
+      submitPaymentProofFromPopup(state);
     });
   }
 
   function renderProofSubmittedConfirmation(state) {
     orderPopupBody.innerHTML =
       '<p>Payment proof received for order <strong>' + escapeHtml(state.orderId) + '</strong> — ' +
-      'we\'ll verify it and confirm your order, usually within 48 hours.</p>';
+      'we\'ll verify it and confirm your order, usually within 48 hours.</p>' +
+      trackOrderLink(state.orderId);
     orderPopupActions.innerHTML = '<button type="button" class="btn btn-primary" id="order-popup-done">Done</button>';
     orderPopupActions.querySelector("#order-popup-done").addEventListener("click", finishAndClose);
   }
 
-  // Two-step per submitPaymentProof.js: (1) POST ref/amount/contentType,
+  // Two-step per submit-payment-proof.js: (1) POST ref/amount/contentType,
   // get back a pre-signed S3 PUT URL; (2) PUT the actual file bytes
   // straight to S3 (never through the Lambda — presigned URLs exist so the
-  // API doesn't have to proxy the upload).
-  function submitPaymentProof(state) {
-    var refEl = document.getElementById("pp-ref");
-    var amountEl = document.getElementById("pp-amount");
-    var fileEl = document.getElementById("pp-file");
-    var errorEl = document.getElementById("pp-error");
-    var ref = (refEl.value || "").trim();
-    var amount = parseFloat(amountEl.value);
-    var file = fileEl.files && fileEl.files[0];
-
-    function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
-    errorEl.style.display = "none";
-
-    if (!ref) { showError("Please enter the GCash reference number."); return; }
-    if (!(amount > 0)) { showError("Please enter the amount you sent."); return; }
-    if (!file) { showError("Please attach a screenshot of your payment."); return; }
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { showError("Screenshot must be a JPG, PNG, or WEBP image."); return; }
-
-    var submitBtn = document.getElementById("order-popup-submit-proof");
-    var origText = submitBtn.textContent;
-    submitBtn.disabled = true; submitBtn.textContent = "Submitting…";
+  // API doesn't have to proxy the upload). DOM-independent and exposed on
+  // window.KCMPS_STORE so order-detail.html's "resubmit after rejection"
+  // form reuses this exact path instead of forking a second copy of the
+  // two-step upload.
+  function submitPaymentProof(orderId, ref, amount, file, callback) {
+    if (!ref) { callback(new Error("Please enter the GCash reference number.")); return; }
+    if (!(amount > 0)) { callback(new Error("Please enter the amount you sent.")); return; }
+    if (!file) { callback(new Error("Please attach a screenshot of your payment.")); return; }
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { callback(new Error("Screenshot must be a JPG, PNG, or WEBP image.")); return; }
 
     var headers = { "Content-Type": "application/json" };
     var token = idToken();
     if (token) headers["Authorization"] = "Bearer " + token;
 
-    fetch(CHECKOUT_API_BASE + "/orders/" + encodeURIComponent(state.orderId) + "/payment-proof", {
+    fetch(CHECKOUT_API_BASE + "/orders/" + encodeURIComponent(orderId) + "/payment-proof", {
       method: "POST", headers: headers,
       body: JSON.stringify({ gcashRefNumber: ref, claimedAmount: amount, contentType: file.type }),
     }).then(function (res) {
@@ -1601,11 +1601,34 @@
         if (!uploadRes.ok) throw new Error("Screenshot upload failed — please try again.");
       });
     }).then(function () {
-      renderProofSubmittedConfirmation(state);
+      callback(null);
     }).catch(function (err) {
-      showError(err.message);
-      submitBtn.disabled = false;
-      submitBtn.textContent = origText;
+      callback(err);
+    });
+  }
+
+  function submitPaymentProofFromPopup(state) {
+    var refEl = document.getElementById("pp-ref");
+    var amountEl = document.getElementById("pp-amount");
+    var fileEl = document.getElementById("pp-file");
+    var errorEl = document.getElementById("pp-error");
+    var errorMsgEl = errorEl; // alias kept for clarity at call sites below
+
+    function showError(msg) { errorMsgEl.textContent = msg; errorMsgEl.style.display = ""; }
+    errorEl.style.display = "none";
+
+    var submitBtn = document.getElementById("order-popup-submit-proof");
+    var origText = submitBtn.textContent;
+    submitBtn.disabled = true; submitBtn.textContent = "Submitting…";
+
+    submitPaymentProof(state.orderId, (refEl.value || "").trim(), parseFloat(amountEl.value), fileEl.files && fileEl.files[0], function (err) {
+      if (err) {
+        showError(err.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = origText;
+        return;
+      }
+      renderProofSubmittedConfirmation(state);
     });
   }
 
@@ -1734,5 +1757,6 @@
   window.KCMPS_STORE = {
     open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart,
     bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice, requestQty: requestQty,
+    submitPaymentProof: submitPaymentProof,
   };
 })();

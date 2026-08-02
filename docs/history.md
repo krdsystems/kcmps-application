@@ -2392,6 +2392,53 @@ payment proof). Two real bugs found and fixed; everything else tested came back 
    and only resolved once forced via inline `!important`, confirming it was a stalled
    compositor rather than a real site bug) — worth a follow-up pass with a healthy renderer.
 
+### 59. Staff dashboard UI-polish pass — feedback, loading/error states, and motion consistency (2026-08-02)
+
+Ran a design-engineering review (frequency-gated animation framework + a component-consistency
+sweep) over every dashboard page — audience is the 4-person staff team hitting this dashboard
+tens to 100+ times/day, so the bar was speed/clarity, not decoration. All findings were applied
+directly, then re-verified live in a real (not just headless-tooling) Chrome session.
+
+1. **`alert()`/`window.prompt()` replaced everywhere with inline UI.** Added a shared
+   `withBusy(btn, fn)` (promoted from `job-detail.html` into `dashboard-shell.js` so
+   `jobs.html`'s "Create ticket" and `email.html`'s "Send reply" get the same double-click guard)
+   and `showInlineError(host, message)` helper. Every action that can fail (verify/reject/rework/
+   advance in `job-detail.html`, manual-order creation in `jobs.html`, send-reply in
+   `email.html`) now shows a `.dash-inline-error` banner in place instead of a blocking native
+   dialog. `inventory.html`'s "Adjust" no longer uses `window.prompt()` — clicking it swaps the
+   row's on-hand cell into a real `<input>` with Save/Cancel (Enter/Escape wired too).
+2. **Silent-blank-page bug on failed fetches, found live.** `today.html`'s queues/tiles and
+   `jobs.html`'s job list rendered as an empty `<div>` — visually identical to "nothing to do
+   today" — whenever the real staff-api call failed (confirmed live: it fails immediately in a
+   sandboxed/offline browser). Same gap existed in `job-detail.html`'s `render()`, missed on the
+   first pass and only caught while live-testing the fix elsewhere. All three now show a loading
+   placeholder before the first fetch resolves and a distinct "Couldn't load … — <reason>"
+   message on failure.
+3. **Success feedback added for the actions staff repeat most.** A `.dash-flash` keyframe
+   (color-only, 700ms, no movement — deliberately subtle since these are tens-per-day actions)
+   confirms the status pill after verify/reject/advance (`job-detail.html`) and after a reply is
+   sent (`email.html`); a newly created manual order gets the same flash on its row in the job
+   list. A resolved blocker (`today.html`) plays a genuine exit fade/collapse instead of
+   vanishing on the next re-render.
+4. **Consistency pass on interactive rows/nav.** `.dash-navlink`, `.q-item`, and `.job-row` — the
+   most-clicked elements in the app — got the same `background-color` hover transition and
+   `:active` press feedback every button in `styles.css` already has, plus a
+   `prefers-reduced-motion` guard (the mobile sidebar drawer was the one drawer in the codebase
+   missing one).
+5. **Debugging note for next time:** while verifying the `jobs.html` manual-order collapsible
+   form, it appeared completely broken — `max-height` transitions and Web Animations both got
+   permanently stuck at their starting value, even in a real (non-headless) Chrome tab reached
+   via the `claude-in-chrome` tool. Root cause: the automation tab was backgrounded
+   (`document.hidden === true`) between tool calls, and Chrome fully pauses CSS
+   transitions/animations (and throttles timers) for hidden tabs. Confirmed by forcing the tab
+   to the foreground (any `computer` screenshot action does this) — the exact same code then
+   animated correctly on the first try. If a transition/animation looks permanently "stuck" when
+   testing through this tooling, check `document.hidden` before assuming the CSS/JS is wrong.
+6. **Removed at the owner's request post-review:** `settings.html`'s "Reset demo data" button/
+   confirmation-fade (added during this same pass, then decided against) — the underlying
+   `KCMPS_DASH.resetSeed()` function in `dashboard-data.js` is untouched and still callable from
+   the console if needed later.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

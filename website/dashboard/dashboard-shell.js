@@ -174,6 +174,28 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // Disables the clicked button and swaps its label to a spinner while an
+  // API call is in flight, so a slow verify/reject/advance/create/send can't
+  // be double-clicked into firing twice. Always restores on completion, even
+  // on error (callers usually re-render anyway, but the restore still
+  // matters for the brief window before that happens). Shared by every page
+  // that calls into a real backend action — see dashboard.css's .btn-spinner.
+  async function withBusy(btn, fn) {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Working&hellip;';
+    try { await fn(); }
+    finally { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
+  // Inline, non-blocking error banner — the replacement for alert() across
+  // the dashboard. `host` is emptied and given the message; pass a fresh
+  // host each time (callers already have a dedicated slot per form).
+  function showInlineError(host, message) {
+    if (!host) return;
+    host.innerHTML = '<div class="dash-inline-error">' + escapeHtml(message) + "</div>";
+  }
+
   function fmtPeso(n) {
     return "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -190,5 +212,5 @@
     return (Math.round(h * 10) / 10) + "h";
   }
 
-  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession };
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError };
 })(window);

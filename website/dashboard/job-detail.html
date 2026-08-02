@@ -33,7 +33,7 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("jobs");
   if (!claims) return;
-  const { fmtPeso, fmtDateTime, fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+  const { fmtPeso, fmtDateTime, fmtDate, escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
   const params = new URLSearchParams(location.search);
   const orderId = params.get("order");
@@ -77,22 +77,15 @@
     }
   }
 
-  // Disables the clicked button and swaps its label to a spinner while an
-  // API call is in flight, so a slow verify/reject/advance can't be double-
-  // clicked into firing twice. Always restores on completion, even on error
-  // (render() usually replaces the DOM anyway, but the restore still matters
-  // for the brief window before that happens).
-  async function withBusy(btn, fn) {
-    const orig = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span> Working&hellip;';
-    try { await fn(); }
-    finally { btn.disabled = false; btn.innerHTML = orig; }
-  }
-
-  async function render() {
-    const order = await KCMPS_DASH.getOrder(orderId);
+  async function render(flash) {
     const body = document.getElementById("detail-body");
+    let order;
+    try {
+      order = await KCMPS_DASH.getOrder(orderId);
+    } catch (err) {
+      body.innerHTML = '<div class="empty-state">Couldn’t load this ticket — ' + escapeHtml(err.message) + '</div>';
+      return;
+    }
     if (!order) { body.innerHTML = '<div class="empty-state">Ticket not found. It may have been reset — try re-seeding from Settings.</div>'; return; }
     const li = order.lineItems.find((x) => x.lineItemId === lineId) || order.lineItems[0];
     const events = KCMPS_DASH.getEventsFor(orderId).filter((e) => e.lineItemId === li.lineItemId);
@@ -102,7 +95,7 @@
 
     body.innerHTML =
       `<div class="ticket-head"><div><h1 style="margin:0 0 4px">${escapeHtml(li.description)}</h1>` +
-      `<span class="status-pill ${statusTone(li.status)}">${li.status}</span>` +
+      `<span class="status-pill ${statusTone(li.status)}${flash ? " dash-flash" : ""}">${li.status}</span>` +
       (order.source === "manual" ? ' <span class="tag tag-neutral">Manual entry</span>' : "") +
       `</div>` +
       `<div class="text-muted" style="text-align:right;font-size:12px">Order ${order.orderId}<br/>Line ${li.lineItemId}</div></div>` +
@@ -161,6 +154,7 @@
         `</div>` : "") +
 
       `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Advance this job</h3>` +
+      `<div id="action-error"></div>` +
       `<div id="action-form"></div>` +
       `<div class="action-bar" id="action-bar">` +
       actions.map((a, i) => `<button type="button" class="btn ${a.tone}" data-idx="${i}">${a.label}</button>`).join("") +
@@ -192,8 +186,10 @@
     });
 
     const formHost = document.getElementById("action-form");
+    const errorHost = document.getElementById("action-error");
     document.querySelectorAll("#action-bar [data-idx]").forEach((btn) => {
       btn.addEventListener("click", () => {
+        errorHost.innerHTML = "";
         const action = actions[Number(btn.dataset.idx)];
         if (action.to === "__verifypayment__") {
           formHost.innerHTML =
@@ -201,9 +197,10 @@
             `<button type="button" class="btn btn-primary" id="verify-confirm">Confirm — verify payment</button>`;
           document.getElementById("verify-confirm").addEventListener("click", async (e) => {
             await withBusy(e.currentTarget, async () => {
-              try { await KCMPS_DASH.verifyPayment(order.orderId, claims.name || claims.email); }
-              catch (err) { alert(err.message); }
-              await render();
+              try {
+                await KCMPS_DASH.verifyPayment(order.orderId, claims.name || claims.email);
+                await render(true);
+              } catch (err) { showInlineError(errorHost, err.message); }
             });
           });
           return;
@@ -215,11 +212,12 @@
             `<button type="button" class="btn btn-secondary" id="reject-confirm">Confirm — reject payment</button>`;
           document.getElementById("reject-confirm").addEventListener("click", async (e) => {
             const reason = document.getElementById("rej-reason").value.trim();
-            if (!reason) { alert("A rejection reason is required."); return; }
+            if (!reason) { showInlineError(errorHost, "A rejection reason is required."); return; }
             await withBusy(e.currentTarget, async () => {
-              try { await KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email); }
-              catch (err) { alert(err.message); }
-              await render();
+              try {
+                await KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email);
+                await render(true);
+              } catch (err) { showInlineError(errorHost, err.message); }
             });
           });
           return;
@@ -235,8 +233,10 @@
             const units = parseInt(document.getElementById("rw-units").value, 10) || 0;
             const reasonCode = document.getElementById("rw-reason").value;
             const valuePhp = parseFloat(document.getElementById("rw-value").value) || 0;
-            KCMPS_DASH.sendToRework(order.orderId, li.lineItemId, { units, reasonCode, valuePhp });
-            render();
+            try {
+              KCMPS_DASH.sendToRework(order.orderId, li.lineItemId, { units, reasonCode, valuePhp });
+              render(true);
+            } catch (err) { showInlineError(errorHost, err.message); }
           });
           return;
         }
@@ -250,17 +250,19 @@
             const station = action.needsStation ? document.getElementById("adv-station").value : undefined;
             const setupMinutes = action.needsSetup ? parseInt(document.getElementById("adv-setup").value, 10) || 0 : undefined;
             await withBusy(e.currentTarget, async () => {
-              try { await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes }); }
-              catch (err) { alert(err.message); }
-              await render();
+              try {
+                await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes });
+                await render(true);
+              } catch (err) { showInlineError(errorHost, err.message); }
             });
           });
           return;
         }
         withBusy(btn, async () => {
-          try { await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to }); }
-          catch (err) { alert(err.message); }
-          await render();
+          try {
+            await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to });
+            await render(true);
+          } catch (err) { showInlineError(errorHost, err.message); }
         });
       });
     });

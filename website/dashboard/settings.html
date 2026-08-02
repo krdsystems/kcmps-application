@@ -57,18 +57,6 @@
         </div>
       </section>
 
-      <section class="dsec">
-        <div class="dsec-head">
-          <h2>Demo data</h2>
-          <span class="hint">This build runs entirely on mock data in your browser's localStorage — nothing is sent anywhere</span>
-        </div>
-        <div class="card">
-          <p style="margin-top:0;font-size:13.5px">Use this to reset the dashboard back to its seeded demo state — handy after testing job-advance actions, blockers, or inventory edits. See <code>ops-dashboard/user-test/README.md</code> (repo root) for the full test script.</p>
-          <button type="button" class="btn btn-secondary" id="reset-btn">Reset demo data</button>
-          <span id="reset-msg" style="margin-left:10px;font-size:13px;color:var(--color-green)"></span>
-        </div>
-      </section>
-
     </main>
   </div>
 </div>
@@ -85,11 +73,6 @@
     .map((r) => `<span class="tag tag-accent-2">${escapeHtml(r.label)}</span>`).join("");
   document.getElementById("station-tags").innerHTML = KCMPS_DASH.getStations()
     .map((s) => `<span class="tag tag-neutral">${escapeHtml(s.label)} (${s.id})</span>`).join("");
-
-  document.getElementById("reset-btn").addEventListener("click", () => {
-    KCMPS_DASH.resetSeed();
-    document.getElementById("reset-msg").textContent = "Demo data reset. Reload any open dashboard tab to see it.";
-  });
 })();
 </script>
 </body>

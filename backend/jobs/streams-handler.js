@@ -70,6 +70,10 @@ async function recomputeOrderStatus(orderPkValue) {
     TableName: TABLE,
     KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
     ExpressionAttributeValues: { ":pk": orderPkValue, ":prefix": "LINEITEM#" },
+    ConsistentRead: true, // this read happens moments after the write that
+    // triggered this very stream record — an eventually-consistent GSI-less
+    // table read here can return a stale line-item image and persist a
+    // wrong orderStatus that nothing else will ever recompute.
   }));
   const statuses = (lineItems.Items || []).map((i) => i.status);
   const orderStatus = deriveOrderStatus(statuses);

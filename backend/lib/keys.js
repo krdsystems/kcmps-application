@@ -72,6 +72,12 @@ function clientPk(clientId) {
   return `CLIENT#${clientId}`;
 }
 
+// ---- Checkout idempotency (dedup record for POST /orders retries) ----
+
+function idempotencyPk(idempotencyKey) {
+  return `IDEMPOTENCY#${idempotencyKey}`;
+}
+
 // ---- GSI1 — sparse active-line-item-by-status index (§2.3/§2.6) ----
 
 function statusPk(status) {
@@ -100,6 +106,7 @@ module.exports = {
   metaSk,
   lineItemSk,
   eventSk,
+  idempotencyPk,
   dayMetricPk,
   monthMetricPk,
   summarySk,

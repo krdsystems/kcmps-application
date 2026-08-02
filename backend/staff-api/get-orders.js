@@ -48,24 +48,39 @@ async function getAllOrders() {
   // infrequent, staff-only read (the "all jobs" list), not a per-load
   // dashboard metric. If order volume grows large, paginate this with a
   // real query pattern (e.g. a GSI on createdAt) instead.
-  const res = await client.send(new ScanCommand({
-    TableName: TABLE,
+  const items = await scanAll({
     FilterExpression: "begins_with(PK, :prefix) AND SK = :meta",
     ExpressionAttributeValues: { ":prefix": "ORDER#", ":meta": "META" },
-  }));
-  return Promise.all((res.Items || []).map(attachLineItems));
+  });
+  return Promise.all(items.map(attachLineItems));
 }
 
 async function getOrdersForSub(sub) {
   // Requires a CLIENT#-keyed GSI once the CRM view matures. Until then, a
   // bounded scan filtered by customerSub is acceptable at KCMPS's current
   // order volume.
-  const res = await client.send(new ScanCommand({
-    TableName: TABLE,
+  const items = await scanAll({
     FilterExpression: "begins_with(PK, :prefix) AND SK = :meta AND customerSub = :sub",
     ExpressionAttributeValues: { ":prefix": "ORDER#", ":meta": "META", ":sub": sub },
-  }));
-  return Promise.all((res.Items || []).map(attachLineItems));
+  });
+  return Promise.all(items.map(attachLineItems));
+}
+
+// Scan's 1MB page cap applies BEFORE FilterExpression, and this table also
+// holds LINEITEM#/EVENT# items — so a single un-paginated Scan can return a
+// page that's entirely filtered out, or only partial results, well before
+// order volume looks "large" by item COUNT. Loop on LastEvaluatedKey so a
+// customer's own order (or a staff member's jobs list) never silently goes
+// missing instead of erroring.
+async function scanAll(params) {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const res = await client.send(new ScanCommand({ TableName: TABLE, ...params, ExclusiveStartKey }));
+    items.push(...(res.Items || []));
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
 }
 
 async function attachLineItems(order) {

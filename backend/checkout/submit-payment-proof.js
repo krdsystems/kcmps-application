@@ -47,11 +47,11 @@
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { orderPk, metaSk } = require("../lib");
+const { STATUS, orderPk, metaSk, activeStatusAttrs } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
@@ -109,12 +109,61 @@ exports.handler = async (event) => {
     rejectionReason: null,
   };
 
-  await dynamo.send(new UpdateCommand({
+  // Still-pending sku line items get their 48h expiry clock (GSI1SK, read
+  // by expire-pending-orders.js) reset to NOW — otherwise it keeps
+  // counting from checkout, so a customer who pays right before the
+  // original 48h mark gets auto-cancelled shortly after submitting proof,
+  // one hour after this Lambda's own email promises a 48h SLA from here.
+  const pendingRes = await dynamo.send(new QueryCommand({
     TableName: TABLE,
-    Key: { PK: pk, SK: metaSk() },
-    UpdateExpression: "SET payment = :payment, updatedAt = :now",
-    ExpressionAttributeValues: { ":payment": payment, ":now": now },
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    FilterExpression: "#status = :status",
+    ExpressionAttributeNames: { "#status": "status" },
+    ExpressionAttributeValues: { ":pk": pk, ":prefix": "LINEITEM#", ":status": STATUS.PENDING_PAYMENT_VERIFICATION },
   }));
+  const pendingLineItems = pendingRes.Items || [];
+
+  const transactItems = [
+    {
+      // Optimistic lock on the whole `payment` attribute (not a nested
+      // path — payment starts as a NULL scalar, not a map, so
+      // attribute_not_exists()/nested-path conditions on it are unsafe).
+      // If staff verified/rejected this order's payment between our Get
+      // above and this write landing, `payment` will have changed and
+      // this condition fails — without it, a resubmission could silently
+      // clobber a just-verified payment, wiping verifiedAt/verifiedBy.
+      Update: {
+        TableName: TABLE,
+        Key: { PK: pk, SK: metaSk() },
+        ConditionExpression: "payment = :priorPayment",
+        UpdateExpression: "SET payment = :payment, updatedAt = :now",
+        ExpressionAttributeValues: { ":payment": payment, ":priorPayment": order.payment ?? null, ":now": now },
+      },
+    },
+    ...pendingLineItems.map((li) => {
+      const gsiAttrs = activeStatusAttrs(STATUS.PENDING_PAYMENT_VERIFICATION, now);
+      return {
+        Update: {
+          TableName: TABLE,
+          Key: { PK: li.PK, SK: li.SK },
+          ConditionExpression: "#status = :status",
+          UpdateExpression: "SET enteredStatusAt = :now, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: {
+            ":now": now, ":status": STATUS.PENDING_PAYMENT_VERIFICATION,
+            ":gsi1pk": gsiAttrs.GSI1PK, ":gsi1sk": gsiAttrs.GSI1SK,
+          },
+        },
+      };
+    }),
+  ];
+
+  await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
+    if (err.name === "TransactionCanceledException") {
+      throw Object.assign(new Error("This order's payment changed concurrently — reload and try again."), { statusCode: 409 });
+    }
+    throw err;
+  });
 
   if (FROM_EMAIL && EMAIL_RE.test(order.customerContact || "")) {
     await sendReceivedEmail(order, orderId).catch((err) => {

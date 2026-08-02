@@ -369,6 +369,90 @@ Redeploy any of the 5 Lambdas after a code change the same way as the checkout L
 `package.json` — then `aws lambda update-function-code`); no infra change needed unless the
 route/role/permission set itself changes.
 
+## Observability — Milestone 1.5 (deployed 2026-08-02)
+
+Closes the backend audit's R4/R6/R7 findings: zero alerting, no retry/DLQ policy on the async
+Lambdas, no API throttling. New resources are one CloudFormation stack; updates to
+resources this repo had already created via plain CLI (the ESM, the API stage, the cron's async
+invoke config) stay CLI, matching how the rest of `backend/infra/` is split.
+
+**Stack**: `kcmps-observability`, template
+[`observability.cfn.yaml`](observability.cfn.yaml), `ap-southeast-1`. Creates:
+- `kcmps-ops-alerts` — SNS topic, one email subscription (`admin@kcmps.com` by default,
+  override with `--parameter-overrides AlertEmail=...`). **The subscription sits in
+  `PendingConfirmation` until someone clicks the link in the confirmation email AWS sends on
+  creation — alarms fire silently into nothing until then.** Check with:
+  ```bash
+  aws sns list-subscriptions-by-topic --topic-arn arn:aws:sns:ap-southeast-1:600929977538:kcmps-ops-alerts --profile kcmps-claude-priv
+  ```
+- `kcmps-lambda-dlq` — a shared SQS standard queue, the `OnFailure` destination for both
+  async-invoked backend Lambdas (see below).
+- 17 CloudWatch alarms, all with `AlarmActions` pointed at the SNS topic: `Errors >= 1`/5min and
+  `Throttles >= 1`/5min on each of the 7 deployed Lambdas (`kcmps-create-order`,
+  `kcmps-submit-payment-proof`, `kcmps-get-orders`, `kcmps-advance-line-item`,
+  `kcmps-verify-payment`, `kcmps-streams-handler`, `kcmps-expire-pending-orders`), plus
+  `kcmps-streams-handler`'s `IteratorAge > 5min` (it's the only place `orderStatus` is
+  recomputed — a stall here goes stale silently otherwise), the DLQ's
+  `ApproximateNumberOfMessagesVisible > 0`, and `kcmps-checkout-api`'s `5XXError >= 1`/5min.
+
+Deploy/redeploy (idempotent):
+```bash
+aws cloudformation deploy \
+  --template-file backend/infra/observability.cfn.yaml \
+  --stack-name kcmps-observability --region ap-southeast-1 \
+  --parameter-overrides AlertEmail=admin@kcmps.com \
+  --no-fail-on-empty-changeset --profile kcmps-claude-priv
+```
+
+**Streams event source mapping** (`37b3956c-187a-4bd1-9a06-16cf30c5cf17`, on
+`kcmps-streams-handler`) — was `MaximumRetryAttempts: -1` (retry until the record ages out of
+the stream, ~24h, with no bisecting and no failure destination) since 1.3. Updated in place
+(same mapping, not recreated — recreating would briefly stop stream processing):
+```bash
+aws lambda update-event-source-mapping \
+  --uuid 37b3956c-187a-4bd1-9a06-16cf30c5cf17 \
+  --maximum-retry-attempts 3 --bisect-batch-on-function-error \
+  --destination-config '{"OnFailure":{"Destination":"arn:aws:sqs:ap-southeast-1:600929977538:kcmps-lambda-dlq"}}' \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+Bisecting isolates one bad record in a batch of 10 instead of retrying/blocking the whole
+batch. Requires `sqs:SendMessage` on the DLQ ARN, granted to `kcmps-jobs-lambda-role` (shared
+with `kcmps-expire-pending-orders`) via an inline policy — `kcmps-jobs-dlq-write`:
+```bash
+aws iam put-role-policy --role-name kcmps-jobs-lambda-role \
+  --policy-name kcmps-jobs-dlq-write --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sqs:SendMessage","Resource":"arn:aws:sqs:ap-southeast-1:600929977538:kcmps-lambda-dlq"}]}' \
+  --profile kcmps-claude-priv
+```
+(Note: this permission needs a few seconds to propagate before `update-event-source-mapping`
+will accept the DLQ destination — a fresh `put-role-policy` followed immediately by the ESM
+update can 400 with `InvalidParameterValueException`; retry after ~10s if so.)
+
+**`kcmps-expire-pending-orders`'s async invoke config** — EventBridge invokes this Lambda
+asynchronously; it had no `EventInvokeConfig` at all before this pass (`aws lambda
+get-function-event-invoke-config` 404'd), meaning Lambda's bare default (2 retries, invocation
+dropped after that, no DLQ) applied. Now explicit, same DLQ as the Streams handler:
+```bash
+aws lambda put-function-event-invoke-config \
+  --function-name kcmps-expire-pending-orders --maximum-retry-attempts 2 \
+  --destination-config '{"OnFailure":{"Destination":"arn:aws:sqs:ap-southeast-1:600929977538:kcmps-lambda-dlq"}}' \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+**API throttling** — `kcmps-checkout-api`'s `$default` stage had no `RouteSettings` at all
+(both public checkout routes wide open to whatever volume hit them). Added per-route limits to
+just the two unauthenticated routes (10 req/s steady-state, burst 20 — generous headroom over
+realistic legitimate checkout volume for a 4-person shop, sized as a starting point, not tuned
+against real traffic):
+```bash
+aws apigatewayv2 update-stage --api-id 6msg2uho6c --stage-name '$default' \
+  --route-settings '{"POST /orders":{"ThrottlingRateLimit":10,"ThrottlingBurstLimit":20},"POST /orders/{orderId}/payment-proof":{"ThrottlingRateLimit":10,"ThrottlingBurstLimit":20}}' \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+This is a blunt, account-wide cap — HTTP APIs have no per-IP throttling without WAF in front, so
+it protects against a volume spike/bot burst, not per-caller abuse. Revisit if real abuse is
+ever observed (add WAF then, not before — same "don't build ahead of the trigger" rule as the
+rest of this repo).
+
 ## Re-running / updates
 
 `aws cloudformation deploy` is idempotent — re-running it with the same

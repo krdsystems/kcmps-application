@@ -24,7 +24,7 @@
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
-const { STATUS, orderPk, metaSk, lineItemSk, eventSk, extractClaims, getGroups, isStaff, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, getGroups, isStaff, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const LEGACY_STAFF_GROUP = "Staff"; // see get-orders.js for why both are accepted
@@ -90,12 +90,11 @@ exports.handler = async (event) => {
     transactItems.push({
       Put: {
         TableName: TABLE,
-        Item: {
-          PK: pk, SK: eventSk(now, li.lineItemId),
-          lineItemId: li.lineItemId, from: STATUS.PENDING_PAYMENT_VERIFICATION, to: toStatus,
+        Item: buildEvent({
+          orderId, lineItemId: li.lineItemId, from: STATUS.PENDING_PAYMENT_VERIFICATION, to: toStatus,
           actorSub: claims.sub, actorName: staffName, station: li.station || null,
           at: now, meta: isReject ? { via: "rejectPayment", rejectionReason: body.reason } : { via: "verifyPayment" },
-        },
+        }),
       },
     });
   });

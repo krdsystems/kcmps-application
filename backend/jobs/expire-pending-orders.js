@@ -22,7 +22,7 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, statusPk, metaSk, eventSk, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, statusPk, metaSk, buildEvent, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const SES_SENDER = process.env.SES_SENDER; // e.g. "orders@kcmps.com", must be a verified SES identity
@@ -42,20 +42,53 @@ exports.handler = async () => {
 
 async function sweep(status, maxAgeMs, handler) {
   const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
-  const res = await client.send(new QueryCommand({
-    TableName: TABLE,
-    IndexName: "GSI1",
-    KeyConditionExpression: "GSI1PK = :pk AND GSI1SK < :cutoff",
-    ExpressionAttributeValues: { ":pk": statusPk(status), ":cutoff": cutoff },
-  }));
-  for (const item of res.Items || []) {
-    try { await handler(item); } catch (err) { console.error("expire sweep failed for", item.PK, item.SK, err); }
-  }
+  let ExclusiveStartKey;
+  do {
+    const res = await client.send(new QueryCommand({
+      TableName: TABLE,
+      IndexName: "GSI1",
+      KeyConditionExpression: "GSI1PK = :pk AND GSI1SK < :cutoff",
+      ExpressionAttributeValues: { ":pk": statusPk(status), ":cutoff": cutoff },
+      ExclusiveStartKey,
+    }));
+    for (const item of res.Items || []) {
+      try { await handler(item); } catch (err) { console.error("expire sweep failed for", item.PK, item.SK, err); }
+    }
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
 }
 
 async function expireVerification(li) {
   const now = new Date().toISOString();
   const removeAttrs = attrsToRemoveOnTerminal(STATUS.AUTO_CANCELLED);
+  const reason = "Auto-cancelled — 48h verification window elapsed with no staff action";
+
+  // order.payment is the NULL scalar create-order.js writes at checkout
+  // until submitPaymentProof.js turns it into a map — `SET
+  // payment.rejectionReason = ...` fails with ValidationException against
+  // a non-map attribute, which cancels this whole transaction (silently,
+  // since the caller in sweep() only logs and moves on). That meant this
+  // sweep could never actually expire an order nobody had paid for — the
+  // one case it exists to catch. Mirror verify-payment.js's null-payment
+  // branch: replace the whole attribute when there's no payment object to
+  // patch a nested path onto.
+  const orderRes = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: li.PK, SK: "META" } }));
+  const hasPayment = !!orderRes.Item?.payment;
+  const paymentUpdate = hasPayment
+    ? {
+        UpdateExpression: "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
+        ExpressionAttributeValues: { ":reason": reason, ":null": null },
+      }
+    : {
+        UpdateExpression: "SET payment = :payment",
+        ExpressionAttributeValues: {
+          ":payment": {
+            method: null, claimedAmount: null, gcashRefNumber: null, screenshotRef: null,
+            submittedAt: null, verifiedBy: null, verifiedAt: null, rejectionReason: reason,
+          },
+        },
+      };
+
   await client.send(new TransactWriteCommand({
     TransactItems: [
       {
@@ -70,12 +103,11 @@ async function expireVerification(li) {
       {
         Put: {
           TableName: TABLE,
-          Item: {
-            PK: li.PK, SK: eventSk(now, li.lineItemId),
-            lineItemId: li.lineItemId, from: li.status, to: STATUS.AUTO_CANCELLED,
+          Item: buildEvent({
+            orderId: li.orderId, lineItemId: li.lineItemId, from: li.status, to: STATUS.AUTO_CANCELLED,
             actorSub: "system:expire-pending-orders", at: now,
             meta: { reason: "48h verification window elapsed" },
-          },
+          }),
         },
       },
       // Stamp the order-level payment audit trail the same way a
@@ -87,11 +119,7 @@ async function expireVerification(li) {
         Update: {
           TableName: TABLE,
           Key: { PK: li.PK, SK: "META" },
-          UpdateExpression: "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
-          ExpressionAttributeValues: {
-            ":reason": "Auto-cancelled — 48h verification window elapsed with no staff action",
-            ":null": null,
-          },
+          ...paymentUpdate,
         },
       },
     ],
@@ -118,12 +146,11 @@ async function expireQuote(li) {
       {
         Put: {
           TableName: TABLE,
-          Item: {
-            PK: li.PK, SK: eventSk(now, li.lineItemId),
-            lineItemId: li.lineItemId, from: li.status, to: STATUS.QUOTE_EXPIRED,
+          Item: buildEvent({
+            orderId: li.orderId, lineItemId: li.lineItemId, from: li.status, to: STATUS.QUOTE_EXPIRED,
             actorSub: "system:expire-pending-orders", at: now,
             meta: { reason: "7-day quote payment window elapsed" },
-          },
+          }),
         },
       },
     ],

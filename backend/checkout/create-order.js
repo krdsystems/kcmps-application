@@ -36,14 +36,18 @@
    pass across all money fields at once, not a partial one started here.
    ============================================================ */
 
+const { randomUUID } = require("crypto");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
-const { STATUS, baseItem, buildEvent, orderPk, metaSk, lineItemSk, activeStatusAttrs, deriveOrderStatus } = require("../lib");
+const { STATUS, baseItem, buildEvent, orderPk, metaSk, lineItemSk, idempotencyPk, activeStatusAttrs, deriveOrderStatus } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
 const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+// 1 order + 2 items/line (LINEITEM# + EVENT#) + 1 optional idempotency
+// record must stay under TransactWriteItems' hard 100-item ceiling.
+const MAX_CART_LINES = 45;
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const verifier = USER_POOL_ID
@@ -61,6 +65,9 @@ exports.handler = async (event) => {
   if (!Array.isArray(cart) || !cart.length) {
     return response(400, { error: "cart must be a non-empty array" });
   }
+  if (cart.length > MAX_CART_LINES) {
+    return response(400, { error: `A single order can have at most ${MAX_CART_LINES} line items — please split this into more than one order.` });
+  }
   const isDelivery = fulfillment === "Delivery";
   if (isDelivery && (!shipping || !shipping.courier || !shipping.address)) {
     return response(400, { error: "shipping.courier and shipping.address are required when fulfillment is Delivery" });
@@ -71,9 +78,26 @@ exports.handler = async (event) => {
     }
   }
 
+  // Optional — the storefront generates one per checkout attempt and
+  // resends the same value on a retry (e.g. after a network error or a
+  // lost response), so a customer clicking "Place order" twice on the
+  // same cart can't create two orders for one GCash payment. Absent for
+  // any caller that doesn't send it (curl, an older cached bundle) — the
+  // ConditionExpression on the order Put below still guards against a
+  // raw orderId collision either way.
+  const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim().slice(0, 100) : null;
+  if (idempotencyKey) {
+    const existing = await dynamo.send(new GetCommand({ TableName: TABLE, Key: { PK: idempotencyPk(idempotencyKey), SK: metaSk() } }));
+    if (existing.Item) return response(200, existing.Item.response);
+  }
+
   const customerSub = await tryGetSub(event);
   const now = new Date().toISOString();
-  const orderId = "ORD-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+  // 10 hex chars off a real UUID (40 bits) — the prior 6-char base36
+  // Math.random() id (~31 bits, non-cryptographic) needs the
+  // ConditionExpression below as a backstop; this widens the space so
+  // that backstop should in practice never actually fire.
+  const orderId = "ORD-" + randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
   const pk = orderPk(orderId);
 
   let payNowTotal = 0;
@@ -132,19 +156,50 @@ exports.handler = async (event) => {
     payment: null, // submitPaymentProof.js attaches this once the customer submits GCash proof
     correspondenceLog: [],
   };
-  transactItems.unshift({ Put: { TableName: TABLE, Item: orderItem } });
+  // attribute_not_exists(PK) is a backstop against the (now vanishingly
+  // unlikely, but not impossible) orderId collision above silently
+  // overwriting an existing order's META in place.
+  transactItems.unshift({ Put: { TableName: TABLE, Item: orderItem, ConditionExpression: "attribute_not_exists(PK)" } });
 
-  await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
+  const responseBody = {
+    orderId, orderStatus, payNowTotal,
+    lineItems: lineItemsOut.map((li) => ({ lineItemId: li.lineItemId, type: li.type, status: li.status, amount: li.amount })),
+  };
+
+  // Index of the idempotency Put within transactItems, if present — used
+  // below to tell "this exact retry already succeeded" apart from a
+  // genuine orderId collision when the transaction is cancelled.
+  let idempotencyItemIndex = -1;
+  if (idempotencyKey) {
+    idempotencyItemIndex = transactItems.length;
+    transactItems.push({
+      Put: {
+        TableName: TABLE,
+        Item: { PK: idempotencyPk(idempotencyKey), SK: metaSk(), orderId, createdAt: now, response: responseBody },
+        ConditionExpression: "attribute_not_exists(PK)",
+      },
+    });
+  }
+
+  try {
+    await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems }));
+  } catch (err) {
     if (err.name === "TransactionCanceledException") {
+      // A concurrent duplicate of this exact retry won the race and
+      // already committed — the idempotency Put is the one that failed
+      // its condition, not the order Put. Return its cached response
+      // instead of a spurious conflict.
+      const reasons = err.CancellationReasons || [];
+      if (idempotencyItemIndex >= 0 && reasons[idempotencyItemIndex]?.Code === "ConditionalCheckFailed") {
+        const existing = await dynamo.send(new GetCommand({ TableName: TABLE, Key: { PK: idempotencyPk(idempotencyKey), SK: metaSk() } }));
+        if (existing.Item) return response(200, existing.Item.response);
+      }
       throw Object.assign(new Error("Could not create the order — please retry."), { statusCode: 409 });
     }
     throw err;
-  });
+  }
 
-  return response(201, {
-    orderId, orderStatus, payNowTotal,
-    lineItems: lineItemsOut.map((li) => ({ lineItemId: li.lineItemId, type: li.type, status: li.status, amount: li.amount })),
-  });
+  return response(201, responseBody);
 };
 
 // Verifies a Bearer token IF one was sent; returns null (guest) on any

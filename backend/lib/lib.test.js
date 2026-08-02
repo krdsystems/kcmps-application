@@ -84,6 +84,7 @@ test("GSI1 helpers match §2.3", () => {
 test("GSI2 helpers match §2.3", () => {
   assert.equal(keys.clientGsi2Pk("C1"), "CLIENT#C1");
   assert.equal(keys.orderGsi2Sk("2026-07-24T09:14:00Z"), "ORDER#2026-07-24T09:14:00Z");
+  assert.equal(keys.idempotencyPk("abc-123"), "IDEMPOTENCY#abc-123");
 });
 
 // ---- events.js — must match §2.2 shape ----
@@ -102,6 +103,9 @@ test("buildEvent matches the §2.2 record shape exactly", () => {
   assert.deepEqual(evt, {
     PK: "ORDER#1234",
     SK: "EVENT#2026-07-24T09:14:00Z#L2",
+    tenantId: "SITE#MNL",
+    siteId: "SITE#MNL",
+    schemaVersion: 1,
     lineItemId: "L2",
     from: "Scheduled",
     to: "In Production",
@@ -120,6 +124,9 @@ test("buildEvent defaults meta/station/actorName and requires orderId/lineItemId
   assert.equal(evt.station, null);
   assert.equal(evt.actorName, null);
   assert.equal(evt.from, null);
+  assert.equal(evt.tenantId, "SITE#MNL");
+  assert.equal(evt.siteId, "SITE#MNL");
+  assert.equal(evt.schemaVersion, 1);
 
   assert.throws(() => buildEvent({ lineItemId: "L1", to: "Quoted" }), TypeError);
   assert.throws(() => buildEvent({ orderId: "1", to: "Quoted" }), TypeError);

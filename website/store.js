@@ -41,6 +41,13 @@
   if (!DATA) { console.warn("[store] KCMPS_STORE_DATA missing — is products.js loaded?"); return; }
 
   var CART_KEY = "kcmps_cart";
+  // Generated lazily by submitOrder() on first attempt, reused across
+  // retries of that same attempt (network error, lost response) so a
+  // double-click or a "please try again" retry can't create two orders
+  // for one GCash payment — see create-order.js's idempotencyKey handling.
+  // Cleared on any cart mutation (saveCart(), below) so a genuinely new
+  // order later doesn't get deduped against a stale key.
+  var checkoutIdempotencyKey = null;
   // Fallback only now — shown in the payment-proof step for the rare case a
   // customer's upload genuinely fails (e.g. a corporate network blocking S3).
   var ORDER_EMAIL = "order@kcmps.com";
@@ -211,6 +218,7 @@
   // a full catalog re-render.
   function saveCart(cart) {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    checkoutIdempotencyKey = null;
     document.dispatchEvent(new CustomEvent("kcmps:cart-change"));
   }
   var cart = loadCart();
@@ -1627,12 +1635,21 @@
     var token = idToken();
     if (token) headers["Authorization"] = "Bearer " + token;
 
+    // Reused across retries of this same click-to-success span (see the
+    // var's declaration above) — only generated once per attempt.
+    if (!checkoutIdempotencyKey) {
+      checkoutIdempotencyKey = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : "idk-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+    }
+
     fetch(CHECKOUT_API_BASE + "/orders", {
       method: "POST",
       headers: headers,
       body: JSON.stringify({
         customerName: name, customerContact: contact, fulfillment: fulfill,
         shipping: shipping, notes: notes, cart: cartForCheckout(),
+        idempotencyKey: checkoutIdempotencyKey,
       }),
     }).then(function (res) {
       return res.json().then(function (data) {

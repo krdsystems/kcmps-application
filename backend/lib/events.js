@@ -23,6 +23,7 @@
    ============================================================ */
 
 const { orderPk, eventSk } = require("./keys");
+const { SITE_ID, SCHEMA_VERSION } = require("./constants");
 
 function buildEvent({ orderId, lineItemId, from, to, actorSub, actorName, station, meta, at }) {
   if (!orderId || !lineItemId || !to) {
@@ -32,6 +33,13 @@ function buildEvent({ orderId, lineItemId, from, to, actorSub, actorName, statio
   return {
     PK: orderPk(orderId),
     SK: eventSk(ts, lineItemId),
+    // Same launch-blocking multi-site/schema-evolution conventions as
+    // baseItem() (item.js) — not spread from baseItem() itself, since that
+    // helper also stamps status/updatedAt/deleted, none of which apply to
+    // an immutable, append-only, statusless record.
+    tenantId: SITE_ID,
+    siteId: SITE_ID,
+    schemaVersion: SCHEMA_VERSION,
     lineItemId,
     from: from || null,
     to,

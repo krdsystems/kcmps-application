@@ -1,0 +1,373 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  KCMPS Milestone 1.5 observability — SNS alert topic, a shared Lambda dead-letter queue, and
+  CloudWatch alarms on every deployed backend Lambda, the Streams handler's IteratorAge, DLQ
+  depth, and the checkout API's 5xx rate. All resources here are new — nothing pre-existing is
+  imported or modified. See backend/infra/README.md's "Observability — Milestone 1.5" section
+  for the CLI steps that wire this stack's outputs into the existing Streams event source
+  mapping, expire-pending-orders' async invoke config, and the checkout API's stage throttle
+  settings (those touch resources this stack doesn't own, so they stay CLI, not CFN — same
+  split the rest of backend/infra/ already uses).
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: admin@kcmps.com
+    Description: >
+      Destination for the SNS topic's email subscription. AWS sends a confirmation email here
+      after this stack is created — alarms are silent until that link is clicked.
+
+Resources:
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: kcmps-ops-alerts
+      DisplayName: KCMPS Ops Alerts
+
+  AlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  LambdaDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: kcmps-lambda-dlq
+      MessageRetentionPeriod: 345600 # 4 days (SQS default) — a failure inbox nobody should
+      # be leaving unread that long anyway.
+
+  # ---- Errors / Throttles — one pair of alarms per deployed Lambda ----
+
+  CreateOrderErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-create-order-errors
+      AlarmDescription: kcmps-create-order threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-create-order
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  CreateOrderThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-create-order-throttles
+      AlarmDescription: kcmps-create-order is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-create-order
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  SubmitPaymentProofErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-submit-payment-proof-errors
+      AlarmDescription: kcmps-submit-payment-proof threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-submit-payment-proof
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  SubmitPaymentProofThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-submit-payment-proof-throttles
+      AlarmDescription: kcmps-submit-payment-proof is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-submit-payment-proof
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  GetOrdersErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-get-orders-errors
+      AlarmDescription: kcmps-get-orders threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-get-orders
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  GetOrdersThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-get-orders-throttles
+      AlarmDescription: kcmps-get-orders is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-get-orders
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AdvanceLineItemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-advance-line-item-errors
+      AlarmDescription: kcmps-advance-line-item threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-advance-line-item
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AdvanceLineItemThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-advance-line-item-throttles
+      AlarmDescription: kcmps-advance-line-item is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-advance-line-item
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  VerifyPaymentErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-verify-payment-errors
+      AlarmDescription: kcmps-verify-payment threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-verify-payment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  VerifyPaymentThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-verify-payment-throttles
+      AlarmDescription: kcmps-verify-payment is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-verify-payment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  StreamsHandlerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-streams-handler-errors
+      AlarmDescription: kcmps-streams-handler threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-streams-handler
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  StreamsHandlerThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-streams-handler-throttles
+      AlarmDescription: kcmps-streams-handler is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-streams-handler
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  StreamsHandlerIteratorAgeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-streams-handler-iterator-age
+      AlarmDescription: >
+        kcmps-streams-handler is falling behind the DynamoDB stream — orderStatus rollups and
+        GSI1 sparse-index hygiene are going stale (this Lambda is the ONLY place orderStatus
+        gets recomputed).
+      Namespace: AWS/Lambda
+      MetricName: IteratorAge
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-streams-handler
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 300000 # 5 minutes, in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  ExpirePendingOrdersErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-expire-pending-orders-errors
+      AlarmDescription: kcmps-expire-pending-orders threw an unhandled error.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-expire-pending-orders
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  ExpirePendingOrdersThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-expire-pending-orders-throttles
+      AlarmDescription: kcmps-expire-pending-orders is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-expire-pending-orders
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # ---- DLQ depth ----
+
+  LambdaDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-lambda-dlq-depth
+      AlarmDescription: >
+        A message landed in the shared Lambda dead-letter queue — a Streams batch or an async
+        cron invoke exhausted its retries. Check kcmps-lambda-dlq.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt LambdaDlq.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # ---- API Gateway 5xx ----
+
+  CheckoutApi5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-checkout-api-5xx
+      AlarmDescription: >
+        kcmps-checkout-api returned a 5xx — catches integration-level failures (timeouts,
+        cold-start errors) that don't always surface as a Lambda Errors count.
+      Namespace: AWS/ApiGateway
+      MetricName: 5XXError
+      Dimensions:
+        - Name: ApiId
+          Value: 6msg2uho6c
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+Outputs:
+  AlertsTopicArn:
+    Description: SNS topic ARN — subscribe more destinations here later if needed.
+    Value: !Ref AlertsTopic
+
+  LambdaDlqArn:
+    Description: >
+      DLQ ARN — pass this to the Streams event source mapping's DestinationConfig and
+      kcmps-expire-pending-orders' async invoke config (see README's CLI steps).
+    Value: !GetAtt LambdaDlq.Arn
+
+  LambdaDlqUrl:
+    Description: DLQ URL, for manually inspecting/purging failed records.
+    Value: !Ref LambdaDlq

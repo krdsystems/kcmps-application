@@ -121,7 +121,7 @@
         `<div class="m-block"><h4>Claimed amount</h4><p>${fmtPeso(order.payment.claimedAmount)}</p></div>` +
         `<div class="m-block" style="flex-basis:100%"><h4>Screenshot</h4>` +
         (order.payment.screenshotUrl
-          ? `<a href="${escapeHtml(order.payment.screenshotUrl)}" target="_blank" rel="noopener"><img src="${escapeHtml(order.payment.screenshotUrl)}" alt="GCash payment screenshot" style="max-width:280px;max-height:280px;border-radius:8px;border:1px solid var(--border,#ddd);display:block" /></a>`
+          ? `<a href="${escapeHtml(order.payment.screenshotUrl)}" target="_blank" rel="noopener"><img src="${escapeHtml(order.payment.screenshotUrl)}" alt="GCash payment screenshot" style="max-width:min(280px, 100%);max-height:280px;border-radius:8px;border:1px solid var(--border,#ddd);display:block" /></a>`
           : `<p style="font-weight:400;font-size:12.5px">${escapeHtml(order.payment.screenshotRef)} (preview unavailable — mock/manual order)</p>`) +
         `</div>` +
         `<div class="m-block"><h4>Submitted</h4><p>${fmtDateTime(order.payment.submittedAt)}</p></div>` +

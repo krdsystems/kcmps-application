@@ -2439,6 +2439,61 @@ directly, then re-verified live in a real (not just headless-tooling) Chrome ses
    `KCMPS_DASH.resetSeed()` function in `dashboard-data.js` is untouched and still callable from
    the console if needed later.
 
+### 60. Staff dashboard mobile optimization pass — job list, data tables, and card grids at phone width (2026-08-02)
+
+The dashboard's only mobile-specific CSS before this pass was the off-canvas sidebar drawer
+(≤900px) and the mail 3-pane collapse (≤760px) — every other component (the 5-column job-row
+grid, six-column data tables, the month page's 2-up client-concentration columns) had zero
+narrow-viewport handling. Verified via DOM/computed-style inspection at a real 375px viewport
+(`window.innerWidth`/`getComputedStyle`/`scrollWidth`-vs-viewport-width checks — screenshot
+capture was unreliable this session, so every claim below is a measured value, not a look).
+
+1. **`.job-row` (jobs.html's job list) restructures into a 2-row card below 640px** —
+   description + status pill on top, client + due date below — instead of trying to fit 5 grid
+   columns into ~340px of usable width. The plain-text column-header row above the list
+   (previously untagged, just inline styles) got a `.job-row-head` class so it can hide
+   entirely on mobile; a column header means nothing once rows are stacked cards. The trailing
+   order/line-id column drops on mobile (still one tap into `job-detail.html` for the raw IDs).
+2. **New `.table-mobile-stack` component** — added to every dense dashboard `<table>`
+   (`clients.html`, `inventory.html`, `settings.html`'s SLA table, `month.html`'s pillar
+   table): below 640px, `<thead>` hides and each `<td>` becomes a labeled block (label from a
+   `data-label` attribute added in each page's render function, via a `::before` reading
+   `attr(data-label)`) instead of a table cell. Went with label-above-value rather than the
+   more common label-left/value-right inline pattern specifically because the SLA table's
+   Threshold/Action columns are full sentences — right-aligned wrapped prose reads badly, and
+   one shared pattern beats two competing ones across the four tables. `inventory.html`'s
+   inline Adjust editor (input + Save/Cancel) still works correctly stacked — verified the
+   input and both buttons render under the "On hand"/"Adjust" labels with no layout break.
+3. **Card grids (`.queue-grid`, `.station-grid`, `month.html`'s `.client-cols-grid`) forced to
+   a single column below 640px.** These are `auto-fit`/`minmax(…)` grids that already collapse
+   toward one column as the viewport narrows, but the `minmax` floor (300px/260px) doesn't
+   actually disappear at 1 column — it becomes a hard minimum the track can't shrink below, so
+   a ~320-343px-wide phone content area was forced to render a 300px+ track and silently
+   scrolled the whole page horizontally. `client-cols-grid` had the same problem for a
+   different reason: it was a hardcoded `1fr 1fr` with no override at all. Verified fixed via
+   `getComputedStyle(el).gridTemplateColumns` returning a single `343px` track post-fix (was
+   two unequal tracks pre-fix) with `document.documentElement.scrollWidth` matching
+   `window.innerWidth` exactly (no overflow) on every dashboard page.
+4. **Topbar sheds non-essential content as space runs out.** `.dash-topbar-title` h1/p now
+   truncate with an ellipsis instead of forcing the topbar wider than the viewport if a hint
+   string is long; `.dash-user-name` hides below 480px (Logout stays) since the sticky topbar
+   has to fit a hamburger + page title + name + button in under ~340px at that width.
+   `.timeline-row` (job-detail.html's event log, `130px auto 1fr`) drops to a single column
+   below 480px — three grid tracks in ~300px produces illegibly cramped transition text
+   otherwise.
+5. **A real CSS cascade bug caught mid-pass, not by eye:** the first draft of items 3 and the
+   `.timeline-row` fix in item 4 were placed in a `@media` block positioned *before* their
+   unconditional base rules later in the same file (`.queue-grid`, `.station-grid`,
+   `.client-cols-grid`, `.timeline-row` are all declared further down in `dashboard.css`).
+   Two rules of equal specificity resolve by source order — a matching `@media` block earlier
+   in the file loses to a plain rule later in the file, regardless of which one "should" win
+   semantically. Every override in that first draft was silently doing nothing; caught only by
+   reading `getComputedStyle(...).gridTemplateColumns` and seeing the unmodified 2-column
+   value at 375px width. Fixed by moving the whole block to the end of `dashboard.css`, after
+   every rule it touches. Worth remembering next time a mobile override "isn't working" despite
+   looking correct in isolation — check where its base rule sits in the cascade before assuming
+   the selector or media condition is wrong.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

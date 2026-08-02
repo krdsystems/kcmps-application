@@ -28,16 +28,16 @@
           <span class="hint">Read-only preview in this mock build — wire to a Settings API once the backend exists (see infra doc)</span>
         </div>
         <div class="card" style="overflow-x:auto">
-          <table class="table">
+          <table class="table table-mobile-stack">
             <thead><tr><th>Rule</th><th>Threshold</th><th>Action</th></tr></thead>
             <tbody>
-              <tr><td>Payment verification SLA</td><td>4 working hours (red at 2h warn)</td><td>Dashboard turns red; SES digest to staff</td></tr>
-              <tr><td>Payment verification expiry</td><td>48 hours, no resubmission</td><td>Auto-cancel, release inventory hold, notify customer</td></tr>
-              <tr><td>Quote response SLA</td><td>18 hours (matches 24h customer promise)</td><td>Dashboard red</td></tr>
-              <tr><td>Quote expiry</td><td>Priced + no payment &gt; 7 days</td><td>Status → Quote Expired, price released, SES notice</td></tr>
-              <tr><td>Due-date risk</td><td>Due ≤ 48h and not yet In Production</td><td>Dashboard red</td></tr>
-              <tr><td>Station capacity threshold</td><td>&gt;85% committed for the week</td><td>Estimator turnaround extends; rush multiplier engages</td></tr>
-              <tr><td>Recurring blocker</td><td>Same tag 3+ times / 30 days</td><td>Auto-promote to weekly agenda</td></tr>
+              <tr><td data-label="Rule">Payment verification SLA</td><td data-label="Threshold">4 working hours (red at 2h warn)</td><td data-label="Action">Dashboard turns red; SES digest to staff</td></tr>
+              <tr><td data-label="Rule">Payment verification expiry</td><td data-label="Threshold">48 hours, no resubmission</td><td data-label="Action">Auto-cancel, release inventory hold, notify customer</td></tr>
+              <tr><td data-label="Rule">Quote response SLA</td><td data-label="Threshold">18 hours (matches 24h customer promise)</td><td data-label="Action">Dashboard red</td></tr>
+              <tr><td data-label="Rule">Quote expiry</td><td data-label="Threshold">Priced + no payment &gt; 7 days</td><td data-label="Action">Status → Quote Expired, price released, SES notice</td></tr>
+              <tr><td data-label="Rule">Due-date risk</td><td data-label="Threshold">Due ≤ 48h and not yet In Production</td><td data-label="Action">Dashboard red</td></tr>
+              <tr><td data-label="Rule">Station capacity threshold</td><td data-label="Threshold">&gt;85% committed for the week</td><td data-label="Action">Estimator turnaround extends; rush multiplier engages</td></tr>
+              <tr><td data-label="Rule">Recurring blocker</td><td data-label="Threshold">Same tag 3+ times / 30 days</td><td data-label="Action">Auto-promote to weekly agenda</td></tr>
             </tbody>
           </table>
         </div>

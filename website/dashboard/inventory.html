@@ -27,7 +27,7 @@
           <span class="hint">Wired to the estimator (per Part 1) — wrong material cost here means quotes that lose money</span>
         </div>
         <div class="card" style="overflow-x:auto">
-          <table class="table">
+          <table class="table table-mobile-stack">
             <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Reorder point</th><th class="num">Days of cover</th><th></th><th></th></tr></thead>
             <tbody id="inv-body"></tbody>
           </table>
@@ -65,12 +65,12 @@
           `<button type="button" class="btn btn-ghost btn-adjust-cancel">Cancel</button>`
         : `<button type="button" class="btn btn-secondary btn-adjust" data-sku="${i.sku}">Adjust</button>`;
       return (
-        `<tr><td>${escapeHtml(i.name)}</td>` +
-        `<td class="num">${qtyCell}</td>` +
-        `<td class="num">${i.reorderPoint} ${i.unit}</td>` +
-        `<td class="num">${cover != null ? cover + "d" : "—"}</td>` +
+        `<tr><td data-label="Item">${escapeHtml(i.name)}</td>` +
+        `<td class="num" data-label="On hand">${qtyCell}</td>` +
+        `<td class="num" data-label="Reorder point">${i.reorderPoint} ${i.unit}</td>` +
+        `<td class="num" data-label="Days of cover">${cover != null ? cover + "d" : "—"}</td>` +
         `<td>${low ? '<span class="client-flag">low stock</span>' : ""}</td>` +
-        `<td>${actionCell}</td></tr>`
+        `<td data-label="Adjust">${actionCell}</td></tr>`
       );
     }).join("");
 

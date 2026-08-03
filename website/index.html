@@ -1909,6 +1909,10 @@ const COGNITO_CONFIG = {
   scopes:      "email openid profile phone",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
+  // Any of these groups unlocks the dashboard — Staff (dashboard-only)
+  // and Admin (founders — dashboard plus whatever admin-only surface
+  // gets built later). Keep in sync with dashboard/dashboard-shell.js's copy.
+  dashboardGroupNames: ["Staff", "Admin"],
 };
 
 function log(...args) { console.log("[auth]", ...args); }
@@ -2145,13 +2149,13 @@ function renderLoggedIn(claims) {
   // My Orders is visible to every logged-in user, staff or not.
   document.getElementById("orders-link").classList.remove("is-hidden");
 
-  // Group-based UI branching: Staff group => show the Dashboard link.
+  // Group-based UI branching: Staff or Admin group => show the Dashboard link.
   const groups = claims["cognito:groups"] || [];
   const dashboardLink = document.getElementById("dashboard-link");
-  if (groups.includes(COGNITO_CONFIG.staffGroupName)) {
+  if (COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) {
     dashboardLink.classList.remove("is-hidden");
     dashboardLink.href = "dashboard/today.html";
-    dashboardLink.onclick = null; // real navigation now — the dashboard re-checks the Staff group itself on load
+    dashboardLink.onclick = null; // real navigation now — the dashboard re-checks group membership itself on load
   } else {
     dashboardLink.classList.add("is-hidden");
   }

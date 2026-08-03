@@ -19,18 +19,12 @@ const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, ScanCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const { extractClaims, getGroups, isStaff } = require("../lib/auth");
+const { extractClaims, isStaff } = require("../lib/auth");
 const { redactForCustomer } = require("../lib/customer-view");
 
 const TABLE = process.env.TABLE_NAME;
 const SCREENSHOT_URL_EXPIRY_SECONDS = 15 * 60;
 const S3_URI_RE = /^s3:\/\/([^/]+)\/(.+)$/;
-// "Staff" is the legacy Cognito group dashboard-shell.js still gates on
-// today (see root CLAUDE.md "Legacy groups"); the 4-role model
-// (Production/Sales/Finance/Admin) is the target state but not every
-// staffer has been migrated off "Staff" yet, so accept either until that
-// retirement happens.
-const LEGACY_STAFF_GROUP = "Staff";
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
@@ -39,7 +33,7 @@ exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
 
-  const staff = isStaff(claims) || getGroups(claims).includes(LEGACY_STAFF_GROUP);
+  const staff = isStaff(claims);
   const orders = staff ? await getAllOrders() : await getOrdersForSub(claims.sub);
   if (!staff) orders.forEach(redactForCustomer);
   orders.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));

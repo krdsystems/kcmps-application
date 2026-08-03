@@ -19,6 +19,10 @@
     clientId: "95rrk0mflffentqdiomg1fipc",
     redirectUri: window.location.origin + "/",
     staffGroupName: "Staff",
+    // Any of these groups unlocks the dashboard — Staff (dashboard-only)
+    // and Admin (founders — dashboard plus whatever admin-only surface
+    // gets built later). Keep in sync with ../index.html's copy.
+    dashboardGroupNames: ["Staff", "Admin"],
   };
   const TOKEN_STORAGE_KEY = "kcmps_tokens";
 
@@ -107,7 +111,7 @@
     let claims;
     try { claims = decodeJwt(tokens.id_token); } catch { clearTokens(); window.location.replace("../index.html?login=required"); return null; }
     const groups = claims["cognito:groups"] || [];
-    if (!groups.includes(COGNITO_CONFIG.staffGroupName)) {
+    if (!COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) {
       window.location.replace("../index.html?dashboard=forbidden");
       return null;
     }

@@ -25,10 +25,9 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, getGroups, isStaff, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
-const LEGACY_STAFF_GROUP = "Staff"; // see get-orders.js for why both are accepted
 // Same FROM_EMAIL/EMAIL_RE gate as submit-payment-proof.js — unset today
 // (SES is still sandboxed, see docs/roadmap.md), so this ships dark and
 // activates the moment that env var is set, no code change needed.
@@ -41,7 +40,7 @@ const ses = new SESClient({});
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
-  if (!isStaff(claims) && !getGroups(claims).includes(LEGACY_STAFF_GROUP)) {
+  if (!isStaff(claims)) {
     return response(403, { error: "Staff only" });
   }
 

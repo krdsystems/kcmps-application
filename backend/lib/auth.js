@@ -2,10 +2,14 @@
    KCMPS backend — role model & claims helpers
    ============================================================
    The 5-role model from ERP_System_Project_Knowledge.md §Part 5:
-   Customer, Production, Sales, Finance, Admin. Only `Staff` is enforced
-   in Cognito today (see ops-dashboard/infra/logic-inputs/*.js) — these
-   finer roles are reserved in the model now so the first hire is a group
-   assignment, not a rebuild.
+   Customer, Production, Sales, Finance, Admin. `Staff` is the pre-role-
+   split group every founder is actually in today — it's a first-class
+   member of STAFF_ROLES below (not a legacy bolt-on other files special-
+   case), so "sees the dashboard" reads as one check everywhere. The
+   finer roles (Production/Sales/Finance) are reserved in the model for
+   the first non-founder hire (a group assignment then, not a rebuild);
+   Admin is the founder/owner role, with everything Staff has plus
+   whatever admin-only surface gets built later.
 
    IMPORTANT: client-decoded JWT claims (e.g. from the storefront's
    jwt-decode-in-the-browser pattern, see the main README's "Client-side
@@ -18,15 +22,16 @@
 
 const ROLES = Object.freeze({
   CUSTOMER: "Customer",
+  STAFF: "Staff",
   PRODUCTION: "Production",
   SALES: "Sales",
   FINANCE: "Finance",
   ADMIN: "Admin",
 });
 
-// Every role except Customer — mirrors the existing single "Staff" group
-// this splits into.
-const STAFF_ROLES = new Set([ROLES.PRODUCTION, ROLES.SALES, ROLES.FINANCE, ROLES.ADMIN]);
+// Every group that grants dashboard access — the pre-split "Staff" group
+// plus every finer role it's meant to eventually split into.
+const STAFF_ROLES = new Set([ROLES.STAFF, ROLES.PRODUCTION, ROLES.SALES, ROLES.FINANCE, ROLES.ADMIN]);
 
 function extractClaims(event) {
   return (event && event.requestContext && event.requestContext.authorizer &&

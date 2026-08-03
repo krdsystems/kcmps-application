@@ -7,9 +7,10 @@
    as lookup-order.js:
      1. A Bearer ID token, IF sent and valid AND its sub matches this
         order's customerSub -> authorized as the account owner.
-     2. Otherwise, a `contact` in the body matching order.customerContact
-        (backend/lib/customer-view.js's contactsMatch, same normalization
-        as lookup-order.js) -> authorized as the guest who placed it.
+     2. Otherwise, a `contact` in the body matching any of the order's
+        contact fields (backend/lib/customer-view.js's contactsMatch, same
+        normalization as lookup-order.js) -> authorized as the guest who
+        placed it.
    A token that verifies but belongs to a DIFFERENT sub is a real "you're
    logged in as someone else" case (403, not the enumeration-safe 404
    below — the caller already proved an identity, there's nothing to hide
@@ -17,11 +18,11 @@
    gets the same generic, artificially-delayed 404 lookup-order.js uses,
    so a wrong orderId and a wrong contact are indistinguishable.
 
-   ONLY allowed while every line item is still pre-production (Quoted,
-   Priced, Pending Payment Verification, or Payment Rejected) — the
-   moment ANY line item is Confirmed or beyond, KCMPS has committed
-   material/schedule to it, so cancellation becomes a staff conversation,
-   not a button (409, pointed at support).
+   ONLY allowed while every line item is still pre-production (Order
+   Placed, Quoted, Priced, Pending Payment Verification, or Payment
+   Rejected) — the moment ANY line item is Confirmed or beyond, KCMPS has
+   committed material/schedule to it, so cancellation becomes a staff
+   conversation, not a button (409, pointed at support).
 
    Writes a Cancelled status + EVENT# per line item, same
    TransactWriteItems/optimistic-lock shape as verify-payment.js. Does
@@ -40,7 +41,7 @@ const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
 const ARTIFICIAL_DELAY_MS = 300;
 
 const CANCELLABLE_STATUSES = new Set([
-  STATUS.QUOTED, STATUS.PRICED, STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.PAYMENT_REJECTED,
+  STATUS.ORDER_PLACED, STATUS.QUOTED, STATUS.PRICED, STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.PAYMENT_REJECTED,
 ]);
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -65,7 +66,7 @@ exports.handler = async (event) => {
     if (sub !== order.customerSub) return response(403, { error: "You don't have access to this order." });
     actorSub = sub;
   } else {
-    if (!contactsMatch(body.contact || "", order.customerContact)) {
+    if (!contactsMatch(body.contact || "", order)) {
       await sleep(ARTIFICIAL_DELAY_MS);
       return response(404, { error: "No order found for that order ID and contact." });
     }

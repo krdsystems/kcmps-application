@@ -100,6 +100,10 @@
   function deliveredLabel(ctx) { return ctx && ctx.fulfillment === "Delivery" ? "Delivered" : "Collected"; }
 
   var STATUS_TABLE = {
+    // Placed but no GCash proof submitted yet — before submitPaymentProof.js
+    // ever runs, a sku line item sits here, not in Pending Payment
+    // Verification (see backend/checkout/create-order.js's header).
+    "Order Placed": { bucket: "action", stage: 0, label: "Payment needed", next: "Scan the GCash QR and submit your reference number to move this order along.", tone: "warn" },
     "Quoted": { bucket: "progress", stage: 0, label: "Quote in progress", next: "We're pricing your custom item — usually within 24 hours.", tone: "neutral" },
     "Awaiting Quote": { bucket: "progress", stage: 0, label: "Quote in progress", next: "We're pricing your custom item — usually within 24 hours.", tone: "neutral" },
     "Priced": { bucket: "action", stage: 0, label: "Quote ready — payment needed", next: "Your quote is ready. Settle it to start production.", tone: "warn" },
@@ -111,9 +115,15 @@
     "In Production": { bucket: "progress", stage: 3, label: "Being made", next: "Your order is on the press.", tone: "good" },
     "Rework": { bucket: "progress", stage: 3, label: "Being remade", next: "We found an issue at quality check and are redoing it — quality first.", tone: "warn" },
     "QC": { bucket: "progress", stage: 4, label: "Quality check", next: "We check every piece before it goes out.", tone: "good" },
+    // Delivery branch (§6): QC -> Ready for Dispatch -> Dispatched -> Delivered.
     "Ready for Dispatch": { bucket: "progress", stage: 5, label: null, next: null, tone: "good", dynamicLabel: readyLabel },
     "Dispatched": { bucket: "progress", stage: 5, label: null, next: null, tone: "good", dynamicLabel: dispatchedLabel },
     "Delivered": { bucket: "completed", stage: 5, label: null, next: null, tone: "good", dynamicLabel: deliveredLabel },
+    // Pickup branch (§6): QC -> Ready for Pickup -> Picked Up. Picked Up is
+    // this branch's Delivered-equivalent terminal state (see
+    // deriveOrderStatus() — treated as "fulfilled" for rollup).
+    "Ready for Pickup": { bucket: "action", stage: 5, label: "Ready for pickup", next: "Your order is ready — swing by to collect it.", tone: "good" },
+    "Picked Up": { bucket: "completed", stage: 5, label: "Picked up", next: null, tone: "good" },
     "Partially Fulfilled": { bucket: "progress", stage: 5, label: "Partly delivered", next: "Some items are with you, the rest are still in progress.", tone: "neutral" },
     "Cancelled": { bucket: "cancelled", stage: null, label: "Cancelled", next: null, tone: "bad" },
     "Auto-Cancelled": { bucket: "cancelled", stage: null, label: "Cancelled — payment window expired", next: "The 48-hour verification window passed. You can reorder anytime.", tone: "bad" },
@@ -188,7 +198,7 @@
      the button at all); the backend re-checks authoritatively and 409s
      with a clear message if a line item advanced past this set between
      page load and the click (e.g. staff just started production). */
-  var CANCELLABLE_STATUSES = { "Quoted": 1, "Priced": 1, "Pending Payment Verification": 1, "Payment Rejected": 1 };
+  var CANCELLABLE_STATUSES = { "Order Placed": 1, "Quoted": 1, "Priced": 1, "Pending Payment Verification": 1, "Payment Rejected": 1 };
   function actionsFor(order) {
     var overall = statusModel(order.orderStatus, order);
     var anyRejected = (order.lineItems || []).some(function (li) { return li.status === "Payment Rejected"; });

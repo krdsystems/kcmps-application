@@ -29,23 +29,30 @@ function redactForCustomer(order) {
   return order;
 }
 
-// The checkout contact field is free text (email OR phone OR Messenger
-// handle — see create-order.js's header), so an exact case-sensitive match
-// is too strict for phone numbers typed with different spacing/formatting.
-// Compare case/whitespace-normalized first, then fall back to a digits-
-// only comparison so "0917 123 4567" matches "(0917) 123-4567". Shared by
-// every guest-facing endpoint that authenticates a caller against an
-// order's customerContact instead of a Cognito session (lookup-order.js,
-// cancel-order.js) — see either file's header for why orderId alone isn't
-// a meaningful secret and this comparison is the real trust boundary.
-function contactsMatch(supplied, stored) {
-  if (!stored) return false;
+// Checkout collects up to four separate, individually-optional contact
+// fields (email/phone/messenger/otherContact — create-order.js) rather than
+// one freeform string, so a guest proving their identity here might type
+// back any ONE of them. Compare case/whitespace-normalized first, then fall
+// back to a digits-only comparison so "0917 123 4567" matches
+// "(0917) 123-4567". Shared by every guest-facing endpoint that
+// authenticates a caller against an order instead of a Cognito session
+// (lookup-order.js, cancel-order.js) — see either file's header for why
+// orderId alone isn't a meaningful secret and this comparison is the real
+// trust boundary. `order.customerContact` is kept in the candidate list for
+// backward compatibility with any order written before the four-field split.
+function contactsMatch(supplied, order) {
+  if (!order) return false;
+  const candidates = [order.email, order.phone, order.messenger, order.otherContact, order.customerContact].filter(Boolean);
+  if (!candidates.length) return false;
   const normalize = (s) => String(s).trim().toLowerCase();
-  if (normalize(supplied) === normalize(stored)) return true;
+  const suppliedNorm = normalize(supplied);
   const digitsOnly = (s) => String(s).replace(/\D/g, "");
   const suppliedDigits = digitsOnly(supplied);
-  const storedDigits = digitsOnly(stored);
-  return suppliedDigits.length >= 7 && suppliedDigits === storedDigits;
+  return candidates.some((stored) => {
+    if (normalize(stored) === suppliedNorm) return true;
+    const storedDigits = digitsOnly(stored);
+    return suppliedDigits.length >= 7 && suppliedDigits === storedDigits;
+  });
 }
 
 module.exports = { redactForCustomer, contactsMatch };

@@ -17,6 +17,11 @@ const SCHEMA_VERSION = 1;
 // Canonical status vocabulary — every line item's `status` field, and the
 // only strings STATUS# GSI1 keys and the state machine may use.
 const STATUS = Object.freeze({
+  // A sku line item's real starting status at checkout — before the
+  // customer has submitted any GCash proof. Only submitPaymentProof.js
+  // (backend/checkout) advances it to PENDING_PAYMENT_VERIFICATION, once
+  // proof actually exists. See that Lambda's header.
+  ORDER_PLACED: "Order Placed",
   QUOTED: "Quoted",
   PRICED: "Priced",
   PENDING_PAYMENT_VERIFICATION: "Pending Payment Verification",
@@ -25,17 +30,24 @@ const STATUS = Object.freeze({
   SCHEDULED: "Scheduled",
   IN_PRODUCTION: "In Production",
   QC: "QC",
+  REWORK: "Rework",
   READY_FOR_DISPATCH: "Ready for Dispatch",
   DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
+  READY_FOR_PICKUP: "Ready for Pickup",
+  PICKED_UP: "Picked Up",
   CANCELLED: "Cancelled",
   AUTO_CANCELLED: "Auto-Cancelled",
   QUOTE_EXPIRED: "Quote Expired",
 });
 
 // Terminal statuses — a line item never leaves one of these once entered.
+// PICKED_UP is pickup fulfillment's equivalent to DELIVERED (§6 customer
+// progress bar) — deriveOrderStatus() treats the two as interchangeable for
+// rollup purposes (backend/lib/order-status.js).
 const TERMINAL_STATUSES = new Set([
   STATUS.DELIVERED,
+  STATUS.PICKED_UP,
   STATUS.CANCELLED,
   STATUS.AUTO_CANCELLED,
   STATUS.QUOTE_EXPIRED,

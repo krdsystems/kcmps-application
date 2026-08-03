@@ -11,25 +11,29 @@
 
    Flow (Payment_System_Project_Knowledge.md "Bridge Payment Method"):
      1. Customer has already placed the order via createOrder.js — its
-        `sku` line items are sitting in Pending Payment Verification with
-        order.payment still null.
+        `sku` line items are sitting in Order Placed (NOT yet Pending
+        Payment Verification — there's nothing to verify until this
+        Lambda runs) with order.payment still null.
      2. Customer pays KCMPS's GCash QR, then calls this endpoint with the
         GCash reference number + the amount they claim to have sent.
-     3. This Lambda hands back a pre-signed S3 PUT URL for the screenshot
-        and writes the `payment` sub-object onto ORDER#<id>/META
-        immediately (optimistic — it does not wait for the actual S3
-        upload to land; screenshotRef points at where it WILL be once
-        the customer's direct-to-S3 PUT completes). Staff cross-check the
-        typed reference number against real GCash transaction history
-        before verifying either way (Payment_System file: "reference
-        number... needed so staff can cross-check... screenshots alone
-        are editable") — an incomplete/never-arriving screenshot upload
-        is a staff-side judgment call at verification time, not something
-        this Lambda needs to police.
+     3. This Lambda hands back a pre-signed S3 PUT URL for the screenshot,
+        writes the `payment` sub-object onto ORDER#<id>/META immediately
+        (optimistic — it does not wait for the actual S3 upload to land;
+        screenshotRef points at where it WILL be once the customer's
+        direct-to-S3 PUT completes), and is the ONLY place that ever
+        transitions a line item into Pending Payment Verification —
+        writing the status + GSI1 change AND an EVENT# record per line
+        item, same append-only pattern every other transition uses. Staff
+        cross-check the typed reference number against real GCash
+        transaction history before verifying either way (Payment_System
+        file: "reference number... needed so staff can cross-check...
+        screenshots alone are editable") — an incomplete/never-arriving
+        screenshot upload is a staff-side judgment call at verification
+        time, not something this Lambda needs to police.
      4. Sends the "Order received — under verification" SES email
-        (docs/roadmap.md 1.2) if customerContact looks like an email
-        address (checkout's "contact" field is free text — phone numbers
-        are common and can't receive an email).
+        (docs/roadmap.md 1.2) if the order has an `email` on file
+        (checkout's contact fields are individually optional — phone/
+        Messenger-only customers can't receive an email).
 
    NO OWNERSHIP CHECK on the caller vs. the order. Checkout is guest-
    friendly (createOrder.js's customerSub can be null), so there's no
@@ -51,14 +55,13 @@ const { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand }
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, orderPk, metaSk, activeStatusAttrs } = require("../lib");
+const { STATUS, orderPk, metaSk, activeStatusAttrs, buildEvent } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
 const FROM_EMAIL = process.env.FROM_EMAIL; // must be an SES-verified identity, e.g. order@kcmps.com
 const VERIFICATION_SLA_HOURS = Number(process.env.VERIFICATION_SLA_HOURS || 48);
 const UPLOAD_URL_EXPIRY_SECONDS = 15 * 60;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
@@ -109,19 +112,23 @@ exports.handler = async (event) => {
     rejectionReason: null,
   };
 
-  // Still-pending sku line items get their 48h expiry clock (GSI1SK, read
-  // by expire-pending-orders.js) reset to NOW — otherwise it keeps
-  // counting from checkout, so a customer who pays right before the
-  // original 48h mark gets auto-cancelled shortly after submitting proof,
-  // one hour after this Lambda's own email promises a 48h SLA from here.
-  const pendingRes = await dynamo.send(new QueryCommand({
+  // Still-Order-Placed sku line items are the ones this submission actually
+  // covers — this is the one and only place a line item ever becomes
+  // Pending Payment Verification (see header). A resubmission after a
+  // rejection (Payment Rejected -> Pending Payment Verification) is a
+  // separate, already-legal transition (advance-line-item.js's
+  // LEGAL_TRANSITIONS) that this Lambda doesn't need to duplicate — those
+  // line items aren't Order Placed anymore, so this query naturally skips
+  // them here and the customer's resubmission flow re-invokes this same
+  // endpoint anyway.
+  const placedRes = await dynamo.send(new QueryCommand({
     TableName: TABLE,
     KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
     FilterExpression: "#status = :status",
     ExpressionAttributeNames: { "#status": "status" },
-    ExpressionAttributeValues: { ":pk": pk, ":prefix": "LINEITEM#", ":status": STATUS.PENDING_PAYMENT_VERIFICATION },
+    ExpressionAttributeValues: { ":pk": pk, ":prefix": "LINEITEM#", ":status": STATUS.ORDER_PLACED },
   }));
-  const pendingLineItems = pendingRes.Items || [];
+  const placedLineItems = placedRes.Items || [];
 
   const transactItems = [
     {
@@ -140,21 +147,36 @@ exports.handler = async (event) => {
         ExpressionAttributeValues: { ":payment": payment, ":priorPayment": order.payment ?? null, ":now": now },
       },
     },
-    ...pendingLineItems.map((li) => {
+    // Every Order Placed -> Pending Payment Verification transition is a
+    // status write + an append-only EVENT# record, same shape as every
+    // other transition in the state machine (backend/lib/events.js).
+    ...placedLineItems.flatMap((li) => {
       const gsiAttrs = activeStatusAttrs(STATUS.PENDING_PAYMENT_VERIFICATION, now);
-      return {
-        Update: {
-          TableName: TABLE,
-          Key: { PK: li.PK, SK: li.SK },
-          ConditionExpression: "#status = :status",
-          UpdateExpression: "SET enteredStatusAt = :now, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk",
-          ExpressionAttributeNames: { "#status": "status" },
-          ExpressionAttributeValues: {
-            ":now": now, ":status": STATUS.PENDING_PAYMENT_VERIFICATION,
-            ":gsi1pk": gsiAttrs.GSI1PK, ":gsi1sk": gsiAttrs.GSI1SK,
+      return [
+        {
+          Update: {
+            TableName: TABLE,
+            Key: { PK: li.PK, SK: li.SK },
+            ConditionExpression: "#status = :from",
+            UpdateExpression: "SET #status = :to, enteredStatusAt = :now, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: {
+              ":now": now, ":from": STATUS.ORDER_PLACED, ":to": STATUS.PENDING_PAYMENT_VERIFICATION,
+              ":gsi1pk": gsiAttrs.GSI1PK, ":gsi1sk": gsiAttrs.GSI1SK,
+            },
           },
         },
-      };
+        {
+          Put: {
+            TableName: TABLE,
+            Item: buildEvent({
+              orderId, lineItemId: li.lineItemId, from: STATUS.ORDER_PLACED, to: STATUS.PENDING_PAYMENT_VERIFICATION,
+              actorSub: order.customerSub, actorName: order.customerName,
+              meta: { via: "submitPaymentProof" }, at: now,
+            }),
+          },
+        },
+      ];
     }),
   ];
 
@@ -165,7 +187,7 @@ exports.handler = async (event) => {
     throw err;
   });
 
-  if (FROM_EMAIL && EMAIL_RE.test(order.customerContact || "")) {
+  if (FROM_EMAIL && order.email) {
     await sendReceivedEmail(order, orderId).catch((err) => {
       // Never fail the request over a notification email — the payment
       // proof itself is already durably written by the time this runs.
@@ -185,7 +207,7 @@ async function sendReceivedEmail(order, orderId) {
     `— KCMPS`;
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.customerContact] },
+    Destination: { ToAddresses: [order.email] },
     Message: {
       Subject: { Data: subject },
       Body: { Text: { Data: bodyText } },

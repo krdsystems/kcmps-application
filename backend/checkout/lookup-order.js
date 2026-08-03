@@ -50,7 +50,7 @@ exports.handler = async (event) => {
   const orderRes = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: orderPk(orderId), SK: metaSk() } }));
   const order = orderRes.Item;
 
-  if (!order || !contactsMatch(contact, order.customerContact)) {
+  if (!order || !contactsMatch(contact, order)) {
     await sleep(ARTIFICIAL_DELAY_MS);
     return response(404, { error: "No order found for that order ID and contact." });
   }

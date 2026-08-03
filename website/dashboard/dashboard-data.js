@@ -89,8 +89,8 @@
   // Real orders (create-order.js) don't share every field name the mock
   // seed data uses — normalize here, once, so no .html needs to know the
   // difference. `li.name` -> `li.description`, synthesize a flat
-  // `order.client.name` from `order.customerContact`/`customerName` since
-  // real orders have no nested client object.
+  // `order.client.name` from `order.customerName` since real orders have
+  // no nested client object.
   function normalizeOrder(order) {
     order.client = order.client || { name: order.customerName };
     (order.lineItems || []).forEach((li) => { li.description = li.description || li.name; });
@@ -304,11 +304,16 @@
     ];
   }
 
+  // Delivered (courier) and Picked Up (pickup fulfillment) are equivalent
+  // terminal states for rollup purposes — §6's two fulfillment branches.
+  function isFulfilled(s) { return s === "Delivered" || s === "Picked Up"; }
+
   function deriveOrderStatus(order) {
     const statuses = order.lineItems.map((li) => li.status);
-    if (statuses.every((s) => s === "Delivered")) return "Delivered";
-    if (statuses.some((s) => s === "Delivered") && statuses.some((s) => s !== "Delivered" && !["Cancelled", "Quote Expired"].includes(s))) return "Partially Fulfilled";
+    if (statuses.every(isFulfilled)) return "Delivered";
+    if (statuses.some(isFulfilled) && statuses.some((s) => !isFulfilled(s) && !["Cancelled", "Quote Expired"].includes(s))) return "Partially Fulfilled";
     if (statuses.some((s) => s === "Pending Payment Verification")) return "Pending Payment Verification";
+    if (statuses.some((s) => s === "Order Placed")) return "Order Placed";
     if (statuses.some((s) => s === "Rework")) return "Rework";
     if (statuses.some((s) => s === "In Production")) return "In Production";
     if (statuses.some((s) => s === "Quoted")) return "Awaiting Quote";
@@ -385,7 +390,12 @@
       readyToProduce: items.filter((li) => li.status === "Confirmed"),
       inProduction: items.filter((li) => li.status === "In Production"),
       qcHoldRework: items.filter((li) => li.status === "Rework" || li.status === "QC"),
-      readyForDispatch: items.filter((li) => li.status === "Ready for Dispatch"),
+      readyForDispatch: items.filter((li) => li.status === "Ready for Dispatch" || li.status === "Ready for Pickup"),
+      // A REVIEW queue, not an action queue (§3.1 Row 1) — nothing for staff
+      // to advance here, just visibility into who cancelled vs. who timed
+      // out, so no SLA color-coding (decorateLineItem's slaState stays "ok"
+      // since SLA_HOURS has no entry for either status below).
+      cancelled: items.filter((li) => li.status === "Cancelled" || li.status === "Auto-Cancelled"),
     };
     Object.keys(q).forEach((k) => { q[k] = sortByAging(q[k]).map(decorateLineItem); });
     return q;
@@ -483,6 +493,7 @@
 
   /* ---- line item transitions (mirrors the Streams-derived event write) ---- */
   const NEXT_STATUS = {
+    "Order Placed": "Pending Payment Verification",
     "Pending Payment Verification": "Confirmed",
     "Quoted": "Priced",
     "Priced": "Confirmed",
@@ -490,8 +501,10 @@
     "Scheduled": "In Production",
     "In Production": "QC",
     "QC": "Ready for Dispatch",
+    "Rework": "In Production",
     "Ready for Dispatch": "Dispatched",
     "Dispatched": "Delivered",
+    "Ready for Pickup": "Picked Up",
   };
 
   // Manual orders (createManualOrder, below) have no backend Lambda in
@@ -617,7 +630,26 @@
     return order;
   }
 
-  function sendToRework(orderId, lineItemId, spoilage) {
+  // QC -> Rework is a normal line-item transition (advance-line-item.js's
+  // LEGAL_TRANSITIONS already allows it) — this used to unconditionally
+  // touch the localStorage mock (state.orders.find(...)), so a real
+  // (backend-created) order's line item could never actually enter Rework
+  // at all: `order` came back undefined and the next line threw, a dead end
+  // for every non-mock order. Gated the same way as its siblings
+  // (advanceLineItem/verifyPayment/rejectPayment) so real orders route over
+  // the wire instead. There's no dedicated spoilage-logging Lambda yet (see
+  // backend/CLAUDE.md's staff-api/ table) — the spoilage detail rides along
+  // as the transition event's `meta` so it's still durably recorded, just
+  // not yet a queryable field on the line item itself.
+  async function sendToRework(orderId, lineItemId, spoilage) {
+    if (isMockOnlyOrder(orderId)) return sendToReworkMock(orderId, lineItemId, spoilage);
+    return apiFetch("/line-items/" + encodeURIComponent(lineItemId) + "/advance", {
+      method: "POST",
+      body: JSON.stringify({ orderId, lineItemId, to: "Rework", meta: { spoilage } }),
+    });
+  }
+
+  function sendToReworkMock(orderId, lineItemId, spoilage) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     const li = order.lineItems.find((x) => x.lineItemId === lineItemId);

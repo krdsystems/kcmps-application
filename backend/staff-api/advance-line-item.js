@@ -23,10 +23,9 @@
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, TransactWriteCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
-const { STATUS, orderPk, lineItemSk, buildEvent, extractClaims, getGroups, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, orderPk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
-const LEGACY_STAFF_GROUP = "Staff"; // see get-orders.js for why both are accepted
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -59,7 +58,7 @@ const LEGAL_TRANSITIONS = {
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
-  if (!isStaff(claims) && !getGroups(claims).includes(LEGACY_STAFF_GROUP)) {
+  if (!isStaff(claims)) {
     return response(403, { error: "Staff only" });
   }
 

@@ -183,6 +183,11 @@ test("isStaff is true for any non-Customer role, false for Customer-only or no c
   assert.equal(isStaff({}), false);
 });
 
+test("isStaff treats Staff as a first-class role, no legacy-group fallback needed", () => {
+  assert.equal(isStaff({ "cognito:groups": "Staff" }), true);
+  assert.equal(isStaff({ "cognito:groups": ["Staff"] }), true);
+});
+
 // ---- order-status.js ----
 
 test("deriveOrderStatus: all Delivered -> Delivered", () => {

@@ -832,7 +832,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   gap: var(--space-2); padding: 10px var(--space-3); background: color-mix(in srgb, var(--color-bg) 94%, transparent);
   backdrop-filter: blur(10px); border-top: 1px solid var(--color-divider); }
 .sticky-cta .btn { flex: 1; }
-@media (max-width: 760px) { .sticky-cta { display: flex; } body { padding-bottom: 64px; } }
+/* Matches index.html's nav-links collapse breakpoint (max-width: 1200px) —
+   once the top nav's "Start your order" CTA hides there, this bottom bar is
+   the only remaining way to reach it, so the two must switch together. */
+@media (max-width: 1200px) { .sticky-cta { display: flex; } body { padding-bottom: 64px; } }
 
 /* — scroll position indicator (right-edge section rail) —
    Desktop: vertically centered, translucent lines that brighten/lengthen for

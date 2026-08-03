@@ -569,6 +569,57 @@ order created, looked up with the correct contact (200, redacted shape) and an i
 (200, line item → `Cancelled`, `GSI1PK` removed) and rejected once advanced past `Confirmed`
 (409). Throwaway orders deleted afterward, same convention as the smoke tests above.
 
+## SES customer notifications — wired 2026-08-03/04
+
+6 touchpoints across 5 Lambdas send a customer email, all best-effort (a send failure never
+fails the underlying staff/customer action — caught and logged, not rethrown) and all `Bcc:
+admin@kcmps.com` so the shared shop inbox always has a copy, which is also what makes the
+"Order↔email linking" correspondence card's system-generated entries meaningful (see root
+`CLAUDE.md`).
+
+| Touchpoint | Lambda | Env var (name inconsistent across files — don't assume) |
+|---|---|---|
+| Order placed | `create-order.js` | `FROM_EMAIL` |
+| Order received / pending verification | `submit-payment-proof.js` | `FROM_EMAIL` |
+| Payment confirmed | `verify-payment.js` | `FROM_EMAIL` |
+| Payment rejected | `verify-payment.js` | `FROM_EMAIL` |
+| Ready to ship out (`Ready for Dispatch`), Shipped out (`Dispatched`), Ready for pickup (`Ready for Pickup`) | `advance-line-item.js` | `FROM_EMAIL` |
+| Auto-cancelled (verification expired), Quote expired | `expire-pending-orders.js` | `SES_SENDER` |
+
+`advance-line-item.js` only emails on those 3 transitions — every other transition it handles
+(Scheduled, In Production, QC, Rework, and the terminal Delivered/Picked Up) stays silent by
+design; the customer tracks those via the self-serve order-status progress page, not a push
+per stage (matches the Payment System spec's original 3-touchpoint notification design, which
+this expands on).
+
+Each send is followed by a best-effort `UpdateItem` appending a `{ at, note, actorName: "System
+(auto-email)" }` entry to the order's `correspondenceLog` (`list_append`, no
+`if_not_exists` needed — every order gets `correspondenceLog: []` at creation) — a log-write
+failure is caught and logged separately from the email send itself, so it can never look like
+the notification failed when it actually sent.
+
+**IAM — discovered the hard way, don't re-break this:** `kcmps.com`'s SES identity has a
+default configuration set (`my-first-configuration-set`, a leftover from the SES console setup
+wizard) attached. Because of that, IAM checks resource-level permissions against **both** the
+identity ARN and the configuration-set ARN on every send — granting `ses:SendEmail` scoped only
+to `identity/kcmps.com` produces a live `AccessDeniedException` on `configuration-set/my-first-
+configuration-set`, not the identity. Every role that sends SES mail needs both resources in
+its `Resource` list:
+- `kcmps-checkout-lambda-role` (`create-order`, `submit-payment-proof`) — had identity-only,
+  fixed to include both.
+- `kcmps-staff-api-lambda-role` (`verify-payment`, `advance-line-item`) — had **no** SES
+  permission at all before this, added fresh with both resources.
+- `kcmps-jobs-lambda-role` (`expire-pending-orders`) — had identity-only, fixed to include both.
+
+**SES account status (checked live, not assumed):** `ProductionAccessEnabled: true` — out of
+sandbox already, 50,000/day quota. `kcmps.com` domain identity DKIM `Status: SUCCESS`, MAIL FROM
+subdomain `mail.kcmps.com` SPF `Status: SUCCESS`. CloudWatch `AWS/SES` `Delivery` metric confirms
+real 250-OK handoffs to recipient mail servers with zero `Bounce`/`Complaint`/`Reject` — verified
+via a real cross-provider send (a non-Gmail address received the email correctly). Gmail
+specifically not receiving these currently: not a bug on this side — a brand-new sending domain
+with no history gets filtered/discarded by Gmail's reputation heuristics regardless of correct
+SPF/DKIM/DMARC, and should resolve as the domain sends more real mail and builds reputation.
+
 ## Re-running / updates
 
 `aws cloudformation deploy` is idempotent — re-running it with the same

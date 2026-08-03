@@ -2677,6 +2677,57 @@ to correctly close the modal and hand off to the pre-existing `startLogin()` unc
 **Not changed:** sign-in, logout, session storage, JWT handling, the dashboard's staff gate, or
 any backend Lambda — this is a frontend-only addition in front of one entry point.
 
+### 64. SES customer notifications wired live, expanded to a 4-stage happy path, dashboard-visible (2026-08-03/04)
+
+**Trigger:** a UAT pass on the Milestone 1.3 order state machine found the "payment confirmed"/
+"payment rejected" emails the Payment System spec called for were coded (`verify-payment.js`)
+but never actually fired — investigation traced it to `FROM_EMAIL` simply being unset on that
+Lambda, plus (once set) a live `AccessDeniedException` from a permission gap only the real send
+attempt surfaced.
+
+**Fixed (existing 3-touchpoint spec):** `kcmps.com`'s SES identity turned out to have a default
+configuration set (`my-first-configuration-set`, an SES-console-wizard leftover) attached — IAM
+checks resource-level permissions against both the identity ARN and the configuration-set ARN on
+every send, so a role scoped only to the identity got denied on the configuration-set instead.
+`kcmps-checkout-lambda-role` and `kcmps-jobs-lambda-role` had identity-only grants (fixed to add
+the configuration-set ARN); `kcmps-staff-api-lambda-role` had **no** SES permission at all
+(added fresh). `FROM_EMAIL`/`SES_SENDER` env vars set on `submit-payment-proof`/`verify-payment`/
+`expire-pending-orders`. Verified SES itself was never the problem — `ProductionAccessEnabled:
+true` (already out of sandbox, contrary to what was assumed going in), DKIM/MAIL-FROM SPF both
+`SUCCESS`, and CloudWatch's `AWS/SES` `Delivery` metric confirmed real 250-OK handoffs with zero
+bounces/complaints — the one persistently-failing test address turned out to be a Gmail
+reputation-filtering artifact of a brand-new sending domain, confirmed by a cross-provider
+address receiving the same email cleanly.
+
+**Expanded to 4 happy-path touchpoints:** revised from the original 3 (received/confirmed/
+rejected) to `Order placed` (new — `create-order.js`, order-level, fires once per checkout) →
+`Payment confirm` (existing) → `Ready to ship out` (new — `advance-line-item.js` on `Ready for
+Dispatch`) → `Shipped out` / `Ready for pickup` (new — same Lambda, on `Dispatched` / `Ready for
+Pickup`). Deliberately does NOT email on every line-item transition — Scheduled/In Production/QC/
+Rework/terminal Delivered/Picked Up stay silent, self-serve progress page only, per the original
+spec's design intent. `Payment Rejected` and `Auto-Cancelled`/`Quote Expired` (error/exception
+paths) were left unchanged, not part of this happy-path revision.
+
+**`Bcc: admin@kcmps.com` added to all 6 sends** so the shared shop inbox always has a copy
+(requested so the existing Order↔email linking correspondence feature and Spacemail search have
+something to find).
+
+**Dashboard visibility (staff didn't previously know an email fired):** every successful send
+now also appends a `{ at, note, actorName: "System (auto-email)" }` entry to the order's
+`correspondenceLog` via a best-effort `UpdateItem` — reuses `job-detail.html`'s existing
+"Customer correspondence" card verbatim (entry 61/`docs/roadmap.md`'s "Order↔email linking"),
+no new dashboard UI needed. A log-write failure is caught separately from the send itself so it
+can never masquerade as the notification failing.
+
+**Verified live:** a full checkout → submit-proof → staff-verify loop with a real non-Gmail
+address received all 3 emails correctly, each with the `admin@kcmps.com` Bcc confirmed via
+CloudWatch's `Delivery` metric (2 recipients per send). Order's DynamoDB item confirmed carrying
+the matching `correspondenceLog` entries after each stage.
+
+**Not changed:** the underlying state machine, `Payment Rejected`/`Auto-Cancelled`/`Quote
+Expired` email content or gating, or any frontend file — this was backend-Lambda-only (IAM
+policies, Lambda env vars, and the 5 Lambda source files listed above).
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

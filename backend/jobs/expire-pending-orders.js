@@ -28,7 +28,7 @@
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { STATUS, statusPk, metaSk, buildEvent, attrsToRemoveOnTerminal } = require("../lib");
 
@@ -134,8 +134,9 @@ async function expireVerification(li) {
     ],
   }));
   const contact = await getCustomerContact(li.PK);
-  await sendMailIfEmail(contact, "Your KCMPS order verification window has expired",
-    `We couldn't verify your payment within 48 hours, so this order (${li.PK}) has been automatically cancelled. Please place a new order or contact us if you already paid.`);
+  await sendMailIfEmail(li.PK, contact, "Your KCMPS order verification window has expired",
+    `We couldn't verify your payment within 48 hours, so this order (${li.PK}) has been automatically cancelled. Please place a new order or contact us if you already paid.`,
+    "Emailed customer: order auto-cancelled (verification window expired)");
 }
 
 async function expireQuote(li) {
@@ -165,8 +166,9 @@ async function expireQuote(li) {
     ],
   }));
   const contact = await getCustomerContact(li.PK);
-  await sendMailIfEmail(contact, "Your KCMPS quote has expired",
-    `Your quote for order ${li.PK} was not paid within 7 days and has expired. Reply to this email if you'd still like to proceed and we'll requote.`);
+  await sendMailIfEmail(li.PK, contact, "Your KCMPS quote has expired",
+    `Your quote for order ${li.PK} was not paid within 7 days and has expired. Reply to this email if you'd still like to proceed and we'll requote.`,
+    "Emailed customer: quote expired");
 }
 
 async function getCustomerContact(orderPkValue) {
@@ -174,15 +176,28 @@ async function getCustomerContact(orderPkValue) {
   return res.Item?.email || null;
 }
 
-async function sendMailIfEmail(contact, subject, body) {
+async function sendMailIfEmail(pk, contact, subject, body, correspondenceNote) {
   if (!SES_SENDER || !contact || !EMAIL_RE.test(contact)) return;
   try {
     await ses.send(new SendEmailCommand({
       Source: SES_SENDER,
-      Destination: { ToAddresses: [contact] },
+      // Bcc admin@kcmps.com — same "the Bcc is the sent-log" reasoning as
+      // submit-payment-proof.js, so dashboard/email.html sees this too.
+      Destination: { ToAddresses: [contact], BccAddresses: ["admin@kcmps.com"] },
       Message: { Subject: { Data: subject }, Body: { Text: { Data: body } } },
     }));
   } catch (err) {
     console.error("expire-pending-orders: SES send failed (degrading gracefully):", err.message);
+    return;
   }
+  // Surfaces in job-detail.html's "Customer correspondence" card so staff
+  // can see at a glance that this touchpoint's email actually went out.
+  await client.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: pk, SK: metaSk() },
+    UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note: correspondenceNote, actorName: "System (auto-email)" }] },
+  })).catch((err) => {
+    console.error("expire-pending-orders: correspondence log failed:", err.message);
+  });
 }

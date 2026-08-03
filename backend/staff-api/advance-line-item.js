@@ -22,12 +22,42 @@
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, TransactWriteCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
-const { STATUS, orderPk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal } = require("../lib");
+const { DynamoDBDocumentClient, TransactWriteCommand, GetCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
+// Same FROM_EMAIL gate as the other staff-api/checkout Lambdas — unset
+// disables sending entirely, best-effort, never blocks the staff action.
+const FROM_EMAIL = process.env.FROM_EMAIL;
+const ses = new SESClient({});
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+// The last 2 of the 4 happy-path customer notifications (see create-
+// order.js/verify-payment.js for the first two). Keyed by the `to` status
+// this Lambda just wrote — only these 3 transitions notify the customer;
+// every other transition (Scheduled, In Production, QC, Rework, terminal
+// Delivered/Picked Up) stays silent, matching the Payment System spec's
+// "self-serve progress bar, not a push per stage" design.
+const SHIP_STAGE_EMAIL = {
+  [STATUS.READY_FOR_DISPATCH]: (order, orderId) => ({
+    subject: `Order ${orderId} — ready to ship out`,
+    body: `Hi ${order.customerName},\n\n` +
+      `Your order ${orderId} has passed quality check and is ready to ship out. ` +
+      `We'll email you again once it's on its way.\n\n— KCMPS`,
+  }),
+  [STATUS.DISPATCHED]: (order, orderId) => ({
+    subject: `Order ${orderId} — shipped out`,
+    body: `Hi ${order.customerName},\n\n` +
+      `Your order ${orderId} has shipped out and is on its way to you.\n\n— KCMPS`,
+  }),
+  [STATUS.READY_FOR_PICKUP]: (order, orderId) => ({
+    subject: `Order ${orderId} — ready for pickup`,
+    body: `Hi ${order.customerName},\n\n` +
+      `Your order ${orderId} is ready for pickup at KCMPS.\n\n— KCMPS`,
+  }),
+};
 
 // Legal transitions — mirrors NEXT_STATUS in dashboard-data.js, plus the
 // branches (QC pass/fail, verification reject) that need an explicit `to`.
@@ -132,8 +162,45 @@ exports.handler = async (event) => {
   // Lambda, expire-pending-orders.js, a future customer-approval Lambda)
   // gets a consistent rollup without duplicating deriveOrderStatus().
 
+  const buildEmail = SHIP_STAGE_EMAIL[to];
+  if (FROM_EMAIL && buildEmail) {
+    await sendShipStageEmail(pk, orderId, buildEmail).catch((err) => {
+      console.error(`advanceLineItem: SES send failed (${to}):`, err.message);
+    });
+  }
+
   return response(200, { lineItemId, from, to, at: now });
 };
+
+async function sendShipStageEmail(pk, orderId, buildEmail) {
+  const orderRes = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: pk, SK: metaSk() } }));
+  const order = orderRes.Item;
+  if (!order || !order.email) return; // guest with no email, or free-text-only contact — nothing to send to
+  const { subject, body } = buildEmail(order, orderId);
+  await ses.send(new SendEmailCommand({
+    Source: FROM_EMAIL,
+    // Bcc admin@kcmps.com — same "the Bcc is the sent-log" reasoning as
+    // submit-payment-proof.js, so dashboard/email.html sees this too.
+    Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
+    Message: { Subject: { Data: subject }, Body: { Text: { Data: body } } },
+  }));
+  // Surfaces in job-detail.html's "Customer correspondence" card so staff
+  // can see at a glance that this touchpoint's email actually went out —
+  // best-effort and separate from the send above (a log-write failure
+  // must never look like the email itself failed).
+  await logCorrespondence(pk, `Emailed customer: ${subject.replace(`Order ${orderId} — `, "")}`).catch((err) => {
+    console.error("advanceLineItem: correspondence log failed:", err.message);
+  });
+}
+
+async function logCorrespondence(pk, note) {
+  await client.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: pk, SK: metaSk() },
+    UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: "System (auto-email)" }] },
+  }));
+}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

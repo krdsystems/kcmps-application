@@ -43,13 +43,18 @@
 
 const { randomUUID } = require("crypto");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { STATUS, baseItem, buildEvent, orderPk, metaSk, lineItemSk, idempotencyPk, activeStatusAttrs, deriveOrderStatus } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
 const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+// Same FROM_EMAIL gate as submit-payment-proof.js/verify-payment.js — unset
+// disables sending entirely, best-effort, never blocks the actual checkout.
+const FROM_EMAIL = process.env.FROM_EMAIL;
+const ses = new SESClient({});
 // 1 order + 2 items/line (LINEITEM# + EVENT#) + 1 optional idempotency
 // record must stay under TransactWriteItems' hard 100-item ceiling.
 const MAX_CART_LINES = 45;
@@ -227,8 +232,52 @@ exports.handler = async (event) => {
     throw err;
   }
 
+  // First of the 4 happy-path customer notifications (Order Placed ->
+  // Payment Confirm [verify-payment.js] -> Ready to ship out / Shipped out
+  // or Pickup ready [advance-line-item.js]). Order-level, not per-line-item
+  // — fires once per checkout regardless of how many lines/types are in
+  // the cart, since from the customer's view they placed one order.
+  if (FROM_EMAIL && email) {
+    await sendOrderPlacedEmail({ customerName, email }, orderId).catch((err) => {
+      console.error("createOrder: SES send failed (order placed):", err.message);
+    });
+  }
+
   return response(201, responseBody);
 };
+
+async function sendOrderPlacedEmail(order, orderId) {
+  await ses.send(new SendEmailCommand({
+    Source: FROM_EMAIL,
+    // Bcc admin@kcmps.com — same "the Bcc is the sent-log" reasoning as
+    // submit-payment-proof.js, so dashboard/email.html sees this too.
+    Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
+    Message: {
+      Subject: { Data: `Order ${orderId} placed` },
+      Body: { Text: { Data:
+        `Hi ${order.customerName},\n\n` +
+        `Thanks for your order — ${orderId} has been placed. We'll email you again once payment is confirmed.\n\n` +
+        `— KCMPS`
+      } },
+    },
+  }));
+  // Surfaces in job-detail.html's "Customer correspondence" card so staff
+  // can see at a glance that this touchpoint's email actually went out —
+  // best-effort and separate from the send above (a log-write failure
+  // must never look like the email itself failed).
+  await logCorrespondence(orderPk(orderId), "Emailed customer: order placed").catch((err) => {
+    console.error("createOrder: correspondence log failed:", err.message);
+  });
+}
+
+async function logCorrespondence(pk, note) {
+  await dynamo.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: pk, SK: metaSk() },
+    UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: "System (auto-email)" }] },
+  }));
+}
 
 // Verifies a Bearer token IF one was sent; returns null (guest) on any
 // absence/failure rather than throwing — see the header note on why a

@@ -51,7 +51,7 @@
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
@@ -207,11 +207,30 @@ async function sendReceivedEmail(order, orderId) {
     `— KCMPS`;
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.email] },
+    // Bcc admin@kcmps.com so every customer notification also lands in the
+    // shared inbox dashboard/email.html reads from — the dashboard has no
+    // separate "sent" log of its own, so this Bcc IS that log.
+    Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
     Message: {
       Subject: { Data: subject },
       Body: { Text: { Data: bodyText } },
     },
+  }));
+  // Surfaces in job-detail.html's "Customer correspondence" card so staff
+  // can see at a glance that this touchpoint's email actually went out —
+  // best-effort and separate from the send above (a log-write failure
+  // must never look like the email itself failed).
+  await logCorrespondence(orderPk(orderId), "Emailed customer: order received, pending verification").catch((err) => {
+    console.error("submitPaymentProof: correspondence log failed:", err.message);
+  });
+}
+
+async function logCorrespondence(pk, note) {
+  await dynamo.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: pk, SK: metaSk() },
+    UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: "System (auto-email)" }] },
   }));
 }
 

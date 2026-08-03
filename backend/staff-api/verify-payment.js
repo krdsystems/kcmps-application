@@ -23,7 +23,7 @@
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, QueryCommand, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, attrsToRemoveOnTerminal } = require("../lib");
 
@@ -169,7 +169,9 @@ exports.handler = async (event) => {
 async function sendVerifiedEmail(order, orderId) {
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.email] },
+    // Bcc admin@kcmps.com — same "the Bcc is the sent-log" reasoning as
+    // submit-payment-proof.js, so dashboard/email.html sees this too.
+    Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
     Message: {
       Subject: { Data: `Order ${orderId} verified — payment confirmed` },
       Body: { Text: { Data:
@@ -179,12 +181,15 @@ async function sendVerifiedEmail(order, orderId) {
       } },
     },
   }));
+  await logCorrespondence(orderPk(orderId), "Emailed customer: payment confirmed").catch((err) => {
+    console.error("verifyPayment: correspondence log failed:", err.message);
+  });
 }
 
 async function sendRejectedEmail(order, orderId, reason) {
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.email] },
+    Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
     Message: {
       Subject: { Data: `Order ${orderId} — we couldn't verify your payment` },
       Body: { Text: { Data:
@@ -194,6 +199,22 @@ async function sendRejectedEmail(order, orderId, reason) {
         `— KCMPS`
       } },
     },
+  }));
+  await logCorrespondence(orderPk(orderId), "Emailed customer: payment rejected").catch((err) => {
+    console.error("verifyPayment: correspondence log failed:", err.message);
+  });
+}
+
+// Surfaces in job-detail.html's "Customer correspondence" card so staff can
+// see at a glance that a touchpoint's email actually went out — best-effort
+// and separate from the send itself (a log-write failure must never look
+// like the email failed).
+async function logCorrespondence(pk, note) {
+  await client.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { PK: pk, SK: metaSk() },
+    UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: "System (auto-email)" }] },
   }));
 }
 

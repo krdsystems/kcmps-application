@@ -160,11 +160,22 @@
       if (logoutBtn) logoutBtn.addEventListener("click", logout);
     }
 
-    // mobile nav toggle
+    // mobile nav toggle — a backdrop covers the content area behind the
+    // sidebar so a tap out there closes it; visibility:hidden (not just
+    // opacity:0) keeps it out of the hit-test when closed, matching
+    // store.js's .cart-overlay pattern.
     const toggle = document.getElementById("dash-nav-toggle");
     const sidebar = document.getElementById("dash-sidebar");
     if (toggle && sidebar) {
-      toggle.addEventListener("click", () => sidebar.classList.toggle("is-open"));
+      const backdrop = document.createElement("div");
+      backdrop.className = "dash-sidebar-backdrop";
+      document.body.appendChild(backdrop);
+      const closeSidebar = () => { sidebar.classList.remove("is-open"); backdrop.classList.remove("is-open"); };
+      toggle.addEventListener("click", () => {
+        sidebar.classList.toggle("is-open");
+        backdrop.classList.toggle("is-open", sidebar.classList.contains("is-open"));
+      });
+      backdrop.addEventListener("click", closeSidebar);
     }
 
     return claims;

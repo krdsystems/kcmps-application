@@ -70,6 +70,22 @@
       return tokens && tokens.id_token ? tokens.id_token : null;
     } catch (e) { return null; }
   }
+  // Client-side decode for UI prefill only (mirrors index.html's own
+  // decodeJwt) — never trust this server-side, the checkout Lambda only
+  // trusts a re-verified token. Only `name`/`email` are ever populated at
+  // signup (index.html's signUpCustomer()) — no phone/Messenger attribute
+  // exists on the Cognito user today, so those two checkout fields are the
+  // only ones a logged-in session can meaningfully lock.
+  function sessionClaims() {
+    var token = idToken();
+    if (!token) return null;
+    try {
+      var json = decodeURIComponent(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")).split("").map(function (c) {
+        return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(""));
+      return JSON.parse(json);
+    } catch (e) { return null; }
+  }
 
   var peso = function (n) {
     return DATA.currency + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -1276,7 +1292,12 @@
         '<div class="checkout-view" id="checkout-view">' +
           '<button type="button" class="checkout-back">&larr; Back to cart</button>' +
           '<div class="field"><label for="co-name">Your name</label><input class="input" id="co-name" autocomplete="name" required /></div>' +
-          '<div class="field"><label for="co-contact">Email / phone / Messenger</label><input class="input" id="co-contact" required placeholder="how we reach you" /></div>' +
+          '<div id="co-account-note" class="f-note" style="display:none"></div>' +
+          '<div class="field"><label for="co-email">Email</label><input class="input" id="co-email" type="email" autocomplete="email" placeholder="you@example.com" /></div>' +
+          '<div class="field"><label for="co-phone">Phone</label><input class="input" id="co-phone" type="tel" autocomplete="tel" placeholder="09xx xxx xxxx" /></div>' +
+          '<div class="field"><label for="co-messenger">Messenger</label><input class="input" id="co-messenger" placeholder="Messenger username or link" /></div>' +
+          '<div class="field"><label for="co-other-contact">Other contact method</label><input class="input" id="co-other-contact" placeholder="Any other way to reach you" /></div>' +
+          '<p class="f-note">At least one contact method above is required.</p>' +
           '<div class="field"><label>Fulfillment</label>' +
             '<div class="seg" role="radiogroup" aria-label="Fulfillment" style="width:100%">' +
               '<label class="seg-opt" style="flex:1;justify-content:center"><input type="radio" name="co-fulfill" value="Pickup" checked /><span>Pick up</span></label>' +
@@ -1324,6 +1345,32 @@
 
     bodyView = drawer.querySelector("#cart-view");
     footEl = drawer.querySelector("#cart-foot");
+  }
+
+  // Logged-in customers get name/email pre-filled and locked to their
+  // account instead of editable text inputs — only those two fields have a
+  // real value to lock to (see sessionClaims()'s comment); phone/messenger/
+  // otherContact stay editable for every session, guest or not, since
+  // there's no account data backing them to protect. Re-run every time
+  // checkout is entered (not just once at drawer build time) since login
+  // can happen after the drawer's already built (e.g. via the auth popup).
+  function syncAccountFields() {
+    var nameEl = drawer.querySelector("#co-name");
+    var emailEl = drawer.querySelector("#co-email");
+    var noteEl = drawer.querySelector("#co-account-note");
+    var claims = sessionClaims();
+    var hasName = claims && claims.name;
+    var hasEmail = claims && claims.email;
+    nameEl.disabled = !!hasName;
+    if (hasName) nameEl.value = claims.name;
+    emailEl.disabled = !!hasEmail;
+    if (hasEmail) emailEl.value = claims.email;
+    if (hasName || hasEmail) {
+      noteEl.textContent = "Signed in as " + (claims.email || claims.name) + " — name/email are locked to your account.";
+      noteEl.style.display = "";
+    } else {
+      noteEl.style.display = "none";
+    }
   }
 
   // True when the cart holds a sku line whose catalog product is flagged
@@ -1457,6 +1504,7 @@
         '<p class="f-note">Custom items are ₱0 now — billed only after we approve your design.</p>' +
         '<button type="button" class="btn btn-primary btn-block" id="go-checkout">Checkout</button>';
       footEl.querySelector("#go-checkout").addEventListener("click", function () {
+        syncAccountFields();
         drawer.classList.add("checkout-mode"); renderCart();
       });
     }
@@ -1491,11 +1539,12 @@
         '<div class="dialog-actions" id="order-popup-actions"></div>' +
       '</div>';
     document.body.appendChild(backdrop);
-    // Clicking the backdrop only dismisses the popup — the cart isn't
-    // cleared, since (unlike the old flow) the order already exists for
-    // real regardless of whether the customer finishes this step; they can
-    // reopen the drawer and pick up the payment-proof step again later via
-    // their own records of the order ID, or contact support.
+    // Clicking the backdrop only dismisses the popup — nothing left to
+    // clean up here, since submitOrder() already cleared the cart the
+    // moment the order was created (see its own comment). The order exists
+    // for real regardless of whether the customer finishes this step; they
+    // can pick up the payment-proof step again later via order-detail.html
+    // (their own records of the order ID) or contact support.
     backdrop.addEventListener("click", function (e) { if (e.target === backdrop) closeOrderPopup(); });
     orderPopup = backdrop;
     orderPopupBody = backdrop.querySelector("#order-popup-body");
@@ -1648,8 +1697,12 @@
 
   function submitOrder() {
     var name = (document.getElementById("co-name").value || "").trim();
-    var contact = (document.getElementById("co-contact").value || "").trim();
-    if (!name || !contact) { alert("Please add your name and a way to reach you."); return; }
+    var email = (document.getElementById("co-email").value || "").trim();
+    var phone = (document.getElementById("co-phone").value || "").trim();
+    var messenger = (document.getElementById("co-messenger").value || "").trim();
+    var otherContact = (document.getElementById("co-other-contact").value || "").trim();
+    if (!name) { alert("Please add your name."); return; }
+    if (!email && !phone && !messenger && !otherContact) { alert("Please add at least one way to reach you (email, phone, Messenger, or other)."); return; }
     var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
     var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
     var notes = (document.getElementById("co-notes").value || "").trim();
@@ -1683,8 +1736,8 @@
       method: "POST",
       headers: headers,
       body: JSON.stringify({
-        customerName: name, customerContact: contact, fulfillment: fulfill,
-        shipping: shipping, notes: notes, cart: cartForCheckout(),
+        customerName: name, email: email, phone: phone, messenger: messenger, otherContact: otherContact,
+        fulfillment: fulfill, shipping: shipping, notes: notes, cart: cartForCheckout(),
         idempotencyKey: checkoutIdempotencyKey,
       }),
     }).then(function (res) {
@@ -1693,6 +1746,14 @@
         return data;
       });
     }).then(function (data) {
+      // The order is now durably created server-side regardless of what
+      // happens to this popup (dismissed, tab closed, proof submitted or
+      // not) — clearing the cart here, not deferred to finishAndClose(),
+      // closes the "stale cart" gap where dismissing the popup via the
+      // backdrop left the just-submitted items sitting in the cart. If
+      // that order is later cancelled or auto-cancelled, there's no lingering
+      // client-side cart state left to look stale.
+      clearCart();
       openOrderPopup({ orderId: data.orderId, payNowTotal: data.payNowTotal });
     }).catch(function (err) {
       alert("We couldn't place your order right now (" + err.message + "). Please try again in a moment, or message us directly at " + ORDER_EMAIL + ".");

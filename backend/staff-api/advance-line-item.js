@@ -32,7 +32,16 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Legal transitions — mirrors NEXT_STATUS in dashboard-data.js, plus the
 // branches (QC pass/fail, verification reject) that need an explicit `to`.
+// QC branches on the order's fulfillment method (§6): Delivery orders go
+// Ready for Dispatch -> Dispatched -> Delivered; Pickup orders go Ready for
+// Pickup -> Picked Up (that order's terminal/Delivered-equivalent state —
+// see deriveOrderStatus()). Both post-QC branches are listed as legal from
+// QC itself so a staff correction (wrong branch picked) doesn't need a
+// second Lambda — the handler below still only offers the one matching the
+// order's actual fulfillment method as the *expected* path, but doesn't
+// hard-block the other one at the state-machine level.
 const LEGAL_TRANSITIONS = {
+  [STATUS.ORDER_PLACED]: [STATUS.PENDING_PAYMENT_VERIFICATION], // submitPaymentProof.js does this write, not this Lambda
   [STATUS.PENDING_PAYMENT_VERIFICATION]: [STATUS.CONFIRMED, STATUS.PAYMENT_REJECTED],
   [STATUS.PAYMENT_REJECTED]: [STATUS.PENDING_PAYMENT_VERIFICATION], // customer resubmits
   [STATUS.QUOTED]: [STATUS.PRICED, STATUS.QUOTE_EXPIRED],
@@ -40,10 +49,11 @@ const LEGAL_TRANSITIONS = {
   [STATUS.CONFIRMED]: [STATUS.SCHEDULED],
   [STATUS.SCHEDULED]: [STATUS.IN_PRODUCTION],
   [STATUS.IN_PRODUCTION]: [STATUS.QC],
-  [STATUS.QC]: [STATUS.READY_FOR_DISPATCH, "Rework"],
-  Rework: [STATUS.IN_PRODUCTION],
+  [STATUS.QC]: [STATUS.READY_FOR_DISPATCH, STATUS.READY_FOR_PICKUP, STATUS.REWORK],
+  [STATUS.REWORK]: [STATUS.IN_PRODUCTION],
   [STATUS.READY_FOR_DISPATCH]: [STATUS.DISPATCHED],
   [STATUS.DISPATCHED]: [STATUS.DELIVERED],
+  [STATUS.READY_FOR_PICKUP]: [STATUS.PICKED_UP],
 };
 
 exports.handler = async (event) => {

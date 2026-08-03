@@ -3,11 +3,19 @@
    ============================================================
    Trigger: EventBridge cron, every 15 minutes.
 
-   Two sweeps, both driven off the sparse GSI1 status index so neither
-   one ever scans the table:
-     1. GSI1PK = STATUS#Pending Payment Verification, entered > 48h
-        ago -> Auto-Cancelled, SES to customer.
-     2. GSI1PK = STATUS#Priced, entered > 7 days ago with no payment
+   Three sweeps, all driven off the sparse GSI1 status index so none of
+   them ever scans the table:
+     1. GSI1PK = STATUS#Order Placed, entered > 48h ago -> Auto-Cancelled,
+        SES to customer. Covers a customer who placed an order but never
+        submitted GCash proof at all — the same 48h SLA window as sweep 2
+        below, just starting from checkout instead of proof-submission,
+        since createOrder.js no longer tags sku items Pending Payment
+        Verification immediately (see that Lambda's header).
+     2. GSI1PK = STATUS#Pending Payment Verification, entered > 48h
+        ago -> Auto-Cancelled, SES to customer. Covers a customer who
+        submitted proof but staff never verified it in time — the clock
+        here starts at submitPaymentProof.js, not checkout.
+     3. GSI1PK = STATUS#Priced, entered > 7 days ago with no payment
         -> Quote Expired, SES notice.
 
    SES send is best-effort and degrades gracefully (same pattern as
@@ -35,6 +43,7 @@ const VERIFICATION_EXPIRY_HOURS = 48;
 const QUOTE_EXPIRY_DAYS = 7;
 
 exports.handler = async () => {
+  await sweep(STATUS.ORDER_PLACED, VERIFICATION_EXPIRY_HOURS * 3600 * 1000, expireVerification);
   await sweep(STATUS.PENDING_PAYMENT_VERIFICATION, VERIFICATION_EXPIRY_HOURS * 3600 * 1000, expireVerification);
   await sweep(STATUS.PRICED, QUOTE_EXPIRY_DAYS * 24 * 3600 * 1000, expireQuote);
   return { statusCode: 200 };
@@ -162,7 +171,7 @@ async function expireQuote(li) {
 
 async function getCustomerContact(orderPkValue) {
   const res = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: orderPkValue, SK: metaSk() } }));
-  return res.Item?.customerContact || null;
+  return res.Item?.email || null;
 }
 
 async function sendMailIfEmail(contact, subject, body) {

@@ -3,8 +3,13 @@
    ============================================================
    The Lambda `docs/roadmap.md` 1.1 calls out as missing: "New
    customer-facing Lambda createOrder ... Splits the cart: writes
-   ORDER#<id> META + one LINEITEM#<id> per line; sku items -> Pending
-   Payment Verification, custom items -> Quoted."
+   ORDER#<id> META + one LINEITEM#<id> per line; sku items -> Order
+   Placed, custom items -> Quoted." sku items start at Order Placed, NOT
+   Pending Payment Verification — the customer hasn't submitted any GCash
+   proof yet at this point, so tagging them as "pending verification"
+   before there's anything to verify misrepresents the state machine.
+   submit-payment-proof.js is the only place that ever writes Pending
+   Payment Verification, once real proof exists.
 
    Replaces the storefront's mailto: checkout (website/store.js
    submitOrder(), ~line 1533) behind the existing KCMPS_STORE seam — this
@@ -65,9 +70,16 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
 
-  const { customerName, customerContact, fulfillment, shipping, notes, cart } = body;
-  if (!customerName || !customerContact) {
-    return response(400, { error: "customerName and customerContact are required" });
+  const { customerName, fulfillment, shipping, notes, cart } = body;
+  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const messenger = typeof body.messenger === "string" ? body.messenger.trim() : "";
+  const otherContact = typeof body.otherContact === "string" ? body.otherContact.trim() : "";
+  if (!customerName) {
+    return response(400, { error: "customerName is required" });
+  }
+  if (!email && !phone && !messenger && !otherContact) {
+    return response(400, { error: "At least one contact method (email, phone, messenger, or other) is required" });
   }
   if (!Array.isArray(cart) || !cart.length) {
     return response(400, { error: "cart must be a non-empty array" });
@@ -118,7 +130,7 @@ exports.handler = async (event) => {
     const amount = unitPrice != null ? Math.round(unitPrice * qty * 100) / 100 : 0;
     if (type === "sku") payNowTotal = Math.round((payNowTotal + amount) * 100) / 100;
 
-    const status = type === "custom" ? STATUS.QUOTED : STATUS.PENDING_PAYMENT_VERIFICATION;
+    const status = type === "custom" ? STATUS.QUOTED : STATUS.ORDER_PLACED;
     const lineItemId = "L" + (idx + 1) + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
 
     const lineItem = {
@@ -164,7 +176,8 @@ exports.handler = async (event) => {
   const orderItem = {
     ...baseItem({ status: orderStatus, createdAt: now }),
     PK: pk, SK: metaSk(),
-    orderId, customerSub, customerName, customerContact,
+    orderId, customerSub, customerName,
+    email: email || null, phone: phone || null, messenger: messenger || null, otherContact: otherContact || null,
     fulfillment: isDelivery ? "Delivery" : "Pickup",
     shipping: isDelivery ? { courier: shipping.courier, address: shipping.address, landmark: shipping.landmark || null } : null,
     orderStatus, originalPromisedDate,

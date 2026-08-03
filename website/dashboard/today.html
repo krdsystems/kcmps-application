@@ -85,6 +85,9 @@
     { key: "inProduction", title: "In Production", empty: "Nothing on the floor right now." },
     { key: "qcHoldRework", title: "QC Hold / Rework", empty: "No rework in progress." },
     { key: "readyForDispatch", title: "Ready for Dispatch", empty: "Nothing waiting on handoff." },
+    // A review queue, not an action queue — nothing to advance here, just
+    // visibility. No SLA color-coding (see getQueues() in dashboard-data.js).
+    { key: "cancelled", title: "Cancelled", empty: "No cancellations to review." },
   ];
 
   async function renderQueues() {
@@ -111,11 +114,18 @@
             const paymentLine = li.payment
               ? `<div class="q-line2"><span>Ref ${escapeHtml(li.payment.gcashRefNumber)} · claimed ${fmtPeso(li.payment.claimedAmount)}</span></div>`
               : "";
+            // Cancelled queue: surface customer-cancelled vs. auto-expired at
+            // a glance instead of making staff open the ticket to tell them
+            // apart — the two carry very different follow-up (a customer
+            // decision vs. a payment window that lapsed).
+            const reasonLine = def.key === "cancelled"
+              ? `<div class="q-line2"><span>${li.status === "Auto-Cancelled" ? "Auto-cancelled — payment window expired" : "Cancelled by customer"}</span></div>`
+              : "";
             return (
               `<a class="${cls}" href="job-detail.html?order=${encodeURIComponent(li.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
               `<div class="q-line1"><span>${escapeHtml(li.description)}</span><span class="q-age">${fmtHours(li.agingHours)}</span></div>` +
               `<div class="q-line2"><span>${client}${li.dueDate ? " · due " + fmtDate(li.dueDate) : ""}</span>${li.dueRisk ? '<span style="color:#c0392b;font-weight:700">at risk</span>' : ""}</div>` +
-              paymentLine +
+              paymentLine + reasonLine +
               `</a>`
             );
           }).join("")

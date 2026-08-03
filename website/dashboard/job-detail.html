@@ -48,15 +48,21 @@
   const SPACEMAIL_SEARCH_URL = "https://spacemail.com/mail/?f=INBOX&search={q}";
 
   function statusTone(status) {
-    if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
+    if (["Delivered", "Picked Up", "Ready for Dispatch", "Ready for Pickup", "Dispatched"].includes(status)) return "st-good";
     if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
-    if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
+    if (["Order Placed", "Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
     if (status === "In Production" || status === "QC") return "st-info";
     return "st-neutral";
   }
 
-  function actionsFor(status) {
+  // QC's pass branch depends on the order's fulfillment method (§6): a
+  // Delivery order goes to dispatch, a Pickup order skips straight to
+  // "ready for the customer to collect" — Ready for Dispatch/Dispatched
+  // don't apply to a pickup order at all.
+  function actionsFor(status, order) {
+    const isDelivery = order && order.fulfillment === "Delivery";
     switch (status) {
+      case "Order Placed": return []; // waiting on the customer to submit GCash proof — nothing for staff to do yet
       case "Pending Payment Verification": return [
         { label: "Verify payment", to: "__verifypayment__", tone: "btn-primary" },
         { label: "Reject payment", to: "__rejectpayment__", tone: "btn-secondary" },
@@ -66,13 +72,17 @@
       case "Confirmed": return [{ label: "Schedule", to: "Scheduled", tone: "btn-primary", needsStation: true }];
       case "Scheduled": return [{ label: "Start production", to: "In Production", tone: "btn-primary", needsStation: true, needsSetup: true }];
       case "In Production": return [{ label: "Send to QC", to: "QC", tone: "btn-primary" }];
-      case "QC": return [
+      case "QC": return isDelivery ? [
         { label: "Pass QC → Ready for Dispatch", to: "Ready for Dispatch", tone: "btn-primary" },
+        { label: "Fail QC → Rework", to: "__rework__", tone: "btn-secondary" },
+      ] : [
+        { label: "Pass QC → Ready for Pickup", to: "Ready for Pickup", tone: "btn-primary" },
         { label: "Fail QC → Rework", to: "__rework__", tone: "btn-secondary" },
       ];
       case "Rework": return [{ label: "Back to Production", to: "In Production", tone: "btn-primary" }];
       case "Ready for Dispatch": return [{ label: "Dispatch", to: "Dispatched", tone: "btn-primary" }];
       case "Dispatched": return [{ label: "Mark Delivered", to: "Delivered", tone: "btn-primary" }];
+      case "Ready for Pickup": return [{ label: "Mark Picked Up", to: "Picked Up", tone: "btn-primary" }];
       default: return [];
     }
   }
@@ -91,7 +101,7 @@
     const events = KCMPS_DASH.getEventsFor(orderId).filter((e) => e.lineItemId === li.lineItemId);
     const stations = KCMPS_DASH.getStations();
     const reasons = KCMPS_DASH.getSpoilageReasons();
-    const actions = actionsFor(li.status);
+    const actions = actionsFor(li.status, order);
 
     body.innerHTML =
       `<div class="ticket-head"><div><h1 style="margin:0 0 4px">${escapeHtml(li.description)}</h1>` +
@@ -102,6 +112,14 @@
 
       `<div class="card ticket-meta">` +
       `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +
+      // Split contact channels (backend/checkout/create-order.js) so staff
+      // can see exactly which method(s) the customer actually gave, rather
+      // than one ambiguous freeform string — only render the channels that
+      // are actually present.
+      (order.email ? `<div class="m-block"><h4>Email</h4><p>${escapeHtml(order.email)}</p></div>` : "") +
+      (order.phone ? `<div class="m-block"><h4>Phone</h4><p>${escapeHtml(order.phone)}</p></div>` : "") +
+      (order.messenger ? `<div class="m-block"><h4>Messenger</h4><p>${escapeHtml(order.messenger)}</p></div>` : "") +
+      (order.otherContact ? `<div class="m-block"><h4>Other contact</h4><p>${escapeHtml(order.otherContact)}</p></div>` : "") +
       `<div class="m-block"><h4>Type</h4><p>${li.type === "custom" ? "Custom request" : "Quick-buy SKU"}</p></div>` +
       `<div class="m-block"><h4>Qty</h4><p>${li.qty || "—"}</p></div>` +
       `<div class="m-block"><h4>Amount</h4><p>${li.amount ? fmtPeso(li.amount) : "—"}</p></div>` +
@@ -158,7 +176,7 @@
       `<div id="action-form"></div>` +
       `<div class="action-bar" id="action-bar">` +
       actions.map((a, i) => `<button type="button" class="btn ${a.tone}" data-idx="${i}">${a.label}</button>`).join("") +
-      (actions.length ? "" : '<span class="text-muted" style="font-size:13px">This line is in a terminal state — no further action.</span>') +
+      (actions.length ? "" : `<span class="text-muted" style="font-size:13px">${li.status === "Order Placed" ? "Waiting on the customer to submit GCash payment proof — no staff action yet." : "This line is in a terminal state — no further action."}</span>`) +
       `</div></div>` +
 
       `<div class="card"><h3 style="margin-top:0">Event timeline</h3><div class="timeline">` +
@@ -229,14 +247,16 @@
             `<div class="field"><label>Reason</label><select class="input" id="rw-reason">${reasons.map((r) => `<option value="${r.code}">${r.label}</option>`).join("")}</select></div>` +
             `<div class="field"><label>Value (₱)</label><input class="input" id="rw-value" type="number" min="0" value="0" /></div>` +
             `</div><button type="button" class="btn btn-primary" id="rw-confirm">Confirm — send to Rework</button>`;
-          document.getElementById("rw-confirm").addEventListener("click", () => {
+          document.getElementById("rw-confirm").addEventListener("click", async (e) => {
             const units = parseInt(document.getElementById("rw-units").value, 10) || 0;
             const reasonCode = document.getElementById("rw-reason").value;
             const valuePhp = parseFloat(document.getElementById("rw-value").value) || 0;
-            try {
-              KCMPS_DASH.sendToRework(order.orderId, li.lineItemId, { units, reasonCode, valuePhp });
-              render(true);
-            } catch (err) { showInlineError(errorHost, err.message); }
+            await withBusy(e.currentTarget, async () => {
+              try {
+                await KCMPS_DASH.sendToRework(order.orderId, li.lineItemId, { units, reasonCode, valuePhp });
+                await render(true);
+              } catch (err) { showInlineError(errorHost, err.message); }
+            });
           });
           return;
         }

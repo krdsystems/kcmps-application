@@ -29,11 +29,10 @@ const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, getGroup
 
 const TABLE = process.env.TABLE_NAME;
 const LEGACY_STAFF_GROUP = "Staff"; // see get-orders.js for why both are accepted
-// Same FROM_EMAIL/EMAIL_RE gate as submit-payment-proof.js — unset today
+// Same FROM_EMAIL gate as submit-payment-proof.js — unset today
 // (SES is still sandboxed, see docs/roadmap.md), so this ships dark and
 // activates the moment that env var is set, no code change needed.
 const FROM_EMAIL = process.env.FROM_EMAIL;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ses = new SESClient({});
@@ -155,7 +154,7 @@ exports.handler = async (event) => {
   // same pattern as submit-payment-proof.js: never fail the staff action
   // over a notification, and skip silently for non-email contacts (the
   // checkout contact field is free text — phone numbers can't receive SES).
-  if (FROM_EMAIL && EMAIL_RE.test(order.customerContact || "")) {
+  if (FROM_EMAIL && order.email) {
     const send = isReject ? sendRejectedEmail : sendVerifiedEmail;
     await send(order, orderId, body.reason).catch((err) => {
       console.error(`verifyPayment: SES send failed (${isReject ? "reject" : "verify"}):`, err.message);
@@ -171,7 +170,7 @@ exports.handler = async (event) => {
 async function sendVerifiedEmail(order, orderId) {
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.customerContact] },
+    Destination: { ToAddresses: [order.email] },
     Message: {
       Subject: { Data: `Order ${orderId} verified — payment confirmed` },
       Body: { Text: { Data:
@@ -186,7 +185,7 @@ async function sendVerifiedEmail(order, orderId) {
 async function sendRejectedEmail(order, orderId, reason) {
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
-    Destination: { ToAddresses: [order.customerContact] },
+    Destination: { ToAddresses: [order.email] },
     Message: {
       Subject: { Data: `Order ${orderId} — we couldn't verify your payment` },
       Body: { Text: { Data:

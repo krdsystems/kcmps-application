@@ -2622,6 +2622,61 @@ fully trusting the auto-fire path.** Also checked all 5 existing pool users
 backfill — none found; the only non-admin-created account (`google_...`, a federated Google
 sign-in) already carries `Customer`, added manually before this trigger existed.
 
+**Update:** the "real self-signup" gap flagged above got closed the same day, as a side effect
+of verifying entry 63's custom signup form — a genuine browser-driven `SignUp` call (not a
+blocked CLI account-creation action) followed by confirmation showed the `PostConfirmation`
+trigger fires correctly and adds the user to `Customer`. See entry 63.
+
+### 63. Custom "Create account" form, replacing Cognito's default Hosted UI signup page (2026-08-03)
+
+**Trigger:** analysis of the storefront's signup flow found the pool's schema requires 6
+standard attributes at signup — `email`, `given_name`, `family_name`, `middle_name`, `name`,
+`preferred_username` — on top of a separate Username field, none of which (beyond email) this
+app has ever read anywhere (checkout collects its own contact/delivery details independently).
+Cognito's `Required` schema flags are **immutable after pool creation** — no `update-user-pool`
+field for it, no console toggle — so the fix couldn't be "just turn it off." Two options were
+weighed: migrate to a new pool with a minimal schema (clean, but touches every hardcoded pool/
+client ID across the frontend and every Lambda's JWT config, needs migrating the 5 existing
+users including a federated Google identity, and needs re-verifying the entire auth-gated
+surface of the app), or keep the existing pool and stop sending customers through its default
+Hosted UI signup page. Went with the second — far smaller blast radius, zero AWS resource
+changes, and the "do it right" pool migration isn't proportionate to how few real users exist
+today.
+
+**Built:** a lightweight "Log in or create an account" choice modal now fronts the nav's
+"Login / Sign-up" button (`index.html`, `openAuthModal()`/`closeAuthModal()`, same lazy-build
+convention as `store.js`'s `order-popup`/`cap-popup`). "Log in" closes the modal and calls the
+existing, completely unchanged `startLogin()` — the Hosted UI popup flow is untouched. "Create
+account" opens a 3-step custom flow: email + password → a 6-digit confirmation code (Cognito's
+`AutoVerifiedAttributes`/`CONFIRM_WITH_CODE` config, unchanged, requires this step regardless of
+signup path) → "Log in now," which hands back to the same unchanged `startLogin()`.
+
+Calls Cognito's public IdP JSON API directly (`SignUp`/`ConfirmSignUp`/`ResendConfirmationCode`
+at `https://cognito-idp.<region>.amazonaws.com/`, `X-Amz-Target:
+AWSCognitoIdentityProviderService.<Action>`) — same public, secretless SPA app client as the
+Hosted UI flow, just a different endpoint; no new AWS resource, no backend Lambda involved.
+`given_name`/`family_name`/`middle_name`/`preferred_username` are filled with placeholder values
+the customer never sees or types; `name` is set to the email address so `renderLoggedIn()`'s
+existing `claims.name || claims.email` fallback shows the same thing it always would have.
+Username itself is a random non-email string (`generateUsername()`) — the pool aliases sign-in
+by email (`AliasAttributes`), so Cognito rejects an email-*shaped* Username outright, and this
+generated string is never surfaced to the customer again since they always sign in via the email
+alias afterward. CSP's `connect-src` gained the regional IdP endpoint (`index.html`'s `<head>`).
+
+**Verified live, real Cognito calls (not mocked):** submitted a real email+password through the
+new form — `SignUp` succeeded, a real `UNCONFIRMED` user landed in the pool with exactly the
+placeholder attributes designed above (`list-users` confirmed). Submitted a wrong confirmation
+code — `CodeMismatchException` surfaced as the friendly inline error, matching the site's
+existing inline-error convention (no native `alert()`). Confirmed the account via
+`admin-confirm-sign-up` (standing in for a real code, which requires a real inbox this session
+doesn't have) and confirmed entry 62's `kcmps-post-confirmation` trigger fired correctly —
+`admin-list-groups-for-user` showed `Customer`, closing that entry's "still owed" real-signup
+verification gap as a side effect. Test user deleted afterward. The "Log in" choice was verified
+to correctly close the modal and hand off to the pre-existing `startLogin()` unchanged.
+
+**Not changed:** sign-in, logout, session storage, JWT handling, the dashboard's staff gate, or
+any backend Lambda — this is a frontend-only addition in front of one entry point.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

@@ -380,6 +380,44 @@ textarea.input { min-height: 90px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .cap-popup { transition: none; } }
 @media (max-width: 480px) { .cap-popup-backdrop { padding: var(--space-2); } }
 
+/* — auth modal (index.html, openAuthModal/closeAuthModal) — same
+   .dialog-backdrop/.dialog base as .order-popup/.cap-popup above. Fronts
+   the nav's "Login / Sign-up" button: a choice step (Log in / Create
+   account), then — only for Create account — a minimal email+password
+   form and a confirmation-code step. Login itself is unchanged, still the
+   existing Hosted UI popup; this only front-loads a choice before it. See
+   docs/history.md entry 63 for why a custom signup form exists at all
+   (the pool's schema requires several standard attributes — full name,
+   a separate username — that this app never uses and a print-shop
+   customer shouldn't have to type). */
+.auth-modal-backdrop {
+  position: fixed; inset: 0; z-index: 170; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.auth-modal-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .auth-modal-backdrop { transition: none; } }
+.auth-modal {
+  width: min(400px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.auth-modal-backdrop.is-open .auth-modal { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .auth-modal { transition: none; } }
+.auth-modal .field { margin-bottom: var(--space-3); }
+.auth-choice-btn {
+  display: block; width: 100%; text-align: left; padding: var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid var(--color-divider);
+  background: var(--color-bg); cursor: pointer; font: inherit; color: inherit;
+}
+.auth-choice-btn:hover { background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg)); }
+.auth-choice-btn strong { display: block; font-family: var(--font-heading); font-size: 15px; margin-bottom: 2px; }
+.auth-choice-btn span { display: block; font-size: 12.5px; opacity: 0.7; }
+@media (max-width: 480px) { .auth-modal-backdrop { padding: var(--space-2); } }
+
 /* ══════════════════════════════════════════════════════════════════════════
    STOREFRONT — conversion-first offer, value stack, guarantee, how-it-works,
    product buy-cards, cart drawer, checkout, FAQ, sticky CTA. Built entirely

@@ -22,7 +22,7 @@
      tag — set them as real response headers at CloudFront for full
      clickjacking protection.
      ============================================================ -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 <title>KCMPS — Kaalyados Creatives</title>
@@ -2126,7 +2126,7 @@ function renderLoggedOut() {
   const area = document.getElementById("auth-area");
   area.innerHTML =
     '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
-  document.getElementById("auth-btn").addEventListener("click", startLogin);
+  document.getElementById("auth-btn").addEventListener("click", openAuthModal);
   document.getElementById("dashboard-link").classList.add("is-hidden");
   document.getElementById("orders-link").classList.add("is-hidden");
 }
@@ -2155,6 +2155,246 @@ function renderLoggedIn(claims) {
   } else {
     dashboardLink.classList.add("is-hidden");
   }
+}
+
+/* ---- Custom sign-up (Cognito IdP API, separate from the Hosted UI flow) ----
+   The pool's schema requires several standard attributes on top of email —
+   given_name/family_name/middle_name/name/preferred_username — baked in at
+   pool creation and immutable now (Cognito has no API to change Required
+   after the fact). None of it is ever read anywhere in this app (checkout
+   collects its own contact/delivery details separately), so routing
+   customers through Cognito's own Hosted UI signup page means asking a
+   shopper for a full name and a separate username before they can buy a
+   print job. This calls the same public, secretless SPA client as the
+   Hosted UI flow above — only the network endpoint differs (regional IdP
+   JSON API vs the Hosted UI domain) — to build a minimal custom "Create
+   account" form that asks for just email + password, with placeholder
+   values supplied for the rest. Login stays exactly as it was: the
+   existing Hosted UI popup. See docs/history.md entry 63. ---- */
+const IDP_ENDPOINT = `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/`;
+
+async function idpRequest(target, body) {
+  const res = await fetch(IDP_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-amz-json-1.1",
+      "X-Amz-Target": `AWSCognitoIdentityProviderService.${target}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(idpErrorMessage(data));
+  return data;
+}
+
+function idpErrorMessage(data) {
+  const type = (data.__type || "").split("#").pop();
+  const known = {
+    UsernameExistsException: "An account with this email already exists — try logging in instead.",
+    InvalidPasswordException: "Password must be at least 8 characters and include upper/lowercase letters, a number, and a symbol.",
+    InvalidParameterException: "Please check your email and password and try again.",
+    CodeMismatchException: "That code doesn't match. Please check it and try again.",
+    ExpiredCodeException: "That code has expired — request a new one.",
+    LimitExceededException: "Too many attempts — please wait a bit and try again.",
+    TooManyRequestsException: "Too many attempts — please wait a bit and try again.",
+    UserNotFoundException: "We couldn't find that account.",
+  };
+  return known[type] || data.message || "Something went wrong. Please try again.";
+}
+
+// A non-email placeholder Username — the pool aliases sign-in by email
+// (AliasAttributes), so this string is never seen or typed by the
+// customer again; it only exists because this pool's Usernames can't be
+// email-formatted (email is the alias, not the username itself).
+function generateUsername() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return "u" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function escapeAuthHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function signUpCustomer(email, password) {
+  const username = generateUsername();
+  // given_name/family_name/middle_name/preferred_username: required by the
+  // pool, never read anywhere in this app — placeholders so the customer
+  // is never asked to type them. `name` is set to the email so
+  // renderLoggedIn()'s `claims.name || claims.email` shows the same thing
+  // it would have shown anyway.
+  await idpRequest("SignUp", {
+    ClientId: COGNITO_CONFIG.clientId,
+    Username: username,
+    Password: password,
+    UserAttributes: [
+      { Name: "email", Value: email },
+      { Name: "name", Value: email },
+      { Name: "given_name", Value: "-" },
+      { Name: "family_name", Value: "-" },
+      { Name: "middle_name", Value: "-" },
+      { Name: "preferred_username", Value: username },
+    ],
+  });
+  return username;
+}
+
+function confirmSignUp(username, code) {
+  return idpRequest("ConfirmSignUp", { ClientId: COGNITO_CONFIG.clientId, Username: username, ConfirmationCode: code });
+}
+
+function resendSignUpCode(username) {
+  return idpRequest("ResendConfirmationCode", { ClientId: COGNITO_CONFIG.clientId, Username: username });
+}
+
+/* ---- Auth modal shell (choice -> create account -> confirm code -> done) ----
+   Same lazy-build convention as store.js's order-popup/cap-popup: built
+   once on first open, title/body/actions swapped per step via innerHTML
+   (a plain replace drops any stale listeners from the previous step for
+   free — nothing here needs manual cleanup). ---- */
+let authModal, authModalTitle, authModalBody, authModalActions;
+
+function ensureAuthModalShell() {
+  if (authModal) return;
+  const backdrop = document.createElement("div");
+  backdrop.className = "auth-modal-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
+  backdrop.innerHTML =
+    '<div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">' +
+      '<h3 class="dialog-title" id="auth-modal-title"></h3>' +
+      '<div class="dialog-body" id="auth-modal-body"></div>' +
+      '<div class="dialog-actions" id="auth-modal-actions"></div>' +
+    "</div>";
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeAuthModal(); });
+  authModal = backdrop;
+  authModalTitle = backdrop.querySelector("#auth-modal-title");
+  authModalBody = backdrop.querySelector("#auth-modal-body");
+  authModalActions = backdrop.querySelector("#auth-modal-actions");
+}
+
+function openAuthModal() {
+  ensureAuthModalShell();
+  renderAuthChoiceStep();
+  authModal.classList.add("is-open");
+  authModal.setAttribute("aria-hidden", "false");
+}
+
+function closeAuthModal() {
+  if (!authModal) return;
+  authModal.classList.remove("is-open");
+  authModal.setAttribute("aria-hidden", "true");
+}
+
+function renderAuthChoiceStep() {
+  authModalTitle.textContent = "Log in or create an account";
+  authModalBody.innerHTML =
+    '<button type="button" class="auth-choice-btn" id="auth-choice-login">' +
+      "<strong>Log in</strong><span>Already have an account</span>" +
+    "</button>" +
+    '<button type="button" class="auth-choice-btn" id="auth-choice-signup" style="margin-top:var(--space-2)">' +
+      "<strong>Create account</strong><span>New to KCMPS — just your email and a password</span>" +
+    "</button>";
+  authModalActions.innerHTML = '<button type="button" class="btn btn-ghost" id="auth-modal-cancel">Cancel</button>';
+  authModalActions.querySelector("#auth-modal-cancel").addEventListener("click", closeAuthModal);
+  authModalBody.querySelector("#auth-choice-login").addEventListener("click", () => {
+    closeAuthModal();
+    startLogin();
+  });
+  authModalBody.querySelector("#auth-choice-signup").addEventListener("click", renderSignUpStep);
+}
+
+function renderSignUpStep() {
+  authModalTitle.textContent = "Create your account";
+  authModalBody.innerHTML =
+    '<div class="field"><label for="su-email">Email</label><input class="input" id="su-email" type="email" autocomplete="email" /></div>' +
+    '<div class="field"><label for="su-password">Password</label><input class="input" id="su-password" type="password" autocomplete="new-password" /></div>' +
+    '<p style="font-size:12px;opacity:0.7;margin-top:-4px">At least 8 characters, with upper and lowercase letters, a number, and a symbol.</p>' +
+    '<p id="su-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>';
+  authModalActions.innerHTML =
+    '<button type="button" class="btn btn-ghost" id="auth-modal-back">Back</button>' +
+    '<button type="button" class="btn btn-primary" id="auth-modal-submit-signup">Create account</button>';
+  authModalActions.querySelector("#auth-modal-back").addEventListener("click", renderAuthChoiceStep);
+  authModalActions.querySelector("#auth-modal-submit-signup").addEventListener("click", submitSignUp);
+}
+
+async function submitSignUp() {
+  const emailEl = document.getElementById("su-email");
+  const passwordEl = document.getElementById("su-password");
+  const errorEl = document.getElementById("su-error");
+  const email = emailEl.value.trim();
+  const password = passwordEl.value;
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+  errorEl.style.display = "none";
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError("Please enter a valid email address."); return; }
+  if (!password) { showError("Please enter a password."); return; }
+
+  const btn = document.getElementById("auth-modal-submit-signup");
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Creating account…";
+  try {
+    const username = await signUpCustomer(email, password);
+    renderConfirmStep(username, email);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+function renderConfirmStep(username, email) {
+  authModalTitle.textContent = "Check your email";
+  authModalBody.innerHTML =
+    "<p>We sent a 6-digit code to <strong>" + escapeAuthHtml(email) + "</strong>. Enter it below to finish creating your account.</p>" +
+    '<div class="field"><label for="su-code">Confirmation code</label><input class="input" id="su-code" inputmode="numeric" autocomplete="one-time-code" /></div>' +
+    '<p id="su-confirm-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+    '<p style="font-size:12.5px;margin-top:var(--space-2)"><a href="#" id="su-resend">Resend code</a></p>';
+  authModalActions.innerHTML = '<button type="button" class="btn btn-primary" id="auth-modal-submit-confirm">Confirm</button>';
+  authModalActions.querySelector("#auth-modal-submit-confirm").addEventListener("click", () => submitConfirm(username, email));
+  const resendLink = authModalBody.querySelector("#su-resend");
+  resendLink.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const original = resendLink.textContent;
+    resendLink.textContent = "Sending…";
+    try {
+      await resendSignUpCode(username);
+      resendLink.textContent = "Code sent!";
+    } catch {
+      resendLink.textContent = original; // best-effort — a failed resend isn't worth blocking the flow over
+    }
+  });
+}
+
+async function submitConfirm(username, email) {
+  const codeEl = document.getElementById("su-code");
+  const errorEl = document.getElementById("su-confirm-error");
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+  errorEl.style.display = "none";
+  const code = codeEl.value.trim();
+  if (!code) { showError("Please enter the confirmation code."); return; }
+
+  const btn = document.getElementById("auth-modal-submit-confirm");
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Confirming…";
+  try {
+    await confirmSignUp(username, code);
+    renderSignUpDoneStep(email);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+function renderSignUpDoneStep(email) {
+  authModalTitle.textContent = "Account created";
+  authModalBody.innerHTML = "<p>You're all set, " + escapeAuthHtml(email) + ". Log in to continue.</p>";
+  authModalActions.innerHTML = '<button type="button" class="btn btn-primary" id="auth-modal-login-now">Log in now</button>';
+  authModalActions.querySelector("#auth-modal-login-now").addEventListener("click", () => {
+    closeAuthModal();
+    startLogin();
+  });
 }
 
 /* ---- Cart ----

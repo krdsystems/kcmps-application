@@ -45,7 +45,7 @@ data. Closing this gap is [Milestone 1](#milestone-1--the-simple-payment-backend
 ## Milestone 1 — The simple payment backend  ⟵ current focus
 
 **Goal:** a customer can check out, pay via GCash, and see their order move through real
-statuses; staff can verify or reject that payment from the dashboard against real data. This is
+statuses; staff can verify or hold that payment from the dashboard against real data. This is
 the minimum that makes the storefront "complete" instead of a brochure.
 
 Maps to ERP file Phases **0 → 1 → 2** (Platform foundation → Sales & Order + GCash bridge →
@@ -207,7 +207,7 @@ can't be fulfilled from an online order alone.
   `EVENT#` records (`order.events`) so the dashboard's timeline has real data.
 - [x] API Gateway (`kcmps-checkout-api`) extended with a Cognito **JWT authorizer**
   (`kcmps-cognito-jwt`) and 4 new routes (`GET /orders`, `POST /line-items/{lineItemId}/advance`,
-  `POST /orders/{orderId}/verify-payment`, `POST /orders/{orderId}/reject-payment`). Each Lambda
+  `POST /orders/{orderId}/verify-payment`, `POST /orders/{orderId}/set-on-hold`). Each Lambda
   enforces the role/group itself (`backend/lib/auth.js`'s `isStaff()` OR the legacy `Staff`
   group) — the authorizer validates the token but doesn't filter by group.
 - [x] Deployed `backend/jobs/streams-handler.js` — DynamoDB Streams event source mapping,
@@ -215,7 +215,7 @@ can't be fulfilled from an online order alone.
   maintains GSI1 sparse-index hygiene. (METRIC# rollups deferred, as originally planned.)
 - [x] Deployed `backend/jobs/expire-pending-orders.js` on a 15-minute EventBridge cron
   (`kcmps-expire-pending-orders-schedule`).
-- [x] Cut the dashboard over: `getAllOrders`/`getOrder`/`verifyPayment`/`rejectPayment`/
+- [x] Cut the dashboard over: `getAllOrders`/`getOrder`/`verifyPayment`/`setOnHold`/
   `advanceLineItem` in [dashboard-data.js](../website/dashboard/dashboard-data.js) now `fetch()`
   the real API (Bearer = `kcmps_tokens`'s **ID token**, not the access token — see below), with
   the manual-order-entry path (`createManualOrder`, mock-only, no Lambda built for it) merged in
@@ -270,7 +270,7 @@ can't be fulfilled from an online order alone.
   Verification" stage highlighted. No console errors.
 
 **Definition of done for Milestone 1:** a real order in DynamoDB, a GCash proof on S3, a staff
-verify/reject that moves real statuses, an auto-expiry cron, and a customer who can see the
+verify/on-hold that moves real statuses, an auto-expiry cron, and a customer who can see the
 result. `mailto:` checkout retired.
 
 ### 1.5 — My Orders expansion (closes real gaps found in 1.4's UAT pass) ✅ done (2026-08-02)
@@ -303,7 +303,7 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
 **Phase 2 (existing Lambdas, no new routes) — verified live against real orders, then redeployed:**
 - [x] `backend/staff-api/get-orders.js` now redacts staff-internal fields (`li.station`,
   `li.setupMinutes`, `li.spoilage`, `order.correspondenceLog`, event `actorSub`/`actorName`/
-  `station`/`meta` beyond `rejectionReason`) for non-staff callers, and sorts newest-first
+  `station`/`meta` beyond `holdReason`) for non-staff callers, and sorts newest-first
   server-side. The redaction is pure and shared via new
   [`backend/lib/customer-view.js`](../backend/lib/customer-view.js) (`redactForCustomer`,
   `contactsMatch`) — covered by `backend/lib/lib.test.js`. This data was already reaching the
@@ -315,7 +315,7 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
   Frozen at creation, never overwritten (OTIF per the ERP file is measured against the original
   promise).
 - [x] `backend/staff-api/verify-payment.js` sends the two customer emails the Payment System spec
-  always called for but never had (`verifyPayment`/`rejectPayment` sent nothing; only the
+  always called for but never had (`verifyPayment`/`setOnHold` sent nothing; only the
   "under verification" email at submission existed). Same best-effort pattern as
   `submit-payment-proof.js` — gated on `FROM_EMAIL`, which is still unset (SES remains sandboxed,
   `ProductionAccessEnabled: false`, confirmed via `sesv2 get-account`), so this ships dark and
@@ -335,7 +335,7 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
   ([`backend/checkout/cancel-order.js`](../backend/checkout/cancel-order.js)) — authorizes via a
   Bearer ID token matching `customerSub`, or the same contact-match fallback for guests. Only
   allowed while every line item is `Quoted`/`Priced`/`Pending Payment Verification`/
-  `Payment Rejected`; the moment anything is `Confirmed` or beyond, KCMPS has committed
+  `On Hold`; the moment anything is `Confirmed` or beyond, KCMPS has committed
   material/schedule, so it 409s pointing at support instead. Same `TransactWriteItems` +
   optimistic-lock shape as `verify-payment.js`; never writes `orderStatus` (streams-handler.js
   stays the only writer). Wired into `order-detail.html` as a "Cancel order" button, gated on the
@@ -720,8 +720,9 @@ with no order context attached.
 **Data model — same table, no infra change:**
 - New item type: `PK: ORDER#<id>`, `SK: MSG#<ISO timestamp>#<msgId>` (`keys.js`'s
   `messageSk()`) — co-located with the order, same pattern as `EVENT#`.
-- Fields: `{ senderSub, senderRole: "customer"|"staff", body, attachmentRef, readAt, at,
-  orderId }`.
+- Fields: `{ senderSub, senderRole: "customer"|"staff", body, attachments, readAt, at,
+  orderId }`. `attachments` (was a single `attachmentRef` until the 2026-08-04 attachment
+  upload feature below) is `[{filename, contentType, ref}]`, `ref` an `s3://` URI.
 - `GSI2PK`/`GSI2SK` (`CLIENT#<customerSub>`/`MSG#<at>`) are written on every message **in
   preparation**, not activation — GSI2 isn't provisioned on the table
   (`backend/infra/foundation.cfn.yaml` only has GSI1). Adding the index later needs zero
@@ -737,9 +738,9 @@ with no order context attached.
   contact-match fallback) — chat requires a logged-in account by design, so this always goes
   through the JWT authorizer like every other `staff-api/*.js` Lambda.
 - [`backend/staff-api/get-messages.js`](../backend/staff-api/get-messages.js) — `GET
-  /orders/{orderId}/messages`, same staff-vs-customer branch as `get-orders.js`. Side effect:
-  marks the *other* party's unread messages read on every call — the only "mark read" path,
-  feeding the unread-reminder job below.
+  /orders/{orderId}/messages`, same staff-vs-customer branch as `get-orders.js`. Side effect
+  (opt-in via `?markRead=true`, see 2026-08-04 follow-up below): marks the *other* party's
+  unread messages read — the only "mark read" path, feeding the unread-reminder job below.
 - [`backend/jobs/notify-unread-messages.js`](../backend/jobs/notify-unread-messages.js) — new
   EventBridge cron (every 30 min). "Digest, don't spam" (§5.5's principle, applied to customer
   notifications too): one SES reminder per order with unread staff replies older than 2 hours,
@@ -762,11 +763,24 @@ WebSocket):**
   wiring — the message shape, the Lambda read/write logic, and the `KCMPS_ORDERS`/`KCMPS_DASH`
   function signatures don't change.
 
-**Explicitly NOT built (deferred on purpose, not oversight):** a presigned-upload attachment
-flow for `attachmentRef` (the field exists on the data model; no upload UI wired yet — the
-existing S3-presign pattern from `submit-payment-proof.js` is the template whenever this is
-picked up), and any global/floating chat widget or true single-query account-level view (blocked
-on GSI2 actually being provisioned — see the data-model note above).
+**Built 2026-08-04 (was deferred): attachment uploads for messages, and for the correspondence
+log.** Both now use the presigned-upload pattern from `submit-payment-proof.js`: `send-message.js`/
+`add-correspondence.js` (new) accept `attachments: [{filename, contentType}]`, validate against an
+allow-list (`image/jpeg|png|webp|gif`, `application/pdf`; max 5 per note/message), and hand back a
+presigned PUT url per file — the browser uploads directly to S3, the Lambda never sees file bytes.
+`get-messages.js`/`get-orders.js` presign a short-lived GET url per attachment on every read (bucket
+is private), mirroring the existing `payment.screenshotUrl` pattern. Same S3 bucket as GCash proof
+uploads (`kcmps-payment-uploads-est-2026`), new `messages/<orderId>/…` and
+`correspondence/<orderId>/…` prefixes — no new bucket, no CORS change needed (the existing PUT rule
+is bucket-wide). `add-correspondence.js` is also the first live backend for the correspondence log
+manual-note button at all — it was mock-only before (`dashboard-data.js`'s `addCorrespondenceLog()`
+read/wrote `localStorage`, so a note logged against any real order silently threw "Order not
+found" since real orders were never in that mock array). `correspondenceLog` stays stripped for
+customers (`customer-view.js`'s `redactForCustomer()`), so attachment URLs are never presigned or
+sent to a non-staff caller.
+
+**Still explicitly NOT built:** any global/floating chat widget or true single-query
+account-level view (blocked on GSI2 actually being provisioned — see the data-model note above).
 
 **Follow-up (2026-08-04): unread-message badge, step one toward a real Messages tab.**
 A full Messages nav tab needs a real cross-order query GSI2 doesn't provide yet (see above) —
@@ -782,11 +796,23 @@ too much to build just to answer "did anyone reply?". Shipped the cheap version 
 - `dashboard-shell.js`'s `refreshUnreadBadge()` — called from every page's `mount()` (not just
   jobs.html, since an unread reply can sit on any ticket), paints a count badge
   (`.badge-unread`) on the sidebar's "Jobs" link, polls every 45s, and `job-detail.html` calls
-  it again right after `getOrderMessages()` (which marks-read as a side effect) so the badge
-  drops immediately instead of waiting out the poll.
+  it again right after a markRead-triggered `getOrderMessages()` call so the badge drops
+  immediately instead of waiting out the poll.
 - When the real tab gets built: add a `messages` `NAV_ITEM`, a `messages.html` that calls the
   same `getUnreadMessageSummary()` for its list view, and a per-thread detail pane that's
   really just `job-detail.html`'s existing message-panel markup lifted into its own page.
+
+**Fix (2026-08-04): mark-read decoupled from merely opening the ticket.** `get-messages.js`
+marking the other party's messages read on *every* call meant the natural way to check "did I
+get a reply?" — open the order/ticket page — was the same action that erased the unread signal,
+often before the person looking ever saw the badge (confirmed live: unread went 1 → 0 across a
+single simulated page-open). Fixed by making the mark-read side effect opt-in
+(`?markRead=true`) instead of unconditional: the initial page-load fetch and the 8s background
+poll in both `job-detail.html` and `order-detail.html` now call the endpoint read-only (still
+render the thread immediately — nothing about seeing message content changed), and mark-read
+only fires from a real engagement signal — the reply textarea gaining focus, via
+`markMessagesRead(orderId)` in `dashboard-data.js`/`orders-data.js`. Glancing at a ticket to
+check for a reply no longer silently clears the badge before you look.
 
 **Follow-up (2026-08-04): customer-facing "New message!" banner, same seam, mobile-first.**
 Extended `get-unread-messages.js` above with a customer branch — same response shape, scoped
@@ -864,3 +890,51 @@ the storefront/dashboard **wiring** can be written and reviewed here; the provis
 deploy is an owner action following the checklist in
 [`ops-dashboard/infra/backend-infra-to-deploy.md`](../ops-dashboard/infra/backend-infra-to-deploy.md)
 §11.
+
+## Customer design-file uploads + malware scanning/quarantine (shipped 2026-08-04/05)
+
+**Trigger:** checkout's only way to hand KCMPS artwork was `#co-notes`, a freeform textarea where
+the customer pastes a Drive link — a poor fit for the print-office leaf (documents, catalogs,
+packaging files), which is exactly where a real file is the norm.
+
+**What shipped:** a drag-and-drop upload zone next to that textarea (the textarea stays — a link
+is still the right answer for a big multi-file job). Two-step presigned PUT straight to S3, the
+same pattern as `submit-payment-proof.js`; no file bytes ever pass through a Lambda.
+
+- [`backend/checkout/upload-design-file.js`](../backend/checkout/upload-design-file.js) —
+  `POST /design-uploads`, unauthenticated (guest checkout), throttled 10 req/s. Read its header
+  for the full threat model; the validation layers are summarized there, not duplicated here.
+- [`backend/lib/upload-types.js`](../backend/lib/upload-types.js) — the allowlist. Owner chose
+  images + PDF/AI/EPS/PSD + Office, **excluding SVG** (a script container) and **archives**
+  (opaque to Content-Type checks). Requires the declared type AND the filename extension to
+  agree, so a spoofed `application/pdf` on `payload.exe` is refused server-side.
+- Refs persist on `order.designFiles` via `create-order.js`, which re-validates that every ref
+  sits under `design-uploads/` in our own bucket — without that check a caller could attach
+  `s3://…/payments/<someone-else>.jpg` to a throwaway order and have staff presign another
+  customer's GCash proof, since all four upload prefixes share one bucket.
+
+**Malware scanning (2026-08-04), extended to every upload prefix (2026-08-05).** GuardDuty
+Malware Protection for S3 covers `design-uploads/`, `payments/`, `messages/`, `correspondence/`.
+[`backend/jobs/handle-scan-result.js`](../backend/jobs/handle-scan-result.js) (EventBridge)
+deletes **every version** of an infected object — the bucket is versioned, so a plain delete
+would leave the malware retrievable by versionId for 90 days — then persists the verdict plus a
+plain-English description ([`threat-descriptions.js`](../backend/lib/threat-descriptions.js), a
+static table, deliberately not an LLM call) onto the referencing record. The record survives the
+file: staff still see what arrived, what it was, and that it was destroyed.
+
+Read paths hand out a URL only for `NO_THREATS_FOUND`, force
+`Content-Disposition: attachment`, and treat a missing verdict as PENDING (fail closed). This
+also **closed a gap from the day before**: `send-message.js` accepts attachments from customers,
+and that path had neither a scan gate nor a disposition override.
+
+**One bug worth remembering** (found by owner UAT, not by the build): design files are uploaded
+*before* checkout, so GuardDuty routinely finishes scanning while the customer is still filling
+in the form — there is no order to annotate yet. The first implementation logged "abandoned
+checkout?" and discarded the verdict, leaving the file stuck "Scanning…" forever. Harmless-looking
+on an infected file; **fatal on a clean one**, since staff could then never download legitimate
+artwork. Fixed by always writing a standalone `SCAN#<ref>` verdict item that the read paths fall
+back to. Scripted testing missed it because the script placed the order seconds after uploading;
+only a human working at human speed hit the race.
+
+**Cost:** ~₱0–10/mo — see [cost-governance.md](cost-governance.md)'s decision log, which also
+records the earlier ~7x pricing overstatement that entry corrects.

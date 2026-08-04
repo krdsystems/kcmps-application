@@ -7,8 +7,17 @@
 
    Item shape (new type, same table, no infra change):
      PK: ORDER#<id>, SK: MSG#<ISO timestamp>#<msgId>
-     { senderSub, senderRole: "customer"|"staff", body, attachmentRef,
-       readAt: null, at, orderId }
+     { senderSub, senderRole: "customer"|"staff", body,
+       attachments: [{filename, contentType, ref}], readAt: null, at, orderId }
+
+   Attachments (added 2026-08-04): same two-step presigned-upload flow as
+   submit-payment-proof.js / add-correspondence.js — this Lambda hands
+   back a PUT URL per requested attachment, the browser uploads directly
+   to S3, this Lambda never sees file bytes. `body` or at least one
+   attachment is required (not necessarily both — a photo with no caption
+   is a valid message). `attachments[].ref` is an s3:// URI; get-
+   messages.js presigns a GET url per attachment on read, same pattern as
+   get-orders.js's payment.screenshotUrl.
 
    Auth: no separate "chat" role — a caller is either staff (any
    isStaff() group, may post to ANY order) or the order's own customer
@@ -32,12 +41,19 @@
 const { randomUUID } = require("crypto");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, PutCommand } = require("@aws-sdk/lib-dynamodb");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { SITE_ID, SCHEMA_VERSION, orderPk, metaSk, messageSk, clientGsi2Pk, messageGsi2Sk, extractClaims, isStaff } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
+const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
+const UPLOAD_URL_EXPIRY_SECONDS = 15 * 60;
 const MAX_BODY_LENGTH = 4000;
+const MAX_ATTACHMENTS = 5;
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const claims = extractClaims(event);
@@ -49,8 +65,16 @@ exports.handler = async (event) => {
   let body = {};
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
   const text = (body.body || "").trim();
-  if (!text) return response(400, { error: "body is required" });
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
   if (text.length > MAX_BODY_LENGTH) return response(400, { error: `body must be ${MAX_BODY_LENGTH} characters or fewer` });
+  if (rawAttachments.length > MAX_ATTACHMENTS) return response(400, { error: `At most ${MAX_ATTACHMENTS} attachments per message` });
+  for (const a of rawAttachments) {
+    if (!a || typeof a.filename !== "string" || !a.filename.trim()) return response(400, { error: "Each attachment needs a filename" });
+    if (!ALLOWED_CONTENT_TYPES.has(a.contentType)) {
+      return response(400, { error: `contentType must be one of: ${Array.from(ALLOWED_CONTENT_TYPES).join(", ")}` });
+    }
+  }
+  if (!text && !rawAttachments.length) return response(400, { error: "body or at least one attachment is required" });
 
   const pk = orderPk(orderId);
   const orderRes = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: pk, SK: metaSk() } }));
@@ -64,6 +88,21 @@ exports.handler = async (event) => {
 
   const at = new Date().toISOString();
   const msgId = randomUUID();
+
+  const attachments = [];
+  const uploads = [];
+  for (const a of rawAttachments) {
+    const safeName = sanitizeFilename(a.filename);
+    const s3Key = `messages/${orderId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+    const uploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({ Bucket: UPLOADS_BUCKET, Key: s3Key, ContentType: a.contentType }),
+      { expiresIn: UPLOAD_URL_EXPIRY_SECONDS }
+    );
+    attachments.push({ filename: safeName, contentType: a.contentType, ref: `s3://${UPLOADS_BUCKET}/${s3Key}` });
+    uploads.push({ s3Key, uploadUrl });
+  }
+
   const item = {
     PK: pk,
     SK: messageSk(at, msgId),
@@ -75,7 +114,7 @@ exports.handler = async (event) => {
     senderSub: claims.sub,
     senderRole: staff ? "staff" : "customer",
     body: text,
-    attachmentRef: body.attachmentRef || null,
+    attachments,
     readAt: null,
     at,
   };
@@ -90,8 +129,16 @@ exports.handler = async (event) => {
 
   await client.send(new PutCommand({ TableName: TABLE, Item: item }));
 
-  return response(201, { message: item });
+  return response(201, { message: item, uploads });
 };
+
+// See add-correspondence.js's identical helper — strips path separators/
+// non-alnum chars and caps length so a browser-supplied filename can't
+// inject S3 key structure into the object key.
+function sanitizeFilename(name) {
+  const base = name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
+  return base.slice(-100) || "file";
+}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

@@ -34,8 +34,8 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 // Legal transitions — mirrors NEXT_STATUS in dashboard-data.js, plus the
 // branches (QC pass/fail, verification reject) that need an explicit `to`.
 const LEGAL_TRANSITIONS = {
-  "Pending Payment Verification": ["Confirmed", "Payment Rejected"],
-  "Payment Rejected": ["Pending Payment Verification"], // customer resubmits
+  "Pending Payment Verification": ["Confirmed", "On Hold"],
+  "On Hold": ["Pending Payment Verification", "Confirmed"], // resolved over email/chat, then verified in one click
   "Quoted": ["Priced", "Quote Expired"],
   "Priced": ["Confirmed", "Quote Expired"],
   "Confirmed": ["Scheduled"],

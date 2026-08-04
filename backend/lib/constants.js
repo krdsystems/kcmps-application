@@ -26,7 +26,14 @@ const STATUS = Object.freeze({
   PRICED: "Priced",
   PENDING_PAYMENT_VERIFICATION: "Pending Payment Verification",
   CONFIRMED: "Confirmed",
-  PAYMENT_REJECTED: "Payment Rejected",
+  // Replaced the old PAYMENT_REJECTED ("Payment Rejected") status: the
+  // common real case isn't "this payment is bad, start over" but "the
+  // customer paid and something's unclear (wrong file, vague
+  // instructions)". Staff and customer sort that out over email/chat
+  // (outside this system — see job-detail.html's Spacemail search link and
+  // the order message thread), then staff click Verify Payment once, going
+  // straight On Hold -> Confirmed with no resubmit round-trip.
+  ON_HOLD: "On Hold",
   SCHEDULED: "Scheduled",
   IN_PRODUCTION: "In Production",
   QC: "QC",

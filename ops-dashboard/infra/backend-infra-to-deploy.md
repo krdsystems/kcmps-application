@@ -18,7 +18,7 @@ Dashboard Project Knowledge file ("Cost Impact: essentially nil, by design").
   mixed-cart (`sku` + `custom` line items on one order) design and the
   manual GCash bridge verification flow. This is where the `payment`
   sub-object on the `ORDER#<id>` item (§2.2) and the `verifyPayment` /
-  `rejectPayment` / `submitPaymentProof` / `expirePendingOrders` Lambda
+  `setOnHold` / `submitPaymentProof` / `expirePendingOrders` Lambda
   names (§3) come from.
 - The Operations Dashboard Project Knowledge file (not checked into this
   repo under a stable path — see the original chat upload) — the daily/
@@ -166,7 +166,7 @@ section, since that section is what `dashboard-data.js`'s mock layer and
     "submittedAt": "2026-07-21T14:00:00Z",
     "verifiedBy": null,
     "verifiedAt": null,
-    "rejectionReason": null
+    "holdReason": null
   }
 }
 ```
@@ -174,7 +174,7 @@ section, since that section is what `dashboard-data.js`'s mock layer and
 **One `payment` object covers every `sku` line item on that order together**
 — the customer pays one GCash transaction for the sum of their pay-now
 items at checkout (Payment System file, "Checkout Flow" step 1), so
-`verifyPayment` / `rejectPayment` (§3) act on the *order*, transitioning
+`verifyPayment` / `setOnHold` (§3) act on the *order*, transitioning
 every line item currently `Pending Payment Verification` on it in one
 call, not line-by-line. `custom` items never touch this object — each gets
 its **own** follow-up payment link once priced (`submitQuotePrice` /
@@ -247,7 +247,7 @@ All code is in `logic-inputs/`. Runtime: **Node.js 20.x**, ARM64
 | `daily-digest.js` | EventBridge cron, 07:00 and 18:00 Asia/Manila | One SES email per run summarizing SLA breaches (verification queue age, quote queue age, due-today-at-risk) — **digest, not per-event**, per Part 5.5 |
 | `api-get-orders.js` | API Gateway `GET /orders` | Role-filtered order/line-item read. Verifies the Cognito JWT server-side (JWKS), branches on `cognito:groups` — staff see all, customers see only their own `sub` |
 | `api-advance-line-item.js` | API Gateway `POST /line-items/{id}/advance` | Validates the requested transition against the state machine (Part 5.1), writes the line item + event atomically (`TransactWriteItems`), rejects illegal transitions (e.g. `Delivered` → `Quoted`) |
-| `api-verify-payment.js` | API Gateway `POST /orders/{orderId}/verify-payment` and `POST /orders/{orderId}/reject-payment` | Staff-side half of the Payment System file's `verifyPayment`/`rejectPayment` — bulk-transitions every `sku` line item on the order still `Pending Payment Verification`, and stamps `order.payment.verifiedBy`/`verifiedAt` or `rejectionReason` (§2.2). Mirrors `dashboard-data.js`'s `verifyPayment()`/`rejectPayment()` exactly — see §6 |
+| `api-verify-payment.js` | API Gateway `POST /orders/{orderId}/verify-payment` and `POST /orders/{orderId}/set-on-hold` | Staff-side half of the Payment System file's `verifyPayment`/`setOnHold` — bulk-transitions every `sku` line item on the order still `Pending Payment Verification`, and stamps `order.payment.verifiedBy`/`verifiedAt` or `holdReason` (§2.2). Mirrors `dashboard-data.js`'s `verifyPayment()`/`setOnHold()` exactly — see §6 |
 
 Two Lambdas named in the Payment System file are **customer-facing storefront
 work, not dashboard work**, and are intentionally not included here — build
@@ -311,7 +311,7 @@ validate the token but don't filter by group claim):
 | POST | `/line-items/{lineItemId}/advance` | `api-advance-line-item.js` |
 | POST | `/line-items/{lineItemId}/spoilage` | `api-spoilage.js` |
 | POST | `/orders/{orderId}/verify-payment` | `api-verify-payment.js` |
-| POST | `/orders/{orderId}/reject-payment` | `api-verify-payment.js` |
+| POST | `/orders/{orderId}/set-on-hold` | `api-verify-payment.js` |
 | GET, POST | `/blockers` | `api-blockers.js` |
 | POST | `/blockers/{id}/resolve` | `api-blockers.js` |
 | GET | `/inventory` | `api-inventory.js` |
@@ -379,7 +379,7 @@ shapes already match what the API above returns**. To cut over:
 
 No other frontend changes are expected. One shape note specific to the
 payment endpoints: `dashboard-data.js`'s `verifyPayment(orderId, staffName)`
-and `rejectPayment(orderId, reason, staffName)` return the full mutated
+and `setOnHold(orderId, reason, staffName)` return the full mutated
 order object, while `api-verify-payment.js` (§3) returns a smaller
 `{orderId, action, lineItemsAffected, at}` acknowledgment — that's fine and
 requires no reconciliation, because `job-detail.html` never reads either
@@ -432,7 +432,7 @@ trivially fixable later.
 |---|---|---|
 | **A** | GSI1 (§2.3) + event-record writes on every line-item transition (via `api-advance-line-item.js` and `streams-handler.js`) | Existing order/checkout Lambda already writing line items |
 | **B** | `api-get-orders.js`, `api-advance-line-item.js`, `api-blockers.js` — enough for `/today`'s queues + blockers board to go live against real data | Stage A |
-| **C** | Wire the GCash verification queue (`Pending Payment Verification` → `Confirmed`/`Payment Rejected`) into `api-advance-line-item.js`; deploy `expire-pending-orders.js` | Stage B |
+| **C** | Wire the GCash verification queue (`Pending Payment Verification` → `Confirmed`/`On Hold`) into `api-advance-line-item.js`; deploy `expire-pending-orders.js` | Stage B |
 | **D** | `streams-handler.js`'s METRIC# rollup logic; `api-metrics.js`; `api-spoilage.js`; setup-minutes capture in `api-advance-line-item.js` | Stage A |
 | **E** | `/week` capacity view goes live against `api-metrics.js` + `api-get-orders.js` | Stage D |
 | **F** | Storefront feedback loops (capacity→turnaround, stock→availability threshold) — new Lambda logic in the *storefront's* checkout path, out of scope for this doc | Stage E |

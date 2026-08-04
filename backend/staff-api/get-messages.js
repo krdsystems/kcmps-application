@@ -19,23 +19,38 @@
    dashboard/job-detail.html), not a global inbox, so this gap doesn't
    block anything asked for.
 
-   Side effect: marks the OTHER party's messages as read on every call —
-   a customer loading this thread marks staff messages read, staff
-   loading it marks customer messages read. This is what backend/jobs/
-   notify-unread-messages.js's 2-hour reminder checks against, and it's
-   the only "mark read" path — no separate endpoint, per the "reused
-   pattern" simplicity principle. Best-effort: a failed mark-read never
-   blocks the read response, since a stale readAt just means one extra
-   reminder email at worst.
+   Side effect (OPT-IN via ?markRead=true): marks the OTHER party's
+   messages as read — a customer marks staff messages read, staff marks
+   customer messages read. This is what backend/jobs/notify-unread-
+   messages.js's 2-hour reminder checks against, and it's the only "mark
+   read" path — no separate endpoint, per the "reused pattern" simplicity
+   principle. Best-effort: a failed mark-read never blocks the read
+   response, since a stale readAt just means one extra reminder email at
+   worst.
+
+   Defaulting markRead to OFF (was unconditional until 2026-08-04) is
+   deliberate: both order-detail.html and job-detail.html call this
+   Lambda unconditionally on page load and every 8s poll just to render
+   the thread, which meant simply opening a ticket to check whether a
+   message had arrived silently consumed the very unread signal you were
+   there to look for — the sidebar badge / customer banner would already
+   read 0 by the time you looked back at it. Callers now pass
+   `?markRead=true` only from a real engagement signal (frontend: the
+   reply box gaining focus), so glancing at a thread no longer clears it.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, QueryCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
-const { orderPk, metaSk, extractClaims, isStaff } = require("../lib");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { orderPk, metaSk, scanResultPk, extractClaims, isStaff } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
+const ATTACHMENT_URL_EXPIRY_SECONDS = 15 * 60;
+const S3_URI_RE = /^s3:\/\/([^/]+)\/(.+)$/;
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const claims = extractClaims(event);
@@ -61,25 +76,92 @@ exports.handler = async (event) => {
   }));
   const messages = (res.Items || []).sort((a, b) => (a.at || "").localeCompare(b.at || ""));
 
-  const otherPartyRole = staff ? "customer" : "staff";
-  const toMarkRead = messages.filter((m) => m.senderRole === otherPartyRole && !m.readAt);
-  if (toMarkRead.length) {
-    const now = new Date().toISOString();
-    await Promise.all(toMarkRead.map((m) =>
-      client.send(new UpdateCommand({
-        TableName: TABLE,
-        Key: { PK: m.PK, SK: m.SK },
-        UpdateExpression: "SET readAt = :now",
-        ConditionExpression: "attribute_exists(PK)",
-        ExpressionAttributeValues: { ":now": now },
-      })).then(() => { m.readAt = now; }).catch((err) => {
-        console.error("get-messages: mark-read failed for", m.SK, err.message);
-      })
-    ));
+  const markRead = event.queryStringParameters?.markRead === "true";
+  if (markRead) {
+    const otherPartyRole = staff ? "customer" : "staff";
+    const toMarkRead = messages.filter((m) => m.senderRole === otherPartyRole && !m.readAt);
+    if (toMarkRead.length) {
+      const now = new Date().toISOString();
+      await Promise.all(toMarkRead.map((m) =>
+        client.send(new UpdateCommand({
+          TableName: TABLE,
+          Key: { PK: m.PK, SK: m.SK },
+          UpdateExpression: "SET readAt = :now",
+          ConditionExpression: "attribute_exists(PK)",
+          ExpressionAttributeValues: { ":now": now },
+        })).then(() => { m.readAt = now; }).catch((err) => {
+          console.error("get-messages: mark-read failed for", m.SK, err.message);
+        })
+      ));
+    }
   }
 
-  return response(200, { messages });
+  const withUrls = await Promise.all(messages.map(withAttachmentUrls));
+  return response(200, { messages: withUrls });
 };
+
+// Each attachment's `ref` is an s3:// URI (send-message.js) — not directly
+// loadable by a browser, since the bucket is private. Same two rules as
+// staff-api/get-orders.js (see its header comment for the full reasoning):
+//
+//  1. SCAN GATE — jobs/handle-scan-result.js persists GuardDuty's verdict on
+//     the message item. Anything not NO_THREATS_FOUND gets no url; infected
+//     files are already deleted from S3 by that Lambda, and the attachment
+//     record survives so both sides can see what was sent and that it was
+//     destroyed. No persisted verdict yet = PENDING = blocked (fail closed).
+//  2. FORCED DOWNLOAD — attachment disposition + octet-stream, so nothing
+//     renders inline. This matters more here than anywhere else in the
+//     system: send-message.js accepts attachments from CUSTOMERS (any
+//     logged-in customer, on their own order), so this is the one upload
+//     path where an outsider's file was previously presigned for staff with
+//     neither a scan nor a disposition override. Both were added 2026-08-05.
+async function withAttachmentUrls(message) {
+  if (!Array.isArray(message.attachments) || !message.attachments.length) return message;
+  const attachments = await Promise.all(message.attachments.map(async (raw) => {
+    // Fall back to the standalone SCAN# verdict when the attachment wasn't
+    // annotated in place — see get-orders.js's resolveVerdict() for why
+    // that happens and why it must not become a permanent "Scanning…".
+    let a = raw;
+    if (!a.scanStatus && a.ref) {
+      try {
+        const v = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: scanResultPk(a.ref), SK: metaSk() } }));
+        if (v.Item) a = { ...a, ...v.Item, PK: undefined, SK: undefined };
+      } catch (err) {
+        console.error("get-messages: scan-verdict lookup failed for", a.ref, err.message);
+      }
+    }
+    if (a.scanStatus !== "NO_THREATS_FOUND") {
+      return { ...a, url: null, scanStatus: a.scanStatus || "PENDING" };
+    }
+    const match = a.ref && S3_URI_RE.exec(a.ref);
+    if (!match) return a;
+    const [, bucket, key] = match;
+    try {
+      const url = await getSignedUrl(s3, new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ResponseContentDisposition: `attachment; filename="${downloadFilename(a.filename)}"`,
+        ResponseContentType: "application/octet-stream",
+      }), { expiresIn: ATTACHMENT_URL_EXPIRY_SECONDS });
+      return { ...a, url };
+    } catch (err) {
+      console.error("get-messages: failed to presign attachment", a.ref, err.message);
+      return { ...a, url: null };
+    }
+  }));
+  return { ...message, attachments };
+}
+
+// Mirrors get-orders.js's helper — strips quotes/backslashes/control chars
+// (CR/LF would be header injection) out of the Content-Disposition value.
+function downloadFilename(name) {
+  const cleaned = String(name || "file")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/["\\]/g, "")
+    .trim()
+    .slice(0, 120);
+  return cleaned || "file";
+}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

@@ -16,4 +16,6 @@ module.exports = {
   ...require("./gsi"),
   ...require("./order-status"),
   ...require("./customer-view"),
+  ...require("./upload-types"),
+  ...require("./threat-descriptions"),
 };

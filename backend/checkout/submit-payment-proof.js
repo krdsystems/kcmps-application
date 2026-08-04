@@ -109,18 +109,18 @@ exports.handler = async (event) => {
     submittedAt: now,
     verifiedBy: null,
     verifiedAt: null,
-    rejectionReason: null,
+    holdReason: null,
   };
 
   // Still-Order-Placed sku line items are the ones this submission actually
   // covers — this is the one and only place a line item ever becomes
-  // Pending Payment Verification (see header). A resubmission after a
-  // rejection (Payment Rejected -> Pending Payment Verification) is a
-  // separate, already-legal transition (advance-line-item.js's
-  // LEGAL_TRANSITIONS) that this Lambda doesn't need to duplicate — those
-  // line items aren't Order Placed anymore, so this query naturally skips
-  // them here and the customer's resubmission flow re-invokes this same
-  // endpoint anyway.
+  // Pending Payment Verification (see header). A resubmission out of a hold
+  // (On Hold -> Pending Payment Verification) is a separate, already-legal
+  // transition (advance-line-item.js's LEGAL_TRANSITIONS) that this Lambda
+  // doesn't need to duplicate — those line items aren't Order Placed
+  // anymore, so this query naturally skips them here. Note that a hold is
+  // usually resolved the other way, by staff verifying the held payment
+  // outright (verify-payment.js) rather than by any resubmission at all.
   const placedRes = await dynamo.send(new QueryCommand({
     TableName: TABLE,
     KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",

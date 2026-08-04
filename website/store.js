@@ -56,6 +56,38 @@
   // backend/infra/README.md. Also present in index.html's CSP connect-src;
   // keep both in sync if this API is ever recreated under a different id.
   var CHECKOUT_API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+
+  /* ---- design-file upload allowlist (checkout drag-and-drop) ----
+     MIRROR of backend/lib/upload-types.js — this copy exists purely so a
+     customer gets an instant "that file type isn't accepted" instead of a
+     round trip, and so the OS file picker filters sensibly. It is NOT a
+     security boundary: anyone can bypass it with devtools or curl. The
+     real gate is upload-design-file.js's server-side re-validation, which
+     re-checks BOTH the extension and the declared Content-Type before it
+     will issue a presigned URL. Keep the two lists in sync — and if they
+     ever disagree, the server's list is the correct one.
+
+     Deliberately excludes SVG (script container) and archives (opaque to
+     Content-Type checks) — see the backend file's header for the full
+     reasoning. Customers with multi-file jobs paste a Drive/Dropbox link
+     into the notes textarea, which is why that textarea stays. */
+  var UPLOAD_ACCEPT_EXTENSIONS = [
+    "jpg", "jpeg", "png", "webp", "tif", "tiff",
+    "pdf", "ai", "eps", "psd",
+    "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+  ];
+  // `accept` attribute for the fallback <input type="file"> — extensions
+  // only (not MIME), since the print formats browsers have no mapping for
+  // (.ai/.eps/.psd) would otherwise be greyed out in the OS picker.
+  var UPLOAD_ACCEPT_ATTR = UPLOAD_ACCEPT_EXTENSIONS.map(function (e) { return "." + e; }).join(",");
+  var MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+  var MAX_UPLOADS_PER_ORDER = 10;
+
+  // Files successfully uploaded during this checkout session, in the shape
+  // create-order.js's normalizeDesignFiles() expects. Cleared with the cart
+  // on a successful order (clearCart()) — an abandoned checkout just leaves
+  // orphan S3 objects, which the bucket lifecycle rule handles.
+  var uploadedDesignFiles = [];
   // Same sessionStorage key index.html's auth script writes to
   // (TOKEN_STORAGE_KEY there) — read independently here rather than via a
   // shared export, matching how dashboard-shell.js already does this.
@@ -283,7 +315,17 @@
     saveCart(cart); syncUI();
   }
   function removeItem(key) { cart = cart.filter(function (i) { return i.key !== key; }); saveCart(cart); syncUI(); }
-  function clearCart() { cart = []; saveCart(cart); syncUI(); }
+  // Also drops any attached design files — they belong to the order that
+  // was just placed (their refs are already persisted on it server-side),
+  // so carrying them into the customer's next checkout would silently
+  // re-attach someone's previous artwork to an unrelated order.
+  function clearCart() {
+    cart = [];
+    uploadedDesignFiles = [];
+    renderUploadList();
+    saveCart(cart);
+    syncUI();
+  }
 
   /* ---------- badge (reuses the auth-era nav elements) ---------- */
   var lastBadgeCount = null;
@@ -1313,6 +1355,19 @@
             '<div class="field"><label for="co-address">Exact address</label><input class="input" id="co-address" autocomplete="street-address" placeholder="Full delivery address" /></div>' +
             '<div class="field"><label for="co-landmark">Landmark</label><input class="input" id="co-landmark" placeholder="Nearby landmark to help the rider find you" /></div>' +
           '</div>' +
+          // Upload zone and the link/notes textarea deliberately coexist:
+          // uploading is better for a single print-ready file, a link is
+          // better for a big multi-file job (and archives aren't accepted
+          // — see UPLOAD_ACCEPT_EXTENSIONS' comment).
+          '<div class="field"><label for="co-files-input">Design / print files</label>' +
+            '<div class="upload-drop" id="co-drop" tabindex="0" role="button" aria-describedby="co-upload-hint">' +
+              '<span class="upload-drop-main">Drag files here, or <span class="upload-drop-link">click to browse</span></span>' +
+              '<span class="upload-drop-hint" id="co-upload-hint">JPG, PNG, WEBP, TIFF, PDF, AI, EPS, PSD, DOC(X), XLS(X), PPT(X) · up to 50MB each</span>' +
+            '</div>' +
+            '<input type="file" id="co-files-input" multiple accept="' + UPLOAD_ACCEPT_ATTR + '" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" />' +
+            '<ul class="upload-list" id="co-upload-list"></ul>' +
+            '<p class="upload-error" id="co-upload-error" style="display:none"></p>' +
+          '</div>' +
           '<div class="field"><label for="co-notes">Custom request details / design links</label><textarea class="input" id="co-notes" placeholder="For custom items: describe your design, sizes, quantities, or paste file links."></textarea></div>' +
           '<p class="f-note">You\'ll get an email confirmation, with delivery (if selected) arriving within 1–2 business days.</p>' +
         '</div>' +
@@ -1342,9 +1397,237 @@
       r.addEventListener("change", syncFulfillFields);
     });
     syncFulfillFields();
+    wireDesignUpload();
 
     bodyView = drawer.querySelector("#cart-view");
     footEl = drawer.querySelector("#cart-foot");
+  }
+
+  /* ---- design-file drag & drop (checkout) ----
+     Two-step, same as submitPaymentProof(): POST /design-uploads to get a
+     presigned PUT scoped to a server-chosen key, then PUT the bytes
+     straight to S3 — the file never passes through a Lambda. XHR rather
+     than fetch() for the S3 PUT specifically because fetch has no upload-
+     progress event, and a 50MB print file on a Manila connection needs a
+     real progress bar, not a spinner. */
+  function wireDesignUpload() {
+    var drop = drawer.querySelector("#co-drop");
+    var input = drawer.querySelector("#co-files-input");
+    if (!drop || !input) return;
+
+    function openPicker() { input.click(); }
+    drop.addEventListener("click", openPicker);
+    // Keyboard path for the same target — the zone is role="button", so
+    // Enter/Space must activate it like a real button would.
+    drop.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
+    });
+    input.addEventListener("change", function () {
+      handleDesignFiles(input.files);
+      input.value = ""; // let the same file be re-picked after a removal
+    });
+
+    ["dragenter", "dragover"].forEach(function (evt) {
+      drop.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        drop.classList.add("is-dragover");
+      });
+    });
+    ["dragleave", "drop"].forEach(function (evt) {
+      drop.addEventListener(evt, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (evt === "dragleave" && drop.contains(e.relatedTarget)) return; // moving between children isn't a real leave
+        drop.classList.remove("is-dragover");
+      });
+    });
+    drop.addEventListener("drop", function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) handleDesignFiles(e.dataTransfer.files);
+    });
+    // A file dropped anywhere OTHER than the zone would otherwise navigate
+    // the tab away to that file — a genuinely destructive default when the
+    // customer has a half-filled checkout form open.
+    ["dragover", "drop"].forEach(function (evt) {
+      drawer.addEventListener(evt, function (e) {
+        if (drop.contains(e.target)) return;
+        e.preventDefault();
+      });
+    });
+  }
+
+  function uploadErrorEl() { return drawer.querySelector("#co-upload-error"); }
+  function showUploadError(msg) {
+    var el = uploadErrorEl();
+    if (!el) return;
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.textContent = msg;
+    el.style.display = "";
+  }
+
+  function fileExtension(name) {
+    var m = /\.([a-zA-Z0-9]+)$/.exec(String(name || "").trim());
+    return m ? m[1].toLowerCase() : "";
+  }
+
+  function handleDesignFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    showUploadError("");
+
+    files.forEach(function (file) {
+      if (uploadedDesignFiles.length + pendingUploads.length >= MAX_UPLOADS_PER_ORDER) {
+        showUploadError("You can attach up to " + MAX_UPLOADS_PER_ORDER + " files. Paste a folder link below for anything more.");
+        return;
+      }
+      // Client-side pre-checks — UX only (see UPLOAD_ACCEPT_EXTENSIONS).
+      if (UPLOAD_ACCEPT_EXTENSIONS.indexOf(fileExtension(file.name)) === -1) {
+        showUploadError('"' + file.name + '" isn\'t an accepted file type. Send images, PDF/AI/EPS/PSD, or Office documents — or paste a link to it below.');
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showUploadError('"' + file.name + '" is larger than 50MB. Paste a Google Drive or Dropbox link below instead.');
+        return;
+      }
+      if (file.size === 0) {
+        showUploadError('"' + file.name + '" is empty.');
+        return;
+      }
+      startDesignUpload(file);
+    });
+  }
+
+  // In-flight uploads, so the per-order cap counts them too and the
+  // "Place order" button can refuse to submit mid-upload.
+  var pendingUploads = [];
+
+  function startDesignUpload(file) {
+    var entry = { file: file, name: file.name, progress: 0, state: "uploading", error: null, xhr: null };
+    pendingUploads.push(entry);
+    renderUploadList();
+
+    var headers = { "Content-Type": "application/json" };
+    var token = idToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    fetch(CHECKOUT_API_BASE + "/design-uploads", {
+      method: "POST", headers: headers,
+      body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", size: file.size }),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        // The server's allowlist is the real gate — surface its message
+        // verbatim rather than a generic failure, since it explains what
+        // IS accepted.
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Upload could not be started (" + res.status + ")");
+        return data;
+      });
+    }).then(function (data) {
+      return putWithProgress(data.uploadUrl, file, function (pct) {
+        entry.progress = pct;
+        renderUploadList();
+      }).then(function () {
+        entry.state = "done";
+        entry.progress = 100;
+        uploadedDesignFiles.push({
+          ref: data.fileRef,
+          filename: data.filename,
+          contentType: data.contentType,
+          size: data.size,
+        });
+        removePending(entry);
+        renderUploadList();
+      });
+    }).catch(function (err) {
+      entry.state = "error";
+      entry.error = err.message;
+      renderUploadList();
+      showUploadError(file.name + " — " + err.message);
+    });
+  }
+
+  function removePending(entry) {
+    var i = pendingUploads.indexOf(entry);
+    if (i > -1) pendingUploads.splice(i, 1);
+  }
+
+  function putWithProgress(url, file, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = function (e) {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        // A 403 here is almost always the signed Content-Length/Content-Type
+        // not matching what we're actually sending, or a 15-min expiry.
+        else reject(new Error("upload failed (" + xhr.status + "). Please try again."));
+      };
+      xhr.onerror = function () { reject(new Error("upload failed — check your connection and try again.")); };
+      xhr.send(file);
+    });
+  }
+
+  function removeUploadedDesignFile(idx) {
+    // Client-side detach only — the S3 object stays until the bucket
+    // lifecycle rule collects it. There's no delete endpoint on purpose:
+    // an unauthenticated pre-checkout DELETE is a strictly worse thing to
+    // expose than an orphan object that costs fractions of a centavo.
+    uploadedDesignFiles.splice(idx, 1);
+    renderUploadList();
+  }
+
+  function renderUploadList() {
+    var list = drawer && drawer.querySelector("#co-upload-list");
+    if (!list) return;
+    list.innerHTML = "";
+
+    uploadedDesignFiles.forEach(function (f, idx) {
+      var li = document.createElement("li");
+      li.className = "upload-item is-done";
+      var name = document.createElement("span");
+      name.className = "upload-item-name";
+      name.textContent = f.filename; // textContent, never innerHTML — customer-supplied
+      var meta = document.createElement("span");
+      meta.className = "upload-item-meta";
+      meta.textContent = formatBytes(f.size);
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "upload-item-remove";
+      remove.setAttribute("aria-label", "Remove " + f.filename);
+      remove.textContent = "×";
+      remove.addEventListener("click", function () { removeUploadedDesignFile(idx); });
+      li.appendChild(name); li.appendChild(meta); li.appendChild(remove);
+      list.appendChild(li);
+    });
+
+    pendingUploads.forEach(function (entry) {
+      var li = document.createElement("li");
+      li.className = "upload-item " + (entry.state === "error" ? "is-error" : "is-uploading");
+      var name = document.createElement("span");
+      name.className = "upload-item-name";
+      name.textContent = entry.name;
+      var meta = document.createElement("span");
+      meta.className = "upload-item-meta";
+      meta.textContent = entry.state === "error" ? "Failed" : entry.progress + "%";
+      li.appendChild(name); li.appendChild(meta);
+      if (entry.state !== "error") {
+        var bar = document.createElement("span");
+        bar.className = "upload-item-bar";
+        var fill = document.createElement("span");
+        fill.className = "upload-item-bar-fill";
+        fill.style.width = entry.progress + "%";
+        bar.appendChild(fill);
+        li.appendChild(bar);
+      }
+      list.appendChild(li);
+    });
+  }
+
+  function formatBytes(n) {
+    if (!(n > 0)) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
   }
 
   // Logged-in customers get name/email pre-filled and locked to their
@@ -1706,6 +1989,12 @@
     var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
     var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
     var notes = (document.getElementById("co-notes").value || "").trim();
+    // Placing the order mid-upload would drop the file silently — its ref
+    // only lands in uploadedDesignFiles once the S3 PUT actually completes.
+    if (pendingUploads.length) {
+      alert("Please wait for your file upload" + (pendingUploads.length > 1 ? "s" : "") + " to finish before placing the order.");
+      return;
+    }
 
     var shipping = null;
     if (fulfill === "Delivery") {
@@ -1738,6 +2027,7 @@
       body: JSON.stringify({
         customerName: name, email: email, phone: phone, messenger: messenger, otherContact: otherContact,
         fulfillment: fulfill, shipping: shipping, notes: notes, cart: cartForCheckout(),
+        designFiles: uploadedDesignFiles,
         idempotencyKey: checkoutIdempotencyKey,
       }),
     }).then(function (res) {

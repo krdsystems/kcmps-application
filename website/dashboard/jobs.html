@@ -135,7 +135,7 @@
 
   function statusTone(status) {
     if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
-    if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
+    if (["Rework", "On Hold", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
     if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
     if (status === "In Production" || status === "QC") return "st-info";
     return "st-neutral";

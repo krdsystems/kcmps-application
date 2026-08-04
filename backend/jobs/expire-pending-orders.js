@@ -74,7 +74,7 @@ async function expireVerification(li) {
 
   // order.payment is the NULL scalar create-order.js writes at checkout
   // until submitPaymentProof.js turns it into a map — `SET
-  // payment.rejectionReason = ...` fails with ValidationException against
+  // payment.holdReason = ...` fails with ValidationException against
   // a non-map attribute, which cancels this whole transaction (silently,
   // since the caller in sweep() only logs and moves on). That meant this
   // sweep could never actually expire an order nobody had paid for — the
@@ -85,7 +85,7 @@ async function expireVerification(li) {
   const hasPayment = !!orderRes.Item?.payment;
   const paymentUpdate = hasPayment
     ? {
-        UpdateExpression: "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
+        UpdateExpression: "SET payment.holdReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
         ExpressionAttributeValues: { ":reason": reason, ":null": null },
       }
     : {
@@ -93,7 +93,7 @@ async function expireVerification(li) {
         ExpressionAttributeValues: {
           ":payment": {
             method: null, claimedAmount: null, gcashRefNumber: null, screenshotRef: null,
-            submittedAt: null, verifiedBy: null, verifiedAt: null, rejectionReason: reason,
+            submittedAt: null, verifiedBy: null, verifiedAt: null, holdReason: reason,
           },
         },
       };
@@ -120,10 +120,9 @@ async function expireVerification(li) {
         },
       },
       // Stamp the order-level payment audit trail the same way a
-      // staff-triggered rejectPayment call would, so a 48h auto-expiry is
-      // indistinguishable from a manual reject in the ticket's payment
-      // history — only actorSub in the EVENT# record above tells you it
-      // was automatic.
+      // staff-triggered setOnHold call would, so a 48h auto-expiry reads
+      // the same as a manual hold in the ticket's payment history — only
+      // actorSub in the EVENT# record above tells you it was automatic.
       {
         Update: {
           TableName: TABLE,

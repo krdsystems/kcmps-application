@@ -817,6 +817,36 @@ textarea.input { min-height: 90px; resize: vertical; }
 .checkout-view .field { margin-bottom: var(--space-3); }
 .checkout-back { border: none; background: transparent; cursor: pointer; font-size: 13px; color: var(--color-accent-700); padding: 0 0 var(--space-3); }
 
+/* — design-file upload zone (checkout, store.js's wireDesignUpload) — */
+.upload-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  padding: var(--space-4) var(--space-3); border: 1.5px dashed color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-accent) 3%, transparent);
+  cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.upload-drop:hover, .upload-drop:focus-visible { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+.upload-drop.is-dragover { border-color: var(--color-accent); border-style: solid;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.upload-drop-main { font-size: 13.5px; color: var(--color-text); }
+.upload-drop-link { color: var(--color-accent-700); text-decoration: underline; }
+.upload-drop-hint { font-size: 11px; line-height: 1.5; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+
+.upload-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.upload-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12.5px;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+/* min-width:0 so a long filename ellipsises instead of blowing the grid
+   track out past the drawer's width (same trap as .offer-grid's children). */
+.upload-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-item-meta { color: color-mix(in srgb, var(--color-text) 60%, transparent); font-variant-numeric: tabular-nums; }
+.upload-item-remove { grid-column: 3; border: none; background: transparent; cursor: pointer; font-size: 17px; line-height: 1;
+  padding: 0 2px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.upload-item-remove:hover { color: var(--color-accent-700); }
+.upload-item-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; overflow: hidden;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent); }
+.upload-item-bar-fill { display: block; height: 100%; background: var(--color-accent); transition: width .2s ease; }
+.upload-item.is-done { background: color-mix(in srgb, #2e7d32 10%, transparent); }
+.upload-item.is-error { background: color-mix(in srgb, #c0392b 10%, transparent); }
+.upload-error { margin: 6px 0 0; font-size: 12px; color: #c0392b; }
+
 /* — FAQ (native details) — */
 .faq { padding: var(--space-8) 0; }
 .faq-item { border-bottom: 1px solid var(--color-divider); }

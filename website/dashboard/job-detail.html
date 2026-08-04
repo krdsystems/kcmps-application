@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Job ticket — KCMPS Ops</title>
 <link rel="stylesheet" href="../styles.css" />
 <link rel="stylesheet" href="dashboard.css" />
@@ -49,7 +49,7 @@
 
   function statusTone(status) {
     if (["Delivered", "Picked Up", "Ready for Dispatch", "Ready for Pickup", "Dispatched"].includes(status)) return "st-good";
-    if (["Rework", "Payment Rejected", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
+    if (["Rework", "On Hold", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
     if (["Order Placed", "Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
     if (status === "In Production" || status === "QC") return "st-info";
     return "st-neutral";
@@ -65,7 +65,13 @@
       case "Order Placed": return []; // waiting on the customer to submit GCash proof — nothing for staff to do yet
       case "Pending Payment Verification": return [
         { label: "Verify payment", to: "__verifypayment__", tone: "btn-primary" },
-        { label: "Reject payment", to: "__rejectpayment__", tone: "btn-secondary" },
+        { label: "Set to On-Hold", to: "__setonhold__", tone: "btn-secondary" },
+      ];
+      // A hold is parked, not dead: once whatever was unclear is settled
+      // over email/chat, Verify payment fires straight from here to
+      // Confirmed (verify-payment.js accepts On Hold line items directly).
+      case "On Hold": return [
+        { label: "Verify payment", to: "__verifypayment__", tone: "btn-primary" },
       ];
       case "Quoted": return [{ label: "Send price to customer", to: "Priced", tone: "btn-primary" }];
       case "Priced": return [{ label: "Mark payment received", to: "Confirmed", tone: "btn-primary" }];
@@ -87,6 +93,99 @@
     }
   }
 
+  // ---- attachment rendering + the malware-scan gate ----
+  // An attachment only ever carries a `url` when GuardDuty returned
+  // NO_THREATS_FOUND (the Lambdas withhold it otherwise — see
+  // backend/staff-api/get-orders.js). Anything else renders as a
+  // non-clickable record instead of disappearing: staff need to know a file
+  // arrived, what it was called, and why they can't open it. For an
+  // infected file the bytes are already deleted from S3 by
+  // backend/jobs/handle-scan-result.js — this row IS the only remaining
+  // trace, which is exactly why it must keep the filename and threat name.
+  const SCAN_LABEL = {
+    THREATS_FOUND: "Malware detected — file deleted from storage.",
+    PENDING: "Scanning… reload in a moment.",
+    UNSUPPORTED: "Couldn't be scanned (unsupported or too large) — download blocked.",
+    ACCESS_DENIED: "Scan unavailable (access denied) — download blocked.",
+    FAILED: "Scan failed — download blocked.",
+    UNKNOWN: "Scan status unknown — download blocked.",
+  };
+  function scanNote(att) {
+    const status = att.scanStatus || "PENDING";
+    let msg = SCAN_LABEL[status] || SCAN_LABEL.UNKNOWN;
+    if (att.quarantinedAt) msg += " Removed " + fmtDateTime(att.quarantinedAt) + ".";
+    return msg;
+  }
+
+  // Plain-English explanation, resolved at scan time by
+  // backend/lib/threat-descriptions.js and stored on the record. Renders as
+  // a labelled block rather than a raw signature name, because the person
+  // reading this is deciding what to tell a customer, not doing forensics.
+  // The raw signature is kept behind a <details> for whoever does need it.
+  function threatBlock(att) {
+    const t = att.threatInfo;
+    if (!t) return "";
+    return (
+      `<div style="margin-top:6px;padding:6px 8px;border-radius:5px;background:rgba(255,255,255,.55)">` +
+      `<div style="font-weight:600;font-size:11.5px">${escapeHtml(t.label)}</div>` +
+      `<div style="font-size:11.5px;margin-top:1px">${escapeHtml(t.plain)}</div>` +
+      (t.advice ? `<div style="font-size:11.5px;margin-top:3px"><strong>What to do:</strong> ${escapeHtml(t.advice)}</div>` : "") +
+      (t.technical ? `<details style="margin-top:3px"><summary style="font-size:10.5px;cursor:pointer;color:var(--text-muted,#888)">Technical name</summary>` +
+        `<code style="font-size:10.5px;word-break:break-all">${escapeHtml(t.technical)}</code></details>` : "") +
+      `</div>`
+    );
+  }
+  function isBlocked(att) { return !att.url; }
+
+  function renderAttachments(attachments) {
+    if (!attachments || !attachments.length) return "";
+    return (
+      `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">` +
+      attachments.map((a) => {
+        if (isBlocked(a)) {
+          const bad = a.scanStatus === "THREATS_FOUND";
+          return `<div style="font-size:12px;padding:5px 9px;border-radius:6px;max-width:100%;` +
+            `border:1px solid ${bad ? "#c0392b" : "var(--border,#ddd)"};` +
+            `background:color-mix(in srgb, ${bad ? "#c0392b" : "#888"} 9%, transparent)">` +
+            `${bad ? "🚫" : "⏳"} <s>${escapeHtml(a.filename)}</s>` +
+            `<div style="font-size:11px;margin-top:2px">${escapeHtml(scanNote(a))}</div>` +
+            threatBlock(a) + `</div>`;
+        }
+        const isImage = /^image\//.test(a.contentType || "");
+        return isImage
+          ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.filename)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border,#ddd);display:block" /></a>`
+          : `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" style="font-size:12px;padding:4px 8px;background:var(--surface-2,#fafbfd);border:1px solid var(--border,#ddd);border-radius:6px;text-decoration:none">📎 ${escapeHtml(a.filename)}</a>`;
+      }).join("") +
+      `</div>`
+    );
+  }
+
+  // Customer-uploaded design/print files (checkout/upload-design-file.js) —
+  // same gate as every other attachment, just laid out as full-width rows
+  // since print filenames are long and staff scan this list deliberately.
+  function renderDesignFiles(files) {
+    if (!files || !files.length) return "";
+    return (
+      `<div class="m-block" style="flex-basis:100%"><h4>Customer design files</h4>` +
+      `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+      files.map((f) => {
+        const size = f.size ? ` · ${(f.size / (1024 * 1024)).toFixed(1)} MB` : "";
+        if (!isBlocked(f)) {
+          return `<a href="${escapeHtml(f.url)}" download style="font-size:13px;font-weight:400;text-decoration:none;padding:6px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface-2,#fafbfd)">` +
+            `⬇ ${escapeHtml(f.filename)}<span class="text-muted" style="font-size:11.5px">${escapeHtml(size)}</span></a>`;
+        }
+        const bad = f.scanStatus === "THREATS_FOUND";
+        return `<div style="font-size:13px;font-weight:400;padding:6px 10px;border-radius:6px;` +
+          `border:1px solid ${bad ? "#c0392b" : "var(--border,#ddd)"};` +
+          `background:color-mix(in srgb, ${bad ? "#c0392b" : "#888"} 8%, transparent)">` +
+          `${bad ? "🚫" : "⏳"} <s>${escapeHtml(f.filename)}</s><span class="text-muted" style="font-size:11.5px">${escapeHtml(size)}</span>` +
+          `<div style="font-size:11.5px;margin-top:2px">${escapeHtml(scanNote(f))}</div>` +
+          threatBlock(f) + `</div>`;
+      }).join("") +
+      `</div></div>`
+    );
+  }
+
   // Customer chat via order threads (staff side) — sender-role styling
   // distinguishes a customer's own message from a staff reply, mirroring
   // order-detail.html's customer-facing panel but reading claims here
@@ -99,7 +198,8 @@
     return (
       `<div style="align-self:${align};max-width:80%;background:${bg};border-radius:10px;padding:8px 12px">` +
       `<div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:2px">${staffMsg ? "Staff" : "Customer"} · ${fmtDateTime(m.at)}</div>` +
-      `<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body)}</div>` +
+      (m.body ? `<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body)}</div>` : "") +
+      renderAttachments(m.attachments) +
       `</div>`
     );
   }
@@ -115,14 +215,27 @@
   }
 
   function loadMessages(orderId) {
-    // get-messages.js marks the customer's unread messages read as a side
-    // effect of this same call — refresh the sidebar badge right after so
-    // staff see it drop immediately instead of waiting up to 45s for the
-    // shell's own poll.
-    KCMPS_DASH.getOrderMessages(orderId).then((messages) => {
+    // View-only — does NOT mark the customer's messages read (see
+    // dashboard-data.js's getOrderMessages() header). Opening the ticket
+    // or the 8s background poll should show the thread without silently
+    // clearing its own unread badge before staff ever see it; only
+    // markRead() below (wired to the reply box's focus) does that.
+    KCMPS_DASH.getOrderMessages(orderId).then(renderMessages)
+      .catch(() => { /* silent — don't disrupt the ticket over a poll failure */ });
+  }
+
+  // Fired once the reply box gains focus — a real "staff is engaging with
+  // this thread" signal, unlike just having the ticket open. Refreshes the
+  // sidebar badge right after so it drops immediately instead of waiting
+  // up to 45s for the shell's own poll.
+  let markedReadFor = null;
+  function markRead(orderId) {
+    if (markedReadFor === orderId) return;
+    markedReadFor = orderId;
+    KCMPS_DASH.markMessagesRead(orderId).then((messages) => {
       renderMessages(messages);
       KCMPS_DASH_SHELL.refreshUnreadBadge();
-    }).catch(() => { /* silent — don't disrupt the ticket over a poll failure */ });
+    }).catch(() => { /* silent — don't disrupt the ticket over a mark-read failure */ });
   }
 
   function wireMessages(order) {
@@ -133,15 +246,19 @@
     }, 8000);
 
     const input = document.getElementById("message-input");
+    const filesInput = document.getElementById("message-files");
     const sendBtn = document.getElementById("message-send-btn");
     const errorEl = document.getElementById("message-error");
+    input.addEventListener("focus", () => markRead(order.orderId));
     function send() {
       const text = input.value.trim();
-      if (!text) return;
+      const files = Array.from(filesInput.files || []);
+      if (!text && !files.length) return;
       errorEl.style.display = "none";
       sendBtn.disabled = true;
-      KCMPS_DASH.sendOrderMessage(order.orderId, text).then(() => {
+      KCMPS_DASH.sendOrderMessage(order.orderId, text, files).then(() => {
         input.value = "";
+        filesInput.value = "";
         sendBtn.disabled = false;
         loadMessages(order.orderId);
       }).catch((err) => {
@@ -195,24 +312,40 @@
       `<div class="m-block"><h4>Station</h4><p>${li.station ? escapeHtml(li.station) : "Unassigned"}</p></div>` +
       `<div class="m-block"><h4>Setup minutes</h4><p>${li.setupMinutes != null ? li.setupMinutes + " min" : "Not logged"}</p></div>` +
       (li.notes ? `<div class="m-block" style="flex-basis:100%"><h4>Notes</h4><p style="font-weight:400">${escapeHtml(li.notes)}</p></div>` : "") +
+      `<div class="m-block"><h4>Fulfillment</h4><p>${escapeHtml(order.fulfillment || "—")}</p></div>` +
+      (order.fulfillment === "Delivery" && order.shipping
+        ? `<div class="m-block" style="flex-basis:100%"><h4>Address</h4><p style="font-weight:400">${escapeHtml(order.shipping.address)}${order.shipping.landmark ? ` (near ${escapeHtml(order.shipping.landmark)})` : ""}${order.shipping.courier ? `<br>Courier: ${escapeHtml(order.shipping.courier)}` : ""}</p></div>`
+        : "") +
+      (order.notes ? `<div class="m-block" style="flex-basis:100%"><h4>Additional notes</h4><p style="font-weight:400">${escapeHtml(order.notes)}</p></div>` : "") +
+      renderDesignFiles(order.designFiles) +
       `</div>` +
 
       // GCash bridge proof — per the Payment System file's staff-dashboard
       // spec: "shows screenshot, reference number, claimed amount, order
       // ID, timestamp." Lives on order.payment, shown for the lifetime of
-      // the order (not just while Pending) so a verified/rejected decision
-      // stays auditable from the ticket.
+      // the order (not just while Pending) so a verify/hold decision stays
+      // auditable from the ticket.
       (order.payment ? `<div class="card ticket-meta" style="margin-bottom:var(--space-4)">` +
         `<div class="m-block"><h4>GCash reference</h4><p>${escapeHtml(order.payment.gcashRefNumber)}</p></div>` +
         `<div class="m-block"><h4>Claimed amount</h4><p>${fmtPeso(order.payment.claimedAmount)}</p></div>` +
         `<div class="m-block" style="flex-basis:100%"><h4>Screenshot</h4>` +
+        // The screenshot is the one upload staff must actually LOOK at, so
+        // it keeps an inline <img> — but only once it clears the same scan
+        // gate as every other attachment (get-orders.js's withScreenshotUrl).
+        // A blocked proof means the payment can't be verified from a preview.
         (order.payment.screenshotUrl
           ? `<a href="${escapeHtml(order.payment.screenshotUrl)}" target="_blank" rel="noopener"><img src="${escapeHtml(order.payment.screenshotUrl)}" alt="GCash payment screenshot" style="max-width:min(280px, 100%);max-height:280px;border-radius:8px;border:1px solid var(--border,#ddd);display:block" /></a>`
-          : `<p style="font-weight:400;font-size:12.5px">${escapeHtml(order.payment.screenshotRef)} (preview unavailable — mock/manual order)</p>`) +
+          : (order.payment.scanStatus && order.payment.scanStatus !== "NO_THREATS_FOUND"
+            ? `<div style="font-weight:400;font-size:12.5px;padding:6px 10px;border-radius:6px;border:1px solid ${order.payment.scanStatus === "THREATS_FOUND" ? "#c0392b" : "var(--border,#ddd)"};background:color-mix(in srgb, ${order.payment.scanStatus === "THREATS_FOUND" ? "#c0392b" : "#888"} 8%, transparent)">` +
+              `${order.payment.scanStatus === "THREATS_FOUND" ? "🚫" : "⏳"} Preview blocked — ${escapeHtml(scanNote(order.payment))}` +
+              threatBlock(order.payment) + `</div>`
+            : `<p style="font-weight:400;font-size:12.5px">${escapeHtml(order.payment.screenshotRef)} (preview unavailable — mock/manual order)</p>`)) +
         `</div>` +
         `<div class="m-block"><h4>Submitted</h4><p>${fmtDateTime(order.payment.submittedAt)}</p></div>` +
         (order.payment.verifiedAt ? `<div class="m-block"><h4>Verified</h4><p>${fmtDateTime(order.payment.verifiedAt)} by ${escapeHtml(order.payment.verifiedBy || "—")}</p></div>` : "") +
-        (order.payment.rejectionReason ? `<div class="m-block" style="flex-basis:100%"><h4>Rejection reason</h4><p style="font-weight:400">${escapeHtml(order.payment.rejectionReason)}</p></div>` : "") +
+        // `rejectionReason` is the pre-On-Hold field name — still read so
+        // orders held/auto-cancelled before the rename keep showing why.
+        ((order.payment.holdReason || order.payment.rejectionReason) ? `<div class="m-block" style="flex-basis:100%"><h4>On-hold reason</h4><p style="font-weight:400">${escapeHtml(order.payment.holdReason || order.payment.rejectionReason)}</p></div>` : "") +
         `</div>` : "") +
 
       `<div class="card" style="margin-bottom:var(--space-4)">` +
@@ -226,21 +359,27 @@
         ? order.correspondenceLog.slice().reverse().map((c) =>
             `<div style="border-left:3px solid var(--accent, #ff7a1a);padding:6px 10px;margin-bottom:6px;font-size:13px;background:var(--surface-2, #fafbfd);border-radius:0 6px 6px 0">` +
             `<div class="text-muted" style="font-size:11px;margin-bottom:2px">${fmtDateTime(c.at)} — ${escapeHtml(c.actorName)}</div>` +
-            `${escapeHtml(c.note)}</div>`
+            (c.note ? escapeHtml(c.note) : "") +
+            renderAttachments(c.attachments) +
+            `</div>`
           ).join("")
         : `<p class="q-empty" style="margin:0">No logged correspondence yet.</p>`) +
       `</div>` +
-      `<div style="display:flex;gap:8px;margin-top:var(--space-2)">` +
-      `<input class="input" id="correspondence-input" style="flex:1" placeholder="e.g. Customer approved design via email, ref subject [${escapeHtml(order.orderId)}]" />` +
+      `<div style="display:flex;gap:8px;margin-top:var(--space-2);flex-wrap:wrap">` +
+      `<input class="input" id="correspondence-input" style="flex:1;min-width:200px" placeholder="e.g. Customer approved design via email, ref subject [${escapeHtml(order.orderId)}]" />` +
+      `<input type="file" id="correspondence-files" multiple accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" style="max-width:180px;font-size:12px" />` +
       `<button type="button" class="btn btn-primary" id="correspondence-add-btn">Log</button>` +
-      `</div></div>` +
+      `</div>` +
+      `<p id="correspondence-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>` +
+      `</div>` +
 
       `<div class="card" style="margin-bottom:var(--space-4)">` +
       `<h3 style="margin-top:0">Messages</h3>` +
       `<p class="text-muted" style="font-size:12px;margin:0 0 var(--space-2)">Direct thread with the customer on this order — separate from the correspondence log above, which is staff notes only.</p>` +
       `<div id="message-list" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:var(--space-2)"></div>` +
-      `<div style="display:flex;gap:8px">` +
-      `<input class="input" id="message-input" style="flex:1" placeholder="Reply to the customer…" maxlength="4000" />` +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">` +
+      `<input class="input" id="message-input" style="flex:1;min-width:200px" placeholder="Reply to the customer…" maxlength="4000" />` +
+      `<input type="file" id="message-files" multiple accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" style="max-width:180px;font-size:12px" />` +
       `<button type="button" class="btn btn-primary" id="message-send-btn">Send</button>` +
       `</div>` +
       `<p id="message-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>` +
@@ -270,13 +409,23 @@
       const url = SPACEMAIL_SEARCH_URL.replace("{q}", encodeURIComponent(order.orderId));
       window.open(url, "_blank", "noopener");
     });
-    document.getElementById("correspondence-add-btn").addEventListener("click", () => {
+    const correspondenceErrorHost = document.getElementById("correspondence-error");
+    document.getElementById("correspondence-add-btn").addEventListener("click", async (e) => {
       const input = document.getElementById("correspondence-input");
+      const filesInput = document.getElementById("correspondence-files");
       const note = input.value.trim();
-      if (!note) return;
-      try { KCMPS_DASH.addCorrespondenceLog(order.orderId, note, claims.name || claims.email); }
-      catch (err) { alert(err.message); return; }
-      render();
+      const files = Array.from(filesInput.files || []);
+      if (!note && !files.length) return;
+      correspondenceErrorHost.style.display = "none";
+      await withBusy(e.currentTarget, async () => {
+        try {
+          await KCMPS_DASH.addCorrespondence(order.orderId, note, files, claims.name || claims.email);
+          await render();
+        } catch (err) {
+          correspondenceErrorHost.textContent = err.message;
+          correspondenceErrorHost.style.display = "";
+        }
+      });
     });
     document.getElementById("correspondence-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") document.getElementById("correspondence-add-btn").click();
@@ -291,7 +440,7 @@
         const action = actions[Number(btn.dataset.idx)];
         if (action.to === "__verifypayment__") {
           formHost.innerHTML =
-            `<p style="font-size:13px;margin:0 0 var(--space-2)">This confirms the GCash payment covering every sku item on order ${escapeHtml(order.orderId)} still awaiting verification — not just this line.</p>` +
+            `<p style="font-size:13px;margin:0 0 var(--space-2)">This confirms the GCash payment covering every sku item on order ${escapeHtml(order.orderId)} still awaiting verification or on hold — not just this line.</p>` +
             `<button type="button" class="btn btn-primary" id="verify-confirm">Confirm — verify payment</button>`;
           document.getElementById("verify-confirm").addEventListener("click", async (e) => {
             await withBusy(e.currentTarget, async () => {
@@ -303,17 +452,17 @@
           });
           return;
         }
-        if (action.to === "__rejectpayment__") {
+        if (action.to === "__setonhold__") {
           formHost.innerHTML =
-            `<div class="field" style="margin-bottom:var(--space-3)"><label for="rej-reason">Rejection reason (sent to the customer)</label>` +
-            `<textarea class="input" id="rej-reason" rows="2" placeholder="e.g. reference number doesn't match any GCash transaction on file"></textarea></div>` +
-            `<button type="button" class="btn btn-secondary" id="reject-confirm">Confirm — reject payment</button>`;
-          document.getElementById("reject-confirm").addEventListener("click", async (e) => {
-            const reason = document.getElementById("rej-reason").value.trim();
-            if (!reason) { showInlineError(errorHost, "A rejection reason is required."); return; }
+            `<div class="field" style="margin-bottom:var(--space-3)"><label for="hold-reason">What needs checking? (sent to the customer)</label>` +
+            `<textarea class="input" id="hold-reason" rows="2" placeholder="e.g. the screenshot attached is of a different transaction"></textarea></div>` +
+            `<button type="button" class="btn btn-secondary" id="hold-confirm">Confirm — set to On-Hold</button>`;
+          document.getElementById("hold-confirm").addEventListener("click", async (e) => {
+            const reason = document.getElementById("hold-reason").value.trim();
+            if (!reason) { showInlineError(errorHost, "A reason is required to put a payment on hold."); return; }
             await withBusy(e.currentTarget, async () => {
               try {
-                await KCMPS_DASH.rejectPayment(order.orderId, reason, claims.name || claims.email);
+                await KCMPS_DASH.setOnHold(order.orderId, reason, claims.name || claims.email);
                 await render(true);
               } catch (err) { showInlineError(errorHost, err.message); }
             });

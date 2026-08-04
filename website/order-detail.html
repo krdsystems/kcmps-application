@@ -63,7 +63,10 @@
     var p = order.payment;
     if (!p) return '<div class="card"><p class="detail-card-title">Payment</p><p class="card-body">No payment on file yet.</p></div>';
     var rows = '';
-    if (p.rejectionReason) rows += '<div class="rejection-note">' + O.escapeHtml(p.rejectionReason) + '</div>';
+    // `rejectionReason` is the pre-On-Hold field name, still read so orders
+    // held or auto-cancelled before the rename keep showing why.
+    var holdNote = p.holdReason || p.rejectionReason;
+    if (holdNote) rows += '<div class="rejection-note">' + O.escapeHtml(holdNote) + '</div>';
     rows += '<div class="detail-row"><span class="k">GCash reference</span><span>' + O.escapeHtml(p.gcashRefNumber || "—") + '</span></div>';
     rows += '<div class="detail-row"><span class="k">Amount sent</span><span>' + O.fmtPeso(p.claimedAmount) + '</span></div>';
     rows += '<div class="detail-row"><span class="k">Submitted</span><span>' + O.fmtDateTime(p.submittedAt) + '</span></div>';
@@ -102,11 +105,56 @@
       '<div class="card" id="messages" style="margin-top:var(--space-4)">' +
       '<p class="detail-card-title">Messages</p>' +
       '<div id="message-list" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:var(--space-2)"></div>' +
-      '<div style="display:flex;gap:8px">' +
-      '<input class="input" id="message-input" style="flex:1" placeholder="Message KCMPS about this order…" maxlength="4000" />' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<input class="input" id="message-input" style="flex:1;min-width:200px" placeholder="Message KCMPS about this order…" maxlength="4000" />' +
+      '<input type="file" id="message-files" multiple accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" style="max-width:180px;font-size:12px" />' +
       '<button type="button" class="btn btn-primary" id="message-send-btn">Send</button>' +
       '</div>' +
       '<p class="order-popup-error" id="message-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+      '</div>'
+    );
+  }
+
+  // An attachment only carries a `url` when GuardDuty cleared it
+  // (backend/staff-api/get-messages.js withholds it otherwise). A blocked
+  // one still renders as a record rather than vanishing — if the customer
+  // sent something infected, they need to see that it didn't get through
+  // and that they should resend, not silently wonder why nobody replied.
+  // Infected files are deleted from storage entirely.
+  var SCAN_NOTE = {
+    THREATS_FOUND: "Blocked — our scanner flagged this file, and it wasn't delivered. Please check the file and resend.",
+    PENDING: "Scanning…",
+    UNSUPPORTED: "Couldn't be scanned — not delivered.",
+    ACCESS_DENIED: "Couldn't be scanned — not delivered.",
+    FAILED: "Couldn't be scanned — not delivered.",
+    UNKNOWN: "Couldn't be scanned — not delivered.",
+  };
+  function renderAttachments(attachments) {
+    if (!attachments || !attachments.length) return "";
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' +
+      attachments.map(function (a) {
+        if (!a.url) {
+          var note = SCAN_NOTE[a.scanStatus || "PENDING"] || SCAN_NOTE.UNKNOWN;
+          var bad = a.scanStatus === "THREATS_FOUND";
+          return '<div style="font-size:12px;padding:5px 9px;border-radius:6px;border:1px solid ' +
+            (bad ? "#c0392b" : "var(--color-divider,#ddd)") + '">' +
+            (bad ? "🚫 " : "⏳ ") + '<s>' + O.escapeHtml(a.filename) + '</s>' +
+            '<div style="font-size:11px;margin-top:2px">' + O.escapeHtml(note) + '</div>' +
+            // Customer-facing: only the plain description, never the raw AV
+            // signature or the "what to do" line (that one is written for
+            // staff). Skipped entirely for the EICAR test-file case, where
+            // telling a customer about "antivirus test files" is noise.
+            (a.threatInfo && a.threatInfo.severity !== "info"
+              ? '<div style="font-size:11px;margin-top:3px">' + O.escapeHtml(a.threatInfo.plain) + '</div>'
+              : '') +
+            '</div>';
+        }
+        var isImage = /^image\//.test(a.contentType || "");
+        return isImage
+          ? '<a href="' + O.escapeHtml(a.url) + '" target="_blank" rel="noopener"><img src="' + O.escapeHtml(a.url) + '" alt="' + O.escapeHtml(a.filename) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--color-divider,#ddd);display:block" /></a>'
+          : '<a href="' + O.escapeHtml(a.url) + '" target="_blank" rel="noopener" style="font-size:12px;padding:4px 8px;background:var(--surface-2,#fafbfd);border:1px solid var(--color-divider,#ddd);border-radius:6px;text-decoration:none">📎 ' + O.escapeHtml(a.filename) + '</a>';
+      }).join("") +
       '</div>'
     );
   }
@@ -118,7 +166,8 @@
     return (
       '<div style="align-self:' + align + ';max-width:80%;background:' + bg + ';border-radius:10px;padding:8px 12px">' +
       '<div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:2px">' + (mine ? "You" : "KCMPS") + ' · ' + O.fmtDateTime(m.at) + '</div>' +
-      '<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">' + O.escapeHtml(m.body) + '</div>' +
+      (m.body ? '<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">' + O.escapeHtml(m.body) + '</div>' : "") +
+      renderAttachments(m.attachments) +
       '</div>'
     );
   }
@@ -134,7 +183,20 @@
   }
 
   function loadMessages(orderId) {
+    // View-only — does NOT mark staff's messages read (see orders-data.js's
+    // getMessages() header). Opening the order or the 8s background poll
+    // should show the thread without silently clearing the "new message"
+    // banner before the customer ever sees it; only markRead() below
+    // (wired to the reply box's focus) does that.
     O.getMessages(orderId).then(renderMessages).catch(function () { /* silent — don't disrupt the rest of the page over a poll failure */ });
+  }
+
+  var markedReadFor = null;
+  function markRead(orderId) {
+    if (markedReadFor === orderId) return;
+    markedReadFor = orderId;
+    O.markMessagesRead(orderId).then(renderMessages)
+      .catch(function () { /* silent — don't disrupt the page over a mark-read failure */ });
   }
 
   function wireMessages(order) {
@@ -145,15 +207,19 @@
     }, 8000);
 
     var input = document.getElementById("message-input");
+    var filesInput = document.getElementById("message-files");
     var sendBtn = document.getElementById("message-send-btn");
     var errorEl = document.getElementById("message-error");
+    input.addEventListener("focus", function () { markRead(order.orderId); });
     function send() {
       var text = input.value.trim();
-      if (!text) return;
+      var files = Array.prototype.slice.call(filesInput.files || []);
+      if (!text && !files.length) return;
       errorEl.style.display = "none";
       sendBtn.disabled = true;
-      O.sendMessage(order.orderId, text).then(function () {
+      O.sendMessage(order.orderId, text, files).then(function () {
         input.value = "";
+        filesInput.value = "";
         sendBtn.disabled = false;
         loadMessages(order.orderId);
       }).catch(function (err) {
@@ -195,7 +261,7 @@
 
   function renderActions(order) {
     var buttons = '';
-    if (order.actions.resubmitProof) buttons += '<button type="button" class="btn btn-primary" id="act-resubmit">Resubmit payment proof</button>';
+    if (order.actions.submitProof) buttons += '<button type="button" class="btn btn-primary" id="act-submit-proof">Submit payment proof</button>';
     if (order.actions.reorder) buttons += '<button type="button" class="btn btn-secondary" id="act-reorder">Reorder</button>';
     if (order.actions.cancel) buttons += '<button type="button" class="btn btn-secondary" id="act-cancel">Cancel order</button>';
     buttons += '<a class="btn btn-secondary" href="mailto:' + O.ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + order.orderId) + '">Contact us</a>';
@@ -222,8 +288,8 @@
       });
     });
 
-    var resubmitBtn = document.getElementById("act-resubmit");
-    if (resubmitBtn) resubmitBtn.addEventListener("click", function () { openResubmitForm(order); });
+    var submitProofBtn = document.getElementById("act-submit-proof");
+    if (submitProofBtn) submitProofBtn.addEventListener("click", function () { openSubmitProofForm(order); });
 
     var cancelBtn = document.getElementById("act-cancel");
     if (cancelBtn) cancelBtn.addEventListener("click", function () {
@@ -241,10 +307,10 @@
     });
   }
 
-  function openResubmitForm(order) {
-    var card = document.getElementById("resubmit-card");
+  function openSubmitProofForm(order) {
+    var card = document.getElementById("submit-proof-card");
     card.innerHTML =
-      '<p class="detail-card-title">Resubmit payment proof</p>' +
+      '<p class="detail-card-title">Submit payment proof</p>' +
       '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
       '<div class="field"><label for="rs-ref">GCash reference number</label><input class="input" id="rs-ref" placeholder="e.g. 8017 442 99331" /></div>' +
       '<div class="field"><label for="rs-amount">Amount you sent (₱)</label><input class="input" id="rs-amount" type="number" min="0" step="0.01" value="' + (order.amountDue || order.total) + '" /></div>' +
@@ -266,7 +332,7 @@
           btn.disabled = false; btn.textContent = "Submit payment proof";
           return;
         }
-        card.innerHTML = '<p class="detail-card-title">Resubmit payment proof</p><p class="card-body">Received — we’ll verify it, usually within 48 hours.</p>';
+        card.innerHTML = '<p class="detail-card-title">Submit payment proof</p><p class="card-body">Received — we’ll verify it, usually within 48 hours.</p>';
         O.refresh().then(function () { load(); });
       });
     });
@@ -282,7 +348,7 @@
       renderProgress(order) +
       (order.status.next ? '<p class="card-body" style="margin-top:var(--space-2)">' + O.escapeHtml(order.status.next) + '</p>' : '') +
       renderActions(order) +
-      '<div class="card" id="resubmit-card" style="display:none;margin-top:var(--space-3)"></div>' +
+      '<div class="card" id="submit-proof-card" style="display:none;margin-top:var(--space-3)"></div>' +
       '<div class="card" style="margin-top:var(--space-4)"><p class="detail-card-title">Items</p><div class="line-list">' +
         order.lineItems.map(renderItem).join("") + '</div></div>' +
       '<div class="order-detail-grid">' +
@@ -296,7 +362,7 @@
   // "My Orders"'s "Unread messages" section links here as
   // order-detail.html?id=...#messages — scroll straight to the Messages
   // card once, on first render only (renderOrder() re-runs after every
-  // action, e.g. cancel/resubmit; re-scrolling on those would yank focus
+  // action, e.g. cancel/submit-proof; re-scrolling on those would yank focus
   // away from whatever the customer just did).
   var scrolledToMessages = false;
   function maybeScrollToMessages() {

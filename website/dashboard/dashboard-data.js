@@ -16,7 +16,7 @@
    Pending Payment Verification -> Confirmed -> Scheduled ->
    In Production -> QC -> Ready for Dispatch -> Dispatched -> Delivered
    Custom entry: Quoted -> Priced -> Confirmed -> [rejoins above]
-   Exceptions: Quote Expired, Payment Rejected, Cancelled,
+   Exceptions: Quote Expired, On Hold, Cancelled,
    Auto-Cancelled, Rework (loops back to In Production, sets NRFT)
 
    Mixed cart + GCash bridge (mirrors ../../project_knowledge/
@@ -29,11 +29,11 @@
      tagged MIXED-CART below for a worked example).
    - `sku` items pay together as one GCash transaction at checkout, so
      the proof (screenshot, reference number, claimed amount) and the
-     verify/reject decision live on the ORDER's `payment` object, not
+     verify/hold decision live on the ORDER's `payment` object, not
      per line item — see `getOrder(id).payment` and `verifyPayment` /
-     `rejectPayment` below. Verifying/rejecting an order affects every
-     `sku` line item currently `Pending Payment Verification` on it
-     together, matching "one GCash payment for the sum of sku items."
+     `setOnHold` below. Verifying/holding an order affects every `sku`
+     line item currently awaiting verification on it together, matching
+     "one GCash payment for the sum of sku items."
    - `custom` items get their OWN follow-up payment link per line item
      once priced (`Priced` -> `Confirmed`) — that path stays a plain
      per-line-item transition via `advanceLineItem`, no shared
@@ -53,7 +53,7 @@
   const PLANNED_HOURS_PER_WEEK = { "PRESS-01": 40, "DIGITAL-01": 32, "3DPRINT-01": 60, "HEATPRESS-01": 36, "FINISHING-01": 30 };
 
   /* ---- live backend (Milestone 1.3) ----
-     getAllOrders/getOrder/verifyPayment/rejectPayment/advanceLineItem are
+     getAllOrders/getOrder/verifyPayment/setOnHold/advanceLineItem are
      the only functions in this file that hit a real backend — everything
      else here (metrics, inventory, clients, mail, manual-order entry,
      rework/spoilage) stays on the localStorage mock, matching the
@@ -119,7 +119,7 @@
   function uid(prefix) { return prefix + "-" + Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
   // Shapes the order.payment.submittedAt/claimedAmount/gcashRefNumber/
-  // screenshotRef/verifiedBy/verifiedAt/rejectionReason fields exactly as
+  // screenshotRef/verifiedBy/verifiedAt/holdReason fields exactly as
   // specified in the Payment System file's "Data Model Addition" section.
   // Module-scoped (not nested in buildSeed()) because createManualOrder()
   // needs it too, for staff-entered orders with GCash proof already in hand.
@@ -131,7 +131,7 @@
       submittedAt,
       verifiedBy: opts.verifiedBy || null,
       verifiedAt: opts.verifiedAt || null,
-      rejectionReason: opts.rejectionReason || null,
+      holdReason: opts.holdReason || null,
     };
   }
 
@@ -606,12 +606,15 @@
     return li;
   }
 
-  /* ---- GCash bridge verify/reject (order-level — see header note) ----
-     Mirrors the Payment System file's verifyPayment / rejectPayment
-     Lambdas: one GCash transaction verified/rejected together advances
-     (or rejects) every `sku` line item on that order still sitting in
-     `Pending Payment Verification`, and stamps the audit fields on
-     order.payment (verifiedBy/verifiedAt, or rejectionReason). ---- */
+  /* ---- GCash bridge verify/hold (order-level — see header note) ----
+     Mirrors the Payment System file's verifyPayment / setOnHold Lambdas:
+     one GCash transaction verified (or held) together advances every
+     `sku` line item on that order still awaiting verification, and
+     stamps the audit fields on order.payment (verifiedBy/verifiedAt, or
+     holdReason). Verify accepts `On Hold` line items as well as
+     `Pending Payment Verification` ones, so once staff and customer have
+     sorted out whatever the hold was about over email/chat, one Verify
+     Payment click takes the order straight to Confirmed. ---- */
   // `staffName` is accepted for call-site compatibility but not sent — the
   // real Lambda derives the actor from the verified JWT claims server-side,
   // which is strictly more trustworthy than a client-supplied name.
@@ -625,7 +628,10 @@
     const order = state.orders.find((o) => o.orderId === orderId);
     if (!order) throw new Error("Order not found: " + orderId);
     if (!order.payment) throw new Error("Order has no GCash payment proof on file: " + orderId);
-    const pending = order.lineItems.filter((li) => li.status === "Pending Payment Verification");
+    // Mirrors verify-payment.js's eligible-status list: a held payment is
+    // verifiable directly, no detour back through Pending Payment
+    // Verification.
+    const pending = order.lineItems.filter((li) => li.status === "Pending Payment Verification" || li.status === "On Hold");
     if (!pending.length) throw new Error("No line items on this order are awaiting verification.");
     const now = nowIso();
     pending.forEach((li) => {
@@ -642,22 +648,22 @@
     });
     order.payment.verifiedBy = staffName || "You";
     order.payment.verifiedAt = now;
-    order.payment.rejectionReason = null;
+    order.payment.holdReason = null;
     order.orderStatus = deriveOrderStatus(order);
     save(state);
     return order;
   }
 
-  async function rejectPayment(orderId, rejectionReason, staffName) {
-    if (!rejectionReason) throw new Error("A rejection reason is required.");
-    if (isMockOnlyOrder(orderId)) return rejectPaymentMock(orderId, rejectionReason, staffName);
-    return apiFetch("/orders/" + encodeURIComponent(orderId) + "/reject-payment", {
+  async function setOnHold(orderId, holdReason, staffName) {
+    if (!holdReason) throw new Error("A reason is required to put a payment on hold.");
+    if (isMockOnlyOrder(orderId)) return setOnHoldMock(orderId, holdReason, staffName);
+    return apiFetch("/orders/" + encodeURIComponent(orderId) + "/set-on-hold", {
       method: "POST",
-      body: JSON.stringify({ reason: rejectionReason }),
+      body: JSON.stringify({ reason: holdReason }),
     });
   }
 
-  function rejectPaymentMock(orderId, rejectionReason, staffName) {
+  function setOnHoldMock(orderId, holdReason, staffName) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     if (!order) throw new Error("Order not found: " + orderId);
@@ -666,17 +672,17 @@
     const now = nowIso();
     pending.forEach((li) => {
       const from = li.status;
-      li.status = "Payment Rejected";
+      li.status = "On Hold";
       li.enteredStatusAt = now;
       state.events.push({
         pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#" + li.lineItemId,
-        orderId, lineItemId: li.lineItemId, from, to: "Payment Rejected",
+        orderId, lineItemId: li.lineItemId, from, to: "On Hold",
         actorSub: "current-user", actorName: staffName || "You",
-        station: li.station || null, at: now, meta: { via: "rejectPayment", rejectionReason },
+        station: li.station || null, at: now, meta: { via: "setOnHold", holdReason },
       });
     });
     if (order.payment) {
-      order.payment.rejectionReason = rejectionReason;
+      order.payment.holdReason = holdReason;
       order.payment.verifiedBy = null;
       order.payment.verifiedAt = null;
     }
@@ -693,16 +699,32 @@
      for real orders. Named getOrderMessages/sendOrderMessage, not
      getMessages/sendMessage, to not collide with this file's existing
      IMAP-mock getMessages(mailboxId)/sendReply() for email.html. */
-  async function getOrderMessages(orderId) {
-    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/messages");
+  // `markRead` is opt-in (see get-messages.js's header) — pass true only
+  // from a real engagement signal (job-detail.html fires it on the reply
+  // box's focus event), never from the initial page-load fetch or the 8s
+  // background poll, so simply opening a ticket to glance at it doesn't
+  // silently clear its own unread badge before anyone sees it.
+  async function getOrderMessages(orderId, markRead) {
+    const qs = markRead ? "?markRead=true" : "";
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/messages" + qs);
     return res.messages || [];
   }
 
-  async function sendOrderMessage(orderId, text) {
+  function markMessagesRead(orderId) {
+    return getOrderMessages(orderId, true);
+  }
+
+  // `files` (optional array of browser File objects) follows the same
+  // two-step presigned-upload flow as addCorrespondence() — see
+  // uploadAttachments() above.
+  async function sendOrderMessage(orderId, text, files) {
+    files = files || [];
+    const attachments = files.map((f) => ({ filename: f.name, contentType: f.type }));
     const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/messages", {
       method: "POST",
-      body: JSON.stringify({ body: text }),
+      body: JSON.stringify({ body: text, attachments }),
     });
+    await uploadAttachments(files, res.uploads);
     return res.message;
   }
 
@@ -722,7 +744,7 @@
   // (backend-created) order's line item could never actually enter Rework
   // at all: `order` came back undefined and the next line threw, a dead end
   // for every non-mock order. Gated the same way as its siblings
-  // (advanceLineItem/verifyPayment/rejectPayment) so real orders route over
+  // (advanceLineItem/verifyPayment/setOnHold) so real orders route over
   // the wire instead. There's no dedicated spoilage-logging Lambda yet (see
   // backend/CLAUDE.md's staff-api/ table) — the spoilage detail rides along
   // as the transition event's `meta` so it's still durably recorded, just
@@ -1022,18 +1044,57 @@
   }
 
   // Manual order↔email linking: staff log a note referencing a Spacemail
-  // thread (never the email body itself — no mail content is stored here).
+  // thread (never the email body itself — no mail content is stored here),
+  // optionally with attachments (screenshots of the actual email, etc.).
   // See docs/roadmap.md "Order↔email linking" for why this replaced the
-  // SES-relay/Google-Workspace approach.
-  function addCorrespondenceLog(orderId, note, actorName) {
+  // SES-relay/Google-Workspace approach, and its 2026-08-04 entry for the
+  // attachment feature + the fact this used to be entirely mock: real
+  // (backend-created) orders are never in `state.orders`, so this always
+  // threw "Order not found" for them before add-correspondence.js existed
+  // — gated by isMockOnlyOrder() now, same as verifyPayment/setOnHold/etc.
+  // `files` is an array of browser File objects; mock orders have no S3 to
+  // upload to, so attachments are rejected there rather than silently
+  // dropped.
+  async function addCorrespondence(orderId, note, files, actorName) {
+    files = files || [];
+    if (isMockOnlyOrder(orderId)) {
+      if (files.length) throw new Error("Attachments aren't supported on manually-entered orders.");
+      return addCorrespondenceLogMock(orderId, note, actorName);
+    }
+    const attachments = files.map((f) => ({ filename: f.name, contentType: f.type }));
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/correspondence", {
+      method: "POST",
+      body: JSON.stringify({ note, attachments }),
+    });
+    await uploadAttachments(files, res.uploads);
+    return res.entry;
+  }
+
+  function addCorrespondenceLogMock(orderId, note, actorName) {
     const state = load();
     const order = state.orders.find((o) => o.orderId === orderId);
     if (!order) throw new Error("Order not found: " + orderId);
     if (!note || !note.trim()) throw new Error("A note is required.");
     if (!Array.isArray(order.correspondenceLog)) order.correspondenceLog = [];
-    order.correspondenceLog.push({ at: nowIso(), note: note.trim(), actorName: actorName || "—" });
+    const entry = { at: nowIso(), note: note.trim(), actorName: actorName || "—", attachments: [] };
+    order.correspondenceLog.push(entry);
     save(state);
-    return order.correspondenceLog;
+    return entry;
+  }
+
+  // Shared by addCorrespondence/sendOrderMessage — `uploads` is the
+  // {s3Key, uploadUrl} list the Lambda returned, positionally matching
+  // `files` (same order the caller built the `attachments` metadata in).
+  // Direct browser→S3 PUT, same two-step flow as store.js's
+  // submitPaymentProof().
+  async function uploadAttachments(files, uploads) {
+    await Promise.all((uploads || []).map((u, i) => {
+      const file = files[i];
+      if (!file) return Promise.resolve();
+      return fetch(u.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file }).then((res) => {
+        if (!res.ok) throw new Error("Upload failed for " + file.name + " (" + res.status + ")");
+      });
+    }));
   }
 
   /* ============================================================
@@ -1181,11 +1242,11 @@
     getDesigns,
     getMailboxes, getMessages, getMessage, getThread, markMessageRead, sendReply,
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
-    advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, rejectPayment,
+    advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, setOnHold,
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
-    getOrder, getAllOrders, getEventsFor, addCorrespondenceLog,
-    getOrderMessages, sendOrderMessage, getUnreadMessageSummary,
+    getOrder, getAllOrders, getEventsFor, addCorrespondence,
+    getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,
     resetSeed,
   };

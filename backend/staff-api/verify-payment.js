@@ -1,6 +1,6 @@
 /* ============================================================
    KCMPS staff API — POST /orders/{orderId}/verify-payment
-                     POST /orders/{orderId}/reject-payment
+                     POST /orders/{orderId}/set-on-hold
    ============================================================
    Staff-side half of the manual GCash bridge (Payment System file,
    "Bridge Payment Method: Manual GCash Verification"). The customer-
@@ -8,15 +8,24 @@
    updates is backend/checkout/submit-payment-proof.js.
 
    ORDER-LEVEL, not line-item-level: one GCash transaction pays for every
-   `sku` line item on the order at once, so verifying/rejecting acts on
-   ALL line items currently Pending Payment Verification on that order in
-   a single TransactWriteItems call, and stamps the audit fields on
+   `sku` line item on the order at once, so verifying/holding acts on ALL
+   line items currently awaiting verification on that order in a single
+   TransactWriteItems call, and stamps the audit fields on
    ORDER#<id>/META's `payment` sub-object — never on individual line
-   items. Mirrors dashboard-data.js's verifyPayment()/rejectPayment().
+   items. Mirrors dashboard-data.js's verifyPayment()/setOnHold().
+
+   On Hold replaced the old "Payment Rejected" state (see
+   lib/constants.js): a held payment isn't rejected, it's parked while the
+   two sides sort out whatever was unclear over email/chat. So both
+   Pending Payment Verification AND On Hold line items are eligible for
+   verification here — staff resolve the confusion, then click Verify
+   Payment once and the order proceeds straight to Confirmed, with no
+   detour back through Pending Payment Verification and no forcing the
+   customer to resubmit proof they already sent.
 
    Body shape:
      POST /orders/{orderId}/verify-payment   {}          (no body needed)
-     POST /orders/{orderId}/reject-payment   { "reason": "..." }
+     POST /orders/{orderId}/set-on-hold      { "reason": "..." }
 
    Ported from ops-dashboard/infra/logic-inputs/api-verify-payment.js
    against backend/lib conventions (see backend/CLAUDE.md).
@@ -34,8 +43,8 @@
    EVENT# record's `meta.verifiedAt` and on `payment.verifiedAt` below,
    both audit trails, just not what the SLA sweep reads. See
    backend/lib/business-hours.js for the pure clock math. Deliberately
-   NOT applied to reject-payment — a rejection's only downstream step is
-   the customer resubmitting proof, which isn't itself SLA-tracked.
+   NOT applied to set-on-hold — a hold's only downstream step is an
+   out-of-band email/chat conversation, which isn't itself SLA-tracked.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
@@ -61,12 +70,12 @@ exports.handler = async (event) => {
   }
 
   const orderId = event.pathParameters?.orderId;
-  const isReject = event.rawPath?.endsWith("/reject-payment") || event.resource?.endsWith("/reject-payment");
+  const isOnHold = event.rawPath?.endsWith("/set-on-hold") || event.resource?.endsWith("/set-on-hold");
   if (!orderId) return response(400, { error: "orderId path parameter is required" });
 
   let body = {};
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
-  if (isReject && !body.reason) return response(400, { error: "reason is required to reject a payment" });
+  if (isOnHold && !body.reason) return response(400, { error: "reason is required to put a payment on hold" });
 
   const pk = orderPk(orderId);
   const [orderRes, lineItemsRes] = await Promise.all([
@@ -80,19 +89,27 @@ exports.handler = async (event) => {
   const order = orderRes.Item;
   if (!order) return response(404, { error: "Order not found" });
   // Verifying needs a real GCash screenshot/reference to check against, but
-  // rejecting doesn't — staff must be able to reject an order for any reason
-  // (customer never paid, wrong item, etc.) even before any proof was ever
-  // submitted, since sku line items enter "Pending Payment Verification"
-  // immediately at checkout (create-order.js), well before submit-payment-
-  // proof.js ever runs.
-  if (!isReject && !order.payment) return response(409, { error: "Order has no GCash payment proof on file" });
+  // putting a payment on hold doesn't — staff must be able to park an order
+  // for any reason (nothing received, unclear instructions, etc.) even
+  // before any proof was ever submitted, since sku line items enter
+  // "Pending Payment Verification" immediately at checkout
+  // (create-order.js), well before submit-payment-proof.js ever runs.
+  if (!isOnHold && !order.payment) return response(409, { error: "Order has no GCash payment proof on file" });
 
-  const pendingLineItems = (lineItemsRes.Items || []).filter((li) => li.status === STATUS.PENDING_PAYMENT_VERIFICATION);
+  // Verifying accepts BOTH statuses so a held payment can be confirmed
+  // directly once staff and customer have sorted things out over email/chat
+  // (see file header). Holding only applies to items still pending — an
+  // already-held item has nowhere to go, and ON_HOLD -> ON_HOLD isn't a
+  // legal transition in advance-line-item.js's LEGAL_TRANSITIONS either.
+  const eligibleStatuses = isOnHold
+    ? [STATUS.PENDING_PAYMENT_VERIFICATION]
+    : [STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.ON_HOLD];
+  const pendingLineItems = (lineItemsRes.Items || []).filter((li) => eligibleStatuses.includes(li.status));
   if (!pendingLineItems.length) return response(409, { error: "No line items on this order are awaiting verification" });
 
   const now = new Date().toISOString();
   const staffName = claims.name || claims.email;
-  const toStatus = isReject ? STATUS.PAYMENT_REJECTED : STATUS.CONFIRMED;
+  const toStatus = isOnHold ? STATUS.ON_HOLD : STATUS.CONFIRMED;
   const removeAttrs = attrsToRemoveOnTerminal(toStatus); // both statuses stay active today, kept for consistency if that ever changes
 
   // slaClockStartsAt anchors the NEXT stage's SLA clock (via
@@ -100,7 +117,7 @@ exports.handler = async (event) => {
   // the event/payment audit trail regardless. See file header.
   let slaClockStartsAt = now;
   let verifiedWithinOperatingHours = true;
-  if (!isReject) {
+  if (!isOnHold) {
     const operatingHours = await getOperatingHours();
     verifiedWithinOperatingHours = isWithinOperatingHours(now, operatingHours);
     if (!verifiedWithinOperatingHours) slaClockStartsAt = nextOperatingStart(now, operatingHours);
@@ -111,6 +128,12 @@ exports.handler = async (event) => {
   pendingLineItems.forEach((li) => {
     let updateExpression = "SET #status = :to, enteredStatusAt = :entered";
     if (removeAttrs.length) updateExpression += ` REMOVE ${removeAttrs.join(", ")}`;
+    // The optimistic-lock `from` is per item, not one value for the whole
+    // transaction: a verify can now sweep up a mix of Pending Payment
+    // Verification and On Hold line items on the same order, so hardcoding
+    // either one would fail the condition (and cancel the entire
+    // transaction) for every item in the other status.
+    const fromStatus = li.status;
     transactItems.push({
       Update: {
         TableName: TABLE,
@@ -118,44 +141,44 @@ exports.handler = async (event) => {
         ConditionExpression: "#status = :from",
         UpdateExpression: updateExpression,
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: { ":to": toStatus, ":from": STATUS.PENDING_PAYMENT_VERIFICATION, ":entered": slaClockStartsAt },
+        ExpressionAttributeValues: { ":to": toStatus, ":from": fromStatus, ":entered": slaClockStartsAt },
       },
     });
     transactItems.push({
       Put: {
         TableName: TABLE,
         Item: buildEvent({
-          orderId, lineItemId: li.lineItemId, from: STATUS.PENDING_PAYMENT_VERIFICATION, to: toStatus,
+          orderId, lineItemId: li.lineItemId, from: fromStatus, to: toStatus,
           actorSub: claims.sub, actorName: staffName, station: li.station || null,
           at: now,
-          meta: isReject
-            ? { via: "rejectPayment", rejectionReason: body.reason }
+          meta: isOnHold
+            ? { via: "setOnHold", holdReason: body.reason }
             : { via: "verifyPayment", verifiedAt: now, slaClockStartsAt, verifiedWithinOperatingHours },
         }),
       },
     });
   });
 
-  // When rejecting an order that never had any GCash proof submitted,
+  // When holding an order that never had any GCash proof submitted,
   // `payment` is still the NULL scalar create-order.js writes at checkout —
-  // `SET payment.rejectionReason = ...` would fail (can't set a nested path
-  // on a non-map attribute), so replace the whole attribute in that case
-  // instead of patching a nested field.
-  const paymentUpdate = isReject && !order.payment
+  // `SET payment.holdReason = ...` would fail (can't set a nested path on a
+  // non-map attribute), so replace the whole attribute in that case instead
+  // of patching a nested field.
+  const paymentUpdate = isOnHold && !order.payment
     ? {
         UpdateExpression: "SET payment = :payment",
         ExpressionAttributeValues: {
           ":payment": {
             method: null, claimedAmount: null, gcashRefNumber: null, screenshotRef: null,
-            submittedAt: null, verifiedBy: null, verifiedAt: null, rejectionReason: body.reason,
+            submittedAt: null, verifiedBy: null, verifiedAt: null, holdReason: body.reason,
           },
         },
       }
     : {
-        UpdateExpression: isReject
-          ? "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
-          : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.rejectionReason = :null",
-        ExpressionAttributeValues: isReject
+        UpdateExpression: isOnHold
+          ? "SET payment.holdReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
+          : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.holdReason = :null",
+        ExpressionAttributeValues: isOnHold
           ? { ":reason": body.reason, ":null": null }
           : { ":staff": staffName, ":now": now, ":null": null },
       };
@@ -180,20 +203,20 @@ exports.handler = async (event) => {
 
   // Two of the three customer notifications the Payment System spec calls
   // for were missing (only the "under verification" email at submission
-  // time existed) — a customer whose payment was verified or rejected had
-  // no way to find out except by loading the tracking page. Best-effort,
+  // time existed) — a customer whose payment was verified or held had no
+  // way to find out except by loading the tracking page. Best-effort,
   // same pattern as submit-payment-proof.js: never fail the staff action
   // over a notification, and skip silently for non-email contacts (the
   // checkout contact field is free text — phone numbers can't receive SES).
   if (FROM_EMAIL && order.email) {
-    const send = isReject ? sendRejectedEmail : sendVerifiedEmail;
+    const send = isOnHold ? sendOnHoldEmail : sendVerifiedEmail;
     await send(order, orderId, body.reason).catch((err) => {
-      console.error(`verifyPayment: SES send failed (${isReject ? "reject" : "verify"}):`, err.message);
+      console.error(`verifyPayment: SES send failed (${isOnHold ? "on-hold" : "verify"}):`, err.message);
     });
   }
 
   return response(200, {
-    orderId, action: isReject ? "rejected" : "verified",
+    orderId, action: isOnHold ? "on-hold" : "verified",
     lineItemsAffected: pendingLineItems.map((li) => li.lineItemId), at: now,
   });
 };
@@ -228,21 +251,28 @@ async function sendVerifiedEmail(order, orderId) {
   });
 }
 
-async function sendRejectedEmail(order, orderId, reason) {
+// Deliberately NOT a "your payment was rejected, please resubmit" email —
+// that was the old Payment Rejected flow. A hold means we've almost
+// certainly got the money and just need to clear something up, so this is a
+// heads-up that a human will follow up, not a task assigned to the customer.
+// Nothing here asks them to resubmit proof through the site; production
+// resumes the moment staff hit Verify Payment.
+async function sendOnHoldEmail(order, orderId, reason) {
   await ses.send(new SendEmailCommand({
     Source: FROM_EMAIL,
     Destination: { ToAddresses: [order.email], BccAddresses: ["admin@kcmps.com"] },
     Message: {
-      Subject: { Data: `Order ${orderId} — we couldn't verify your payment` },
+      Subject: { Data: `Order ${orderId} — your payment needs a quick check` },
       Body: { Text: { Data:
         `Hi ${order.customerName},\n\n` +
-        `We couldn't verify your payment for order ${orderId}: ${reason}\n\n` +
-        `Please check the reference number and resubmit, or contact us if you need help.\n\n` +
+        `We've put order ${orderId} on hold for a moment while we check something: ${reason}\n\n` +
+        `No action needed on the website — we'll follow up by email or chat to sort it out. ` +
+        `Once it's cleared up, production starts automatically.\n\n` +
         `— KCMPS`
       } },
     },
   }));
-  await logCorrespondence(orderPk(orderId), "Emailed customer: payment rejected").catch((err) => {
+  await logCorrespondence(orderPk(orderId), "Emailed customer: payment on hold").catch((err) => {
     console.error("verifyPayment: correspondence log failed:", err.message);
   });
 }

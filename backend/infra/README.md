@@ -337,7 +337,7 @@ checkout):
 | GET | `/orders` | `kcmps-get-orders` |
 | POST | `/line-items/{lineItemId}/advance` | `kcmps-advance-line-item` |
 | POST | `/orders/{orderId}/verify-payment` | `kcmps-verify-payment` |
-| POST | `/orders/{orderId}/reject-payment` | `kcmps-verify-payment` |
+| POST | `/orders/{orderId}/set-on-hold` | `kcmps-verify-payment` |
 
 CORS `AllowMethods` extended to `[GET, POST, OPTIONS]` (was `[POST, OPTIONS]`). Each Lambda got
 its own scoped `lambda:AddPermission` (`source-arn` = this API's ARN + the specific route path).
@@ -418,6 +418,148 @@ creation time (see `backend/CLAUDE.md`'s cost convention).
 above) backs `website/dashboard/dashboard-shell.js`'s `refreshUnreadBadge()`, called from every
 dashboard page's `mount()`. No new infra beyond the route itself — reuses
 `kcmps-staff-api-lambda-role` as noted above.
+
+## Message + correspondence attachments — deployed 2026-08-04
+
+One new Lambda, one new route, and an IAM policy update — everything else reuses existing
+infra (same bucket as GCash proof uploads, same `kcmps-staff-api-lambda-role`).
+
+| Method | Route | Integration |
+|---|---|---|
+| POST | `/orders/{orderId}/correspondence` | `kcmps-add-correspondence` (new) |
+
+`kcmps-add-correspondence` is a new Lambda on `kcmps-staff-api-lambda-role` (nodejs20.x, arm64,
+256MB/10s, same shape as its siblings), env vars `TABLE_NAME`/`UPLOADS_BUCKET`
+(`kcmps-payment-uploads-est-2026` — same bucket `submit-payment-proof.js` already uses). JWT
+authorizer attached, scoped `lambda:AddPermission`, 30-day log retention set at creation.
+
+`kcmps-send-message` also got `UPLOADS_BUCKET` added to its environment (needed it for the
+first time — it now presigns PUT urls for message attachments the same way
+`add-correspondence.js`/`submit-payment-proof.js` do); `kcmps-get-orders`, `kcmps-send-message`,
+`kcmps-get-messages` were all redeployed (code-only, `update-function-code`) for the attachment
+read/write logic.
+
+**IAM**: `kcmps-staff-api-lambda-role`'s `kcmps-staff-api-s3-read` inline policy (previously
+just `GetObject` on `payments/*`, for the GCash screenshot preview) got two new statements —
+`PutObject`+`GetObject` on `kcmps-payment-uploads-est-2026/correspondence/*` and
+`.../messages/*`. No CORS change needed: the bucket's existing PUT CORS rule (see "Payment
+uploads bucket" above) applies bucket-wide, not scoped by prefix.
+
+Attachments are validated server-side against an allow-list (`image/jpeg|png|webp|gif`,
+`application/pdf`, max 5 per note/message) and use the same two-step presigned-upload pattern
+as `submit-payment-proof.js`: the Lambda hands back a PUT url per file, the browser uploads
+directly to S3, the Lambda never sees file bytes. `get-orders.js`/`get-messages.js` presign a
+short-lived GET url per attachment on every read (bucket is private) — see `docs/roadmap.md`'s
+2026-08-04 entry for the full design and why `add-correspondence.js` also fixed a pre-existing
+bug (the "Log" button previously wrote to a `localStorage` mock that real orders were never in).
+
+`website/dashboard/job-detail.html`'s CSP `connect-src` needed the S3 bucket origin added —
+it never uploaded anything directly to S3 before (GCash proof upload is customer-side, in
+`store.js`), so this was a real gap caught during testing, not a copy-paste of
+`order-detail.html`'s CSP (which already had it).
+
+## Customer design-file uploads + malware scanning — deployed 2026-08-04
+
+Lets a customer attach their actual artwork/print file at checkout instead of pasting a Drive
+link (the link textarea stays — see `backend/checkout/upload-design-file.js`'s header). Same
+presign → direct-browser-PUT pattern as `submit-payment-proof.js`; no file bytes ever reach a
+Lambda.
+
+| Method | Route | Integration | Auth |
+|---|---|---|---|
+| POST | `/design-uploads` | `kcmps-upload-design-file` (new) | **None** — guest checkout, same as `POST /orders` |
+
+New Lambda `kcmps-upload-design-file` on the existing `kcmps-checkout-lambda-role` (nodejs20.x,
+arm64, 256MB/10s), env `UPLOADS_BUCKET=kcmps-payment-uploads-est-2026`, 30-day log retention set
+at creation. Route throttled to **10 req/s burst 20**, matching `POST /orders` — it is an
+unauthenticated write primitive, so it does not get the default (unlimited) setting.
+`kcmps-create-order` and `kcmps-get-orders` were redeployed for the `designFiles` field, and
+`create-order` gained `UPLOADS_BUCKET` (used *only* to validate the shape of refs the client
+sends back — it never touches S3).
+
+**S3 layout**: new `design-uploads/` prefix on the existing uploads bucket — no new bucket. Keys
+are always `design-uploads/<uuid>.<validated-ext>`; the customer's filename is never part of the
+key. The bucket's pre-existing bucket-wide PUT CORS rule already covers this prefix, so no CORS
+change was needed.
+
+**IAM**, both least-privilege and prefix-scoped:
+- `kcmps-checkout-lambda-role` += `s3:PutObject` on `design-uploads/*` (presigning a PUT requires
+  the signer to actually hold the permission).
+- `kcmps-staff-api-lambda-role` += `s3:GetObject` **and `s3:GetObjectTagging`** on
+  `design-uploads/*` — the tagging read is what the scan gate in `get-orders.js` depends on.
+  Deliberately no `PutObject`: staff never write into the customer-upload prefix.
+
+**GuardDuty Malware Protection for S3** (plan `7acfe6ba55d9edc67956`, `ACTIVE`) scans every
+object written under `design-uploads/` and tags it `GuardDutyMalwareScanStatus`. Scoped to that
+one prefix so GCash screenshots aren't rescanned. Assumes a dedicated role,
+`kcmps-guardduty-malware-s3`.
+
+Two non-obvious things about that role, both found the hard way — the plan sits at
+`Status: WARNING` rather than failing loudly, so check `get-malware-protection-plan` after any
+change to it:
+1. It needs `s3:PutObject`/`s3:DeleteObject` for a validation probe object, and that object goes
+   at the **bucket root** (`malware-protection-resource-validation-object`), *not* under the
+   scanned prefix. Granting only the prefix leaves the plan stuck in `WARNING` with
+   `INSUFFICIENT_TEST_OBJECT_PERMISSIONS`.
+2. IAM propagation lags — creating the role and immediately creating the plan fails validation.
+   Re-running `update-malware-protection-plan` after ~20s is what flips it to `ACTIVE`.
+
+Cost (~US$1.30/mo at the current estimate, ~15% of the ₱500/mo cap) is logged in
+[docs/cost-governance.md](../../docs/cost-governance.md) — the one genuinely recurring add in
+this pass. A lifecycle rule aborts incomplete multipart uploads under the prefix after 7 days.
+
+**Verified live end-to-end** (all test data removed afterward — bucket prefix and table both
+back to empty): spoofed `application/pdf` on `payload.exe` rejected 400, SVG/ZIP/HTML rejected,
+double-extension and traversal-shaped filenames rejected, 60MB rejected; a clean PDF scanned
+`NO_THREATS_FOUND` and came back with a presigned GET carrying
+`Content-Disposition: attachment` + `Content-Type: application/octet-stream`; an EICAR test file
+scanned `THREATS_FOUND` and `get-orders.js` returned it with **`url: null`**, so the dashboard
+has nothing to click. Unauthenticated direct GET on an upload returns 403.
+
+## Malware quarantine across all upload prefixes — deployed 2026-08-05
+
+Extends the 2026-08-04 design-file scanning to **every** upload path, and adds automatic
+destruction of infected objects.
+
+**GuardDuty plan `7acfe6ba55d9edc67956`** now covers four prefixes on
+`kcmps-payment-uploads-est-2026`: `design-uploads/`, `payments/`, `messages/`,
+`correspondence/`. Widened with `update-malware-protection-plan`; status re-checked `ACTIVE`.
+
+**New Lambda `kcmps-handle-scan-result`** (`backend/jobs/handle-scan-result.js`) on the existing
+`kcmps-jobs-lambda-role`, nodejs20.x/arm64/256MB/**60s**, `TABLE_NAME=kcmps`, 30-day log
+retention. Triggered by EventBridge rule `kcmps-guardduty-scan-result`
+(`source: aws.guardduty`, detail-type `GuardDuty Malware Protection Object Scan Result`) with a
+scoped `lambda:AddPermission`.
+
+**IAM** — new inline policy `kcmps-jobs-s3-quarantine` on `kcmps-jobs-lambda-role`:
+`s3:DeleteObject` + **`s3:DeleteObjectVersion`** on all four prefixes, and `s3:ListBucketVersions`
+on the bucket (a bucket-level action, so it cannot be prefix-scoped in the ARN). No `GetObject` —
+the quarantine Lambda never needs to read file contents, only delete them.
+
+**Why version-aware deletion matters**: the bucket has versioning enabled, so a plain
+`DeleteObject` only writes a delete marker and leaves the malicious bytes retrievable by
+versionId until the 90-day `NoncurrentVersionExpiration` rule collects them. The Lambda does
+`ListObjectVersions` + `DeleteObjects` with explicit VersionIds instead. Confirmed live: objects
+deleted by the Lambda leave **zero** Versions and **zero** DeleteMarkers, whereas the same file
+removed with `aws s3 rm` leaves both.
+
+**Read-path change**: `get-orders.js` and `get-messages.js` no longer call `GetObjectTagging` per
+attachment (that was an S3 round trip per attachment per order on every staff list load). The
+scan verdict is persisted onto the record by the Lambda — for clean files as well as infected
+ones — and read from DynamoDB. An attachment with no persisted verdict is `PENDING` and stays
+undownloadable, so a scan result that never arrives can never become a download link.
+
+Both read paths now also force `Content-Disposition: attachment` +
+`Content-Type: application/octet-stream` on every presigned GET. The only exception is the GCash
+screenshot, which staff must view inline to verify a payment — it keeps an inline URL but is
+subject to the same scan gate.
+
+**Verified live end-to-end** (all test data purged afterward; bucket back to its pre-test
+object count): an EICAR file uploaded via `design-uploads/` and another via `messages/` were both
+scanned `THREATS_FOUND`, had **every version purged from S3**, and left a DynamoDB record
+carrying filename, size, timestamp, the raw signature (`EICAR-Test-File (not a virus)`) and a
+plain-English description — while `get-orders.js` returned them with `url: null`. A clean PDF
+uploaded alongside scanned `NO_THREATS_FOUND` and came back downloadable.
 
 ## `auth/` — Cognito PostConfirmation trigger (deployed 2026-08-03)
 
@@ -632,7 +774,7 @@ admin@kcmps.com` so the shared shop inbox always has a copy, which is also what 
 | Order placed | `create-order.js` | `FROM_EMAIL` |
 | Order received / pending verification | `submit-payment-proof.js` | `FROM_EMAIL` |
 | Payment confirmed | `verify-payment.js` | `FROM_EMAIL` |
-| Payment rejected | `verify-payment.js` | `FROM_EMAIL` |
+| Payment on hold | `verify-payment.js` | `FROM_EMAIL` |
 | Shipped out (`Dispatched`), Ready for pickup (`Ready for Pickup`) | `advance-line-item.js` | `FROM_EMAIL` |
 | Auto-cancelled (verification expired), Quote expired | `expire-pending-orders.js` | `SES_SENDER` |
 

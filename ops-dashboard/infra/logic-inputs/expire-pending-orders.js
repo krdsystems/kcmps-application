@@ -71,7 +71,7 @@ async function expireVerification(li) {
         },
       },
       // Stamp the order-level payment audit trail (§2.2 of the infra doc)
-      // the same way a staff-triggered rejectPayment call would, so a
+      // the same way a staff-triggered setOnHold call would, so a
       // 48h auto-expiry is indistinguishable from a manual reject in the
       // ticket's payment history — only actorSub in the EVENT# record
       // above tells you it was automatic.
@@ -79,7 +79,7 @@ async function expireVerification(li) {
         Update: {
           TableName: TABLE,
           Key: { PK: li.PK, SK: "META" },
-          UpdateExpression: "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
+          UpdateExpression: "SET payment.holdReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null",
           ExpressionAttributeValues: {
             ":reason": "Auto-cancelled — 48h verification window elapsed with no staff action",
             ":null": null,

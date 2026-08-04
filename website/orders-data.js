@@ -109,7 +109,12 @@
     "Priced": { bucket: "action", stage: 0, label: "Quote ready — payment needed", next: "Your quote is ready. Settle it to start production.", tone: "warn" },
     "Awaiting Payment": { bucket: "action", stage: 0, label: "Quote ready — payment needed", next: "Your quote is ready. Settle it to start production.", tone: "warn" },
     "Pending Payment Verification": { bucket: "progress", stage: 1, label: "Checking your payment", next: "We're verifying your GCash proof — usually within 48 hours.", tone: "neutral" },
-    "Payment Rejected": { bucket: "action", stage: 1, label: "Payment needs attention", next: "Resubmit your GCash proof, or contact us if you need help.", tone: "bad" },
+    // Replaced "Payment Rejected". Deliberately bucket "progress", not
+    // "action": a hold is resolved by staff over email/chat, so there's
+    // nothing for the customer to do on this page — telling them to
+    // resubmit proof (the old copy) would send them down a path that no
+    // longer resolves anything.
+    "On Hold": { bucket: "progress", stage: 1, label: "On hold — checking your payment", next: "We're following up with you by email or chat about your payment — nothing to do here for now.", tone: "bad" },
     "Confirmed": { bucket: "progress", stage: 2, label: "Payment confirmed", next: "Payment confirmed — we're scheduling your job.", tone: "good" },
     "Scheduled": { bucket: "progress", stage: 2, label: "Scheduled for production", next: "Booked into the production queue.", tone: "good" },
     "In Production": { bucket: "progress", stage: 3, label: "Being made", next: "Your order is on the press.", tone: "good" },
@@ -180,14 +185,17 @@
      actorName, station, meta) — real redaction belongs server-side
      (Phase 2 of the My Orders plan), but until that ships this is the one
      place a customer-facing rendering is built, so it only ever surfaces
-     `to`/`at` plus the customer-relevant part of `meta` (a rejection
+     `to`/`at` plus the customer-relevant part of `meta` (an on-hold
      reason), never actorName/station/meta.via. */
   function timelineFor(order) {
     var events = (order.events || []).slice().sort(function (a, b) { return (a.at || "").localeCompare(b.at || ""); });
     return events.map(function (ev) {
       var model = statusModel(ev.to, order);
       var detail = null;
-      if (ev.to === "Payment Rejected" && ev.meta && ev.meta.rejectionReason) detail = ev.meta.rejectionReason;
+      // `rejectionReason` is the pre-On-Hold meta key — redactForCustomer()
+      // now normalizes it to holdReason, but events written before that
+      // rename still carry the old one through unredacted paths.
+      if (ev.to === "On Hold" && ev.meta) detail = ev.meta.holdReason || ev.meta.rejectionReason || null;
       return { at: ev.at, label: model.label || ev.to, detail: detail, tone: model.tone };
     });
   }
@@ -198,14 +206,23 @@
      the button at all); the backend re-checks authoritatively and 409s
      with a clear message if a line item advanced past this set between
      page load and the click (e.g. staff just started production). */
-  var CANCELLABLE_STATUSES = { "Order Placed": 1, "Quoted": 1, "Priced": 1, "Pending Payment Verification": 1, "Payment Rejected": 1 };
+  var CANCELLABLE_STATUSES = { "Order Placed": 1, "Quoted": 1, "Priced": 1, "Pending Payment Verification": 1, "On Hold": 1 };
   function actionsFor(order) {
     var overall = statusModel(order.orderStatus, order);
-    var anyRejected = (order.lineItems || []).some(function (li) { return li.status === "Payment Rejected"; });
+    // The proof-submission form used to be gated on Payment Rejected, i.e.
+    // it only ever appeared as a *re*submission after a rejection. On Hold
+    // deliberately doesn't inherit that: a hold is resolved by staff over
+    // email/chat and then verified in one click, so offering "resubmit
+    // proof" here would be a dead end that changes nothing.
+    // It's gated on Order Placed instead — the one status where the
+    // customer really does still owe us proof (submit-payment-proof.js
+    // only ever acts on Order Placed line items), and which until now
+    // showed copy telling them to submit with no button to do it.
+    var anyUnpaid = (order.lineItems || []).some(function (li) { return li.status === "Order Placed"; });
     var allCancellable = (order.lineItems || []).length > 0 &&
       (order.lineItems || []).every(function (li) { return CANCELLABLE_STATUSES[li.status]; });
     return {
-      resubmitProof: overall.raw === "Payment Rejected" || anyRejected,
+      submitProof: overall.raw === "Order Placed" || anyUnpaid,
       reorder: (order.lineItems || []).length > 0,
       cancel: allCancellable,
       contact: true,
@@ -347,7 +364,7 @@
     return Promise.resolve({ added: added, skipped: skipped, priceChanged: priceChanged });
   }
 
-  /* ---------- resubmit payment proof ----------
+  /* ---------- submit payment proof ----------
      Delegates to window.KCMPS_STORE.submitPaymentProof (DOM-independent —
      see store.js) so this doesn't fork a second copy of the two-step (POST
      for a presigned URL, then PUT the file to S3) upload logic. */
@@ -385,10 +402,16 @@
      seam as everything else in this file: a future swap to a WebSocket
      subscription only touches the caller's polling loop, never this
      function's signature or the message shape itself. */
-  function getMessages(orderId) {
+  // `markRead` is opt-in (see get-messages.js's header) — pass true only
+  // from a real engagement signal (order-detail.html fires it on the
+  // reply box's focus event), never from the initial page-load fetch or
+  // the 8s background poll, so simply opening an order to glance at it
+  // doesn't silently clear its own "new message" banner before you see it.
+  function getMessages(orderId, markRead) {
     var session = getSession();
     if (!session) return Promise.reject(new Error("Please sign in again to view messages."));
-    return fetch(API_BASE + "/orders/" + encodeURIComponent(orderId) + "/messages", {
+    var qs = markRead ? "?markRead=true" : "";
+    return fetch(API_BASE + "/orders/" + encodeURIComponent(orderId) + "/messages" + qs, {
       headers: { Authorization: "Bearer " + session.idToken },
     }).then(function (res) {
       return res.json().then(function (data) {
@@ -398,19 +421,39 @@
     });
   }
 
-  function sendMessage(orderId, text) {
+  function markMessagesRead(orderId) {
+    return getMessages(orderId, true);
+  }
+
+  // `files` (optional array of browser File objects) — same two-step
+  // presigned-upload flow as store.js's submitPaymentProof(): the Lambda
+  // hands back a PUT url per file, this function does the direct
+  // browser→S3 PUT itself, then returns the message as written.
+  function sendMessage(orderId, text, files) {
     var session = getSession();
     if (!session) return Promise.reject(new Error("Please sign in again to send a message."));
+    files = files || [];
+    var attachments = files.map(function (f) { return { filename: f.name, contentType: f.type }; });
     return fetch(API_BASE + "/orders/" + encodeURIComponent(orderId) + "/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.idToken },
-      body: JSON.stringify({ body: text }),
+      body: JSON.stringify({ body: text, attachments: attachments }),
     }).then(function (res) {
       return res.json().then(function (data) {
         if (!res.ok) throw new Error(data && data.error ? data.error : "Couldn't send that message (" + res.status + ")");
-        return data.message;
+        return uploadAttachments(files, data.uploads).then(function () { return data.message; });
       });
     });
+  }
+
+  function uploadAttachments(files, uploads) {
+    return Promise.all((uploads || []).map(function (u, i) {
+      var file = files[i];
+      if (!file) return Promise.resolve();
+      return fetch(u.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file }).then(function (res) {
+        if (!res.ok) throw new Error("Upload failed for " + file.name + " (" + res.status + ")");
+      });
+    }));
   }
 
   // backend/staff-api/get-unread-messages.js's customer branch — the
@@ -438,6 +481,7 @@
     STAGES: STAGES, BUCKETS: BUCKETS, statusModel: statusModel, timelineFor: timelineFor,
     actionsFor: actionsFor, reorder: reorder, submitProof: submitProof, cancel: cancel,
     getMessages: getMessages, sendMessage: sendMessage, getUnreadMessageSummary: getUnreadMessageSummary,
+    markMessagesRead: markMessagesRead,
     fmtPeso: fmtPeso, fmtDate: fmtDate, fmtDateTime: fmtDateTime, escapeHtml: escapeHtml,
     ORDER_EMAIL: ORDER_EMAIL,
   };

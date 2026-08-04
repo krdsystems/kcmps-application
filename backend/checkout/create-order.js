@@ -46,9 +46,12 @@ const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, baseItem, buildEvent, orderPk, metaSk, lineItemSk, idempotencyPk, activeStatusAttrs, deriveOrderStatus } = require("../lib");
+const { STATUS, baseItem, buildEvent, orderPk, metaSk, lineItemSk, idempotencyPk, activeStatusAttrs, deriveOrderStatus, MAX_UPLOADS_PER_ORDER } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
+// Only used to validate the shape of design-file refs the client sends
+// back (see normalizeDesignFiles) — this Lambda never touches S3 itself.
+const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
 const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
 // Same FROM_EMAIL gate as submit-payment-proof.js/verify-payment.js — unset
@@ -100,6 +103,16 @@ exports.handler = async (event) => {
     if (!raw || !raw.name || !(raw.qty > 0)) {
       return response(400, { error: "Every cart line needs a name and a qty > 0" });
     }
+  }
+
+  // Design files the customer attached at checkout (upload-design-file.js
+  // already presigned + uploaded them; these are just the resulting refs).
+  // Order-level, alongside `notes` — the checkout upload zone sits next to
+  // the notes textarea and isn't scoped to one cart line, unlike the
+  // per-line designRef/designName that a pre-made-design pick carries.
+  const designFiles = normalizeDesignFiles(body.designFiles);
+  if (designFiles === null) {
+    return response(400, { error: `designFiles must be an array of at most ${MAX_UPLOADS_PER_ORDER} uploaded file references` });
   }
 
   // Optional — the storefront generates one per checkout attempt and
@@ -187,6 +200,7 @@ exports.handler = async (event) => {
     shipping: isDelivery ? { courier: shipping.courier, address: shipping.address, landmark: shipping.landmark || null } : null,
     orderStatus, originalPromisedDate,
     payment: null, // submitPaymentProof.js attaches this once the customer submits GCash proof
+    designFiles,
     correspondenceLog: [],
   };
   // attribute_not_exists(PK) is a backstop against the (now vanishingly
@@ -294,6 +308,51 @@ async function tryGetSub(event) {
     console.warn("createOrder: ignoring unverifiable token, proceeding as guest:", err.message);
     return null;
   }
+}
+
+// Design-file refs arrive from the client after upload-design-file.js
+// presigned them — but this endpoint is public and guest-friendly, so the
+// refs themselves are attacker-controlled input like everything else in
+// the body. Returns a sanitized array, or null if the input is malformed
+// (caller turns that into a 400).
+//
+// The `design-uploads/` prefix check is the load-bearing one: without it a
+// caller could attach `s3://<uploads-bucket>/payments/<someone-else>.jpg`
+// to their own throwaway order and have staff-api/get-orders.js happily
+// presign a GET for another customer's GCash payment proof. Uploads and
+// payment screenshots share one bucket, so the prefix is the only thing
+// separating them. Same reason the bucket name must match ours exactly —
+// a foreign `s3://attacker-bucket/...` ref would otherwise be presigned
+// (and fail confusingly) or, worse, point staff at content we don't own.
+function normalizeDesignFiles(input) {
+  if (input == null) return [];
+  if (!Array.isArray(input)) return null;
+  if (input.length > MAX_UPLOADS_PER_ORDER) return null;
+
+  const expectedPrefix = `s3://${UPLOADS_BUCKET}/design-uploads/`;
+  const out = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") return null;
+    const ref = typeof raw.ref === "string" ? raw.ref.trim() : "";
+    if (!ref.startsWith(expectedPrefix)) return null;
+    // No traversal segments past the prefix, and a plain single-segment key.
+    const keyTail = ref.slice(expectedPrefix.length);
+    if (!/^[A-Za-z0-9._-]+$/.test(keyTail)) return null;
+
+    out.push({
+      ref,
+      // Display-only. Re-sanitized here rather than trusted from the
+      // client's echo of what upload-design-file.js returned, and escaped
+      // again at render time by job-detail.html's escapeHtml().
+      filename: typeof raw.filename === "string"
+        ? raw.filename.replace(/[\u0000-\u001f\u007f]/g, "").replace(/[/\\]/g, "_").trim().slice(0, 150) || "design-file"
+        : "design-file",
+      contentType: typeof raw.contentType === "string" ? raw.contentType.slice(0, 120) : "",
+      size: Number.isFinite(Number(raw.size)) ? Math.max(0, Math.floor(Number(raw.size))) : null,
+      uploadedAt: new Date().toISOString(),
+    });
+  }
+  return out;
 }
 
 function addBusinessDays(fromIso, days) {

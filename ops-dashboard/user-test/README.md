@@ -199,14 +199,19 @@ line item, and a reject must always capture a reason the customer will see.
    field appears on the payment card with a timestamp and your name, and
    the **Event timeline** logs `Pending Payment Verification → Confirmed`.
 5. Open a *different* ticket still in `Pending Payment Verification` and
-   click **Reject payment**.
-6. **Expected:** an inline textarea asks for a rejection reason — try
+   click **Set to On-Hold**.
+6. **Expected:** an inline textarea asks what needs checking — try
    confirming with it empty first; nothing happens until you type something
    (matches Design Principle 3 elsewhere in this app: no silent, reason-less
    status changes).
 7. Type a reason and confirm.
-8. **Expected:** status becomes `Payment Rejected`, and the payment card now
-   shows your **Rejection reason** text instead of a Verified field.
+8. **Expected:** status becomes `On Hold`, and the payment card now
+   shows your **On-hold reason** text instead of a Verified field.
+9. On that same on-hold ticket, click **Verify payment** and confirm.
+10. **Expected:** status goes straight to `Confirmed` — no detour back
+    through `Pending Payment Verification`, and the customer is never asked
+    to resubmit their proof. The **Event timeline** logs
+    `On Hold → Confirmed`.
 
 ---
 

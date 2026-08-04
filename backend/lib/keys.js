@@ -126,6 +126,19 @@ function configPk(configId) {
 // PK: ORDER#<id>, SK: MSG#<ISO timestamp>#<msgId> — co-located with the
 // order they're about, consistent with EVENT#'s pattern above.
 
+// ---- standalone malware-scan verdicts ----
+// PK: SCAN#<s3:// ref>, SK: META. Written by jobs/handle-scan-result.js for
+// EVERY scan, independent of whether a record referencing that object exists
+// yet. This exists because design-file uploads happen BEFORE checkout: the
+// scan routinely completes while the customer is still filling in the form,
+// so there is no order to annotate at that moment. Without a durable
+// standalone verdict the result is simply lost and the file is stuck
+// "Scanning…" forever — including clean files, which would then never be
+// downloadable. Read paths fall back to this item.
+function scanResultPk(ref) {
+  return `SCAN#${ref}`;
+}
+
 function messageSk(isoTimestamp, msgId) {
   return `MSG#${isoTimestamp}#${msgId}`;
 }
@@ -152,4 +165,5 @@ module.exports = {
   messageGsi2Sk,
   configPk,
   messageSk,
+  scanResultPk,
 };

@@ -85,8 +85,14 @@ const INTERNAL_ONLY_NOTE = {
 // hard-block the other one at the state-machine level.
 const LEGAL_TRANSITIONS = {
   [STATUS.ORDER_PLACED]: [STATUS.PENDING_PAYMENT_VERIFICATION], // submitPaymentProof.js does this write, not this Lambda
-  [STATUS.PENDING_PAYMENT_VERIFICATION]: [STATUS.CONFIRMED, STATUS.PAYMENT_REJECTED],
-  [STATUS.PAYMENT_REJECTED]: [STATUS.PENDING_PAYMENT_VERIFICATION], // customer resubmits
+  [STATUS.PENDING_PAYMENT_VERIFICATION]: [STATUS.CONFIRMED, STATUS.ON_HOLD],
+  // CONFIRMED is listed here (not just PENDING_PAYMENT_VERIFICATION) so a
+  // held payment can be verified in one click once staff and customer have
+  // sorted things out over email/chat — matching verify-payment.js, which
+  // accepts On Hold line items directly. The route back to Pending Payment
+  // Verification stays legal for the case where the customer does end up
+  // resubmitting proof (submit-payment-proof.js).
+  [STATUS.ON_HOLD]: [STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.CONFIRMED],
   [STATUS.QUOTED]: [STATUS.PRICED, STATUS.QUOTE_EXPIRED],
   [STATUS.PRICED]: [STATUS.CONFIRMED, STATUS.QUOTE_EXPIRED],
   [STATUS.CONFIRMED]: [STATUS.SCHEDULED],

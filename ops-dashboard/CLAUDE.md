@@ -19,7 +19,7 @@ none of it is deployed or running today.
   digest, IAM, cost impact, phased deployment checklist. Layers on the existing S3 +
   CloudFront + Cognito + API Gateway + Lambda + DynamoDB + SES stack — no new AWS services.
   Cites `project_knowledge/Payment_System_Project_Knowledge.md` as the source for the
-  `payment` sub-object shape and GCash verify/reject flow.
+  `payment` sub-object shape and GCash verify/on-hold flow.
 - `infra/logic-inputs/*.js` — the actual Lambda source to deploy: `streams-handler.js`
   (DynamoDB Streams → derived status + GSI1 + metric rollups), `expire-pending-orders.js`
   (verification/quote-expiry sweep), `daily-digest.js` (SES digest), `api-get-orders.js` /

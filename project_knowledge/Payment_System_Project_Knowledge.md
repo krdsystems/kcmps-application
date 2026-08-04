@@ -136,7 +136,7 @@ This is the same underlying mechanism as the previously planned **Launch Kit bun
 
 **Context:** While BIR/DTI registration is in process, KCMPS cannot yet onboard a registered payment gateway (PayMongo, HitPay, etc.). This section defines a manual GCash-based verification flow as a temporary bridge — designed so it slots into the same order/status model and can be swapped for an automated gateway later with minimal rework.
 
-**Current implementation status (2026-07-28):** only a front-end-only interim step has shipped — a popup shown after "Place order," before checkout's `mailto:` fires, with a placeholder GCash QR and copyable payment instructions (`website/store.js` `openOrderPopup()`, see `docs/history.md` entry 22). None of the flow below (order creation in `Pending Payment Verification`, the reference-number field, S3 screenshot upload, staff verify/reject queue) is built yet — the customer still emails proof manually and staff still process it outside the system. This section remains the target design for Milestone 1.
+**Current implementation status (2026-07-28):** only a front-end-only interim step has shipped — a popup shown after "Place order," before checkout's `mailto:` fires, with a placeholder GCash QR and copyable payment instructions (`website/store.js` `openOrderPopup()`, see `docs/history.md` entry 22). None of the flow below (order creation in `Pending Payment Verification`, the reference-number field, S3 screenshot upload, staff verify/on-hold queue) is built yet — the customer still emails proof manually and staff still process it outside the system. This section remains the target design for Milestone 1.
 
 ### Flow
 
@@ -149,11 +149,11 @@ This is the same underlying mechanism as the previously planned **Launch Kit bun
 2. **Notifications (SES)**
    - On submission: *"Order #X received — under payment verification, we'll confirm within [X hours]."*
    - On staff approval: *"Order #X verified — payment confirmed, moving to production."*
-   - On rejection: *"We couldn't verify payment for Order #X — please check the reference number and resubmit, or contact us."*
+   - On hold: *"We've put Order #X on hold while we check something — no action needed, we'll follow up by email or chat."*
 
 3. **Staff dashboard**
    - New queue: **Pending Verification** — shows screenshot, reference number, claimed amount, order ID, timestamp.
-   - Staff actions: **Verify** (→ `Confirmed`) or **Reject** (→ `Payment Rejected`, customer notified, can resubmit).
+   - Staff actions: **Verify** (→ `Confirmed`) or **Reject** (→ `On Hold`, customer notified, can resubmit).
    - Auto-expiry: orders sitting in `Pending Payment Verification` past a defined window (e.g. 48h) with no resubmission auto-cancel, releasing any inventory hold.
 
 4. **Customer-facing progress bar**
@@ -178,7 +178,7 @@ This is the same underlying mechanism as the previously planned **Launch Kit bun
     "submittedAt": "2026-07-21T14:00:00Z",
     "verifiedBy": null,
     "verifiedAt": null,
-    "rejectionReason": null
+    "holdReason": null
   }
 }
 ```
@@ -187,7 +187,7 @@ This is the same underlying mechanism as the previously planned **Launch Kit bun
 
 - **`submitPaymentProof`** — customer-facing; returns a pre-signed S3 upload URL (private bucket, same pattern as custom-print file uploads) for the screenshot, writes ref number + claimed amount to the order.
 - **`verifyPayment`** (staff-only) — marks payment verified, updates order status, triggers SES confirmation email + existing Streams automation (job card creation, inventory decrement).
-- **`rejectPayment`** (staff-only) — marks rejected, triggers SES rejection email, allows resubmission on the same order.
+- **`setOnHold`** (staff-only) — parks the payment as `On Hold`, triggers the SES heads-up email, and leaves it directly verifiable once staff and customer resolve the issue over email/chat (no resubmission required).
 - **`expirePendingOrders`** — scheduled Lambda (EventBridge cron) that auto-cancels stale unverified orders past the cutoff window.
 
 No new AWS services required — S3, Lambda, DynamoDB, SES, and Cognito are all already in the existing stack.

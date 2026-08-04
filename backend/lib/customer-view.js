@@ -21,10 +21,14 @@ function redactForCustomer(order) {
     at: ev.at,
     from: ev.from,
     to: ev.to,
-    // rejectionReason is the one meta field a customer needs (it's the
-    // same text already surfaced on payment.rejectionReason) — everything
-    // else in `meta` (via, station) and the actor fields are internal.
-    meta: ev.meta && ev.meta.rejectionReason ? { rejectionReason: ev.meta.rejectionReason } : {},
+    // holdReason is the one meta field a customer needs (it's the same
+    // text already surfaced on payment.holdReason) — everything else in
+    // `meta` (via, station) and the actor fields are internal. The legacy
+    // `rejectionReason` key is still read so events written before the
+    // Payment Rejected -> On Hold rename keep rendering their reason.
+    meta: ev.meta && (ev.meta.holdReason || ev.meta.rejectionReason)
+      ? { holdReason: ev.meta.holdReason || ev.meta.rejectionReason }
+      : {},
   }));
   return order;
 }

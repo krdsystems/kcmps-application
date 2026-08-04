@@ -14,6 +14,8 @@ const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
 const { redactForCustomer } = require("./customer-view");
+const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES } = require("./upload-types");
+const { describeThreats } = require("./threat-descriptions");
 
 // ---- money.js ----
 
@@ -144,7 +146,7 @@ test("ACTIVE_STATUSES excludes exactly the terminal statuses", () => {
   }
   const active = [
     STATUS.QUOTED, STATUS.PRICED, STATUS.PENDING_PAYMENT_VERIFICATION, STATUS.CONFIRMED,
-    STATUS.PAYMENT_REJECTED, STATUS.SCHEDULED, STATUS.IN_PRODUCTION, STATUS.QC,
+    STATUS.ON_HOLD, STATUS.SCHEDULED, STATUS.IN_PRODUCTION, STATUS.QC,
     STATUS.READY_FOR_DISPATCH, STATUS.DISPATCHED,
   ];
   for (const s of active) {
@@ -230,7 +232,7 @@ test("redactForCustomer strips staff-internal fields from line items and events"
     ],
     events: [
       { at: "2026-01-01T00:00:00Z", from: null, to: "Quoted", actorSub: "sub-1", actorName: "Staffer", station: "PRESS-01", meta: { via: "createOrder" } },
-      { at: "2026-01-01T01:00:00Z", from: "Pending Payment Verification", to: "Payment Rejected", actorSub: "sub-1", actorName: "Staffer", meta: { via: "rejectPayment", rejectionReason: "Reference number doesn't match" } },
+      { at: "2026-01-01T01:00:00Z", from: "Pending Payment Verification", to: "On Hold", actorSub: "sub-1", actorName: "Staffer", meta: { via: "setOnHold", holdReason: "Reference number doesn't match" } },
     ],
   };
   const redacted = redactForCustomer(order);
@@ -240,7 +242,103 @@ test("redactForCustomer strips staff-internal fields from line items and events"
   assert.equal(redacted.lineItems[0].qty, 20); // customer-relevant fields survive
 
   assert.deepEqual(redacted.events[0], { at: "2026-01-01T00:00:00Z", from: null, to: "Quoted", meta: {} });
-  assert.deepEqual(redacted.events[1].meta, { rejectionReason: "Reference number doesn't match" });
+  assert.deepEqual(redacted.events[1].meta, { holdReason: "Reference number doesn't match" });
   assert.equal("actorName" in redacted.events[1], false);
   assert.equal("station" in redacted.events[1], false);
+});
+
+// ---- upload-types.js (customer design-file allowlist) ----
+
+test("resolveUploadType accepts the print/design formats the owner allowlisted", () => {
+  assert.equal(resolveUploadType("image/jpeg", "logo.jpg"), "jpg");
+  assert.equal(resolveUploadType("image/jpeg", "logo.jpeg"), "jpg"); // canonicalized
+  assert.equal(resolveUploadType("image/png", "logo.png"), "png");
+  assert.equal(resolveUploadType("image/webp", "art.webp"), "webp");
+  assert.equal(resolveUploadType("application/pdf", "catalog.pdf"), "pdf");
+  assert.equal(
+    resolveUploadType("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "flyer.docx"),
+    "docx"
+  );
+});
+
+test("resolveUploadType accepts octet-stream for formats browsers have no MIME mapping for", () => {
+  // .ai/.eps/.psd/.tif routinely arrive as application/octet-stream (or with
+  // no type at all) — rejecting on MIME alone would block files the owner
+  // explicitly wants accepted.
+  assert.equal(resolveUploadType("application/octet-stream", "artwork.ai"), "ai");
+  assert.equal(resolveUploadType("application/octet-stream", "artwork.psd"), "psd");
+  assert.equal(resolveUploadType("", "scan.tif"), "tif");
+  assert.equal(resolveUploadType("", "scan.tiff"), "tif"); // canonicalized
+});
+
+test("resolveUploadType rejects a spoofed Content-Type that disagrees with the extension", () => {
+  // The core server-side gate: a caller claiming image/pdf on an executable
+  // must not get a presigned URL, however convincing the declared type is.
+  assert.equal(resolveUploadType("application/pdf", "payload.exe"), null);
+  assert.equal(resolveUploadType("application/octet-stream", "payload.exe"), null);
+  assert.equal(resolveUploadType("application/pdf", "shell.php"), null);
+  assert.equal(resolveUploadType("image/jpeg", "trick.pdf"), null); // type/ext disagree
+  assert.equal(resolveUploadType("application/octet-stream", "a.jpg.exe"), null); // double extension
+});
+
+test("resolveUploadType rejects SVG and archives (deliberately off the allowlist)", () => {
+  // SVG is a script container; archives are opaque to Content-Type checks.
+  // See upload-types.js's header for why neither is accepted.
+  assert.equal(resolveUploadType("image/svg+xml", "logo.svg"), null);
+  assert.equal(resolveUploadType("application/octet-stream", "logo.svg"), null);
+  assert.equal(resolveUploadType("application/zip", "bundle.zip"), null);
+  assert.equal(resolveUploadType("application/x-7z-compressed", "bundle.7z"), null);
+  assert.equal(resolveUploadType("text/html", "index.html"), null);
+});
+
+test("resolveUploadType rejects path-traversal-shaped and extension-less names", () => {
+  assert.equal(resolveUploadType("application/pdf", "../../etc/passwd"), null);
+  assert.equal(resolveUploadType("application/octet-stream", "noextension"), null);
+  assert.equal(resolveUploadType("application/pdf", ""), null);
+});
+
+test("extensionOf pulls a lowercase extension, or empty when there isn't one", () => {
+  assert.equal(extensionOf("Logo.PNG"), "png");
+  assert.equal(extensionOf("a.b.c.pdf"), "pdf");
+  assert.equal(extensionOf("noext"), "");
+  assert.equal(extensionOf(null), "");
+});
+
+test("MAX_UPLOAD_BYTES is the 50MB print-source-file cap", () => {
+  assert.equal(MAX_UPLOAD_BYTES, 50 * 1024 * 1024);
+});
+
+// ---- threat-descriptions.js (plain-English malware summaries) ----
+
+test("describeThreats maps AV signature families to plain English", () => {
+  assert.equal(describeThreats(["Ransom.Win32.WannaCry"]).label, "Ransomware");
+  assert.equal(describeThreats(["Win32.Backdoor.Agent"]).label, "Remote-access malware");
+  assert.equal(describeThreats(["PWS:Win32/Fareit"]).label, "Password stealer");
+  assert.equal(describeThreats(["Exploit.CVE-2021-40444"]).label, "Booby-trapped document");
+  assert.equal(describeThreats(["W97M/Downloader.gen"]).label, "Office file with a harmful macro");
+  assert.equal(describeThreats(["Adware.Win32.Bundler"]).label, "Unwanted software");
+});
+
+test("describeThreats treats EICAR as a test file, outranking any other match", () => {
+  // EICAR's own name contains no scary family, but engines sometimes report
+  // it alongside generic signatures — "this is only a test" must win, or
+  // staff get told a test file is ransomware.
+  const d = describeThreats(["EICAR-Test-File (not a virus)"]);
+  assert.equal(d.label, "Antivirus test file");
+  assert.equal(d.severity, "info");
+  assert.equal(describeThreats(["Trojan.Generic", "EICAR-Test-File"]).severity, "info");
+});
+
+test("describeThreats falls back to a non-reassuring generic for unknown names", () => {
+  const d = describeThreats(["Some.Vendor.Signature.XYZ"]);
+  assert.equal(d.label, "Unrecognized threat");
+  assert.equal(d.severity, "high"); // unknown must never read as safe
+  assert.match(d.advice, /unsafe/i);
+});
+
+test("describeThreats returns null when there are no threats, and keeps the raw signature", () => {
+  assert.equal(describeThreats([]), null);
+  assert.equal(describeThreats(null), null);
+  assert.equal(describeThreats(["Trojan:Win32/Emotet"]).technical, "Trojan:Win32/Emotet");
+  assert.equal(describeThreats(["A", "B"]).technical, "A, B");
 });

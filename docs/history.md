@@ -2728,6 +2728,70 @@ the matching `correspondenceLog` entries after each stage.
 Expired` email content or gating, or any frontend file — this was backend-Lambda-only (IAM
 policies, Lambda env vars, and the 5 Lambda source files listed above).
 
+### 65. On Hold replaces Payment Rejected; attachments everywhere; customer design-file uploads with malware quarantine (2026-08-04/05)
+
+Four related passes, in order.
+
+**a. `Payment Rejected` → `On Hold`.** The binary verify/reject decision didn't match the common
+real case: the customer *did* pay, but attached the wrong screenshot or wrote something unclear.
+Rejecting forced a resubmission round-trip to fix a misunderstanding. `STATUS.PAYMENT_REJECTED`
+became `STATUS.ON_HOLD` (a full replacement, no alias), `POST /orders/{id}/reject-payment` became
+`/set-on-hold`, and `verify-payment.js` now accepts **both** `Pending Payment Verification` and
+`On Hold` line items — so once the two sides sort it out over email/chat, one Verify click goes
+straight to Confirmed. The per-item `ConditionExpression` `from` value is built per line item
+rather than hardcoded, because one transaction can now sweep up a mix of both statuses;
+hardcoding either would cancel the whole transaction. Customer-facing copy moved from bucket
+`action` ("resubmit your proof") to `progress` ("we're following up") — there is nothing for them
+to do. `payment.rejectionReason` → `holdReason`, with the old field still read on display so
+pre-rename orders keep showing why.
+
+**b. Unread-badge race.** `get-messages.js` marked messages read on *every* call, and both detail
+pages fetch messages on page load — so opening a ticket to check for a reply was the same action
+that erased the unread signal, usually before anyone saw the badge. Confirmed live: unread went
+1 → 0 across a single simulated page-open. Mark-read is now opt-in (`?markRead=true`), fired only
+when the reply box gains focus.
+
+**c. Attachments on messages + correspondence.** Presigned-upload flow reused from
+`submit-payment-proof.js`. `add-correspondence.js` is also the first live backend for the
+correspondence log at all — the "Log" button previously wrote straight to `dashboard-data.js`'s
+localStorage mock, so a note on any real (backend-created) order silently threw "Order not found"
+and never persisted.
+
+**d. Customer design-file uploads + malware scanning.** Full design and the allowlist rationale
+live in [docs/roadmap.md](roadmap.md); the threat model lives in `upload-design-file.js`'s header.
+Two things worth recording here because they were learned the hard way:
+
+- **GuardDuty pricing was quoted ~7x too high** in the first cost-governance entry ($0.60/GB +
+  $0.19/1,000 from generic US list pricing, recalled rather than checked). Real ap-southeast-1
+  rates are **free for the first 1 GB + 1,000 objects/month**, then $0.135/GB + $0.000323/request
+  — verified against the AWS Pricing API. Measured bucket traffic (42 objects / 56 MB over 5 days)
+  sits inside the free tier, so scanning all four prefixes currently costs $0. Check the Pricing
+  API for the actual region before quoting a rate.
+- **The pre-checkout scan race.** Design files upload before an order exists, so GuardDuty often
+  finishes scanning while the customer is still on the form. The first implementation looked for
+  an order referencing the ref, found none, logged "abandoned checkout?" and dropped the verdict —
+  leaving the file permanently "Scanning…". On an infected file that reads as merely untidy; on a
+  **clean** file it means staff can never download legitimate artwork, i.e. the feature is broken
+  for any customer slower than ~45 seconds. Found by owner UAT, not by the build: the test script
+  placed its order seconds after uploading and never hit the window. Fixed with an unconditional
+  standalone `SCAN#<ref>` verdict item that read paths fall back to. Two smaller siblings found in
+  the same pass — `markPaymentScreenshot` wrote `scanThreats` instead of `threats` and omitted
+  `threatInfo` entirely, and the payment-screenshot render branch never called `threatBlock()` —
+  so a quarantined GCash proof showed no explanation while every other attachment type did.
+
+**Infra deployed across the four passes:** new Lambdas `kcmps-add-correspondence`,
+`kcmps-upload-design-file`, `kcmps-handle-scan-result`; new routes `POST /orders/{id}/set-on-hold`
+(replacing `/reject-payment`), `POST /orders/{id}/correspondence`, `POST /design-uploads`;
+GuardDuty malware-protection plan over four bucket prefixes; EventBridge rule
+`kcmps-guardduty-scan-result`; IAM additions on the checkout/staff/jobs roles, all prefix-scoped.
+Full detail in [backend/infra/README.md](../backend/infra/README.md).
+
+**Also caught during the On Hold pass:** `kcmps-streams-handler` packages its own copy of
+`backend/lib/`, snapshotted at its last deploy. That stale copy still only knew `Payment Rejected`,
+so an `On Hold` transition silently failed GSI1 sparse-index maintenance and the line item would
+have vanished from every staff action queue. Any status-vocabulary change must redeploy
+`streams-handler` too, not just the Lambda that writes the new status.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

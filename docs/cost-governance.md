@@ -69,3 +69,58 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
 - **Scan-not-GSI for design listing** (planned) — a client-side-filtered `Scan` is fine at
   current/expected catalog volume; add a category GSI only once the catalog exceeds ~500 items
   or scan latency is visibly bad.
+- **GuardDuty Malware Protection for S3 on customer uploads** (applied 2026-08-04, plan
+  `7acfe6ba55d9edc67956`, scoped to `design-uploads/` on `kcmps-payment-uploads-est-2026`) —
+  scans every uploaded object and tags it `GuardDutyMalwareScanStatus`; `staff-api/get-orders.js`
+  withholds the download link for anything not `NO_THREATS_FOUND`.
+
+  **Actual ap-southeast-1 pricing (verified against the AWS Pricing API 2026-08-05):**
+  data scanned is **free for the first 1 GB/mo**, then **$0.135/GB**; scan requests are **free
+  for the first 1,000 PUT/mo**, then **$0.000323/request**. An earlier version of this entry
+  quoted ~$0.60/GB + ~$0.19/1,000 and claimed ~$1.30/mo (~₱75, 15% of cap) — that was generic
+  US-region list pricing recalled from memory, and it ignored the free tier. It overstated the
+  real cost by roughly 7x. Check the Pricing API for the actual region before quoting a rate.
+
+  **Measured, not estimated**: over 2026-07-31 → 08-05 the whole uploads bucket took 42 objects
+  / 56 MB across `payments/`, `messages/` and `correspondence/` — a ~0.34 GB, ~250 object
+  monthly run rate, i.e. **entirely inside the free tier**. Cost today is **$0.00/mo**.
+
+  | scenario | GB/mo | objects/mo | cost | % of ₱500 cap |
+  |---|---|---|---|---|
+  | today's traffic, all upload prefixes scanned | 0.34 | 250 | $0.00 | 0% |
+  | + 50 design uploads/mo (~10MB) | 0.84 | 300 | $0.00 | 0% |
+  | + 200 design uploads/mo (the planning estimate) | 2.34 | 450 | ~$0.18 (₱10) | 2% |
+  | 5x that | 11.7 | 2,260 | ~$1.85 (₱104) | 21% |
+  | 10x that | 23.4 | 4,520 | ~$4.16 (₱233) | 47% |
+
+  Worth it because the checkout upload zone is the one path where an outsider hands KCMPS a file
+  a staff member later opens on the machine that drives the press. Containment (private bucket,
+  `Content-Disposition: attachment`, presigned-GET-only, server-generated keys) stops browser-side
+  attacks but does nothing about that download. Rejected alternatives: ClamAV in a Lambda
+  container image (needs a container build pipeline this repo deliberately doesn't have), and no
+  scanning at all.
+
+  Cost is bounded by construction: uploads capped at 50MB each and 10 per order, route throttled
+  to 10 req/s. **Revisit at ~10 GB scanned/mo** (~₱100/mo, 20% of cap) — that means upload volume
+  is ~5x the estimate, at which point either revenue justifies the Stage-1 formula or the
+  per-order upload cap comes down.
+
+- **Scan extended to all four upload prefixes** (applied 2026-08-05 — `payments/`, `messages/`,
+  `correspondence/` added alongside `design-uploads/`) — **+~$0.05/mo (~₱3)**, because design
+  files dominate the bytes and the other three prefixes sit inside the free tier. Cost was never
+  the reason to defer it; the reason to do it was that `send-message.js` accepts attachments from
+  *customers*, and that path previously had neither a scan gate nor a forced-download header.
+- **Auto-quarantine of infected uploads** (`backend/jobs/handle-scan-result.js`, 2026-08-05) —
+  **₱0**. One more Lambda on an existing role, invoked once per upload by EventBridge; at ~250
+  uploads/mo that is far inside the Lambda free tier. It *reduces* running cost slightly by
+  removing a per-attachment `GetObjectTagging` call from every staff order-list load, and by
+  deleting infected objects instead of storing them forever.
+- **Plain-English threat descriptions** (`backend/lib/threat-descriptions.js`, 2026-08-05) —
+  **₱0**. A static lookup table, deliberately not a Bedrock/LLM call. Beyond cost, an LLM would
+  add latency, IAM surface, a network failure mode, and non-deterministic wording on a security
+  message — AV signature names are a small, highly conventional vocabulary that a table handles
+  exactly and testably.
+- **No delete endpoint for design uploads** — removing an attached file at checkout is
+  client-side only; the S3 object lingers until lifecycle collects it. An unauthenticated
+  pre-checkout `DELETE` (checkout is guest-friendly, so there is no identity to authorize
+  against) is a worse thing to expose than a few orphan objects costing fractions of a centavo.

@@ -1,6 +1,6 @@
 /* ============================================================
    KCMPS Ops Dashboard — POST /orders/{orderId}/verify-payment
-                          POST /orders/{orderId}/reject-payment
+                          POST /orders/{orderId}/set-on-hold
    ============================================================
    Staff-side half of the manual GCash bridge defined in
    ../../../project_knowledge/Payment_System_Project_Knowledge.md
@@ -17,12 +17,12 @@
    single TransactWriteItems call, and stamps the audit fields on
    `ORDER#<id>` / META's `payment` sub-object — never on individual
    line items. Mirrors dashboard-data.js's verifyPayment()/
-   rejectPayment() exactly (see backend-infra-to-deploy.md §6 for
+   setOnHold() exactly (see backend-infra-to-deploy.md §6 for
    the mock -> real swap).
 
    Body shape:
      POST /orders/{orderId}/verify-payment   { }  (no body needed)
-     POST /orders/{orderId}/reject-payment   { "reason": "..." }
+     POST /orders/{orderId}/set-on-hold   { "reason": "..." }
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
@@ -39,12 +39,12 @@ exports.handler = async (event) => {
   if (!groups.includes(STAFF_GROUP)) return response(403, { error: "Staff only" });
 
   const orderId = event.pathParameters?.orderId;
-  const isReject = event.rawPath?.endsWith("/reject-payment") || event.resource?.endsWith("/reject-payment");
+  const isOnHold = event.rawPath?.endsWith("/set-on-hold") || event.resource?.endsWith("/set-on-hold");
   if (!orderId) return response(400, { error: "orderId path parameter is required" });
 
   let body = {};
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
-  if (isReject && !body.reason) return response(400, { error: "reason is required to reject a payment" });
+  if (isOnHold && !body.reason) return response(400, { error: "reason is required to reject a payment" });
 
   const orderPk = `ORDER#${orderId}`;
   const [orderRes, lineItemsRes] = await Promise.all([
@@ -74,7 +74,7 @@ exports.handler = async (event) => {
         ConditionExpression: "#status = :from",
         UpdateExpression: "SET #status = :to, enteredStatusAt = :now",
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: { ":to": isReject ? "Payment Rejected" : "Confirmed", ":from": "Pending Payment Verification", ":now": now },
+        ExpressionAttributeValues: { ":to": isOnHold ? "On Hold" : "Confirmed", ":from": "Pending Payment Verification", ":now": now },
       },
     });
     transactItems.push({
@@ -83,9 +83,9 @@ exports.handler = async (event) => {
         Item: {
           PK: orderPk, SK: `EVENT#${now}#${li.lineItemId}`,
           lineItemId: li.lineItemId, from: "Pending Payment Verification",
-          to: isReject ? "Payment Rejected" : "Confirmed",
+          to: isOnHold ? "On Hold" : "Confirmed",
           actorSub: claims.sub, actorName: staffName, station: li.station || null,
-          at: now, meta: isReject ? { via: "rejectPayment", rejectionReason: body.reason } : { via: "verifyPayment" },
+          at: now, meta: isOnHold ? { via: "setOnHold", holdReason: body.reason } : { via: "verifyPayment" },
         },
       },
     });
@@ -95,10 +95,10 @@ exports.handler = async (event) => {
     Update: {
       TableName: TABLE,
       Key: { PK: orderPk, SK: "META" },
-      UpdateExpression: isReject
-        ? "SET payment.rejectionReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
-        : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.rejectionReason = :null",
-      ExpressionAttributeValues: isReject
+      UpdateExpression: isOnHold
+        ? "SET payment.holdReason = :reason, payment.verifiedBy = :null, payment.verifiedAt = :null"
+        : "SET payment.verifiedBy = :staff, payment.verifiedAt = :now, payment.holdReason = :null",
+      ExpressionAttributeValues: isOnHold
         ? { ":reason": body.reason, ":null": null }
         : { ":staff": staffName, ":now": now, ":null": null },
     },
@@ -116,7 +116,7 @@ exports.handler = async (event) => {
   // api-advance-line-item.js, no duplicated rollup logic here.
 
   return response(200, {
-    orderId, action: isReject ? "rejected" : "verified",
+    orderId, action: isOnHold ? "rejected" : "verified",
     lineItemsAffected: pendingLineItems.map((li) => li.lineItemId), at: now,
   });
 };

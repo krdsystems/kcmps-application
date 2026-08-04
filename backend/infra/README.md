@@ -633,14 +633,23 @@ admin@kcmps.com` so the shared shop inbox always has a copy, which is also what 
 | Order received / pending verification | `submit-payment-proof.js` | `FROM_EMAIL` |
 | Payment confirmed | `verify-payment.js` | `FROM_EMAIL` |
 | Payment rejected | `verify-payment.js` | `FROM_EMAIL` |
-| Ready to ship out (`Ready for Dispatch`), Shipped out (`Dispatched`), Ready for pickup (`Ready for Pickup`) | `advance-line-item.js` | `FROM_EMAIL` |
+| Shipped out (`Dispatched`), Ready for pickup (`Ready for Pickup`) | `advance-line-item.js` | `FROM_EMAIL` |
 | Auto-cancelled (verification expired), Quote expired | `expire-pending-orders.js` | `SES_SENDER` |
 
-`advance-line-item.js` only emails on those 3 transitions — every other transition it handles
-(Scheduled, In Production, QC, Rework, and the terminal Delivered/Picked Up) stays silent by
-design; the customer tracks those via the self-serve order-status progress page, not a push
-per stage (matches the Payment System spec's original 3-touchpoint notification design, which
-this expands on).
+`advance-line-item.js` only emails on those 2 transitions — every other transition it handles
+(Scheduled, In Production, QC, Ready for Dispatch, Rework, and the terminal Delivered/Picked Up)
+stays silent by design; the customer tracks those via the self-serve order-status progress
+page, not a push per stage.
+
+**`Ready for Dispatch` was a 3rd touchpoint here until 2026-08-04** ("Ready to ship out" — passed
+QC, staged for courier pickup) — pulled after live testing surfaced it as the wrong moment to
+push: it fires the instant QC passes, before the item is actually with a courier, so the
+customer can't act on it either way, and the copy leaked an internal QA term ("passed quality
+check") into customer-facing email. `Dispatched` ("shipped out, on its way") is the transition
+actually meaningful to a delivery customer, so that one stays a push. `Ready for Dispatch` now
+only appends an internal `correspondenceLog` note (`actorName: "System"`, not `"System
+(auto-email)"` — the tell that nothing was actually emailed) via a separate
+`INTERNAL_ONLY_NOTE` map in `advance-line-item.js`, distinct from `SHIP_STAGE_EMAIL` above.
 
 Each send is followed by a best-effort `UpdateItem` appending a `{ at, note, actorName: "System
 (auto-email)" }` entry to the order's `correspondenceLog` (`list_append`, no

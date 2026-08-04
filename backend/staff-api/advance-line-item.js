@@ -36,17 +36,22 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // The last 2 of the 4 happy-path customer notifications (see create-
 // order.js/verify-payment.js for the first two). Keyed by the `to` status
-// this Lambda just wrote — only these 3 transitions notify the customer;
-// every other transition (Scheduled, In Production, QC, Rework, terminal
-// Delivered/Picked Up) stays silent, matching the Payment System spec's
-// "self-serve progress bar, not a push per stage" design.
+// this Lambda just wrote — only these 2 transitions notify the customer;
+// every other transition (Scheduled, In Production, QC, Ready for
+// Dispatch, Rework, terminal Delivered/Picked Up) stays silent, matching
+// the Payment System spec's "self-serve progress bar, not a push per
+// stage" design.
+//
+// READY_FOR_DISPATCH was a 3rd touchpoint here until 2026-08-04 — pulled
+// after live testing surfaced it as the wrong moment to push: it fires
+// the instant QC passes, before the item is actually with a courier, so
+// (a) the customer can't act on it either way and (b) the copy leaked an
+// internal QA term ("passed quality check") into a customer-facing
+// email. DISPATCHED ("shipped out, on its way") is the transition that's
+// actually meaningful to a delivery customer, so that's the one that
+// stays a push; READY_FOR_DISPATCH now only logs an internal system note
+// (see sendInternalNote() below) — staff-visible, never emailed.
 const SHIP_STAGE_EMAIL = {
-  [STATUS.READY_FOR_DISPATCH]: (order, orderId) => ({
-    subject: `Order ${orderId} — ready to ship out`,
-    body: `Hi ${order.customerName},\n\n` +
-      `Your order ${orderId} has passed quality check and is ready to ship out. ` +
-      `We'll email you again once it's on its way.\n\n— KCMPS`,
-  }),
   [STATUS.DISPATCHED]: (order, orderId) => ({
     subject: `Order ${orderId} — shipped out`,
     body: `Hi ${order.customerName},\n\n` +
@@ -57,6 +62,15 @@ const SHIP_STAGE_EMAIL = {
     body: `Hi ${order.customerName},\n\n` +
       `Your order ${orderId} is ready for pickup at KCMPS.\n\n— KCMPS`,
   }),
+};
+
+// Transitions that get a staff-visible correspondence-log note but NEVER
+// an actual customer email — distinct from SHIP_STAGE_EMAIL above.
+// `actorName: "System"` (not "System (auto-email)") is the tell in
+// job-detail.html's Customer correspondence card that nothing was
+// actually sent to the customer, just recorded for staff.
+const INTERNAL_ONLY_NOTE = {
+  [STATUS.READY_FOR_DISPATCH]: "Passed QC — ready for dispatch (internal note, not emailed to customer)",
 };
 
 // Legal transitions — mirrors NEXT_STATUS in dashboard-data.js, plus the
@@ -168,6 +182,12 @@ exports.handler = async (event) => {
       console.error(`advanceLineItem: SES send failed (${to}):`, err.message);
     });
   }
+  const internalNote = INTERNAL_ONLY_NOTE[to];
+  if (internalNote) {
+    await logCorrespondence(pk, internalNote, "System").catch((err) => {
+      console.error(`advanceLineItem: internal note log failed (${to}):`, err.message);
+    });
+  }
 
   return response(200, { lineItemId, from, to, at: now });
 };
@@ -193,12 +213,16 @@ async function sendShipStageEmail(pk, orderId, buildEmail) {
   });
 }
 
-async function logCorrespondence(pk, note) {
+// actorName defaults to "System (auto-email)" (an SES send actually
+// happened) — pass "System" explicitly for an internal-only note
+// (INTERNAL_ONLY_NOTE above) so the correspondence card can't be misread
+// as "this went to the customer" when it didn't.
+async function logCorrespondence(pk, note, actorName) {
   await client.send(new UpdateCommand({
     TableName: TABLE,
     Key: { PK: pk, SK: metaSk() },
     UpdateExpression: "SET correspondenceLog = list_append(correspondenceLog, :entry)",
-    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: "System (auto-email)" }] },
+    ExpressionAttributeValues: { ":entry": [{ at: new Date().toISOString(), note, actorName: actorName || "System (auto-email)" }] },
   }));
 }
 

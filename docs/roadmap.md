@@ -665,6 +665,151 @@ still the more complete end state and its infra cost is near-zero. Progress so f
 
 ---
 
+## Parallel track — Operating-hours-aware verification SLA (built 2026-08-04)
+**Status: shipped.** The payment-verification SLA clock (§5.5's 4-working-hour threshold) now
+skips overnight/weekend gaps instead of counting raw wall-clock hours.
+
+**Trigger:** the raw wall-clock aging read (`dashboard-data.js`'s old `agingHours()`) turned
+"red" on Monday morning for a payment that had actually only sat unverified for a few real
+working hours over a weekend — a false alarm every Monday, undermining trust in the red/warn
+signal exactly when it should matter most.
+
+**What shipped:**
+- [`backend/lib/business-hours.js`](../backend/lib/business-hours.js) — pure
+  `businessMinutesBetween`/`isWithinOperatingHours`/`nextOperatingStart`, fixed +8h Asia/Manila
+  offset (no DST, so no timezone library needed). Unit-tested
+  (`backend/lib/business-hours.test.js`) for same-day, overnight-spanning, and
+  weekend-spanning cases — run via `node --test backend/lib/`.
+- `CONFIG#OPERATING_HOURS`/`META` — a new item type (`keys.js`'s `configPk()`), no CFN change.
+  Doesn't exist in the table yet; every reader falls back to
+  `DEFAULT_OPERATING_HOURS` (Mon–Fri 09:00–18:00, Sat 09:00–14:00, Sun closed) until a future
+  Settings API (behind `/dashboard/settings`, currently a read-only mock) writes a real one —
+  zero migration either way.
+- [`backend/staff-api/verify-payment.js`](../backend/staff-api/verify-payment.js) — verifying
+  is never gated on operating hours (staff can confirm a payment at 2am and the customer is
+  emailed immediately, unchanged). What changed: if `verifiedAt` falls outside operating hours,
+  the line item's `enteredStatusAt` (what `streams-handler.js` copies onto `GSI1SK`, what every
+  SLA/aging read keys off) is stamped with the next operating-hours opening instead — so the
+  *next* stage's clock doesn't count the overnight/weekend gap. The real `verifiedAt` is never
+  lost: it's on the `EVENT#` record's `meta.verifiedAt` (alongside the adjusted
+  `meta.slaClockStartsAt`) and on `payment.verifiedAt`, both audit trails a future Settings/CRM
+  view could read.
+- [`website/dashboard/dashboard-data.js`](../website/dashboard/dashboard-data.js)'s
+  `decorateLineItem()` — the "Pending Payment Verification" red/warn threshold now reads
+  `agingBusinessHours()` (a second, browser-side copy of the same clock math — no bundler in
+  this repo to share one module across backend/frontend, see that function's header). Every
+  other status (`Quoted`/`Priced`) is unchanged, still wall-clock.
+
+**Explicitly NOT changed (flagged back to the requester, kept wall-clock on purpose):** the
+48-hour payment-verification **auto-expiry** window
+(`backend/jobs/expire-pending-orders.js`'s `VERIFICATION_EXPIRY_HOURS`) stays wall-clock. It's a
+customer-facing promise stated in copy/email as calendar time ("submit proof within 48 hours") —
+making it operating-hours-aware would silently extend it (a Friday-evening order wouldn't expire
+until well into the next week) with no one having asked for that behavior change.
+
+## Parallel track — Customer chat via order threads (built 2026-08-04)
+**Status: shipped, hybrid model — polling now, upgradeable to real-time later without a data
+model change.** Per-order message threads, readable/writable by the order's own customer
+(logged in) or any staff member.
+
+**Trigger:** the only existing customer↔staff channel was `correspondenceLog` — staff-only
+manual notes the customer never sees — plus the "Contact us" `mailto:` link on
+`order-detail.html`, which drops the customer out of the app entirely into their email client
+with no order context attached.
+
+**Data model — same table, no infra change:**
+- New item type: `PK: ORDER#<id>`, `SK: MSG#<ISO timestamp>#<msgId>` (`keys.js`'s
+  `messageSk()`) — co-located with the order, same pattern as `EVENT#`.
+- Fields: `{ senderSub, senderRole: "customer"|"staff", body, attachmentRef, readAt, at,
+  orderId }`.
+- `GSI2PK`/`GSI2SK` (`CLIENT#<customerSub>`/`MSG#<at>`) are written on every message **in
+  preparation**, not activation — GSI2 isn't provisioned on the table
+  (`backend/infra/foundation.cfn.yaml` only has GSI1). Adding the index later needs zero
+  backfill. Until then, "all my messages across every order" is a client-side fan-out (call
+  `GET /orders`, then `GET /orders/{id}/messages` per order) — the same accepted-interim
+  tradeoff `staff-api/get-orders.js`'s own `CLIENT#`-filtered scan already documents. This is
+  also why no separate account-level/global-inbox endpoint or floating chat widget was built —
+  deferred deliberately, per the "manual-first, expand on signal" principle, not an oversight.
+
+**Backend:**
+- [`backend/staff-api/send-message.js`](../backend/staff-api/send-message.js) — `POST
+  /orders/{orderId}/messages`. No guest posting (unlike `checkout/cancel-order.js`'s
+  contact-match fallback) — chat requires a logged-in account by design, so this always goes
+  through the JWT authorizer like every other `staff-api/*.js` Lambda.
+- [`backend/staff-api/get-messages.js`](../backend/staff-api/get-messages.js) — `GET
+  /orders/{orderId}/messages`, same staff-vs-customer branch as `get-orders.js`. Side effect:
+  marks the *other* party's unread messages read on every call — the only "mark read" path,
+  feeding the unread-reminder job below.
+- [`backend/jobs/notify-unread-messages.js`](../backend/jobs/notify-unread-messages.js) — new
+  EventBridge cron (every 30 min). "Digest, don't spam" (§5.5's principle, applied to customer
+  notifications too): one SES reminder per order with unread staff replies older than 2 hours,
+  not one per message. Bounded table Scan (no GSI for "unread" yet) — same accepted-interim
+  tradeoff as the GSI2 note above; revisit if message volume ever makes this scan costly (see
+  [docs/cost-governance.md](cost-governance.md)).
+- **New Lambdas need owner deployment** — package/IAM/route wiring per
+  `backend/infra/README.md`'s existing pattern (see that file's own note on these two routes
+  and the new cron).
+
+**Frontend (polling-based, ~8s interval while the panel is visible/tab is focused — not a
+WebSocket):**
+- `website/orders-data.js`'s `getMessages`/`sendMessage` + `order-detail.html`'s message thread
+  card (customer-facing).
+- `website/dashboard/dashboard-data.js`'s `getOrderMessages`/`sendOrderMessage` (named to avoid
+  colliding with that file's existing IMAP-mock `getMessages(mailboxId)` for `email.html`) +
+  `dashboard/job-detail.html`'s message thread card (staff-facing), sender-role styled
+  (customer left-aligned / staff right-aligned, mirrored on the customer side).
+- Swapping polling for a WebSocket subscription later only touches each page's poll-interval
+  wiring — the message shape, the Lambda read/write logic, and the `KCMPS_ORDERS`/`KCMPS_DASH`
+  function signatures don't change.
+
+**Explicitly NOT built (deferred on purpose, not oversight):** a presigned-upload attachment
+flow for `attachmentRef` (the field exists on the data model; no upload UI wired yet — the
+existing S3-presign pattern from `submit-payment-proof.js` is the template whenever this is
+picked up), and any global/floating chat widget or true single-query account-level view (blocked
+on GSI2 actually being provisioned — see the data-model note above).
+
+**Follow-up (2026-08-04): unread-message badge, step one toward a real Messages tab.**
+A full Messages nav tab needs a real cross-order query GSI2 doesn't provide yet (see above) —
+too much to build just to answer "did anyone reply?". Shipped the cheap version instead:
+- [`backend/staff-api/get-unread-messages.js`](../backend/staff-api/get-unread-messages.js) —
+  `GET /messages/unread`, staff-vs-customer branched (like `get-orders.js`), same bounded-Scan/
+  Query tradeoff as `notify-unread-messages.js` (no cutoff/side-effect, since this is a live
+  read not a sweep). Returns `{ threads: [{orderId, customerName, unreadCount, lastMessageAt,
+  lastMessageBody}], totalUnread }` — deliberately a list of threads, not just a count, so a
+  future Messages tab (staff) or inbox view (customer) renders this SAME response as full rows
+  instead of a badge; only the frontend changes then, this Lambda doesn't.
+- `dashboard-data.js`'s `getUnreadMessageSummary()` wraps it under the same `KCMPS_DASH` seam.
+- `dashboard-shell.js`'s `refreshUnreadBadge()` — called from every page's `mount()` (not just
+  jobs.html, since an unread reply can sit on any ticket), paints a count badge
+  (`.badge-unread`) on the sidebar's "Jobs" link, polls every 45s, and `job-detail.html` calls
+  it again right after `getOrderMessages()` (which marks-read as a side effect) so the badge
+  drops immediately instead of waiting out the poll.
+- When the real tab gets built: add a `messages` `NAV_ITEM`, a `messages.html` that calls the
+  same `getUnreadMessageSummary()` for its list view, and a per-thread detail pane that's
+  really just `job-detail.html`'s existing message-panel markup lifted into its own page.
+
+**Follow-up (2026-08-04): customer-facing "New message!" banner, same seam, mobile-first.**
+Extended `get-unread-messages.js` above with a customer branch — same response shape, scoped
+to the caller's own orders (a bounded per-order `Query` after finding their orders via the same
+`customerSub`-filtered scan `get-orders.js`'s `getOrdersForSub()` already uses, not a table-wide
+scan — a customer's own order count is small, and scoping by everyone else's data would be
+wrong anyway) instead of every order. `orders.html` ("My Orders"):
+- A `.new-message-banner` full-width word-button — placed as the FIRST element inside
+  `.orders-wrap`, before the page's own `<h1>`, since that's the one spot guaranteed
+  above-the-fold on a phone (the nav bar is already tight on mobile — see its own collapse
+  history — so a nav-icon badge risked being missed entirely).
+- Clicking it scrolls to a `.unread-messages-card` "Unread messages" section right below,
+  listing one row per order with an unread staff reply (message preview + count); clicking a
+  row navigates to `order-detail.html?id=<order>#messages`, which auto-scrolls straight to that
+  order's message thread (`renderMessagesCard()`'s card now has `id="messages"` for exactly
+  this).
+- `orders-data.js`'s `getUnreadMessageSummary()` is the customer-side twin of
+  `dashboard-data.js`'s function of the same name — same endpoint, same response shape, so a
+  future account-level inbox view (deferred, see the data-model note above) could reuse either
+  side's fetch logic near-verbatim.
+
+---
+
 ## Milestone 2 — Operational telemetry (ERP Phase 4, after M1 has real orders)
 Only meaningful once real orders flow. Instrument now because a metric not captured is gone.
 - METRIC# atomic counters in `streams-handler.js`; `api-metrics.js`; `/today` numbers real.

@@ -377,11 +377,67 @@
     });
   }
 
+  /* ---------- messages (order thread chat, backend/staff-api/
+     send-message.js + get-messages.js) ----------
+     Polling-based, not WebSocket — the order-detail page calls
+     getMessages(orderId) on an interval only while the panel is visible
+     (wired by the page's own script, not here), same transport-agnostic
+     seam as everything else in this file: a future swap to a WebSocket
+     subscription only touches the caller's polling loop, never this
+     function's signature or the message shape itself. */
+  function getMessages(orderId) {
+    var session = getSession();
+    if (!session) return Promise.reject(new Error("Please sign in again to view messages."));
+    return fetch(API_BASE + "/orders/" + encodeURIComponent(orderId) + "/messages", {
+      headers: { Authorization: "Bearer " + session.idToken },
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Couldn't load messages (" + res.status + ")");
+        return data.messages || [];
+      });
+    });
+  }
+
+  function sendMessage(orderId, text) {
+    var session = getSession();
+    if (!session) return Promise.reject(new Error("Please sign in again to send a message."));
+    return fetch(API_BASE + "/orders/" + encodeURIComponent(orderId) + "/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.idToken },
+      body: JSON.stringify({ body: text }),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Couldn't send that message (" + res.status + ")");
+        return data.message;
+      });
+    });
+  }
+
+  // backend/staff-api/get-unread-messages.js's customer branch — the
+  // caller's own orders only, unread staff replies only. Same
+  // `{ threads, totalUnread }` shape the dashboard's staff-side badge
+  // reads (dashboard-shell.js's refreshUnreadBadge()), so the "My
+  // Orders" page's "New message!" banner + "Unread messages" section
+  // and any future dedicated inbox view all read one response shape.
+  function getUnreadMessageSummary() {
+    var session = getSession();
+    if (!session) return Promise.resolve({ threads: [], totalUnread: 0 });
+    return fetch(API_BASE + "/messages/unread", {
+      headers: { Authorization: "Bearer " + session.idToken },
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Couldn't load unread messages (" + res.status + ")");
+        return data;
+      });
+    });
+  }
+
   window.KCMPS_ORDERS = {
     getSession: getSession, requireSession: requireSession, logout: logout,
     list: list, get: get, refresh: refresh,
     STAGES: STAGES, BUCKETS: BUCKETS, statusModel: statusModel, timelineFor: timelineFor,
     actionsFor: actionsFor, reorder: reorder, submitProof: submitProof, cancel: cancel,
+    getMessages: getMessages, sendMessage: sendMessage, getUnreadMessageSummary: getUnreadMessageSummary,
     fmtPeso: fmtPeso, fmtDate: fmtDate, fmtDateTime: fmtDateTime, escapeHtml: escapeHtml,
     ORDER_EMAIL: ORDER_EMAIL,
   };

@@ -92,6 +92,10 @@ function statusSk(enteredAtIso) {
 }
 
 // ---- GSI2 — optional client order history index (§2.3) ----
+// Not yet a real GSI on the table (backend/infra/foundation.cfn.yaml only
+// provisions GSI1) — these attributes are written in preparation (see
+// messageGsi2Pk/messageGsi2Sk below) so adding the index later needs zero
+// backfill, per staff-api/get-orders.js's own note on the same tradeoff.
 
 function clientGsi2Pk(clientId) {
   return `CLIENT#${clientId}`;
@@ -99,6 +103,31 @@ function clientGsi2Pk(clientId) {
 
 function orderGsi2Sk(createdAtIso) {
   return `ORDER#${createdAtIso}`;
+}
+
+// A customer's messages across every order, once GSI2 exists — same
+// GSI2PK as the CRM view above (CLIENT#<sub>) so both features could
+// eventually share one index, disambiguated by GSI2SK's prefix.
+function messageGsi2Sk(atIso) {
+  return `MSG#${atIso}`;
+}
+
+// ---- Config (settings items — new convention, no prior art in this repo) ----
+// One item per config type: PK: CONFIG#<id>, SK: "META" (reuses metaSk()).
+// e.g. configPk("OPERATING_HOURS") -> "CONFIG#OPERATING_HOURS", read by
+// backend/lib/business-hours.js's callers, editable later via a Settings
+// API behind /dashboard/settings.
+
+function configPk(configId) {
+  return `CONFIG#${configId}`;
+}
+
+// ---- Order messages / customer chat (new item type, same table) ----
+// PK: ORDER#<id>, SK: MSG#<ISO timestamp>#<msgId> — co-located with the
+// order they're about, consistent with EVENT#'s pattern above.
+
+function messageSk(isoTimestamp, msgId) {
+  return `MSG#${isoTimestamp}#${msgId}`;
 }
 
 module.exports = {
@@ -120,4 +149,7 @@ module.exports = {
   statusSk,
   clientGsi2Pk,
   orderGsi2Sk,
+  messageGsi2Sk,
+  configPk,
+  messageSk,
 };

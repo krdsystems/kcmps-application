@@ -994,6 +994,47 @@ a.order-card:hover { background: color-mix(in srgb, var(--color-text) 5%, rgba(2
 .orders-empty, .orders-loading, .orders-error { text-align: center; color: var(--color-text-muted, #666); padding: var(--space-6) 0; }
 .order-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
 
+/* "New message!" banner (My Orders page, orders.html) — placed as the
+   FIRST thing inside .orders-wrap, before .orders-head, deliberately:
+   on a narrow phone viewport that's the only guaranteed-above-the-fold
+   spot on this page (the nav bar itself is already tight — see
+   styles.css's nav-links collapse note above — so a nav-icon badge
+   would be easy to miss; a full-width word-button in the content flow
+   isn't). Full-width tap target (min-height 44px, WCAG 2.5.5) rather
+   than a small icon+badge, since the ask was a literal word-button. */
+.new-message-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px;
+  padding: 10px var(--space-4); margin-bottom: var(--space-3); border: none; border-radius: var(--radius-md);
+  background: var(--color-accent); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 15px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 120ms ease;
+}
+.new-message-banner:hover { background: var(--color-accent-700, var(--color-accent)); }
+.new-message-banner .count {
+  font-size: 12px; font-weight: 800; background: rgba(255,255,255,0.3); border-radius: 999px; padding: 1px 8px;
+}
+@media (prefers-reduced-motion: reduce) { .new-message-banner { transition: none; } }
+
+/* "Unread messages" section — sits right below the banner (so on mobile
+   there's barely any scroll distance between clicking the banner and
+   landing here; scrollIntoView is still used for a11y/keyboard focus and
+   in case a long order list ever pushes them apart). Each row is its own
+   tap target straight to that order's message thread (order-detail.html
+   #messages), not a nested link-in-a-card, so the whole row is tappable. */
+.unread-messages-card { margin-bottom: var(--space-4); }
+.unread-thread-row {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 2px; border-bottom: 1px solid var(--color-border, #eee);
+  cursor: pointer; text-align: left; width: 100%; background: none; border-left: none; border-right: none; border-top: none;
+  font-family: inherit; color: inherit;
+}
+.unread-thread-row:last-child { border-bottom: none; }
+.unread-thread-row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.unread-thread-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.unread-thread-preview { font-size: 13px; color: var(--color-text-muted, #666); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unread-thread-count {
+  font-size: 11px; font-weight: 800; background: var(--color-accent); color: #fff; border-radius: 999px;
+  min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
+
 /* — order-detail.html — */
 .order-detail-back { font-size: 13px; margin-bottom: var(--space-3); display: inline-block; }
 .order-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }

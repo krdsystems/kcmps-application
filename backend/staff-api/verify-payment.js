@@ -20,12 +20,29 @@
 
    Ported from ops-dashboard/infra/logic-inputs/api-verify-payment.js
    against backend/lib conventions (see backend/CLAUDE.md).
+
+   Operating-hours-aware verification SLA clock: staff can verify a
+   payment at any hour — the transition to Confirmed and the "payment
+   verified" SES email both fire immediately, off-hours or not, never
+   gated on operatingHours. What changes is the *downstream* SLA clock:
+   if `verifiedAt` itself falls outside operating hours, each line item's
+   `enteredStatusAt` (the field backend/jobs/streams-handler.js copies
+   onto GSI1SK, which every SLA/aging read keys off) is stamped with the
+   next upcoming operating-hours start instead of the real verification
+   instant, so the *next* stage's clock doesn't count overnight/weekend
+   hours nobody worked. The real instant is never lost — it's on the
+   EVENT# record's `meta.verifiedAt` and on `payment.verifiedAt` below,
+   both audit trails, just not what the SLA sweep reads. See
+   backend/lib/business-hours.js for the pure clock math. Deliberately
+   NOT applied to reject-payment — a rejection's only downstream step is
+   the customer resubmitting proof, which isn't itself SLA-tracked.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, orderPk, metaSk, configPk, lineItemSk, buildEvent, extractClaims, isStaff, attrsToRemoveOnTerminal } = require("../lib");
+const { DEFAULT_OPERATING_HOURS, isWithinOperatingHours, nextOperatingStart } = require("../lib/business-hours");
 
 const TABLE = process.env.TABLE_NAME;
 // Same FROM_EMAIL/EMAIL_RE gate as submit-payment-proof.js — unset today
@@ -77,10 +94,22 @@ exports.handler = async (event) => {
   const staffName = claims.name || claims.email;
   const toStatus = isReject ? STATUS.PAYMENT_REJECTED : STATUS.CONFIRMED;
   const removeAttrs = attrsToRemoveOnTerminal(toStatus); // both statuses stay active today, kept for consistency if that ever changes
+
+  // slaClockStartsAt anchors the NEXT stage's SLA clock (via
+  // enteredStatusAt/GSI1SK); `now` (verifiedAt) stays the real instant on
+  // the event/payment audit trail regardless. See file header.
+  let slaClockStartsAt = now;
+  let verifiedWithinOperatingHours = true;
+  if (!isReject) {
+    const operatingHours = await getOperatingHours();
+    verifiedWithinOperatingHours = isWithinOperatingHours(now, operatingHours);
+    if (!verifiedWithinOperatingHours) slaClockStartsAt = nextOperatingStart(now, operatingHours);
+  }
+
   const transactItems = [];
 
   pendingLineItems.forEach((li) => {
-    let updateExpression = "SET #status = :to, enteredStatusAt = :now";
+    let updateExpression = "SET #status = :to, enteredStatusAt = :entered";
     if (removeAttrs.length) updateExpression += ` REMOVE ${removeAttrs.join(", ")}`;
     transactItems.push({
       Update: {
@@ -89,7 +118,7 @@ exports.handler = async (event) => {
         ConditionExpression: "#status = :from",
         UpdateExpression: updateExpression,
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: { ":to": toStatus, ":from": STATUS.PENDING_PAYMENT_VERIFICATION, ":now": now },
+        ExpressionAttributeValues: { ":to": toStatus, ":from": STATUS.PENDING_PAYMENT_VERIFICATION, ":entered": slaClockStartsAt },
       },
     });
     transactItems.push({
@@ -98,7 +127,10 @@ exports.handler = async (event) => {
         Item: buildEvent({
           orderId, lineItemId: li.lineItemId, from: STATUS.PENDING_PAYMENT_VERIFICATION, to: toStatus,
           actorSub: claims.sub, actorName: staffName, station: li.station || null,
-          at: now, meta: isReject ? { via: "rejectPayment", rejectionReason: body.reason } : { via: "verifyPayment" },
+          at: now,
+          meta: isReject
+            ? { via: "rejectPayment", rejectionReason: body.reason }
+            : { via: "verifyPayment", verifiedAt: now, slaClockStartsAt, verifiedWithinOperatingHours },
         }),
       },
     });
@@ -165,6 +197,16 @@ exports.handler = async (event) => {
     lineItemsAffected: pendingLineItems.map((li) => li.lineItemId), at: now,
   });
 };
+
+// CONFIG#OPERATING_HOURS/META doesn't exist until a future Settings API
+// (website/dashboard/settings.html) writes one — falling back to
+// DEFAULT_OPERATING_HOURS means this feature works correctly with zero
+// manual setup, and picks up a real override the moment one is ever
+// written, with no migration step either way.
+async function getOperatingHours() {
+  const res = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: configPk("OPERATING_HOURS"), SK: metaSk() } }));
+  return res.Item || DEFAULT_OPERATING_HOURS;
+}
 
 async function sendVerifiedEmail(order, orderId) {
   await ses.send(new SendEmailCommand({

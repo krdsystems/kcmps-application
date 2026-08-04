@@ -375,6 +375,58 @@
     "Priced": { warn: 36, red: 48, expire: 168 },
   };
 
+  /* ---- operating-hours-aware verification SLA clock ----
+     Mirrors backend/lib/business-hours.js's pure clock math (kept as a
+     second copy, not a shared module, only because this repo has no
+     bundler to share one across backend/frontend — see that file's own
+     header for why a fixed +8h offset is exact for Asia/Manila with zero
+     timezone-library dependency). Only "Pending Payment Verification"
+     (the verification SLA, §5.5) uses this — Quoted/Priced stay
+     wall-clock for now, unchanged from before this feature.
+
+     A verification's `enteredStatusAt` is already SLA-clock-adjusted by
+     backend/staff-api/verify-payment.js the moment it's written (rolled
+     forward to the next operating-hours start if verified off-hours), so
+     this only needs to walk operating-hours gaps AFTER that point, same
+     as every other status's plain wall-clock read. */
+  const OPERATING_HOURS = {
+    utcOffsetMinutes: 480, // Asia/Manila, fixed UTC+8, no DST
+    days: {
+      sun: null,
+      mon: { open: "09:00", close: "18:00" },
+      tue: { open: "09:00", close: "18:00" },
+      wed: { open: "09:00", close: "18:00" },
+      thu: { open: "09:00", close: "18:00" },
+      fri: { open: "09:00", close: "18:00" },
+      sat: { open: "09:00", close: "14:00" },
+    },
+  };
+  const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  function parseHHMM(hhmm) { const parts = hhmm.split(":").map(Number); return parts[0] * 60 + parts[1]; }
+  function businessMinutesBetween(startIso, endIso, operatingHours) {
+    const oh = operatingHours || OPERATING_HOURS;
+    const startMs = new Date(startIso).getTime() + oh.utcOffsetMinutes * 60000;
+    const endMs = new Date(endIso).getTime() + oh.utcOffsetMinutes * 60000;
+    if (endMs <= startMs) return 0;
+    let total = 0;
+    let dayStartMs = new Date(startMs); dayStartMs.setUTCHours(0, 0, 0, 0); dayStartMs = dayStartMs.getTime();
+    while (dayStartMs < endMs) {
+      const dayEndMs = dayStartMs + 86400000;
+      const dow = DAY_KEYS[new Date(dayStartMs).getUTCDay()];
+      const window = oh.days[dow];
+      if (window) {
+        const openMs = dayStartMs + parseHHMM(window.open) * 60000;
+        const closeMs = dayStartMs + parseHHMM(window.close) * 60000;
+        const overlapStart = Math.max(startMs, openMs);
+        const overlapEnd = Math.min(endMs, closeMs);
+        if (overlapEnd > overlapStart) total += (overlapEnd - overlapStart) / 60000;
+      }
+      dayStartMs = dayEndMs;
+    }
+    return total;
+  }
+  function agingBusinessHours(li) { return businessMinutesBetween(li.enteredStatusAt, new Date().toISOString()) / 60; }
+
   // Async because it now merges in real orders (Milestone 1.3's
   // getAllOrders() already merges those with any mock-only manual orders) —
   // a real order advanced via job-detail.html only ever lands in DynamoDB,
@@ -402,7 +454,10 @@
   }
 
   function decorateLineItem(li) {
-    const hrs = agingHours(li);
+    // Verification SLA red/warn thresholds are operating-hours-aware
+    // (overnight/weekend gaps don't count); every other status stays
+    // wall-clock, unchanged. See agingBusinessHours()'s header above.
+    const hrs = li.status === "Pending Payment Verification" ? agingBusinessHours(li) : agingHours(li);
     const sla = SLA_HOURS[li.status];
     let slaState = "ok";
     if (sla) {
@@ -628,6 +683,37 @@
     order.orderStatus = deriveOrderStatus(order);
     save(state);
     return order;
+  }
+
+  /* ---- order messages (staff side of the customer chat feature) ----
+     backend/staff-api/get-messages.js / send-message.js — no mock
+     fallback (unlike verifyPayment/etc.'s isMockOnlyOrder() branch)
+     since a manually-entered mock order has no customerSub to chat
+     with in the first place; job-detail.html only renders this panel
+     for real orders. Named getOrderMessages/sendOrderMessage, not
+     getMessages/sendMessage, to not collide with this file's existing
+     IMAP-mock getMessages(mailboxId)/sendReply() for email.html. */
+  async function getOrderMessages(orderId) {
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/messages");
+    return res.messages || [];
+  }
+
+  async function sendOrderMessage(orderId, text) {
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/messages", {
+      method: "POST",
+      body: JSON.stringify({ body: text }),
+    });
+    return res.message;
+  }
+
+  // backend/staff-api/get-unread-messages.js — the same `{ threads,
+  // totalUnread }` shape a future Messages tab renders as full rows;
+  // today only `totalUnread` (the sidebar badge) and each thread's
+  // `orderId`/`unreadCount` (jobs.html's per-row chip) are read. Keep
+  // that future tab in mind before reshaping this response — it's
+  // deliberately already list-of-threads, not just a count.
+  async function getUnreadMessageSummary() {
+    return apiFetch("/messages/unread");
   }
 
   // QC -> Rework is a normal line-item transition (advance-line-item.js's
@@ -1099,6 +1185,7 @@
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondenceLog,
+    getOrderMessages, sendOrderMessage, getUnreadMessageSummary,
     createManualOrder,
     resetSeed,
   };

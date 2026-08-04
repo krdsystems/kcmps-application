@@ -87,6 +87,74 @@
     }
   }
 
+  // Customer chat via order threads (staff side) — sender-role styling
+  // distinguishes a customer's own message from a staff reply, mirroring
+  // order-detail.html's customer-facing panel but reading claims here
+  // instead of a "mine" comparison, since staff never IS the order's
+  // customerSub.
+  function renderMessage(m) {
+    const staffMsg = m.senderRole === "staff";
+    const align = staffMsg ? "flex-end" : "flex-start";
+    const bg = staffMsg ? "var(--accent-soft, #fff1e6)" : "var(--surface-2, #fafbfd)";
+    return (
+      `<div style="align-self:${align};max-width:80%;background:${bg};border-radius:10px;padding:8px 12px">` +
+      `<div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:2px">${staffMsg ? "Staff" : "Customer"} · ${fmtDateTime(m.at)}</div>` +
+      `<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body)}</div>` +
+      `</div>`
+    );
+  }
+
+  let messagePollTimer = null;
+  function renderMessages(messages) {
+    const list = document.getElementById("message-list");
+    if (!list) return;
+    list.innerHTML = messages.length
+      ? messages.map(renderMessage).join("")
+      : `<p class="q-empty" style="margin:0;font-size:13px">No messages yet.</p>`;
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function loadMessages(orderId) {
+    // get-messages.js marks the customer's unread messages read as a side
+    // effect of this same call — refresh the sidebar badge right after so
+    // staff see it drop immediately instead of waiting up to 45s for the
+    // shell's own poll.
+    KCMPS_DASH.getOrderMessages(orderId).then((messages) => {
+      renderMessages(messages);
+      KCMPS_DASH_SHELL.refreshUnreadBadge();
+    }).catch(() => { /* silent — don't disrupt the ticket over a poll failure */ });
+  }
+
+  function wireMessages(order) {
+    loadMessages(order.orderId);
+    if (messagePollTimer) clearInterval(messagePollTimer);
+    messagePollTimer = setInterval(() => {
+      if (document.visibilityState === "visible") loadMessages(order.orderId);
+    }, 8000);
+
+    const input = document.getElementById("message-input");
+    const sendBtn = document.getElementById("message-send-btn");
+    const errorEl = document.getElementById("message-error");
+    function send() {
+      const text = input.value.trim();
+      if (!text) return;
+      errorEl.style.display = "none";
+      sendBtn.disabled = true;
+      KCMPS_DASH.sendOrderMessage(order.orderId, text).then(() => {
+        input.value = "";
+        sendBtn.disabled = false;
+        loadMessages(order.orderId);
+      }).catch((err) => {
+        errorEl.textContent = err.message; errorEl.style.display = "";
+        sendBtn.disabled = false;
+      });
+    }
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  }
+
   async function render(flash) {
     const body = document.getElementById("detail-body");
     let order;
@@ -167,6 +235,17 @@
       `<button type="button" class="btn btn-primary" id="correspondence-add-btn">Log</button>` +
       `</div></div>` +
 
+      `<div class="card" style="margin-bottom:var(--space-4)">` +
+      `<h3 style="margin-top:0">Messages</h3>` +
+      `<p class="text-muted" style="font-size:12px;margin:0 0 var(--space-2)">Direct thread with the customer on this order — separate from the correspondence log above, which is staff notes only.</p>` +
+      `<div id="message-list" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:var(--space-2)"></div>` +
+      `<div style="display:flex;gap:8px">` +
+      `<input class="input" id="message-input" style="flex:1" placeholder="Reply to the customer…" maxlength="4000" />` +
+      `<button type="button" class="btn btn-primary" id="message-send-btn">Send</button>` +
+      `</div>` +
+      `<p id="message-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>` +
+      `</div>` +
+
       (li.spoilage && li.spoilage.length ? `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Spoilage on this line</h3>` +
         li.spoilage.map((s) => `<p style="margin:4px 0;font-size:13.5px">${s.units} unit(s) — ${escapeHtml(s.reasonCode)} — ${fmtPeso(s.valuePhp)} — ${fmtDateTime(s.at)}</p>`).join("") +
         `</div>` : "") +
@@ -202,6 +281,7 @@
     document.getElementById("correspondence-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") document.getElementById("correspondence-add-btn").click();
     });
+    wireMessages(order);
 
     const formHost = document.getElementById("action-form");
     const errorHost = document.getElementById("action-error");

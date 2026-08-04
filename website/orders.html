@@ -27,6 +27,13 @@
 </nav>
 
 <main class="orders-wrap">
+  <button type="button" id="new-message-banner" class="new-message-banner" style="display:none">
+    New message! <span class="count" id="new-message-count"></span>
+  </button>
+  <section id="unread-messages-section" class="card unread-messages-card" style="display:none" tabindex="-1">
+    <p class="detail-card-title">Unread messages</p>
+    <div id="unread-messages-list"></div>
+  </section>
   <div class="orders-head">
     <h1 style="margin:0">My Orders</h1>
   </div>
@@ -156,6 +163,58 @@
     renderList();
   }).catch(function (err) {
     document.getElementById("orders-root").innerHTML = '<div class="orders-error">' + O.escapeHtml(err.message || "Couldn't load your orders right now. Please try again shortly.") + '</div>';
+  });
+
+  /* ---------- unread messages (backend/staff-api/get-unread-messages.js's
+     customer branch) ----------
+     Independent of the order list load above — a slow/failed order fetch
+     shouldn't hide the message notice, and vice versa. Loaded once per
+     page visit (no polling here — this is a summary banner, not a live
+     thread; order-detail.html's own panel polls once the customer is
+     actually looking at a thread). */
+  function truncate(s, n) {
+    s = String(s || "");
+    return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s;
+  }
+
+  function renderUnreadThread(t) {
+    return (
+      '<button type="button" class="unread-thread-row" data-order-id="' + O.escapeHtml(t.orderId) + '">' +
+      '<div class="unread-thread-top">' +
+      '<span class="order-id">Order ' + O.escapeHtml(t.orderId) + '</span>' +
+      '<span class="unread-thread-count">' + (t.unreadCount > 9 ? "9+" : t.unreadCount) + '</span>' +
+      '</div>' +
+      '<span class="unread-thread-preview">' + O.escapeHtml(truncate(t.lastMessageBody, 90)) + '</span>' +
+      '</button>'
+    );
+  }
+
+  function goToThread(orderId) {
+    window.location.href = "order-detail.html?id=" + encodeURIComponent(orderId) + "#messages";
+  }
+
+  O.getUnreadMessageSummary().then(function (summary) {
+    var threads = (summary && summary.threads) || [];
+    var total = (summary && summary.totalUnread) || 0;
+    if (!total) return;
+
+    var banner = document.getElementById("new-message-banner");
+    var section = document.getElementById("unread-messages-section");
+    document.getElementById("new-message-count").textContent = total;
+    banner.style.display = "";
+    section.style.display = "";
+
+    document.getElementById("unread-messages-list").innerHTML = threads.map(renderUnreadThread).join("");
+    document.querySelectorAll(".unread-thread-row").forEach(function (row) {
+      row.addEventListener("click", function () { goToThread(row.dataset.orderId); });
+    });
+
+    banner.addEventListener("click", function () {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      section.focus({ preventScroll: true });
+    });
+  }).catch(function (err) {
+    console.warn("[orders] unread message summary failed:", err.message);
   });
 })();
 </script>

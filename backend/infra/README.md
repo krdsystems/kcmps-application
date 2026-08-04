@@ -369,6 +369,56 @@ Redeploy any of the 5 Lambdas after a code change the same way as the checkout L
 `package.json` — then `aws lambda update-function-code`); no infra change needed unless the
 route/role/permission set itself changes.
 
+## Customer chat + operating-hours SLA — deployed 2026-08-04
+
+Two features landed in this pass; only one needed new infra.
+
+**Operating-hours-aware verification SLA** — no new Lambda, no new route. `verify-payment.js`
+(existing, `kcmps-verify-payment`) now reads an optional `CONFIG#OPERATING_HOURS`/`META` item
+(falls back to a hardcoded default if it doesn't exist — no item needs to be created for this to
+work) — covered by the staff-api role's existing `GetItem` grant, no role change needed.
+Redeployed via the usual code-only `update-function-code` path.
+
+**Customer chat via order threads** — two new staff-api Lambdas + one new jobs Lambda, all
+built against the SAME execution roles/table/API described above (no new role needed):
+
+| Method | Route | Integration |
+|---|---|---|
+| GET | `/orders/{orderId}/messages` | `kcmps-get-messages` |
+| POST | `/orders/{orderId}/messages` | `kcmps-send-message` |
+| GET | `/messages/unread` | `kcmps-get-unread-messages` (added 2026-08-04, unread-badge follow-up — see below) |
+
+All three routes have the `kcmps-cognito-jwt` authorizer attached, same as the other staff-api
+routes above (chat requires a logged-in account — no guest posting). Each Lambda has its own
+scoped `lambda:AddPermission` for this API's ARN + route path. `kcmps-staff-api-lambda-role`'s
+existing `dynamodb:{Get,Put,Update,Scan}Item`/`Query` grant on the `kcmps` table already covered
+all three (`MSG#` items are new SK values on an existing PK, not a new table/index; `get-orders.js`
+already used `Scan` on this same role, so `get-unread-messages.js`'s Scan needed no new grant
+either) — no role change needed for any of the three.
+
+Cron: `kcmps-notify-unread-messages-schedule`, `rate(30 minutes)`, targets
+`kcmps-notify-unread-messages` (from `backend/jobs/notify-unread-messages.js`) — same scoped
+`lambda:AddPermission` pattern as `kcmps-expire-pending-orders-schedule`, plus the same
+`MaximumRetryAttempts: 2` + DLQ-on-failure async invoke config as `expire-pending-orders`.
+Currently dark — `SES_SENDER` is unset, so it scans and logs but sends zero real customer email
+until that env var is set. Added to `kcmps-jobs-lambda-role` (already had `ses:SendEmail`/
+`SendRawEmail` scoped to the `kcmps.com` identity + config-set — no new SES grant needed).
+
+**One real gap found during deploy, fixed with explicit approval**: `kcmps-jobs-lambda-role` had
+never needed `dynamodb:Scan` before (`expire-pending-orders.js` only ever queries GSI1) —
+`notify-unread-messages.js` is the first jobs Lambda to need it (no unread-message index exists
+yet, same bounded-Scan tradeoff as `get-orders.js`'s own `CLIENT#`-filtered scan). Added `Scan` to
+the `kcmps-jobs-inline` policy's existing `TableReadWrite` statement, same resource scope
+(`kcmps` table + indexes) it already covered — nothing broader.
+
+Every new Lambda got its own CloudWatch log group created with `--retention-in-days 30` at
+creation time (see `backend/CLAUDE.md`'s cost convention).
+
+**Unread-message sidebar badge (2026-08-04 follow-up)** — `get-unread-messages.js` (table
+above) backs `website/dashboard/dashboard-shell.js`'s `refreshUnreadBadge()`, called from every
+dashboard page's `mount()`. No new infra beyond the route itself — reuses
+`kcmps-staff-api-lambda-role` as noted above.
+
 ## `auth/` — Cognito PostConfirmation trigger (deployed 2026-08-03)
 
 `kcmps-post-confirmation`, `nodejs20.x`/`arm64`, `ap-southeast-1`, built from

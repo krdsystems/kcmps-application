@@ -61,6 +61,7 @@ with what it builds.
 | `gsi.js` | GSI1 sparse-index hygiene — when to write `GSI1PK`/`GSI1SK`, and the attribute names to `REMOVE` on a terminal status |
 | `order-status.js` | `deriveOrderStatus()` — the line-item-statuses → order-level rollup rule (ERP file §2.4). A third independent copy of the same rule already exists in `dashboard-data.js` and `ops-dashboard/infra/logic-inputs/streams-handler.js` (predating this lib) — new Lambdas should import this one instead of adding a fourth |
 | `customer-view.js` | `redactForCustomer()` (strips staff-internal fields — station, setupMinutes, spoilage, correspondenceLog, event actor identity — from an order before a non-staff caller sees it) and `contactsMatch()` (the free-text-contact comparison every guest-facing endpoint authenticates against, since orderId alone isn't a meaningful secret) — shared by `staff-api/get-orders.js`, `checkout/lookup-order.js`, `checkout/cancel-order.js` |
+| `business-hours.js` | Pure operating-hours clock math — `businessMinutesBetween()`/`isWithinOperatingHours()`/`nextOperatingStart()`, fixed +8h Asia/Manila offset (no DST, so no timezone library). Backs the operating-hours-aware verification SLA in `staff-api/verify-payment.js`; unit-tested in `business-hours.test.js` |
 | `index.js` | Re-exports everything above from one require |
 
 Run the tests: `node --test backend/lib/`.
@@ -93,7 +94,10 @@ token; each Lambda itself checks the role/group — the authorizer never filters
 |---|---|
 | `get-orders.js` | `GET /orders` — staff (any of `backend/lib/auth.js`'s `isStaff()` roles, or the legacy `Staff` group) see every order; anyone else sees only their own (`customerSub`). Attaches each order's `LINEITEM#`/`EVENT#` items, sorted newest-first, and redacts staff-internal fields via `../lib/customer-view.js`'s `redactForCustomer()` for non-staff callers. |
 | `advance-line-item.js` | `POST /line-items/{lineItemId}/advance` — validates the requested transition against `LEGAL_TRANSITIONS` (must match the *real* dashboard status vocabulary in `dashboard-data.js`'s `NEXT_STATUS` — see the `STATUS.READY_FOR_DISPATCH`/`DISPATCHED` split in `constants.js`, a bug found and fixed in this area), writes the line-item update + `EVENT#` atomically |
-| `verify-payment.js` | `POST /orders/{orderId}/verify-payment` \| `.../reject-payment` — order-level: one GCash payment covers every `sku` line item still `Pending Payment Verification` on that order, verified/rejected together |
+| `verify-payment.js` | `POST /orders/{orderId}/verify-payment` \| `.../reject-payment` — order-level: one GCash payment covers every `sku` line item still `Pending Payment Verification` on that order, verified/rejected together. Verification is also operating-hours-aware (see `lib/business-hours.js`'s table row) — the transition/email are never gated on operating hours, only the *next* stage's SLA clock anchor is |
+| `send-message.js` | `POST /orders/{orderId}/messages` — customer chat via order threads (deployed 2026-08-04). Staff can post to any order; a customer only to their own (`customerSub` match) |
+| `get-messages.js` | `GET /orders/{orderId}/messages` — same staff-vs-customer branch as `get-orders.js`; also marks the other party's unread messages read as a side effect (feeds `jobs/notify-unread-messages.js`) |
+| `get-unread-messages.js` | `GET /messages/unread` — staff-vs-customer branched like `get-orders.js`: staff get `{ threads, totalUnread }` across every order (bounded Scan, same tradeoff as `jobs/notify-unread-messages.js`); a customer gets the same shape scoped to their own orders (bounded per-order Query). Backs `dashboard-shell.js`'s sidebar unread badge and `orders.html`'s "New message!" banner/"Unread messages" section — shaped so a future Messages tab/inbox view renders the same response as full rows instead |
 
 `getGroups()` (`backend/lib/auth.js`) is the one thing every one of these depends on getting
 right — API Gateway's HTTP API JWT authorizer serializes a multi-value `cognito:groups` claim
@@ -107,7 +111,8 @@ Event-driven, not API-Gateway-invoked.
 | File | Purpose |
 |---|---|
 | `streams-handler.js` | DynamoDB Streams trigger (filtered to `LINEITEM#` writes) — derives `orderStatus` via `order-status.js`'s `deriveOrderStatus()`, maintains GSI1 sparse-index hygiene via `gsi.js`. METRIC# rollups deferred (see `docs/roadmap.md`). |
-| `expire-pending-orders.js` | 15-minute EventBridge cron — two GSI1-driven sweeps: 48h `Pending Payment Verification` → `Auto-Cancelled`, 7-day `Priced` → `Quote Expired`. SES notice is best-effort (degrades gracefully like `submit-payment-proof.js`). |
+| `expire-pending-orders.js` | 15-minute EventBridge cron — two GSI1-driven sweeps: 48h `Pending Payment Verification` → `Auto-Cancelled`, 7-day `Priced` → `Quote Expired`. SES notice is best-effort (degrades gracefully like `submit-payment-proof.js`). Deliberately stays wall-clock, NOT operating-hours-aware (unlike the verification SLA in `staff-api/verify-payment.js`) — see `docs/roadmap.md`'s "Operating-hours-aware verification SLA" entry for why. |
+| `notify-unread-messages.js` | 30-minute EventBridge cron (deployed 2026-08-04, currently dark — `SES_SENDER` unset) — bounded Scan for staff→customer chat messages unread >2h, one SES reminder per affected order ("digest, don't spam"), idempotent via a `reminderSentAt` stamp. |
 
 ## `auth/` — what's in it
 

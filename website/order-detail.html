@@ -94,6 +94,79 @@
     );
   }
 
+  function renderMessagesCard() {
+    return (
+      // id="messages" — the "My Orders" page's "Unread messages" section
+      // links straight here (order-detail.html?id=...#messages); load()
+      // below scrolls to it on arrival when that hash is present.
+      '<div class="card" id="messages" style="margin-top:var(--space-4)">' +
+      '<p class="detail-card-title">Messages</p>' +
+      '<div id="message-list" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:var(--space-2)"></div>' +
+      '<div style="display:flex;gap:8px">' +
+      '<input class="input" id="message-input" style="flex:1" placeholder="Message KCMPS about this order…" maxlength="4000" />' +
+      '<button type="button" class="btn btn-primary" id="message-send-btn">Send</button>' +
+      '</div>' +
+      '<p class="order-popup-error" id="message-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+      '</div>'
+    );
+  }
+
+  function renderMessage(m) {
+    var mine = m.senderRole === "customer";
+    var align = mine ? "flex-end" : "flex-start";
+    var bg = mine ? "var(--accent-soft, #fff1e6)" : "var(--surface-2, #fafbfd)";
+    return (
+      '<div style="align-self:' + align + ';max-width:80%;background:' + bg + ';border-radius:10px;padding:8px 12px">' +
+      '<div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:2px">' + (mine ? "You" : "KCMPS") + ' · ' + O.fmtDateTime(m.at) + '</div>' +
+      '<div style="font-size:13.5px;white-space:pre-wrap;word-break:break-word">' + O.escapeHtml(m.body) + '</div>' +
+      '</div>'
+    );
+  }
+
+  var messagePollTimer = null;
+  function renderMessages(messages) {
+    var list = document.getElementById("message-list");
+    if (!list) return;
+    list.innerHTML = messages.length
+      ? messages.map(renderMessage).join("")
+      : '<p class="q-empty" style="margin:0;font-size:13px">No messages yet — say hello.</p>';
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function loadMessages(orderId) {
+    O.getMessages(orderId).then(renderMessages).catch(function () { /* silent — don't disrupt the rest of the page over a poll failure */ });
+  }
+
+  function wireMessages(order) {
+    loadMessages(order.orderId);
+    if (messagePollTimer) clearInterval(messagePollTimer);
+    messagePollTimer = setInterval(function () {
+      if (document.visibilityState === "visible") loadMessages(order.orderId);
+    }, 8000);
+
+    var input = document.getElementById("message-input");
+    var sendBtn = document.getElementById("message-send-btn");
+    var errorEl = document.getElementById("message-error");
+    function send() {
+      var text = input.value.trim();
+      if (!text) return;
+      errorEl.style.display = "none";
+      sendBtn.disabled = true;
+      O.sendMessage(order.orderId, text).then(function () {
+        input.value = "";
+        sendBtn.disabled = false;
+        loadMessages(order.orderId);
+      }).catch(function (err) {
+        errorEl.textContent = err.message; errorEl.style.display = "";
+        sendBtn.disabled = false;
+      });
+    }
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  }
+
   function renderTimeline(order) {
     var items = O.timelineFor(order);
     if (!items.length) return '';
@@ -214,8 +287,23 @@
         order.lineItems.map(renderItem).join("") + '</div></div>' +
       '<div class="order-detail-grid">' +
         renderPaymentCard(order) + renderFulfillmentCard(order) + renderTotalsCard(order) + renderTimeline(order) +
-      '</div>';
+      '</div>' +
+      renderMessagesCard();
     wireActions(order);
+    wireMessages(order);
+  }
+
+  // "My Orders"'s "Unread messages" section links here as
+  // order-detail.html?id=...#messages — scroll straight to the Messages
+  // card once, on first render only (renderOrder() re-runs after every
+  // action, e.g. cancel/resubmit; re-scrolling on those would yank focus
+  // away from whatever the customer just did).
+  var scrolledToMessages = false;
+  function maybeScrollToMessages() {
+    if (scrolledToMessages || window.location.hash !== "#messages") return;
+    scrolledToMessages = true;
+    var target = document.getElementById("messages");
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function load() {
@@ -223,6 +311,7 @@
     O.get(orderId).then(function (order) {
       if (!order) { root.innerHTML = '<div class="orders-error">We couldn’t find that order on your account.</div>'; return; }
       renderOrder(order);
+      maybeScrollToMessages();
     }).catch(function (err) {
       root.innerHTML = '<div class="orders-error">' + O.escapeHtml(err.message || "Couldn't load this order right now.") + '</div>';
     });

@@ -164,6 +164,9 @@
       if (logoutBtn) logoutBtn.addEventListener("click", logout);
     }
 
+    refreshUnreadBadge();
+    if (!unreadBadgeTimer) unreadBadgeTimer = setInterval(refreshUnreadBadge, 45000);
+
     // mobile nav toggle — a backdrop covers the content area behind the
     // sidebar so a tap out there closes it; visibility:hidden (not just
     // opacity:0) keeps it out of the hit-test when closed, matching
@@ -183,6 +186,36 @@
     }
 
     return claims;
+  }
+
+  // Unread-message count on the "Jobs" nav link — the cheap first step
+  // toward a real Messages tab (see docs/roadmap.md): reads the exact
+  // same `{ threads, totalUnread }` shape that tab's inbox list will
+  // render as full rows, but today only paints a badge with the total.
+  // Every dashboard page shows this (called from mount(), not
+  // per-page), not just jobs.html, since an unread reply can sit on any
+  // ticket regardless of which page staff happen to be looking at.
+  let unreadBadgeTimer = null;
+  function refreshUnreadBadge() {
+    if (!global.KCMPS_DASH || !global.KCMPS_DASH.getUnreadMessageSummary) return;
+    global.KCMPS_DASH.getUnreadMessageSummary().then((summary) => {
+      const jobsLink = document.querySelector('.dash-navlink[href="jobs.html"]');
+      if (!jobsLink) return;
+      let badge = jobsLink.querySelector(".badge-unread");
+      const count = (summary && summary.totalUnread) || 0;
+      if (!count) { if (badge) badge.remove(); return; }
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "badge-unread";
+        jobsLink.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? "99+" : String(count);
+    }).catch((err) => {
+      // Best-effort — a badge that fails to load shouldn't break the rest
+      // of the dashboard shell, and staff still see unread messages the
+      // moment they open the actual ticket regardless.
+      console.warn("[dashboard-shell] unread badge refresh failed:", err.message);
+    });
   }
 
   function escapeHtml(s) {
@@ -227,5 +260,5 @@
     return (Math.round(h * 10) / 10) + "h";
   }
 
-  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError };
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge };
 })(window);

@@ -206,3 +206,28 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
     than S3.
   - **Not deployed to production** — no production Lambdas, routes, or bucket writes exist for
     this feature, so production spend is unchanged at exactly ₱0. Promotion is owner-gated.
+
+- **SES inbound-mail relay: `mirror.kcmps.com` receiving + bounce/complaint alerting**
+  (applied 2026-08-06 — `docs/roadmap.md`'s "Staff email panel" / SES-relay track,
+  `backend/infra/ses-relay.cfn.yaml`) — **near-₱0/mo**:
+  - **SES receiving is $0.10 per 1,000 emails received, plus $0.09 per GB for anything past
+    the first free 1,000/month**, and a trivial per-object S3 PutObject charge alongside it.
+    At the volume this relay will actually see (a handful of staff mailboxes forwarding, not
+    a marketing inbox), this rounds to **~₱0–5/mo** — nowhere near worth a line-item unless
+    volume changes by orders of magnitude. Revisit trigger: >1,000 inbound emails/mo.
+  - **S3 storage for raw MIME**: `kcmps-inbound-mail-est-2026` has a 30-day Standard→IA
+    lifecycle transition (same pattern as the payment-uploads bucket) since a mail parser
+    Lambda (C2, not yet built) will read each object once shortly after arrival — no reason
+    to pay Standard rates for it indefinitely.
+  - **Bounce/complaint SNS topic** (`kcmps-ses-bounce-complaint`) costs nothing until it fires
+    — SNS's free tier (1M requests/mo, 1,000 email notifications/mo) comfortably covers
+    alerting volume for a 4-person shop. This was priority #1 in the build specifically
+    because bounce/complaint monitoring had been **completely unmonitored** despite an
+    elevated (~13%) trailing bounce rate from earlier test sends — the cost is negligible,
+    the value (catching a reputation problem before AWS enforcement action) is not.
+  - **No new sending infrastructure** — this track is receiving-only plus alerting on the
+    *existing* `kcmps.com` sending identity/configuration-set. It doesn't add sending volume
+    or change the production sending cost profile at all.
+  - **Parser Lambda and reply-send Lambda are explicitly out of scope for this session** (C2/C3
+    own those) — so this entry covers only what's live today: the bucket, the receipt rule,
+    and the bounce/complaint event destination.

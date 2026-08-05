@@ -1335,3 +1335,70 @@ diff (e.g. if you edit group `Precedence` values later). It will refuse to
 change `TableName` on an existing stack without a replacement, since DynamoDB
 table names are immutable post-creation; to rename, deploy a new stack with a
 new `TableName` and migrate data separately.
+
+## SES inbound-mail relay — `mirror.kcmps.com` (applied 2026-08-06)
+
+Part of `docs/roadmap.md`'s "Staff email panel" / SES-relay track. Built same-day, resources
+created directly via CLI (see `backend/infra/ses-relay.cfn.yaml`'s header for why, and for a
+CFN description of the same setup for future rebuilds). All in account `600929977538`
+(`kcmps-claude-priv`), region `ap-southeast-1`, except the one DNS change below.
+
+**What exists now:**
+- **Bounce/complaint alerting** on the *existing* `kcmps.com` sending identity — an SNS topic
+  `kcmps-ses-bounce-complaint`, subscribed to `admin@kcmps.com` (email protocol), wired as an
+  event destination (`kcmps-bounce-complaint-sns`, `MatchingEventTypes: [BOUNCE, COMPLAINT]`)
+  on the configuration set `my-first-configuration-set` that's already attached to the
+  `kcmps.com` identity. **This is purely additive** — verified after applying that the
+  identity's DKIM (`SUCCESS`), MAIL FROM (`mail.kcmps.com`, `SUCCESS`), and
+  `VerificationStatus` (`SUCCESS`) were all unchanged. **The email subscription is sitting in
+  `PendingConfirmation` and needs the owner to click the confirmation link SNS sent to
+  `admin@kcmps.com`** — same trap `kcmps-ops-alerts` hit before; nothing auto-confirms it.
+- **`mirror.kcmps.com`** verified as an SES receiving identity (`VerificationStatus: SUCCESS`).
+  SES email receiving **is available in `ap-southeast-1`** (confirmed via a live
+  `aws ses describe-active-receipt-rule-set` call succeeding, `inbound-smtp.ap-southeast-1
+  .amazonaws.com` resolving, and an actual end-to-end send/receive test below) — no
+  cross-region workaround was needed.
+- **DNS**, added via `UPSERT` to the real hosted zone `Z06397161LBTJCRTPLL62` in account
+  `260866268499` (`default` profile) — change ID `C10397382N3T7IMLFR6TL`, confirmed `INSYNC`:
+  - `MX mirror.kcmps.com` → `10 inbound-smtp.ap-southeast-1.amazonaws.com`
+  - 3 DKIM CNAMEs: `<token>._domainkey.mirror.kcmps.com` → `<token>.dkim.amazonses.com`
+    (tokens are `mirror.kcmps.com`'s own, distinct from `kcmps.com`'s DKIM tokens)
+
+    No existing `kcmps.com`/`www`/`site`/`dev`/`mail`/`_dmarc`/DKIM record was read, modified,
+    or deleted — every change above targets only the new `mirror.kcmps.com` subdomain name.
+- **`kcmps-inbound-mail-est-2026`** — private S3 bucket for raw inbound MIME. All public
+  access blocked, SSE-S3 default encryption, lifecycle transitions objects to Standard-IA at
+  30 days. Bucket policy grants `ses.amazonaws.com` `s3:PutObject` scoped to this account's
+  receipt rules only (`aws:SourceAccount`/`aws:SourceArn` conditions).
+- **Receipt rule set `kcmps-mirror-inbound`** (active), one rule `mirror-domain-catchall`
+  matching all recipients `@mirror.kcmps.com`, delivering to `kcmps-inbound-mail-est-2026`
+  under the `inbound/` prefix. **Not split per-mailbox** — a single domain-catchall rule was
+  used since the actual list of staff mailboxes that will forward here isn't fixed yet;
+  splitting into per-recipient rules (each with its own `ObjectKeyPrefix`) is a cheap follow-up
+  once that list exists. **For now, C2's parser Lambda should read the MIME `To:` header to
+  determine which staff mailbox a message is for**, not the S3 key.
+
+**Verified end-to-end (2026-08-06):** sent a real email via `aws ses send-email` from
+`admin+admin.kcmps.uat@kcmps.com` (the only permitted test address) to `test@mirror.kcmps.com`;
+the raw MIME object landed in `s3://kcmps-inbound-mail-est-2026/inbound/<ses-message-id>` within
+seconds, `X-SES-Spam-Verdict: PASS` / `X-SES-Virus-Verdict: PASS`, DKIM/SPF/DMARC all `pass`.
+
+**What C2 needs:**
+- Bucket: `kcmps-inbound-mail-est-2026`, region `ap-southeast-1`, prefix `inbound/`.
+- Object key = the SES-generated message ID (opaque); route by parsing the MIME `To:` header,
+  not the key, until/unless per-recipient rules get added.
+- Trigger the parser off S3 `ObjectCreated:Put` under `inbound/`, same pattern as the design
+  library's GuardDuty-scan-result Lambda (EventBridge) or a direct S3 event notification —
+  your call.
+- Target shape to write into: `email.html`'s mock `MESSAGE#`/mailbox shape (see
+  `docs/roadmap.md`'s "Staff email panel" checklist) — this session didn't touch that file.
+
+**Owner manual step (not attempted — no Spacemail credentials available to this session):**
+configure a Spacemail-side forwarding rule from each staff `@kcmps.com` mailbox to its own
+address on `mirror.kcmps.com` (e.g. `order@kcmps.com` → `order@mirror.kcmps.com`). Until this
+is set up, nothing external will actually land in the inbound bucket — only directly-addressed
+test sends like the verification above will.
+
+**Explicitly not built this session (C2/C3 scope):** the MIME parser Lambda, the
+`sendReply`-equivalent Lambda over `SES.SendRawEmail`. No production Lambda was touched, and
+`notify-unread-messages`'s `SES_SENDER` was left unset as instructed.

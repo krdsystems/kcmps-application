@@ -397,6 +397,27 @@
     });
   }
 
+  /* ---------- guest lookup (backend/checkout/lookup-order.js) ----------
+     No session required — a guest's order has customerSub: null and is
+     permanently invisible to GET /orders, so this contact-authenticated
+     endpoint is their only way back to it. Same redacted shape as
+     get-orders.js, so it reuses normalizeOrder() rather than forking a
+     second normalization path. The 404 message is returned verbatim
+     (anti-enumeration — same generic text whether the orderId or the
+     contact was wrong); callers must not try to distinguish the two. */
+  function lookupOrder(orderId, contact) {
+    return fetch(API_BASE + "/orders/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: (orderId || "").trim(), contact: (contact || "").trim() }),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data && data.error ? data.error : "Couldn't look up that order right now (" + res.status + ").");
+        return normalizeOrder(data.order);
+      });
+    });
+  }
+
   /* ---------- messages (order thread chat, backend/staff-api/
      send-message.js + get-messages.js) ----------
      Polling-based, not WebSocket — the order-detail page calls
@@ -484,7 +505,7 @@
     STAGES: STAGES, BUCKETS: BUCKETS, statusModel: statusModel, timelineFor: timelineFor,
     actionsFor: actionsFor, reorder: reorder, submitProof: submitProof, cancel: cancel,
     getMessages: getMessages, sendMessage: sendMessage, getUnreadMessageSummary: getUnreadMessageSummary,
-    markMessagesRead: markMessagesRead,
+    markMessagesRead: markMessagesRead, lookupOrder: lookupOrder,
     fmtPeso: fmtPeso, fmtDate: fmtDate, fmtDateTime: fmtDateTime, escapeHtml: escapeHtml,
     ORDER_EMAIL: ORDER_EMAIL,
   };

@@ -2717,7 +2717,7 @@ function logout() {
     wed: { open: "09:00", close: "18:00" },
     thu: { open: "09:00", close: "18:00" },
     fri: { open: "09:00", close: "18:00" },
-    sat: { open: "09:00", close: "14:00" },
+    sat: null, // closed — studio runs Monday–Friday only (confirmed 2026-08-06)
   };
   const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
   const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -2786,24 +2786,28 @@ function logout() {
   // (Mon–Fri collapses to one line) so it reads like a sign on the door.
   function renderHours() {
     if (!hoursEl) return;
+    // Walk Monday-first, the way a sign on the door reads — iterating from
+    // Sunday (JS day 0) would print "Closed Sunday, Saturday".
+    const ORDER = [1, 2, 3, 4, 5, 6, 0];
     const lines = [];
-    let runStart = null, runSpec = null;
-    const flush = (endDow) => {
+    let runStart = null, runSpec = null, prev = null;
+    const flush = () => {
       if (runStart === null) return;
       const spec = OPERATING_HOURS[DAY_KEYS[runStart]];
-      const range = runStart === endDow ? DAY_NAMES[runStart]
-        : DAY_NAMES[runStart] + " – " + DAY_NAMES[endDow];
+      const range = runStart === prev ? DAY_NAMES[runStart]
+        : DAY_NAMES[runStart] + " – " + DAY_NAMES[prev];
       lines.push(range + ", " + fmt(toMin(spec.open)) + " – " + fmt(toMin(spec.close)));
       runStart = null; runSpec = null;
     };
     const closed = [];
-    for (let dow = 0; dow < 7; dow++) {
+    ORDER.forEach((dow) => {
       const day = OPERATING_HOURS[DAY_KEYS[dow]];
       const key = day ? day.open + "-" + day.close : null;
-      if (!day) { flush(dow - 1); closed.push(DAY_NAMES[dow]); continue; }
-      if (key !== runSpec) { flush(dow - 1); runStart = dow; runSpec = key; }
-    }
-    flush(6);
+      if (!day) { flush(); closed.push(DAY_NAMES[dow]); return; }
+      if (key !== runSpec) { flush(); runStart = dow; runSpec = key; }
+      prev = dow;
+    });
+    flush();
     if (closed.length) lines.push("Closed " + closed.join(", ") + " & holidays");
     hoursEl.textContent = "";
     lines.forEach((l, i) => {

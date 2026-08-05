@@ -27,6 +27,15 @@
         <select class="input" id="mb-select"></select>
         <span class="queue-count" id="mb-unread">0</span>
         <input type="search" class="input mail-search" id="mail-search" placeholder="Search subject or sender" />
+        <!-- Mail arrives by relay (Spacemail -> SES -> ingest), so there is no push
+             signal to the page and no polling here. A visible manual reload is the
+             honest answer: staff decide when to check, and the timestamp next to it
+             says how stale what they are looking at actually is. -->
+        <span class="hint mail-updated" id="mail-updated" aria-live="polite"></span>
+        <button type="button" class="btn btn-secondary mail-refresh" id="mail-refresh">
+          <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A96,96,0,1,1,195.88,60.19L224,84.4V56a8,8,0,1,1,16,0Z"/></svg>
+          Reload
+        </button>
       </div>
 
       <div class="mail-3pane" id="mail-3pane">
@@ -56,6 +65,8 @@
   const selectEl = document.getElementById("mb-select");
   const unreadEl = document.getElementById("mb-unread");
   const searchEl = document.getElementById("mail-search");
+  const refreshEl = document.getElementById("mail-refresh");
+  const updatedEl = document.getElementById("mail-updated");
 
   function relAge(iso) {
     const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -332,6 +343,19 @@
     await renderMailboxSelector();
     await renderList();
     await renderRead(flash);
+    stampUpdated();
+  }
+
+  /* Every getMailboxes/getMessages/getMessage call goes straight to the API via
+     apiFetch — there is no client-side cache to bust — so re-running renderAll()
+     IS a hard reload. Selected mailbox, open message and search term are held in
+     module state and deliberately survive it: a reload should refresh what you
+     are looking at, not throw you back to an empty list. */
+  function stampUpdated() {
+    if (!updatedEl) return;
+    const t = new Date();
+    updatedEl.textContent = "Updated " +
+      String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
   }
 
   selectEl.addEventListener("change", () => {
@@ -342,6 +366,20 @@
     renderAll();
   });
   searchEl.addEventListener("input", () => { search = searchEl.value; renderList(); });
+
+  if (refreshEl) {
+    refreshEl.addEventListener("click", () => {
+      // withBusy disables the button and swaps in a spinner for the duration,
+      // so a staff member cannot stack a queue of reloads on a slow connection.
+      withBusy(refreshEl, async () => {
+        try {
+          await renderAll();
+        } catch (err) {
+          showInlineError(listEl, "Could not reload messages. " + (err && err.message ? err.message : ""));
+        }
+      });
+    });
+  }
 
   renderAll();
 })();

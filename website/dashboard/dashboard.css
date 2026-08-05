@@ -329,6 +329,12 @@ select.input { appearance: auto; }
 .mail-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .mail-toolbar select.input { max-width: 260px; }
 .mail-toolbar .mail-search { max-width: 280px; margin-left: auto; }
+/* Reload sits at the far right of the toolbar, after the search box's
+   `margin-left: auto` has already pushed the group over. flex-shrink: 0 keeps
+   the label from collapsing onto two lines when the mailbox <select> is wide. */
+.mail-refresh { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
+.mail-refresh svg { width: 15px; height: 15px; }
+.mail-updated { font-size: 12px; white-space: nowrap; opacity: 0.75; }
 .mail-3pane { display: grid; grid-template-columns: 340px 1fr; gap: var(--space-3); height: calc(100dvh - 136px); min-height: 420px; }
 .mail-list, .mail-read { overflow-y: auto; padding: var(--space-3); min-height: 0; }
 .mail-list .q-list { max-height: none; }
@@ -383,6 +389,10 @@ select.input { appearance: auto; }
   .mail-3pane.show-read .mail-list { display: none; }
   .mail-3pane.show-read .mail-read { display: block; }
   .mail-toolbar .mail-search { margin-left: 0; max-width: none; flex: 1 1 100%; }
+  /* The full-width search bumps Reload onto its own row; pin it to the right
+     edge so it reads as a deliberate action rather than a stray orphan, and
+     lands under the thumb on a phone. */
+  .mail-refresh { margin-left: auto; }
   .mail-back { display: inline-flex; margin-bottom: var(--space-2); }
 }
 

@@ -73,7 +73,7 @@ use that instead of adding each founder individually:
 
 ```bash
 aws cognito-idp admin-add-user-to-group \
-  --user-pool-id ap-southeast-1_iDvAEumNp \
+  --user-pool-id ap-southeast-1_LHJsFdCgo \
   --username admin.kcmps.cognito \
   --group-name Admin \
   --region ap-southeast-1
@@ -83,7 +83,7 @@ Confirm membership:
 
 ```bash
 aws cognito-idp admin-list-groups-for-user \
-  --user-pool-id ap-southeast-1_iDvAEumNp \
+  --user-pool-id ap-southeast-1_LHJsFdCgo \
   --username admin.kcmps.cognito \
   --region ap-southeast-1
 ```
@@ -413,7 +413,8 @@ rule's ARN, not a wildcard).
 
 **API Gateway**: added to the *same* `kcmps-checkout-api` (`6msg2uho6c`) rather than a new API
 — a Cognito JWT authorizer (`kcmps-cognito-jwt`, `Issuer` = the user pool's issuer URL,
-`Audience` = the app client id `95rrk0mflffentqdiomg1fipc`), and 4 new routes, each with that
+`Audience` = the app client id — originally `95rrk0mflffentqdiomg1fipc` on the retired pool,
+now `2rsbhkjooja4h5e0ijpl4siuug` on `kcmps-user-pool-v2`, see "User pool v2" below), and 4 new routes, each with that
 authorizer attached (unlike the two 1.1/1.2 routes, which stay authorizer-free for guest
 checkout):
 
@@ -647,6 +648,16 @@ plain-English description — while `get-orders.js` returned them with `url: nul
 uploaded alongside scanned `NO_THREATS_FOUND` and came back downloadable.
 
 ## `auth/` — Cognito PostConfirmation trigger (deployed 2026-08-03)
+
+**FLAG (2026-08-05 pool-sweep):** this section predates the pool v2 cutover and still cites
+the retired pool's ARN/ID below. The 2026-08-05 infra audit (`docs/infra-audit-2026-08-05.md`)
+only checked the two API JWT authorizers and `create-order`/`cancel-order`'s env vars — it did
+**not** verify whether `kcmps-post-confirmation-lambda-role`'s IAM policy and the Lambda's
+`cognito-idp` invoke permission were re-scoped to `ap-southeast-1_LHJsFdCgo` during the cutover.
+If PostConfirmation is still wired to the deleted pool, new self-signups would silently stop
+getting added to the `Customer` group (the handler is designed to never throw, so this would
+fail silent — see `docs/history.md` entry 62). Needs an AWS-side check before this doc's IDs
+below are edited to match.
 
 `kcmps-post-confirmation`, `nodejs24.x`/`arm64`, `ap-southeast-1`, built from
 `backend/auth/post-confirmation.js`. Auto-adds every self-signup to the `Customer` Cognito

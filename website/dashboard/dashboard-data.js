@@ -458,16 +458,29 @@
     // (overnight/weekend gaps don't count); every other status stays
     // wall-clock, unchanged. See agingBusinessHours()'s header above.
     const hrs = li.status === "Pending Payment Verification" ? agingBusinessHours(li) : agingHours(li);
+    // `enteredStatusAt` can legitimately be a FUTURE timestamp: when staff
+    // verify a payment outside operating hours, verify-payment.js anchors
+    // the newly-Confirmed line item's clock to the next opening (so the
+    // production SLA doesn't start counting before the shop is actually
+    // open — see that Lambda's header). If the dashboard is loaded before
+    // that moment arrives, `hrs` comes out negative — e.g. -7.8h — and an
+    // unguarded fmtHours() rendered that as "-468m", which reads as a bug
+    // rather than "this job's clock hasn't started yet." Clamp the aging
+    // number to 0 and expose the real start time separately so the UI can
+    // say "Opens 9:00 AM" instead of a negative number.
+    const queuedUntil = hrs < 0 ? li.enteredStatusAt : null;
+    const clampedHrs = Math.max(0, hrs);
     const sla = SLA_HOURS[li.status];
     let slaState = "ok";
-    if (sla) {
-      if (hrs >= sla.red) slaState = "red";
-      else if (hrs >= sla.warn) slaState = "warn";
+    if (sla && !queuedUntil) {
+      if (clampedHrs >= sla.red) slaState = "red";
+      else if (clampedHrs >= sla.warn) slaState = "warn";
     }
     const dueDate = li.order.originalPromisedDate;
     const dueInDays = dueDate ? Math.ceil((new Date(dueDate) - Date.now()) / 86400000) : null;
     return Object.assign({}, li, {
-      agingHours: Math.round(hrs * 10) / 10,
+      agingHours: Math.round(clampedHrs * 10) / 10,
+      queuedUntil,
       slaState,
       dueDate,
       dueInDays,

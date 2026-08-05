@@ -123,9 +123,15 @@ window.KCMPS_STORE_DATA = {
       type: "sku",
       kicker: "Print · Documents",
       name: "Document Printing",
-      blurb: "Short bond paper, priced per page — minimum order of 20 pages. Choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
+      blurb: "Short/A4 or Legal bond paper, priced per page — minimum order of 20 pages. Choose black-and-white or full color. Bulk pricing kicks in automatically at 50+ pages.",
       image: "assets/printing-office-supplies/print-bw-document-printing.jpg",
       price: 4,
+      // 2026-08-05: pricelist adds a Legal-size tier. The Legal surcharge is
+      // the same +₱1/page regardless of color (B/W ₱4→₱5, Colored ₱7→₱8), so
+      // a second independent addon group works — see store.js's addonsTotal()
+      // (sums every group's selected delta). Contrast with print-photocopying
+      // below, where the Legal surcharge differs by color and needs `variants`
+      // instead of a second addon group.
       addons: [
         {
           key: "color",
@@ -133,6 +139,14 @@ window.KCMPS_STORE_DATA = {
           options: [
             { label: "B/W (₱4/page)", price: 0 },
             { label: "Colored (₱7/page)", price: 3 },
+          ],
+        },
+        {
+          key: "size",
+          label: "Paper size",
+          options: [
+            { label: "Short/A4 (+₱0/page)", price: 0 },
+            { label: "Legal (+₱1/page)", price: 1 },
           ],
         },
       ],
@@ -164,10 +178,21 @@ window.KCMPS_STORE_DATA = {
       leaf: "print-office",
       type: "sku",
       kicker: "Print · Photocopying",
-      name: "Photocopying (Xerox)",
-      blurb: "Black-and-white copies of a document you already have, any size, priced per page. In-store only — bring the original in, there's no online booking for this one.",
+      name: "Photocopying (Xerox / Photocopy)",
+      blurb: "Copies of a document you already have, priced per page. \"Xerox\" = black-and-white, \"Photocopy\" = full color — both Short/A4 or Legal size. In-store only — bring the original in, there's no online booking for this one.",
       image: "assets/printing-office-supplies/print-photocopying.jpg",
-      price: 3,
+      // 2026-08-05: the Legal-size surcharge is NOT uniform across color here
+      // (B/W +₱1, Colored +₱2), unlike print-bw-document-printing's uniform
+      // +₱1 — store.js's addon groups are pure independent per-group deltas
+      // and can't express a delta that itself depends on another group's
+      // selection, so this is a `variants` price matrix (one absolute price
+      // per combination) instead of two addon groups.
+      variants: [
+        { label: "B/W — Xerox (Short/A4, ₱3/page)", price: 3 },
+        { label: "B/W — Xerox (Legal, ₱4/page)", price: 4 },
+        { label: "Colored — Photocopy (Short/A4, ₱5/page)", price: 5 },
+        { label: "Colored — Photocopy (Legal, ₱7/page)", price: 7 },
+      ],
       fulfillmentInput: "in-person",
       noOnlineOrder: true,
     },
@@ -179,10 +204,15 @@ window.KCMPS_STORE_DATA = {
       name: "Lamination",
       blurb: "Glossy lamination, priced by size. Add Document Printing to your cart first — we'll laminate the pages we just printed for you, no visit needed.",
       image: "assets/printing-office-supplies/print-lamination.jpg",
+      // 2026-08-05: replaced with the current in-store pricelist's 5-size
+      // lineup (adds 3R/5R, drops nothing) — every overlapping size also
+      // repriced (ID 25→20, 4R 40→30, A4 70→50).
       variants: [
-        { label: "ID-size", price: 25 },
-        { label: "A4 document", price: 70 },
-        { label: "4R photo (class-picture size)", price: 40 },
+        { label: "ID-size", price: 20 },
+        { label: "3R photo", price: 25 },
+        { label: "4R photo (class-picture size)", price: 30 },
+        { label: "5R photo", price: 35 },
+        { label: "A4 document", price: 50 },
       ],
       // Tied to Document Printing's cap since it's gated behind that product
       // already being in the cart (requiresCartProduct below) — one job.
@@ -289,6 +319,66 @@ window.KCMPS_STORE_DATA = {
         { minQty: 25, discountPct: 8 },
         { minQty: 50, discountPct: 12 },
       ],
+      softCap: 500,
+      fulfillmentInput: "file",
+    },
+    {
+      // 2026-08-05: new from the in-store pricelist — no real photo available
+      // yet for this session (no image-generation tool on hand), so `image`
+      // is left unset and falls back to the print-office leaf's generic
+      // photo via store.js's thumbImage(). Swap in a real product photo at
+      // website/assets/printing-office-supplies/print-rush-id.jpg before
+      // this looks fully distinct from other print-office cards in the grid.
+      id: "print-rush-id",
+      leaf: "print-office",
+      type: "sku",
+      kicker: "Print · Rush ID",
+      name: "Rush ID Print",
+      blurb: "Fixed-price ID photo packages, priced per package (not per piece). In-store only — walk in with your photo, there's no online booking for this one.",
+      variants: [
+        { label: "Package A — 2×2 (3 pcs) or 1×1 (4 pcs)", price: 35 },
+        { label: "Package B — 2×2 (4 pcs) or 1×1 (8 pcs)", price: 50 },
+        { label: "Passport A — 1.38×1.77 (4 pcs) or 1×1 (8 pcs)", price: 45 },
+        { label: "Passport B — 1.38×1.77 (10 pcs)", price: 50 },
+      ],
+      fulfillmentInput: "in-person",
+      noOnlineOrder: true,
+    },
+    {
+      // 2026-08-05: new from the in-store pricelist — see the Rush ID Print
+      // note above re: no real photo available yet this session.
+      id: "print-scan",
+      leaf: "print-office",
+      type: "sku",
+      kicker: "Print · Scan",
+      name: "Document Scan",
+      blurb: "Scan a physical document to a digital file, A4 full size, flat rate. In-store only — bring the original in, there's no online booking for this one.",
+      price: 10,
+      // Same reasoning as Photocopying above: this duplicates a physical
+      // original the customer must hand over in person, it isn't a file
+      // KCMPS receives digitally — so it's in-person, not "file" input.
+      fulfillmentInput: "in-person",
+      noOnlineOrder: true,
+    },
+    {
+      // 2026-08-05: new from the in-store pricelist — see the Rush ID Print
+      // note above re: no real photo available yet this session.
+      id: "print-inkjet-photo",
+      leaf: "print-office",
+      type: "sku",
+      kicker: "Print · Inkjet Photo",
+      name: "Inkjet Photo Print",
+      blurb: "Glossy-finish inkjet photo prints, priced by size. Customer supplies the photo file.",
+      variants: [
+        { label: "Wallet — Glossy", price: 5 },
+        { label: "3R — Glossy", price: 7 },
+        { label: "4R — Glossy", price: 9 },
+        { label: "5R — Glossy", price: 13 },
+        { label: "A4 — Glossy", price: 25 },
+        { label: "A4 Back2Back — Glossy", price: 45 },
+      ],
+      // 2026-08-05: capacity soft-cap — one-at-a-time inkjet photo output,
+      // similar throughput class to bookmarks (also small physical prints).
       softCap: 500,
       fulfillmentInput: "file",
     },

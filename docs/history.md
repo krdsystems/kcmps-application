@@ -2792,6 +2792,48 @@ so an `On Hold` transition silently failed GSI1 sparse-index maintenance and the
 have vanished from every staff action queue. Any status-vocabulary change must redeploy
 `streams-handler` too, not just the Lambda that writes the new status.
 
+### 66. Dashboard aging-time display fix; print-office pricelist pass — Legal size, photocopy rework, lamination sizes, 3 new products (2026-08-05)
+
+**a. Negative elapsed-time display.** Staff reported "Action queues" on `today.html` showing
+`-468m` for a Confirmed line item. Root cause: `verify-payment.js`'s operating-hours-aware SLA
+clock (see the Parallel-track entry above) deliberately anchors a newly-Confirmed item's
+`enteredStatusAt` to the *next* business opening when payment is verified off-hours — correct
+behavior for the SLA clock, but `dashboard-data.js`'s `decorateLineItem()` had no guard against
+a future timestamp and just displayed the raw negative minutes. The other two values in the same
+screenshot ("0m", "9h") were confirmed correct (not bugs) via a standalone reproduction of the
+exact business-hours math against the live `enteredStatusAt` values. Fixed by clamping displayed
+aging to `Math.max(0, hrs)` and adding a `queuedUntil` field the item carries when its clock
+hasn't started yet; `today.html`'s `q-age` badge now shows "Opens {date/time}" instead of a
+negative number in that case.
+
+**b. Print-office pricelist pass.** Owner's physical shop pricelist added Legal-size document
+printing/photocopying, repriced/relineup'd lamination, and three new services not in the catalog
+at all. `print-bw-document-printing` gained a second `addons` group (`size`: Short/A4 +₱0, Legal
++₱1) — safe here because the Legal surcharge is uniform across both colors (₱4→₱5, ₱7→₱8), and
+`store.js`'s `addonsTotal()` already sums every group's selected delta generically (verified live:
+switching to Colored+Legal correctly showed ₱8, and the existing 6% bulk tier applied against
+that combined base at 50 pages → ₱7.52). `print-photocopying`, by contrast, has a **non-uniform**
+Legal surcharge (B/W +₱1, Colored +₱2) — addon groups are pure independent per-group deltas and
+structurally cannot express a delta that depends on another group's selection, so it was
+converted to a 4-entry `variants` price matrix instead (one absolute price per B/W-or-Colored ×
+Short-or-Legal combination). This is the deciding factor for `addons` vs. `variants` any time a
+product's combination pricing might not just add up — see the new gotcha in the root `CLAUDE.md`.
+`print-lamination`'s variant lineup was replaced outright (ID 25→20, 4R 40→30, A4 70→50, added
+3R/5R). Three new in-store-only products were added (Rush ID Print — 4 fixed photo packages;
+Document Scan — ₱10 flat; owner corrected Rush ID Print from an online buy-now card to in-store
+reference-pricing mid-session, same shape as Photocopying) plus one new online buy-now product
+(Inkjet Photo Print, 6 glossy sizes). `inStoreInfoCard()` in `store.js` previously rendered only
+a single flat `p.price` — extended to loop over `p.variants` and render one reference-price row
+per combination, needed for Photocopying's new 4-row shape and Rush ID Print's 4 packages; the
+reference-price rows were also visibly too heavy at the shop's normal 20px/800-weight buy-price
+styling once several stacked per card, so a scoped `.product-custom .product-price` rule (14px,
+body font, weight 600) was added to both `website/styles.css` and its design-system mirror.
+**Known gap:** none of the 3 new/reworked-without-existing-photo products have real thumbnails —
+no image-generation tool was available this session, so they fall back to the print-office leaf's
+generic photo via `thumbImage()`. Real photos still needed at
+`website/assets/printing-office-supplies/print-rush-id.jpg`, `print-scan.jpg`,
+`print-inkjet-photo.jpg` before they look visually distinct in the grid.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from

@@ -75,7 +75,7 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("today");
   if (!claims) return;
-  const { fmtPeso, fmtHours, fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+  const { fmtPeso, fmtHours, fmtDate, fmtDateTime, escapeHtml } = KCMPS_DASH_SHELL;
 
   const QUEUE_DEFS = [
     { key: "pendingPaymentVerification", title: "Pending Payment Verification", empty: "Nothing waiting on verification." },
@@ -123,7 +123,10 @@
               : "";
             return (
               `<a class="${cls}" href="job-detail.html?order=${encodeURIComponent(li.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
-              `<div class="q-line1"><span>${escapeHtml(li.description)}</span><span class="q-age">${fmtHours(li.agingHours)}</span></div>` +
+              // A future enteredStatusAt (operating-hours SLA clock not
+              // started yet — see decorateLineItem()'s comment) shows the
+              // real open time instead of a misleading "0m"/negative age.
+              `<div class="q-line1"><span>${escapeHtml(li.description)}</span><span class="q-age">${li.queuedUntil ? "Opens " + fmtDateTime(li.queuedUntil) : fmtHours(li.agingHours)}</span></div>` +
               `<div class="q-line2"><span>${client}${li.dueDate ? " · due " + fmtDate(li.dueDate) : ""}</span>${li.dueRisk ? '<span style="color:#c0392b;font-weight:700">at risk</span>' : ""}</div>` +
               paymentLine + reasonLine +
               `</a>`

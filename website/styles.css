@@ -745,6 +745,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 .product-buy { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); }
 .product-price { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }
 .product-price small { font-weight: 600; font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+/* In-store reference-price rows (inStoreInfoCard()) can stack up to 4 lines
+   per card (Photocopying, Rush ID Print) — the buy-card's bold 20px price
+   treatment is sized for a single number, not a repeated list. */
+.product-custom .product-price { font-family: var(--font-body); font-weight: 600; font-size: 14px; color: var(--color-text); }
 .qty-stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
 .qty-stepper button { width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1;
   transition: background-color 0.15s ease, transform 0.12s ease-out; }

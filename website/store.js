@@ -1260,8 +1260,18 @@
     var kick = document.createElement("span"); kick.className = "card-kicker"; kick.textContent = "In-store only"; card.appendChild(kick);
     var h = document.createElement("h3"); h.className = "card-title"; h.textContent = p.name; card.appendChild(h);
     var body = document.createElement("p"); body.className = "card-body"; body.textContent = p.blurb || ""; card.appendChild(body);
-    var priceEl = document.createElement("p"); priceEl.className = "product-price"; priceEl.textContent = peso(p.price || 0) + " (reference price)";
-    card.appendChild(priceEl);
+    if (p.variants && p.variants.length) {
+      // Multiple price points (e.g. B/W vs Colored × Short/Legal) — list each
+      // as its own reference-price row instead of a single flat number.
+      p.variants.forEach(function (v) {
+        var row = document.createElement("p"); row.className = "product-price";
+        row.textContent = v.label + " — " + peso(v.price) + " (reference price)";
+        card.appendChild(row);
+      });
+    } else {
+      var priceEl = document.createElement("p"); priceEl.className = "product-price"; priceEl.textContent = peso(p.price || 0) + " (reference price)";
+      card.appendChild(priceEl);
+    }
     var note = document.createElement("p"); note.className = "addon-label"; note.textContent = "No online booking — walk in anytime during studio hours.";
     card.appendChild(note);
     return card;

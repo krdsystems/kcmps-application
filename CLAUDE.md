@@ -136,6 +136,18 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   keystroke/drag tick, or the popup would interrupt the shopper mid-input. The hard ceiling (5x
   the product's `softCap`) has no "I agree" path at all — it's genuinely too large to self-serve
   online and always clamps to the ceiling, pointing the shopper at a manual quote instead.
+- **`addons` vs. `variants` pricing on a `products.js` entry**: `store.js`'s `addonsTotal()`
+  sums every addon group's selected option as an independent delta (`base + Σ group deltas`) —
+  it can express a second pricing dimension (e.g. paper size) ONLY when that dimension's
+  surcharge is uniform across every other selection (see `print-bw-document-printing`'s Color +
+  Size groups, both +₱1 Legal regardless of B/W/Colored). The moment a combination's price isn't
+  a clean sum — e.g. `print-photocopying`'s Legal surcharge is +₱1 for B/W but +₱2 for Colored —
+  addon groups structurally can't represent it (no group's delta can depend on another group's
+  current selection). Use a `variants` list instead, one absolute-price entry per combination.
+  `variants[sel].price` is already read as the final price, not additive — no new mechanism
+  needed. This also matters for `inStoreInfoCard()` (`noOnlineOrder: true` products): it renders
+  one reference-price row per `p.variants` entry, so a non-uniform combination product needs
+  `variants` there too, not `addons` (which that renderer doesn't read at all).
 - **Card-deck reveal** (`.hero-deck`/`.hero-stage`, `index.html`): the hero is a `position:
   sticky` card pinned inside a taller wrapper while `#storefront` is pulled up underneath by a
   negative margin. Every number derives from ONE measured input, `H = stage.offsetHeight` —

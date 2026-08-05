@@ -1473,6 +1473,102 @@ Note the template is >51,200 bytes, so `--s3-bucket`/`--s3-prefix` are required 
 plain `--template-file` upload fails with a size error) — this applies to every future update of
 this stack, not just this change.
 
+### Per-mailbox authorization + reply sending (C3, 2026-08-06)
+
+`backend/lib/mail.js` is the single, pure (no-SDK, unit-tested) encoding of the mailbox access
+matrix from `docs/roadmap.md`. All four read Lambdas and the new `send-reply.js` call its
+`canAccessMailbox(claims, mailboxId, PERSONAL_MAILBOXES)` — the permissive `isStaff()` stubs C2
+shipped with are gone, along with their `TODO(C3)`s.
+
+| Mailbox | Who may open it |
+|---|---|
+| `order@mirror.kcmps.com` | Sales, Finance, Admin, Staff |
+| `info@mirror.kcmps.com` | Sales, Admin, Staff |
+| `admin@mirror.kcmps.com` | Admin |
+| `catchall@` / `unparseable@` | Admin (read-only — never sendable) |
+| a personal mailbox | its owner only, matched on the **verified JWT `sub`** |
+| Customer | nothing, anywhere |
+
+Three rules are load-bearing and each has unit tests pinning it:
+
+1. **Ownership is matched on `claims.sub` off the authorizer-verified claims** — never a `sub`
+   from a body/query/path. The roadmap calls this the sharpest trap in the feature.
+2. **The Customer check runs *before* the personal-mailbox lookup.** A test caught this the
+   wrong way round: a customer account whose `sub` also appeared in the personal registry would
+   have been let in by the sub match, which never looked at groups.
+3. **A personal mailbox is owner-only even for Admin.** Group grants deliberately do not win here.
+
+`Staff` (the pre-split group every founder is actually in — see `backend/lib/auth.js`'s header)
+is granted Sales-equivalent shared reach so the feature isn't dead on arrival for today's only
+users. When the finer roles become real, deleting `ROLES.STAFF` from the two arrays in
+`mail.js` is the whole change.
+
+Personal mailboxes are **configuration, not code**: the `PersonalMailboxes` stack parameter
+(default `{}`) holds `{"<mailboxId>":"<cognito sub>"}` and is parsed by `parsePersonalMailboxes()`,
+which never throws — malformed JSON degrades to "no personal mailboxes" (fail closed) rather
+than 500-ing every mail request. A `sub` is an opaque user id, not a credential, so a plain
+parameter is appropriate. **No mailbox-password parameter exists anywhere in this stack** — the
+roadmap's Tier 1 stored-credential IMAP/SMTP design is explicitly not built and not approved.
+
+**New route:** `POST /mail/mailboxes/{mailboxId}/messages/{messageId}/reply` →
+`kcmps-staging-send-mail-reply` (`backend/mail/send-reply.js`). Note it sits under
+`/mail/mailboxes/...`, matching C2's four existing routes. It builds raw MIME (SES's simple
+`SendEmail` cannot set arbitrary headers, and without `In-Reply-To`/`References` every reply
+starts a new thread) and posts it via `SendRawEmail`, then performs the same three side effects
+the mock's `sendReply` documents: the send, a `folder: "SENT"` item under the same `MAILBOX#` PK,
+and `flags.answered`/`flags.seen` on the original.
+
+**Gotcha found on the first live send — the SES *configuration set* needs its own IAM grant.**
+`kcmps.com` has a default configuration set (`my-first-configuration-set`, the one C1 hung the
+bounce/complaint event destination on) which SES applies to every send from that identity
+automatically. `SendRawEmail` then authorizes against the configuration-set ARN **as well as**
+the identity ARN, so granting only the identity fails with:
+
+```
+not authorized to perform `ses:SendRawEmail' on resource `arn:aws:ses:...:configuration-set/my-first-configuration-set'
+```
+
+`MailLambdaRole`'s `mail-ses-send` policy therefore lists both ARNs, plus a
+`StringLike ses:FromAddress: *@kcmps.com` condition so the role can only ever send as a kcmps.com
+address. `mirror.kcmps.com` is a *receiving* identity and is deliberately absent — SES cannot
+send from it, which is why `mail.js`'s `sendAddressFor()` rewrites the domain on the way out
+(`order@mirror.kcmps.com` → `order@kcmps.com`).
+
+**`MailAllowedRecipients` is a staging safety rail, not a product feature.** This Lambda replies
+to *real ingested mail*, so on staging an unguarded reply could email an actual customer from
+the same SES identity that carries live order mail — and a bounce there damages that identity's
+sending reputation. Staging sets it to `admin+admin.kcmps.uat@kcmps.com`; anything else is a
+clean 400 raised **before** any SES call. A production deploy would set it empty (unrestricted).
+
+**Production promotion — NOT RUN, documented only.** Production's 17 Lambdas are still
+CLI-managed and none of this exists there. Promoting needs the owner's explicit go-ahead, and
+then: create the prod `send-mail-reply` function + the four updated read functions from the same
+zips, attach a prod-equivalent of `MailLambdaRole`'s `mail-ses-send` policy (both the identity
+**and** configuration-set ARNs), add the route to `kcmps-checkout-api`, and set
+`MAIL_ALLOWED_RECIPIENTS` empty with `PERSONAL_MAILBOXES` populated for real staff.
+
+**Verified live on staging (2026-08-06), via direct `aws lambda invoke` with synthetic JWT
+claims.** No staff Cognito login was available and no password was entered, so **API Gateway's
+real JWT authorizer was not exercised** — the routes/authorizer wiring is CloudFormation-verified
+only. Everything *inside* the handlers was exercised for real, against the real
+`kcmps-staging` table and real SES:
+
+- Authz matrix: `Production` → **403** on `order@` (and on the reply route); `Customer` → **403**
+  everywhere and an empty mailbox list; `Sales` → **200** on `order@` and `info@`; `Finance` →
+  **200** on `order@` but **403** on `info@`; `Sales` → **403** on `admin@`, `Admin` → **200**.
+  `GET /mail/mailboxes` returned exactly `[order, info]` for Sales/Staff, `[order]` for Finance,
+  all five for Admin, and `[]` for Production/Customer.
+- Reply: one real email from `order@kcmps.com` to `admin+admin.kcmps.uat@kcmps.com` (the only
+  permitted address), `Subject: Re: SES relay test - plain text`, correct `In-Reply-To`.
+  CloudWatch `AWS/SES`: **Delivery == Send, Bounce 0, Complaint 0, Reject 0**.
+- Persistence: the `SENT` item landed under `MAILBOX#order@mirror.kcmps.com` and the original
+  flipped to `flags.answered: true`, both confirmed by direct `dynamodb query`.
+- Guardrails: a non-allowlisted Cc → 400 with the blocked address, before any send; empty body →
+  400; unknown messageId → 404; SES's own rejection surfaced as a 400 with its reason (this is
+  how the configuration-set gotcha above was found — never a raw 500).
+- `node --test backend/lib/lib.test.js backend/lib/business-hours.test.js` → **61/61 green**
+  (was 45; C3 added 16 `mail.js` cases).
+
 **Verified end-to-end (2026-08-06):** sent 3 real emails from
 `admin+admin.kcmps.uat@kcmps.com` to `order@`/`info@`/`admin@mirror.kcmps.com` (plain text, HTML
 multipart, and a `text/plain` attachment respectively) via `aws ses send-email`/`send-raw-email`.

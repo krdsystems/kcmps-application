@@ -99,6 +99,45 @@ Parameters:
     Default: kcmps.com
     Description: SES identity ARN suffix — IAM grant only. FROM_EMAIL/SES_SENDER env vars stay unset (dark), matching notify-unread-messages.js's existing pattern, so staging never actually sends customer email.
 
+  PersonalMailboxes:
+    Type: String
+    Default: "{}"
+    Description: >
+      JSON object mapping a personal staff mailbox to its owner's Cognito
+      `sub`, e.g. {"ken@mirror.kcmps.com":"<sub-uuid>"}. Consumed by
+      backend/lib/mail.js's parsePersonalMailboxes(); an empty object means
+      no personal mailboxes exist yet, which is the current state. NOT a
+      secret (a `sub` is an opaque user id, not a credential), so a plain
+      template parameter is appropriate — the stored *mailbox passwords*
+      the roadmap's Tier 1 would need are explicitly NOT built and no
+      parameter for them exists anywhere in this stack.
+
+  MailAllowedRecipients:
+    Type: String
+    Default: admin+admin.kcmps.uat@kcmps.com
+    Description: >
+      Comma-separated outbound allow-list for send-reply.js. STAGING SAFETY
+      RAIL, not a product feature: this Lambda replies to real ingested
+      mail, so without it a staging test could email an actual customer
+      from the same SES identity that carries live order mail — and a
+      bounce there damages that identity's sending reputation. Empty =
+      unrestricted, which is what a production deploy of this template
+      would set.
+
+  SesConfigurationSet:
+    Type: String
+    Default: my-first-configuration-set
+    Description: >
+      The default configuration set attached to the SesSenderIdentity — the
+      one C1 hung the BOUNCE/COMPLAINT event destination on. SES applies it
+      to every send from that identity automatically, and SendRawEmail then
+      authorizes against the configuration-set ARN *as well as* the identity
+      ARN: granting only the identity fails with "not authorized to perform
+      ses:SendRawEmail on resource .../configuration-set/...". Found the
+      hard way on the first live staging send. This is an IAM grant only —
+      nothing here reads, creates, or modifies the configuration set or the
+      identity itself, both of which carry live customer email.
+
   InboundMailBucket:
     Type: String
     Default: kcmps-inbound-mail-est-2026
@@ -415,6 +454,25 @@ Resources:
                 Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub arn:aws:s3:::${InboundMailBucket}/inbound/*
+        # send-reply.js only. Scoped to the one verified sending identity
+        # (SesSenderIdentity = kcmps.com) — NOT a wildcard — and further
+        # narrowed by a FromAddress condition so this role can only send as
+        # a kcmps.com address even if another identity is ever added to the
+        # account. mirror.kcmps.com is a *receiving* identity and is
+        # deliberately absent: SES cannot send from it.
+        - PolicyName: mail-ses-send
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: SendMailReplyFromVerifiedIdentityOnly
+                Effect: Allow
+                Action: [ses:SendRawEmail, ses:SendEmail]
+                Resource:
+                  - !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderIdentity}
+                  - !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${SesConfigurationSet}
+                Condition:
+                  StringLike:
+                    ses:FromAddress: !Sub "*@${SesSenderIdentity}"
 
   # ---------------------------------------------------------------------------
   # Log groups — 14-day retention for staging (shorter than prod's 30-day
@@ -448,6 +506,7 @@ Resources:
   GetMailMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-mail-messages", RetentionInDays: 14 } }
   GetMailMessageLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-mail-message", RetentionInDays: 14 } }
   MarkMailReadLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-mark-mail-read", RetentionInDays: 14 } }
+  SendMailReplyLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-send-mail-reply", RetentionInDays: 14 } }
 
   # ---------------------------------------------------------------------------
   # Lambda functions — 17, all arm64/index.handler, code from the shared
@@ -880,6 +939,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   GetMailMessagesFunction:
     Type: AWS::Lambda::Function
@@ -896,6 +956,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   GetMailMessageFunction:
     Type: AWS::Lambda::Function
@@ -912,6 +973,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   MarkMailReadFunction:
     Type: AWS::Lambda::Function
@@ -928,6 +990,32 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
+
+  # The one mail Lambda that SENDS. Unlike the customer-notification
+  # Lambdas elsewhere in this template — which stay dark on staging by
+  # leaving FROM_EMAIL/SES_SENDER unset — this one has no "dark" mode:
+  # sending is its entire function, so it is instead constrained by
+  # MailAllowedRecipients (see that parameter) and by the FromAddress
+  # condition on MailLambdaRole's ses-send policy.
+  SendMailReplyFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SendMailReplyLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-send-mail-reply
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 15
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-send-mail-reply.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
+          MAIL_ALLOWED_RECIPIENTS: !Ref MailAllowedRecipients
+          MAIL_SENDER_NAME: KCMPS
 
   # ---------------------------------------------------------------------------
   # HTTP API — same 13 routes/shape as prod's kcmps-checkout-api, same Cognito
@@ -988,6 +1076,7 @@ Resources:
   GetMailMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMailMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
   GetMailMessageIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMailMessageFunction.Arn, PayloadFormatVersion: "2.0" } }
   MarkMailReadIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt MarkMailReadFunction.Arn, PayloadFormatVersion: "2.0" } }
+  SendMailReplyIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SendMailReplyFunction.Arn, PayloadFormatVersion: "2.0" } }
 
   # -- Routes (13 matching prod's route table exactly, + 2 staging-only
   #    Design Asset Library routes not yet present in production) --
@@ -1014,6 +1103,7 @@ Resources:
   RouteGetMailMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes/{mailboxId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailMessagesIntegration}" } }
   RouteGetMailMessage: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes/{mailboxId}/messages/{messageId}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailMessageIntegration}" } }
   RouteMarkMailRead: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${MarkMailReadIntegration}" } }
+  RouteSendMailReply: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/reply", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SendMailReplyIntegration}" } }
 
   # -- Lambda invoke permissions (API Gateway -> each function, wildcard stage/method) --
   PermCreateOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
@@ -1037,6 +1127,7 @@ Resources:
   PermGetMailMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages" } }
   PermGetMailMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*" } }
   PermMarkMailRead: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref MarkMailReadFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*/read" } }
+  PermSendMailReply: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SendMailReplyFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*/reply" } }
 
   # ---------------------------------------------------------------------------
   # EventBridge schedules — same cadence as prod.

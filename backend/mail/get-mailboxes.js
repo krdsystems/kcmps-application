@@ -2,49 +2,51 @@
    KCMPS staff mail API — GET /mail/mailboxes
    ============================================================
    Mirrors dashboard-data.js's getMailboxes(): [{id, address, label, kind,
-   canSend, total, unreadCount}]. `canSend` is always false here — sending
-   (SMTP relay) is out of scope for this Lambda set (C1/C2's job was
-   receive-only; see docs/roadmap.md's "Staff email panel" track for the
-   send side, still gated on the Spacemail app-password finding).
+   canSend, total, unreadCount}].
 
-   STATIC MAILBOX LIST, not derived from what's actually landed in the
-   table — same reasoning as the mock's seedMailboxes(): the dashboard
-   needs a stable list to render tabs from even when a mailbox is empty.
-   MAILBOXES below is the source of truth for what mirror.kcmps.com
-   addresses this system treats as real staff mailboxes; anything else
-   inbound mail is routed to (ingest-inbound.js's CATCHALL_MAILBOX /
-   UNPARSEABLE_MAILBOX) is intentionally left off this list — see the
-   TODO below for why they're still reachable.
+   THE LIST IS NOW PER-CALLER, not a hardcoded constant. ../lib/mail.js's
+   visibleMailboxes(claims, PERSONAL_MAILBOXES) returns only the mailboxes
+   this staffer may actually open — the shared shop inboxes their Cognito
+   groups allow, plus their own personal mailbox if one is registered. The
+   `roles` allow-list is stripped before it reaches the client (see that
+   module), so the response never advertises who else can read a mailbox.
 
-   AUTH: isStaff() only, for now. TODO(C3): per-mailbox access is supposed
-   to be governed by backend/lib/mail.js's MAILBOX_ACCESS model
-   (docs/roadmap.md ~608-617: order@ -> Sales/Finance/Admin, info@ ->
-   Sales/Admin, personal mailboxes -> owner only) — that file doesn't
-   exist yet. Every read-path Lambda in backend/mail/ has the same TODO;
-   fix them together so the model can't drift between endpoints.
+   VISIBILITY IS NOT AUTHORIZATION. docs/roadmap.md is explicit that every
+   other handler must re-check, because nothing stops a client asking
+   get-mail-messages.js for a mailboxId this endpoint never returned — and
+   all three of those handlers now do, via the same canAccessMailbox().
+
+   STILL A STATIC MAILBOX LIST in the sense that matters: it comes from
+   MAILBOX_ACCESS/PERSONAL_MAILBOXES, not from what's landed in the table
+   — same reasoning as the mock's seedMailboxes(), the dashboard needs a
+   stable set of tabs to render even when a mailbox is empty.
+
+   `canSend` is now true for the shared + personal mailboxes (send-reply.js
+   exists as of C3) and false for the operational catchall/unparseable
+   mailboxes — replying *from* an address that only exists because routing
+   failed is never right.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand } = require("@aws-sdk/lib-dynamodb");
-const { mailboxPk, extractClaims, isStaff } = require("../lib");
+const { mailboxPk, extractClaims, visibleMailboxes, parsePersonalMailboxes } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
-const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 
-// TODO(C3): replace with backend/lib/mail.js's MAILBOX_ACCESS-driven list,
-// filtered per caller's groups instead of hardcoded here.
-const MAILBOXES = [
-  { id: "order@mirror.kcmps.com", address: "order@mirror.kcmps.com", label: "Orders", kind: "shared", canSend: false },
-  { id: "info@mirror.kcmps.com", address: "info@mirror.kcmps.com", label: "General enquiries", kind: "shared", canSend: false },
-  { id: "admin@mirror.kcmps.com", address: "admin@mirror.kcmps.com", label: "Admin", kind: "shared", canSend: false },
-];
+const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
-  if (!isStaff(claims)) return response(403, { error: "Forbidden" });
 
-  const mailboxes = await Promise.all(MAILBOXES.map(async (mb) => {
+  const allowed = visibleMailboxes(claims, PERSONAL_MAILBOXES);
+  // An authenticated caller with no mailboxes (Customer, or Production
+  // with no personal mailbox registered) gets an empty list, not a 403 —
+  // the dashboard renders "no mailboxes available" rather than an error.
+  if (!allowed.length) return response(200, { mailboxes: [] });
+
+  const mailboxes = await Promise.all(allowed.map(async (mb) => {
     const res = await client.send(new QueryCommand({
       TableName: TABLE,
       KeyConditionExpression: "PK = :pk",
@@ -53,13 +55,17 @@ exports.handler = async (event) => {
       // documents for its own per-mailbox scan, acceptable at this
       // mailbox's expected volume; revisit with a counter item if a
       // mailbox ever grows large enough for this to matter.
-      ProjectionExpression: "flags",
+      ProjectionExpression: "flags, folder",
     }));
     const items = res.Items || [];
+    // INBOX only for the counts: a reply this staffer just sent lands as a
+    // folder:"SENT" item under the same PK (see send-reply.js), and it
+    // would otherwise inflate the mailbox's `total` on every send.
+    const inbox = items.filter((m) => (m.folder || "INBOX") === "INBOX");
     return {
       ...mb,
-      total: items.length,
-      unreadCount: items.filter((m) => m.flags && m.flags.seen === false).length,
+      total: inbox.length,
+      unreadCount: inbox.filter((m) => m.flags && m.flags.seen === false).length,
     };
   }));
 

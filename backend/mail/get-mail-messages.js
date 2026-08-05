@@ -27,13 +27,17 @@
    Update/FilterExpression attribute names collide with DynamoDB's
    reserved list (`scan`/`status`/`name`/`size`/`tags`).
 
-   AUTH: isStaff() only — see get-mailboxes.js's TODO(C3) for the
-   per-mailbox MAILBOX_ACCESS model this still needs.
+   AUTH: ../lib/mail.js's canAccessMailbox(), re-checked here on the
+   path's mailboxId — get-mailboxes.js decides visibility, but a client can
+   ask this endpoint for any mailboxId it likes, so visibility is never
+   sufficient. See that module's header for the model.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand } = require("@aws-sdk/lib-dynamodb");
-const { mailboxPk, extractClaims, isStaff } = require("../lib");
+const { mailboxPk, extractClaims, canAccessMailbox, parsePersonalMailboxes } = require("../lib");
+
+const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 
 const TABLE = process.env.TABLE_NAME;
 const QUERY_CAP = 1000;
@@ -44,10 +48,16 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
-  if (!isStaff(claims)) return response(403, { error: "Forbidden" });
 
   const mailboxId = decodeURIComponent(event.pathParameters?.mailboxId || "");
   if (!mailboxId) return response(400, { error: "mailboxId path parameter is required" });
+  if (!canAccessMailbox(claims, mailboxId, PERSONAL_MAILBOXES)) {
+    // 403, not 404: the caller is authenticated staff, just not for THIS
+    // mailbox. Deliberately identical for "mailbox exists but you may not
+    // open it" and "no such mailbox" so the response can't be used to
+    // enumerate which personal mailboxes exist.
+    return response(403, { error: "Forbidden" });
+  }
 
   const qs = event.queryStringParameters || {};
   const folder = qs.folder || "INBOX";

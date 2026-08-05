@@ -9,3 +9,9 @@ Thumbs.db
 # Remove stale/merged ones with `git worktree remove .claude/worktrees/<name>`
 # instead of leaving them tracked or committed.
 .claude/worktrees/
+
+# Vendored Lambda dependencies. `npm install` in backend/<dir>/ is a BUILD
+# step (the zips need node_modules inlined — there is no bundler), not
+# something to track: package.json + package-lock.json are the source of
+# truth, and no backend/*/node_modules has ever been committed.
+backend/*/node_modules/

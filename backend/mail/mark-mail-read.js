@@ -16,12 +16,15 @@
    cheap insurance, not because `flags`/`seen` currently collide with
    DynamoDB's reserved list.
 
-   AUTH: isStaff() only — see get-mailboxes.js's TODO(C3).
+   AUTH: ../lib/mail.js's canAccessMailbox(), re-checked on the path's
+   mailboxId — see that module's header.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
-const { mailboxPk, mailMessageSk, extractClaims, isStaff } = require("../lib");
+const { mailboxPk, mailMessageSk, extractClaims, canAccessMailbox, parsePersonalMailboxes } = require("../lib");
+
+const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 const { hashMessageId } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
@@ -30,11 +33,17 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
-  if (!isStaff(claims)) return response(403, { error: "Forbidden" });
 
   const mailboxId = decodeURIComponent(event.pathParameters?.mailboxId || "");
   const messageId = decodeURIComponent(event.pathParameters?.messageId || "");
   if (!mailboxId || !messageId) return response(400, { error: "mailboxId and messageId path parameters are required" });
+  if (!canAccessMailbox(claims, mailboxId, PERSONAL_MAILBOXES)) {
+    // 403, not 404: the caller is authenticated staff, just not for THIS
+    // mailbox. Deliberately identical for "mailbox exists but you may not
+    // open it" and "no such mailbox" so the response can't be used to
+    // enumerate which personal mailboxes exist.
+    return response(403, { error: "Forbidden" });
+  }
 
   let body = {};
   try { body = event.body ? JSON.parse(event.body) : {}; } catch { /* default below */ }

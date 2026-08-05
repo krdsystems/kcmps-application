@@ -46,6 +46,33 @@ Parameters:
       only for the GuardDuty EventBridge rule filter and the jobs Lambda's quarantine
       IAM permissions.
 
+  PublicAssetsBucket:
+    Type: String
+    Default: kcmps-online-bucket-est-2026
+    Description: >
+      The PUBLIC storefront/site bucket the Design Asset Library copies a published
+      design's web-ready image into, and where design-manifest.json is written. Same
+      bucket for both environments — they are separated by PublicAssetsKeyPrefix
+      below (dev.kcmps.com's CloudFront serves the dev-site/ prefix as its site root),
+      exactly like the frontend's dev vs prod s3 syncs.
+
+  PublicAssetsKeyPrefix:
+    Type: String
+    Default: dev-site/assets/designs/
+    Description: >
+      BUCKET key prefix published design images + design-manifest.json are written
+      under. Staging writes under dev-site/ so it can never touch the live site's
+      objects; production's value is "assets/designs/". Must end with a slash.
+
+  PublicAssetsPath:
+    Type: String
+    Default: assets/designs/
+    Description: >
+      SITE-RELATIVE path the manifest's `image` values are built from — what a browser
+      requests. Identical in both environments because dev's CloudFront maps
+      PublicAssetsKeyPrefix onto the site root; that is why this is a separate
+      parameter from PublicAssetsKeyPrefix and not derived from it. Must end with a slash.
+
   ArtifactsBucket:
     Type: String
     Default: kcmps-lambda-artifacts-staging
@@ -250,6 +277,73 @@ Resources:
                 Action: s3:ListBucketVersions
                 Resource: !Sub arn:aws:s3:::${DesignOriginalsBucket}
 
+  # Design Asset Library — its own role rather than reusing the staff-api one.
+  # These two Lambdas are the only thing in the account that may copy an object
+  # OUT of the private originals bucket INTO the public site bucket, so that
+  # grant stays isolated to exactly the two prefixes involved.
+  DesignLibraryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-design-library-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: design-library-inline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TableReadWrite
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/index/*
+              - Sid: TableTransact
+                # PutItem above is required alongside this — DynamoDB checks the
+                # constituent action for each item inside a transaction, not just
+                # the transact-level action (see README's staff-api role note).
+                Effect: Allow
+                Action: dynamodb:TransactWriteItems
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: design-library-s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Presign PUT + read-back-for-copy, scoped to the one prefix
+              # get-upload-url.js can ever generate a key under. A presigned URL
+              # carries the signer's permissions, so this scope IS the blast
+              # radius of a leaked URL.
+              # GetObjectTagging is required even though publish-design.js sets
+              # TaggingDirective=REPLACE: S3 evaluates the source object's tags
+              # on a CopyObject regardless, and its absence surfaces only as a
+              # bare "Access Denied" with nothing naming tags (this exact gap
+              # 403'd the first live publish).
+              - Sid: DesignOriginalsReadWrite
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:GetObjectTagging]
+                Resource: !Sub arn:aws:s3:::${DesignOriginalsBucket}/designs/*
+              # Write side of the private->public copy, plus the manifest.
+              # Scoped to the designs prefix + the single manifest key, so this
+              # role can never overwrite an arbitrary object on the live site.
+              - Sid: PublishWebReadyImageAndManifest
+                Effect: Allow
+                Action: [s3:PutObject, s3:PutObjectTagging]
+                Resource:
+                  - !Sub arn:aws:s3:::${PublicAssetsBucket}/${PublicAssetsKeyPrefix}*
+              - Sid: DeletePublishedImageOnPurge
+                # Reserved for the archive/purge pass — same tight prefix.
+                Effect: Allow
+                Action: [s3:DeleteObject]
+                Resource: !Sub arn:aws:s3:::${PublicAssetsBucket}/${PublicAssetsKeyPrefix}*
+
   PostConfirmationLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -294,6 +388,8 @@ Resources:
   NotifyUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-notify-unread-messages", RetentionInDays: 14 } }
   HandleScanResultLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-handle-scan-result", RetentionInDays: 14 } }
   PostConfirmationLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-post-confirmation", RetentionInDays: 14 } }
+  DesignUploadUrlLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-design-upload-url", RetentionInDays: 14 } }
+  PublishDesignLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-publish-design", RetentionInDays: 14 } }
 
   # ---------------------------------------------------------------------------
   # Lambda functions — 17, all arm64/index.handler, code from the shared
@@ -579,6 +675,46 @@ Resources:
       Timeout: 10
       Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-post-confirmation.zip" }
 
+  # -- Design Asset Library (docs/roadmap.md's parallel track) --
+  DesignUploadUrlFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DesignUploadUrlLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-design-upload-url
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt DesignLibraryLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-design-upload-url.zip" }
+      Environment:
+        Variables:
+          DESIGN_ORIGINALS_BUCKET: !Ref DesignOriginalsBucket
+
+  PublishDesignFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PublishDesignLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-publish-design
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt DesignLibraryLambdaRole.Arn
+      MemorySize: 256
+      # Longer than the 10s house default: a publish does a scan-verdict read, a
+      # transactional write, a server-side S3 copy of a multi-MB image, and a full
+      # manifest regeneration (a paginated Scan) in one request.
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-publish-design.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          DESIGN_ORIGINALS_BUCKET: !Ref DesignOriginalsBucket
+          PUBLIC_ASSETS_BUCKET: !Ref PublicAssetsBucket
+          PUBLIC_ASSETS_KEY_PREFIX: !Ref PublicAssetsKeyPrefix
+          PUBLIC_ASSETS_PATH: !Ref PublicAssetsPath
+
   # ---------------------------------------------------------------------------
   # HTTP API — same 13 routes/shape as prod's kcmps-checkout-api, same Cognito
   # JWT authorizer config (literally the same pool/client, since staging reuses
@@ -627,7 +763,11 @@ Resources:
   GetUnreadMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetUnreadMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
   AddCorrespondenceIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt AddCorrespondenceFunction.Arn, PayloadFormatVersion: "2.0" } }
 
-  # -- Routes (13, matching prod's route table exactly) --
+  DesignUploadUrlIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt DesignUploadUrlFunction.Arn, PayloadFormatVersion: "2.0" } }
+  PublishDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PublishDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
+
+  # -- Routes (13 matching prod's route table exactly, + 2 staging-only
+  #    Design Asset Library routes not yet present in production) --
   RouteCreateOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders", Target: !Sub "integrations/${CreateOrderIntegration}" } }
   RouteSubmitPaymentProof: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/payment-proof", Target: !Sub "integrations/${SubmitPaymentProofIntegration}" } }
   RouteUploadDesignFile: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /design-uploads", Target: !Sub "integrations/${UploadDesignFileIntegration}" } }
@@ -642,6 +782,9 @@ Resources:
   RouteGetUnreadMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /messages/unread", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetUnreadMessagesIntegration}" } }
   RouteAddCorrespondence: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/correspondence", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AddCorrespondenceIntegration}" } }
 
+  RouteDesignUploadUrl: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs/upload-url", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DesignUploadUrlIntegration}" } }
+  RoutePublishDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PublishDesignIntegration}" } }
+
   # -- Lambda invoke permissions (API Gateway -> each function, wildcard stage/method) --
   PermCreateOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
   PermSubmitPaymentProof: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SubmitPaymentProofFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/payment-proof" } }
@@ -655,6 +798,8 @@ Resources:
   PermGetMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
   PermSendMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SendMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
   PermGetUnreadMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetUnreadMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/messages/unread" } }
+  PermDesignUploadUrl: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref DesignUploadUrlFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/upload-url" } }
+  PermPublishDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PublishDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
 
   # ---------------------------------------------------------------------------

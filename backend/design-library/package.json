@@ -1,0 +1,11 @@
+{
+  "name": "kcmps-design-library-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/design-library/*.js (Design Asset Library — docs/roadmap.md's parallel track). Deploy each handler .js as its own Lambda; design-types.js/manifest.js/scan-verdict.js are shared modules zipped alongside, plus ../lib on the module path. Same reference-only role as backend/checkout/package.json.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0"
+  }
+}

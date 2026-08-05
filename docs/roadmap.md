@@ -461,22 +461,29 @@ convention (`products.js`) so the library and the storefront can never drift int
 naming schemes.
 
 **Checklist:**
-- [ ] Private S3 bucket `kcmps-design-originals-est-2026` — versioned, public access blocked,
+- [x] Private S3 bucket (staging: `kcmps-design-originals-staging`, 2026-08-05) — versioned, public access blocked,
   `NoncurrentVersionTransition` to Glacier at 30 days + `NoncurrentVersionExpiration`
   `NewerNoncurrentVersions: 5`
-- [ ] `DESIGN#<id>` META shape: `name`, `description`, `category` (=leaf id), `tags`,
+- [x] `DESIGN#<id>` META shape (2026-08-06, `backend/design-library/publish-design.js`): `name`, `description`, `category` (=leaf id), `tags`,
   `uploadedBy` (Cognito `sub`), `s3KeyOriginal`, `s3KeyWeb`, `status` (`draft`/`published`/
   `archived`), `deletedAt` (soft-delete only)
-- [ ] `getUploadUrl` Lambda — presigned PUT to the private bucket, key
+- [x] `getUploadUrl` Lambda (2026-08-06, staging only — `backend/design-library/get-upload-url.js`) — presigned PUT to the private bucket, key
   `designs/<category>/<uuid>-<sanitized-name>.<ext>`, 300MB size ceiling, single PUT
-- [ ] `publishDesign` Lambda — on upload confirm: copies the caller-supplied web-ready file
+- [x] `publishDesign` Lambda (2026-08-06, staging only — `backend/design-library/publish-design.js`) — on upload confirm: copies the caller-supplied web-ready file
   (no server-side resize) into the public storefront assets path via `titleFromFilename()`,
   writes the `DESIGN#` record, and regenerates the design-grid manifest (same pattern as the
   hero carousel's manifest, new leaf)
 - [ ] Recycle-bin sweep Lambda (15-min cron, shape of `expire-pending-orders.js`) — archives
   older than 90 days get hard-deleted from both DynamoDB and both S3 objects
-- [ ] Wire the 4 API routes (`POST /designs/upload-url`, `POST /designs`, `GET /designs`,
-  `PATCH /designs/{id}`) onto the existing HTTP API Gateway, JWT-authorizer-gated
+- [~] Wire the 4 API routes onto the existing HTTP API Gateway, JWT-authorizer-gated —
+  **2 of 4 live on staging** (`POST /designs/upload-url`, `POST /designs`, both gated to the
+  Production/Sales/Admin groups via `requireRole()`, deployed 2026-08-06 in
+  `kcmps-backend-staging`). `GET /designs` and `PATCH /designs/{id}` not built. **Production
+  has neither route** — promotion is owner-gated, see `backend/infra/README.md`'s "Design
+  Asset Library Lambdas" section
+- [ ] `PATCH /designs/{id}` also owns the missing **draft → published** transition:
+  `publish-design.js` refuses a second write for the same designId, so a design saved as a
+  draft today cannot later be published without it
 - [x] A **"Soon"-badged placeholder page exists**: `website/dashboard/design-library.html`
   (nav key `design`, 2026-07-31). It already carries the correct shell, `mount("design")`, and
   topbar title — building the real page means replacing its `<main>` contents, nothing else.
@@ -492,6 +499,18 @@ naming schemes.
 
 **Resolved decision (2026-08-02):** max upload size is 300MB per file via a single presigned
 PUT — no multipart upload needed at that ceiling.
+
+**Implemented 2026-08-06 (staging only) — the manifest is now a contract.** The upload +
+publish backend is live on `kcmps-backend-staging` and was exercised end-to-end: presign →
+real PUT of both files → GuardDuty verdict → publish → `design-manifest.json` written to the
+public bucket under the `dev-site/assets/designs/` prefix. The fail-closed scan gate was
+verified against a real `PENDING` state (publish refused with `stillScanning: true`, no record
+written, no public object created) and then against real `NO_THREATS_FOUND` verdicts (publish
+succeeded). **The exact `design-manifest.json` JSON shape is documented in
+`backend/design-library/publish-design.js`'s header** — that is the spec the still-unbuilt
+`store.js` `buildDesignGrid()` merge (the "Correction found during planning" item above) must
+read. Its `image` field is site-root-relative with no leading slash, which is what makes the
+same manifest correct on both `kcmps.com` and `dev.kcmps.com`.
 
 ---
 

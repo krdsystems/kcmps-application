@@ -16,20 +16,20 @@
    Asset Library"; not to be confused with design-uploads/ above, which is
    a customer's pre-checkout upload on the payment-uploads bucket):
 
-     designs/<category>/<uuid>-<name>.<ext>  design-library/publish-design.js (not yet built)
+     designs/<category>/<designId>/original.<ext>  design-library/get-upload-url.js
+     designs/<category>/<designId>/web.<ext>       design-library/get-upload-url.js
 
    That bucket has its own GuardDuty Malware Protection plan and its own
    EventBridge rule (GuardDutyDesignOriginalsScanResultRule in
    backend-lambdas.cfn.yaml) targeting this SAME function, so this handler
    is bucket-agnostic — routing below is by key prefix, which doesn't
-   collide across buckets today. Until the `publishDesign` Lambda and the
-   `DESIGN#<id>` item shape exist, a `designs/` verdict has no record to
-   annotate yet, so it falls through to the standalone SCAN#<ref> item
-   below (already bucket-agnostic, keyed on `s3://<bucket>/<key>`) — that
-   alone is enough to keep the fail-closed read rule correct: a future
-   `getDesigns`-style read path just needs to look up that SCAN# item the
-   same way get-orders.js does, exactly as markDesignFile()'s fallback
-   below documents for design-uploads/.
+   collide across buckets today. A `designs/` verdict usually arrives
+   BEFORE its DESIGN#<id> record exists (the files are uploaded in step 1,
+   the record is written in step 2 by design-library/publish-design.js),
+   so markDesignLibraryFile() annotates the record when there is one and
+   otherwise leaves the standalone SCAN#<ref> item below to carry it. That
+   item is what design-library/scan-verdict.js reads to enforce the
+   fail-closed publish gate, so the verdict is never lost either way.
 
    Two jobs, in this order:
 
@@ -204,7 +204,7 @@ function recordVerdict(bucket, key, verdict) {
   if (key.startsWith("messages/")) return markMessageAttachment(key, ref, verdict);
   if (key.startsWith("correspondence/")) return markCorrespondenceAttachment(key, ref, verdict);
   if (key.startsWith("design-uploads/")) return markDesignFile(ref, verdict);
-  if (key.startsWith("designs/")) return markDesignLibraryFile(ref, verdict);
+  if (key.startsWith("designs/")) return markDesignLibraryFile(key, ref, verdict);
   console.warn("handle-scan-result: unrecognized prefix, nothing to annotate:", key);
   return Promise.resolve();
 }
@@ -324,19 +324,53 @@ async function markDesignFile(ref, verdict) {
   console.log("handle-scan-result: no order references", ref, "yet — standalone verdict stands");
 }
 
-// designs/<category>/<uuid>-<name>.<ext> — Design Asset Library originals
-// bucket. No DESIGN#<id> record exists yet (publishDesign Lambda, part of
-// a later pass, is what will create s3KeyOriginal referencing this key) —
-// this is a Scan-by-attribute placeholder in the same shape as
-// markDesignFile() above, kept dark (returns immediately, no-op) until
-// that item shape lands, so this function doesn't Scan the whole table on
-// every scan result for an attribute that can never match yet. The
-// standalone SCAN#<ref> item (written unconditionally above, before this
-// routing function runs) already carries the verdict in the meantime —
-// fail-closed holds today via that fallback the same way it does for
-// design-uploads/ before an order exists.
-async function markDesignLibraryFile(ref, verdict) {
-  console.log("handle-scan-result: designs/ verdict recorded on standalone SCAN# item only —", ref, "(DESIGN# record annotation not yet implemented, see file header)");
+// designs/<category>/<designId>/{original,web}.<ext> — Design Asset
+// Library originals bucket. Unlike design-uploads/ above, the designId is
+// IN the key, so this is a direct Get, never a Scan.
+//
+// The DESIGN# record usually does NOT exist yet when this fires: the two
+// files are PUT by design-library/get-upload-url.js's presigned URLs and
+// the record is only written when the designer submits the form
+// (publish-design.js), so the scan routinely completes first. That is
+// fine and is not a lost verdict — publish-design.js reads the standalone
+// SCAN# item (written unconditionally above, before this routing runs)
+// via design-library/scan-verdict.js and refuses to publish anything
+// without a NO_THREATS_FOUND on BOTH objects. This annotation is the
+// convenience copy for the dashboard's library/recycle-bin views, in the
+// same spirit as the other three prefixes; the SCAN# item stays the
+// source of truth for the fail-closed gate.
+async function markDesignLibraryFile(key, ref, verdict) {
+  const parts = key.split("/"); // designs/<category>/<designId>/<basename>
+  const designId = parts[2];
+  const which = (parts[3] || "").startsWith("web") ? "web" : "original";
+  if (!designId) return;
+  // Two writes: create the map if absent, then set this file's slot inside
+  // it. `scanVerdicts`, not `scan` — SCAN is a DynamoDB reserved word, and
+  // the resulting ValidationException is swallowed by the caller's catch,
+  // so it looks exactly like "nothing happened" (it did, once).
+  try {
+    await client.send(new UpdateCommand({
+      TableName: TABLE,
+      Key: { PK: `DESIGN#${designId}`, SK: metaSk() },
+      UpdateExpression: "SET scanVerdicts = if_not_exists(scanVerdicts, :empty)",
+      ConditionExpression: "attribute_exists(PK)",
+      ExpressionAttributeValues: { ":empty": {} },
+    }));
+    await client.send(new UpdateCommand({
+      TableName: TABLE,
+      Key: { PK: `DESIGN#${designId}`, SK: metaSk() },
+      UpdateExpression: "SET scanVerdicts.#w = :v",
+      ConditionExpression: "attribute_exists(PK)",
+      ExpressionAttributeNames: { "#w": which },
+      ExpressionAttributeValues: { ":v": { ...verdict, ref } },
+    }));
+  } catch (err) {
+    if (err.name === "ConditionalCheckFailedException") {
+      console.log("handle-scan-result: no DESIGN# record for", designId, "yet — standalone verdict stands");
+      return;
+    }
+    throw err;
+  }
 }
 
 async function withRetry(fn) {

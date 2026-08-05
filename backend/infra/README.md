@@ -310,15 +310,70 @@ whole account, see the "Staging" section below). Targets the same
 `JobsLambdaRole` inline policy (`jobs-s3-quarantine`) was extended with quarantine
 (`DeleteObject`/`DeleteObjectVersion`/`ListBucketVersions`) permissions scoped to
 `kcmps-design-originals-staging/designs/*` in the same CloudFormation deploy.
-`backend/jobs/handle-scan-result.js` routes `designs/` keys to a `markDesignLibraryFile()`
-stub — the standalone `SCAN#<ref>` verdict item (already bucket-agnostic) is written
-unconditionally regardless, so fail-closed reads are correct today even before the
-`publishDesign` Lambda and `DESIGN#<id>` item shape exist to annotate directly; see that file's
-header and the stub's own comment for what a future pass needs to fill in.
+`backend/jobs/handle-scan-result.js` routes `designs/` keys to `markDesignLibraryFile()`,
+which annotates the `DESIGN#<id>` record's `scanVerdicts.{original,web}` map when that record
+exists (a direct `Get` — the designId is *in* the key, unlike `design-uploads/`'s bare uuid).
+It usually does not exist yet: the two files are uploaded in step 1 and the record is written
+in step 2, so the scan normally finishes first. That is fine — the standalone `SCAN#<ref>`
+verdict item is written unconditionally before routing, and it is what the publish gate
+actually reads. **The record annotation is a convenience copy for the dashboard; the `SCAN#`
+item is the source of truth.**
 
 Production needs the CloudFormation equivalent applied to the production Lambda stack (still
 CLI-managed, not this template) once a production `kcmps-design-originals-est-2026` bucket and
 GuardDuty plan exist — not done here.
+
+### Design Asset Library Lambdas — staging only (2026-08-06)
+
+Two new functions in `backend/design-library/`, deployed as part of `kcmps-backend-staging`
+(**not** production — production has neither an originals bucket nor these routes; see the
+promotion checklist at the end of this subsection):
+
+| Function | Route | Purpose |
+|---|---|---|
+| `kcmps-staging-design-upload-url` | `POST /designs/upload-url` (JWT) | `get-upload-url.js` — presigned PUT URLs for the source file and the web-ready image, both onto the private originals bucket under `designs/<category>/<designId>/{original,web}.<ext>` |
+| `kcmps-staging-publish-design` | `POST /designs` (JWT) | `publish-design.js` — writes the `DESIGN#<id>` META record + an `EVENT#` audit item, then (on publish) copies the web-ready image into the public bucket and regenerates `design-manifest.json` |
+
+Both are gated to the **Production/Sales/Admin** groups via `backend/lib/auth.js`'s
+`requireRole()` — deliberately *not* `isStaff()`, which would also let `Finance` write to the
+design library. Verified live: a `[Finance]` claim gets 403, a `[Customer]` claim gets 403,
+`[Production Admin]` and `[Sales]` succeed.
+
+New IAM role `kcmps-staging-design-library-lambda-role`, separate from the staff-api role
+because these two Lambdas hold the **only** grant in the account that moves an object from the
+private originals bucket into the public site bucket. That grant is scoped to
+`designs/*` on the source and to `PublicAssetsKeyPrefix*` on the destination — it can never
+overwrite an arbitrary live-site object.
+
+Three parameters control where a published design lands, and the split between the last two
+is load-bearing rather than redundant:
+- `PublicAssetsBucket` — `kcmps-online-bucket-est-2026` in **both** environments (same bucket
+  the site is served from; there is no second bucket for dev).
+- `PublicAssetsKeyPrefix` — the *bucket key* prefix, `dev-site/assets/designs/` on staging and
+  `assets/designs/` in production. This is what keeps a staging publish from touching the live
+  site's objects, exactly like the frontend's dev-vs-prod `s3 sync` targets.
+- `PublicAssetsPath` — the *site-relative* path the manifest's `image` values are built from,
+  `assets/designs/` in **both** environments, because `dev.kcmps.com`'s CloudFront serves the
+  `dev-site/` prefix as its site root. Deriving this from `PublicAssetsKeyPrefix` would emit
+  `dev-site/assets/...` into the dev manifest and 404 every image.
+
+**Two gotchas found by running it, both of which failed silently-ish:**
+1. `CopyObject` copies the source object's tags by default, which requires
+   `s3:GetObjectTagging` on the source and `s3:PutObjectTagging` on the destination. Missing
+   them surfaces as a bare `AccessDenied` that names nothing about tags. `publish-design.js`
+   now sets `TaggingDirective: REPLACE` with an empty `Tagging` (the public copy should not
+   carry GuardDuty's internal scan-status tag anyway) **and** the role grants both actions.
+2. `scan` is a DynamoDB **reserved word**. `handle-scan-result.js`'s design annotation
+   originally wrote to an attribute of that name; the resulting `ValidationException` was
+   swallowed by the handler's never-throw catch, so it looked exactly like "the update just
+   didn't happen." The attribute is `scanVerdicts`.
+
+**Promotion to production — NOT run, owner-gated.** In order: create the production originals
+bucket + GuardDuty plan (commands above), then add to whatever manages production's Lambdas
+the two functions, the `kcmps-design-library-lambda-role`, the two JWT routes + integrations +
+invoke permissions, and set `PublicAssetsKeyPrefix=assets/designs/`. Note that publishing in
+production writes to the **live site's** asset prefix, so the first production publish is a
+real content change to `kcmps.com` — treat it as one.
 
 ## Checkout Lambdas — deployed (2026-07-31)
 

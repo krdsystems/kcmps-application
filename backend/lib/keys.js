@@ -143,6 +143,14 @@ function messageSk(isoTimestamp, msgId) {
   return `MSG#${isoTimestamp}#${msgId}`;
 }
 
+// ---- Design Asset Library (docs/roadmap.md "Parallel track — Design Asset Library") ----
+// PK: DESIGN#<designId>, SK: "META" (reuses metaSk()) for the design record;
+// SK: EVENT#<ISO>#DESIGN for its append-only audit trail (same EVENT# convention
+// as orders, so one day's audit read is uniform across item types).
+function designPk(designId) {
+  return `DESIGN#${designId}`;
+}
+
 module.exports = {
   orderPk,
   metaSk,
@@ -166,4 +174,5 @@ module.exports = {
   configPk,
   messageSk,
   scanResultPk,
+  designPk,
 };

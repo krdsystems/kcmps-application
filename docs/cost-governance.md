@@ -176,3 +176,33 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
     staging-first rule; the equivalent CLI commands are documented in
     `backend/infra/README.md`'s "Design originals bucket" section for when the owner approves
     promotion, but nothing was run against `kcmps-design-originals-est-2026`.
+
+- **Design Asset Library Lambdas, staging only** (`kcmps-staging-design-upload-url` +
+  `kcmps-staging-publish-design` + a dedicated IAM role + 2 JWT API routes, deployed
+  2026-08-06 to `kcmps-backend-staging`) — **~₱0/mo**, and the reasons are worth recording
+  because two of them were deliberate design choices, not luck:
+  - **Two more Lambdas, no new fixed cost.** Both are 256MB/arm64, invoked only when a staff
+    member uploads or publishes a design — a handful of invocations per week at most. That is
+    orders of magnitude inside the always-free 1M requests/mo, and both are staff-admin
+    actions rather than a customer-facing critical path, so **no provisioned concurrency**
+    (the roadmap's own sizing note). Cold starts are acceptable here; paying to avoid them
+    would not be.
+  - **No file bytes pass through a Lambda.** Both uploads go browser→S3 on a presigned PUT,
+    and the publish step uses a server-side S3 `CopyObject`. A 300MB PSD therefore costs no
+    Lambda duration at all — the alternative (proxying bytes) would have meant a much larger
+    memory tier *and* a long duration on the single most expensive dimension.
+  - **No image processing.** The designer supplies the web-ready derivative; there is no
+    resize/transcode pipeline (the earlier decision-log entry on this stands, now actually
+    implemented). Sharp-in-Lambda on a 300MB source would have been the single largest line
+    item in this whole feature.
+  - **Manifest regeneration is a full table `Scan` per publish.** Cheap and correct at the
+    catalog's current size (tens of items, a handful of publishes a week), and deliberately
+    chosen over provisioning a GSI that would cost storage continuously to serve a query that
+    runs a few times a week. **Revisit trigger unchanged from the roadmap: ~500 designs**, or
+    if publish latency becomes visible.
+  - **Public-bucket storage** for published web-ready images rides the existing storefront
+    bucket + CloudFront distribution — no second distribution, no new origin, and the images
+    are served with a 1-year immutable `Cache-Control` so repeat views hit the CDN rather
+    than S3.
+  - **Not deployed to production** — no production Lambdas, routes, or bucket writes exist for
+    this feature, so production spend is unchanged at exactly ₱0. Promotion is owner-gated.

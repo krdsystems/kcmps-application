@@ -138,6 +138,45 @@ from a fresh `describe-user-pool` (every current mutable setting, plus just the 
 field changing) rather than a hand-written partial one, and diff before/after to confirm
 nothing else moved — see entry 62 for the exact approach.
 
+## `design-library/` — what's in it (STAGING ONLY, 2026-08-06)
+
+Design Asset Library (`docs/roadmap.md`'s parallel track). **Deployed to
+`kcmps-backend-staging` only** — production has no originals bucket and no `/designs` routes,
+and promotion is owner-gated (`backend/infra/README.md`'s "Design Asset Library Lambdas").
+
+| File | Purpose |
+|---|---|
+| `get-upload-url.js` | `POST /designs/upload-url` — presigned PUT URLs for BOTH files (source + web-ready), 300MB each, single PUT (no multipart, a resolved spec decision). Keys are always server-generated: `designs/<category>/<designId>/{original,web}.<ext>` |
+| `publish-design.js` | `POST /designs` — writes the `DESIGN#<id>` META record + `EVENT#` audit item, then on publish copies the web-ready image into the public bucket and regenerates `design-manifest.json`. **The manifest's exact JSON shape is documented in this file's header — it is a contract with `website/store.js`'s `buildDesignGrid()`; change both ends or neither.** |
+| `design-types.js` | Server-side allowlists (originals: PSD/AI/PDF; web: JPG/PNG/WebP), the 300MB cap, the catalog-leaf category list, and `parseDesignKey()` |
+| `manifest.js` | `regenerateManifest()` — the ONE place `design-manifest.json` is produced. Regenerates whole from DynamoDB every time, never patches. Shared with archive/restore so two writers can't emit two shapes |
+| `scan-verdict.js` | Fail-closed GuardDuty verdict lookup against the standalone `SCAN#<ref>` item |
+
+Three things here are easy to get wrong and were each proven live:
+
+- **`requireRole(Production/Sales/Admin)`, not `isStaff()`.** `isStaff()` includes `Finance`,
+  which has no business writing to the design library. Both handlers use `requireRole()`.
+- **Fail closed on the scan, and "no verdict" is a refusal, not a pass.** Publishing makes an
+  object world-readable, so both objects must carry a persisted `NO_THREATS_FOUND`. The files
+  are uploaded *before* any `DESIGN#` record exists, so the verdict routinely lands with
+  nothing to annotate — `scan-verdict.js` reads the standalone `SCAN#<ref>` item precisely to
+  cover that race. Anything other than a clean verdict (including none) returns 409; a
+  `stillScanning: true` flag distinguishes "retry in a moment" from "this file is bad."
+- **Copy to the public bucket happens BEFORE the DynamoDB write, deliberately.** The reverse
+  order leaves a `published` record pointing at an image that was never created, and no retry
+  fixes it because the same designId is refused twice. Failing the other way leaves only a
+  harmless orphan object.
+
+`parseDesignKey()` is the reason a caller cannot turn `POST /designs` into an arbitrary
+private→public copy primitive: the `s3Key*` strings in the body are re-parsed and every
+component re-validated (prefix, known catalog leaf, well-formed uuid, allowlisted extension,
+exact basename), so only a key this system would itself have issued is ever accepted. Likewise
+`uploadedBy` is the JWT's verified `sub`, never a body field.
+
+**Known gap for the next pass:** a design saved as `status: "draft"` can't currently be
+promoted to `published` — `publish-design.js` refuses a second write for the same designId.
+That transition belongs to the roadmap's `PATCH /designs/{id}` route, which isn't built.
+
 ## Where this is going (not now)
 
 `ops-dashboard/infra/logic-inputs/*.js`'s originals are now superseded reference material only

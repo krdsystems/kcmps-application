@@ -95,7 +95,7 @@ aws cognito-idp admin-list-groups-for-user \
 | `TableName` output | Every Lambda's `TABLE_NAME` environment variable (1.1 CRUD Lambdas, streams-handler, expire-pending-orders, daily-digest) |
 | `TableStreamArn` output | The 1.3 `streams-handler.js` Lambda's DynamoDB Streams event source mapping (`NEW_AND_OLD_IMAGES`, already set on the table) |
 | `GSI1Name` output (`GSI1`) | Every Lambda that queries the sparse status index (`api-get-orders.js`, `api-advance-line-item.js`'s queue reads, `expire-pending-orders.js`) |
-| Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) | JWT `cognito:groups` claim checks inside every `api-*.js` Lambda and the HTTP API's JWT authorizer setup (§4 of `backend-infra-to-deploy.md`) — `backend/lib/auth.js`'s `isStaff()` now treats `Staff` as a first-class member of `STAFF_ROLES` alongside `Production`/`Sales`/`Finance`/`Admin`, and the dashboard's client-side gate (`dashboard-shell.js`) accepts `Staff` or `Admin` — see "Legacy groups" below |
+| Cognito groups (`Customer`/`Production`/`Sales`/`Finance`/`Admin`) | JWT `cognito:groups` claim checks inside every `api-*.js` Lambda and the HTTP API's JWT authorizer setup (§4 of `backend-infra-to-deploy.md`) — `backend/lib/auth.js`'s `isStaff()` now treats `Staff` as a first-class member of `STAFF_ROLES` alongside `Production`/`Sales`/`Finance`/`Admin`, and the dashboard's client-side gate (`dashboard-shell.js`, mirrored in `index.html`) accepts all five staff roles — see "Legacy groups" below |
 
 ### Legacy groups — `Customers` retired, `Staff` folded into the role model (2026-08-03)
 
@@ -115,8 +115,15 @@ built later). `Production`/`Sales`/`Finance` stay reserved/dormant for the
 first non-founder hire. `backend/lib/auth.js`'s `STAFF_ROLES` set includes
 `Staff` directly (no more `LEGACY_STAFF_GROUP` OR-fallback in
 `get-orders.js`/`advance-line-item.js`/`verify-payment.js`), and
-`dashboard-shell.js`'s client-side gate (`requireStaffAuth()`) accepts
-`Staff` **or** `Admin` via `COGNITO_CONFIG.dashboardGroupNames`. Founder
+`dashboard-shell.js`'s client-side gate (`requireStaffAuth()`) accepts all
+five staff roles — `Staff`, `Admin`, `Production`, `Sales`, `Finance` — via
+`COGNITO_CONFIG.dashboardGroupNames` (widened 2026-08-05 on branch
+`claude/dashboard-staff-gate`; it previously accepted only `Staff` or
+`Admin`, so a hire placed in just `Production`/`Sales`/`Finance` passed every
+backend `isStaff()` check but was bounced by the dashboard UI). **That
+constant is duplicated in `website/index.html`** (~line 1965, gating whether
+the Dashboard nav link renders) — both copies must be kept in sync, and both
+were widened together. Founder
 accounts (`admin.kcmps.cognito`, `admin.kcmps.cognito.test`,
 `admin.kcmps.uat`) no longer need dual `Staff`+`Admin` membership to see the
 dashboard — `Admin` alone is sufficient now that both the frontend and
@@ -437,10 +444,12 @@ assuming an IAM/role problem.
 
 **Dashboard's own client-side gate is separate, and now matches the backend's role set.**
 `dashboard-shell.js`'s `mount()` redirects to `index.html?dashboard=forbidden` unless the
-caller's `cognito:groups` includes `"Staff"` or `"Admin"` (`COGNITO_CONFIG.dashboardGroupNames`)
+caller's `cognito:groups` includes one of the five staff roles — `Staff`, `Admin`,
+`Production`, `Sales`, `Finance` (`COGNITO_CONFIG.dashboardGroupNames`, duplicated in
+`website/index.html` where it gates the Dashboard nav link; keep both in sync)
 — this is a UI convenience gate, not a security boundary (the Lambdas' own `isStaff()` check is
-the real one), but it no longer disagrees with it: `Staff` alone is sufficient for both layers
-now (see "Legacy groups" above).
+the real one), but it no longer disagrees with it: the frontend list now mirrors
+`backend/lib/auth.js`'s `STAFF_ROLES` exactly (see "Legacy groups" above).
 
 Verified end-to-end with a real, throwaway Cognito test user (created via
 `admin-create-user`/`admin-set-user-password`/`admin-add-user-to-group`/`admin-initiate-auth`,

@@ -15,3 +15,11 @@ Thumbs.db
 # something to track: package.json + package-lock.json are the source of
 # truth, and no backend/*/node_modules has ever been committed.
 backend/*/node_modules/
+
+# Stray working-tree files that were committed by accident on 2026-08-06 and
+# then removed. Brand assets belong in design-system/ (and only website/assets/
+# ever deploys), never at the repo root; dns-records.csv was a scratch export
+# whose authoritative copy lives in Route 53 (zone Z06397161LBTJCRTPLL62,
+# account 260866268499). Ignored so a future `git add` can't resweep them.
+/KCMPS LOGO WHITE.png
+/dns-records.csv

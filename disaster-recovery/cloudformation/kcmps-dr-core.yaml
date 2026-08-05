@@ -21,13 +21,18 @@ Parameters:
   CognitoDomainPrefix:
     Type: String
     Description: >
-      Cognito Hosted UI domain prefix. Real deployment uses
-      "ap-southeast-1idvaeumnp" (Cognito's auto-generated default domain for
-      pool ap-southeast-1_iDvAEumNp) — irrelevant if that pool still exists.
-      If recreating the pool from scratch, this auto-generated form isn't
-      reproducible verbatim (it's derived from the new pool's own ID); pick
-      a custom prefix instead and update website/index.html +
-      website/login-test.html's COGNITO_CONFIG afterward.
+      Cognito Hosted UI domain prefix. Real deployment (since the 2026-08-05
+      pool v2 cutover, see backend/infra/README.md "User pool v2") uses the
+      custom prefix "kcmps-auth" on pool ap-southeast-1_LHJsFdCgo —
+      irrelevant if that pool still exists. If recreating the pool from
+      scratch, pick a new globally-unique custom prefix (a custom prefix,
+      unlike Cognito's old auto-generated default, IS reproducible verbatim
+      across a recreate) and update website/index.html +
+      website/login-test.html's COGNITO_CONFIG afterward. Also recreate the
+      pool with backend/infra/user-pool-v2.cfn.yaml's schema (email/
+      given_name/family_name only, AliasAttributes: [email]) rather than
+      this stack's own CognitoUserPoolName-only pool — see that template
+      for why the schema and alias settings matter.
     Default: kcmps-storefront-auth
 
   CallbackUrls:

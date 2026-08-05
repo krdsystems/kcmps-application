@@ -8,6 +8,19 @@ Description: >
   rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md
   §2.1/§2.3 for the schema this template must stay in sync with.
 
+  STALE as of the 2026-08-05 pool v2 cutover (backend/infra/README.md "User
+  pool v2"): the deployed stack's UserPoolId parameter points at
+  ap-southeast-1_iDvAEumNp, which has been deleted. Its 5 UserPoolGroup
+  resources are now dangling — do NOT `aws cloudformation deploy` this
+  template pointed at the new pool (ap-southeast-1_LHJsFdCgo) to "fix" it.
+  user-pool-v2.cfn.yaml already created identically-named groups
+  (Customer/Staff/Admin/Production/Sales/Finance) on that pool directly, and
+  CloudFormation would try to create them again under this stack's
+  ownership — a same-name conflict that fails the deploy. Group management
+  for the live pool belongs to user-pool-v2.cfn.yaml now; this template's
+  KcmpsTable resource (the actual DynamoDB table, unaffected by any of the
+  above) is still the real, current source of truth for that table.
+
 Parameters:
   TableName:
     Type: String
@@ -20,9 +33,14 @@ Parameters:
     Type: String
     Default: ap-southeast-1_iDvAEumNp
     Description: >
-      ID of the EXISTING Cognito User Pool the storefront/dashboard already
-      authenticate against. This template adds groups to this pool — it does
-      NOT create a new pool.
+      STALE — see the template Description above. This ID no longer exists;
+      left as the historical default rather than repointed at the live pool
+      specifically so a routine `deploy` (e.g. to change TableName) doesn't
+      silently attempt to recreate the 5 groups on the new pool and fail.
+      ID of the EXISTING Cognito User Pool the storefront/dashboard
+      authenticated against at the time this template was first applied.
+      This template adds groups to this pool — it does NOT create a new
+      pool.
 
 Resources:
   KcmpsTable:

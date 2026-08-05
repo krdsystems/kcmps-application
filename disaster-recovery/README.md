@@ -26,7 +26,7 @@ All in account `600929977538` unless noted.
 | CloudFront Function — prod | `site-kcmps-redirect`, redirects `site.kcmps.com` → `https://kcmps.com` |
 | WAFv2 WebACL | attached to the prod distribution only; 3 AWS managed rule groups (IP reputation list, common rule set, known-bad-inputs) |
 | Prod CloudFront distribution | `EY6Q5RSWLDCEF` today — aliases `kcmps.com` / `www.kcmps.com` / `site.kcmps.com` |
-| Cognito | User Pool `kcmps-user-pool` (`ap-southeast-1_iDvAEumNp` today), App Client `kcmps-web-client`, Hosted UI Domain, Google federated IdP, `Staff` group |
+| Cognito | User Pool `kcmps-user-pool-v2` (`ap-southeast-1_LHJsFdCgo` today — replaced the original `ap-southeast-1_iDvAEumNp` on 2026-08-05, see `backend/infra/README.md` "User pool v2"; the old pool is now deleted), App Client `kcmps-web-client`, Hosted UI Domain (`kcmps-auth`), Google federated IdP, `Customer`/`Staff`/`Admin`/`Production`/`Sales`/`Finance` groups. Managed by `backend/infra/user-pool-v2.cfn.yaml`, not this DR stack — a real recreate should apply that template rather than a bare pool, since its minimal schema and `AliasAttributes` are load-bearing |
 | Route 53 records | account `260866268499`, zone `Z06397161LBTJCRTPLL62` — `kcmps.com`/`www.kcmps.com`/`site.kcmps.com` (+ `dev.kcmps.com`, see below), pointed at whatever the new distribution domain names turn out to be |
 
 ### Related, not duplicated here — dev.kcmps.com

@@ -39,32 +39,12 @@
         <div class="tile-grid" id="today-tiles"><!-- tiles render here --></div>
       </section>
 
-      <section class="dsec">
-        <div class="dsec-head">
-          <h2>Blockers board</h2>
-          <span class="hint">Every blocker needs a named owner and due date to save</span>
-        </div>
-        <div class="card">
-          <div class="blocker-list" id="blocker-list"><!-- rows render here --></div>
-          <form class="blocker-form" id="blocker-form">
-            <div class="field" style="grid-column:1/2"><label for="b-text">What's blocking?</label><input class="input" id="b-text" placeholder="e.g. white DTF ink ran out" required /></div>
-            <div class="field"><label for="b-owner">Owner</label><input class="input" id="b-owner" placeholder="Name" required /></div>
-            <div class="field"><label for="b-due">Due date</label><input class="input" id="b-due" type="date" required /></div>
-            <div class="field"><label for="b-tag">Tag (optional)</label><input class="input" id="b-tag" placeholder="e.g. ink-supply" /></div>
-            <button type="submit" class="btn btn-primary">Log it</button>
-          </form>
-        </div>
-      </section>
-
-      <section class="dsec">
-        <div class="dsec-head">
-          <h2>Low stock alerts</h2>
-          <span class="hint">Below reorder point, with days-of-cover from trailing use</span>
-        </div>
-        <div class="card">
-          <div class="stock-list" id="stock-list"><!-- rows render here --></div>
-        </div>
-      </section>
+      <!-- REMOVED 2026-08-06: "Blockers board" and "Low stock alerts".
+           Both ran entirely on the localStorage mock (getBlockers/addBlocker/
+           resolveBlocker/getLowStock), so the blocker form looked like it
+           logged work for the team but wrote to one browser only — nobody
+           else ever saw it and a cache clear erased it. Restore them when a
+           real backend exists, not before; the markup is in git history. -->
 
     </main>
   </div>
@@ -155,66 +135,17 @@
       host.innerHTML = '<div class="empty-state">Couldn’t load today’s numbers — ' + escapeHtml(err.message) + '</div>';
       return;
     }
+    // Only the tiles derived from REAL orders survive. getTodayNumbers() also
+    // returns output/spoilage/rework/cash-collected, but those read
+    // state.metrics out of the localStorage mock — they would show one
+    // browser's invented numbers next to genuine ones, which is worse than
+    // not showing them, because nothing on screen says which is which.
+    // Restore them when a metrics backend exists (Milestone 2).
     const tiles = [
       tile("Jobs due today", n.dueToday, `${n.dueTodayAtRisk} not yet in production`, n.dueTodayAtRisk > 0 ? "bad" : "good"),
-      tile("Output yesterday", n.outputYesterdayUnits + " units", n.outputYesterdayJobs + " jobs completed"),
-      tile("Spoilage yesterday", n.spoilageYesterdayUnits + " units", fmtPeso(n.spoilageYesterdayValue), n.spoilageYesterdayValue > 0 ? "warn" : "good"),
-      tile("Rework opened yesterday", n.reworkOpenedYesterday, null, n.reworkOpenedYesterday > 0 ? "warn" : "good"),
-      tile("Cash collected yesterday", fmtPeso(n.cashCollectedYesterday), "Verified GCash only", "good"),
-      tile("WIP count", n.wipCount, "Confirmed → QC · pair with utilization on Week"),
+      tile("WIP count", n.wipCount, "Confirmed → QC"),
     ];
     host.innerHTML = tiles.join("");
-  }
-
-  function renderBlockers() {
-    const blockers = KCMPS_DASH.getBlockers();
-    const list = document.getElementById("blocker-list");
-    if (!blockers.length) { list.innerHTML = '<p class="q-empty">No open blockers. Nice.</p>'; return; }
-    list.innerHTML = blockers.map((b) => (
-      `<div class="blocker-row${b.recurring ? " recurring" : ""}" data-id="${b.id}">` +
-      `<span class="b-text">${escapeHtml(b.text)}${b.recurring ? ' <span class="tag tag-accent">Recurring — promote to weekly</span>' : ""}</span>` +
-      `<span class="b-owner">${escapeHtml(b.owner)}</span>` +
-      `<span class="b-due">Due ${fmtDate(b.dueDate)}</span>` +
-      `<button type="button" class="btn btn-secondary btn-resolve" data-id="${b.id}">Resolve</button>` +
-      `</div>`
-    )).join("");
-    list.querySelectorAll(".btn-resolve").forEach((btn) => btn.addEventListener("click", () => {
-      btn.disabled = true;
-      const row = list.querySelector(`.blocker-row[data-id="${btn.dataset.id}"]`);
-      // Let the row fade/collapse out before it actually leaves the list —
-      // resolving a blocker is rare enough (a few/day) to earn a brief exit
-      // instead of an instant vanish. Falls back to an immediate re-render
-      // if the row is missing or the transition never fires.
-      if (!row) { KCMPS_DASH.resolveBlocker(btn.dataset.id); renderBlockers(); return; }
-      let done = false;
-      const finish = () => { if (done) return; done = true; KCMPS_DASH.resolveBlocker(btn.dataset.id); renderBlockers(); };
-      row.addEventListener("transitionend", finish, { once: true });
-      setTimeout(finish, 260);
-      row.classList.add("is-resolving");
-    }));
-  }
-
-  document.getElementById("blocker-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const text = document.getElementById("b-text").value.trim();
-    const owner = document.getElementById("b-owner").value.trim();
-    const dueDate = document.getElementById("b-due").value;
-    const tag = document.getElementById("b-tag").value.trim();
-    if (!text || !owner || !dueDate) return;
-    KCMPS_DASH.addBlocker({ text, owner, dueDate, tag });
-    e.target.reset();
-    renderBlockers();
-  });
-
-  function renderStock() {
-    const low = KCMPS_DASH.getLowStock();
-    const list = document.getElementById("stock-list");
-    if (!low.length) { list.innerHTML = '<p class="q-empty">Everything is above its reorder point.</p>'; return; }
-    list.innerHTML = low.map((i) => (
-      `<div class="stock-row"><div><div class="s-name">${escapeHtml(i.name)}</div>` +
-      `<div class="s-meta">${i.qty} ${i.unit} on hand · reorder at ${i.reorderPoint} ${i.unit}</div></div>` +
-      `<span class="s-cover">${i.daysOfCover != null ? i.daysOfCover + "d cover" : "—"}</span></div>`
-    )).join("");
   }
 
   // Both pull from the real staff-api — show a loading placeholder for the
@@ -224,13 +155,10 @@
   document.getElementById("today-tiles").innerHTML = '<p class="q-empty">Loading numbers&hellip;</p>';
   renderQueues();
   renderTiles();
-  renderBlockers();
-  renderStock();
 
-  // Live-ish refresh of the real order data (queues/tiles) so a payment
-  // verified or a job advanced elsewhere shows up without an F5 — see the
-  // matching note in jobs.html. Blockers/stock stay local-only, no need to
-  // re-poll those.
+  // Live-ish refresh so a payment verified or a job advanced elsewhere shows
+  // up without an F5 — see the matching note in jobs.html. Everything left on
+  // this page is real order data, so everything left gets re-polled.
   setInterval(() => { renderQueues(); renderTiles(); }, 20000);
 })();
 

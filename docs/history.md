@@ -2951,3 +2951,25 @@ be copied and needs a re-run with the value from the Google Cloud console.
 
 Full apply/rollback, the manual `lambda:add-permission` + IAM steps CloudFormation can't cover,
 and the recreated-accounts table are in `backend/infra/README.md` → "User pool v2".
+
+**Closed out (2026-08-05, later same day):** cutover confirmed end-to-end on dev.kcmps.com —
+self-signup through the custom form, sign-in by both username and email (the `AliasAttributes`
+fix), dashboard access, a real order with `customerSub` populated, and Google federation
+(added after the entry above was written; the new IdP's Google user landed in `Customer`,
+proving `PostConfirmation` fires for federated sign-ins too, not just self-signup). Two bugs
+surfaced along the way and were fixed in the same pass: `create-order`/`cancel-order` verify
+JWTs themselves via env vars rather than through the API authorizer (unauthenticated routes,
+since guest checkout must work token-free) — missed on the first cutover pass, silently
+producing two orphaned guest orders before the env vars were updated to the new pool; and the
+sign-up modal's click-outside handler closed mid-typing on any drag-out gesture (press starting
+inside the dialog, release outside it), traced from a user-supplied stack trace rather than the
+symptom alone.
+
+Once verified, the old pool (`ap-southeast-1_iDvAEumNp`) and its Hosted UI domain were deleted,
+and `DeletionProtection` on the new pool flipped to `ACTIVE`. This left the already-deployed
+`kcmps-foundation` stack (`backend/infra/foundation.cfn.yaml`) with a stale `UserPoolId`
+parameter pointing at a pool that no longer exists — documented in that template's header
+rather than "fixed" by redeploying it, since `user-pool-v2.cfn.yaml` already owns
+identically-named groups on the new pool and a redeploy would hit a same-name conflict and
+fail. The disaster-recovery templates' old-pool references (not deployed, so lower stakes) were
+updated to point at the new pool and its schema.

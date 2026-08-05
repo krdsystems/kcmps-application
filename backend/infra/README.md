@@ -969,9 +969,28 @@ Created with `admin-create-user` (no `--temporary-password`), so Cognito generat
 the temp password and each lands in `FORCE_CHANGE_PASSWORD`. `admin-create-user` does **not**
 fire the PostConfirmation trigger, so groups were added manually.
 
-### Rollback
+### Old pool — deleted (2026-08-05, once cutover was confirmed working end-to-end)
 
-The API authorizer is the switch — flipping it back restores the old pool instantly:
+`ap-southeast-1_iDvAEumNp` and its Hosted UI domain (`ap-southeast-1idvaeumnp`) were kept
+standing through the cutover specifically as a rollback path, then deleted once dev.kcmps.com
+was smoke-tested (sign-up, sign-in by username AND email, dashboard access, a real order with
+`customerSub` populated, and Google federation) and both the API authorizer's JWT config and
+`create-order`/`cancel-order`'s own env vars were confirmed pointed at the new pool. The
+rollback section below is now **historical** — it describes what was true during the cutover
+window, not a live option. `DeletionProtection` on the new pool was flipped to `ACTIVE` in the
+same pass, now that it's the only pool in use.
+
+The **already-deployed** `kcmps-foundation` CloudFormation stack still carries
+`UserPoolId=ap-southeast-1_iDvAEumNp` as a stack parameter — its 5 `UserPoolGroup` resources
+are now dangling references to a deleted pool. See `foundation.cfn.yaml`'s header: do **not**
+try to "fix" this by redeploying it against the new pool ID — `user-pool-v2.cfn.yaml` already
+owns identically-named groups on that pool, and CloudFormation would hit a same-name conflict
+and fail. The table resource in that stack is unaffected and remains authoritative.
+
+### Rollback (historical — describes the cutover window; the old pool no longer exists)
+
+The API authorizer was the switch — flipping it back would have restored the old pool
+instantly, while it still existed:
 
 ```bash
 aws apigatewayv2 update-authorizer --api-id 6msg2uho6c --authorizer-id sboj1n \
@@ -979,9 +998,11 @@ aws apigatewayv2 update-authorizer --api-id 6msg2uho6c --authorizer-id sboj1n \
   --profile kcmps-claude-priv --region ap-southeast-1
 ```
 
-…then revert the pool/client/domain constants in the 6 frontend files and re-sync. The old
-pool and its 6 users are untouched. `DeletionProtection` on the new pool is `INACTIVE` so
-`delete-stack` works; flip it to `ACTIVE` once real users exist.
+…then revert the pool/client/domain constants in the 6 frontend files, revert
+`create-order`/`cancel-order`'s `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` env vars (see "The
+API authorizer is NOT the only place the pool ID lives" above), and re-sync. This command is
+kept only as a record of the mechanism — the pool it points at is gone, so running it now would
+just break auth entirely rather than roll anything back.
 
 ## Re-running / updates
 

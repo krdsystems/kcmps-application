@@ -585,10 +585,99 @@
     lightboxControls = null;
   }
 
+  /* ---------- published Design Library merge (design-manifest.json) ----------
+     Designs published from the ops dashboard's Design Library land in S3 as
+     `assets/designs/<uuid>.<ext>` plus a regenerated design-manifest.json —
+     see backend/design-library/publish-design.js's header, which documents the
+     manifest contract; this is the other end of it. Change neither alone.
+
+     Merged into each product's static products.js `images[]` by CATEGORY LEAF
+     (manifest `category` === product `leaf`), appended after the static
+     entries and deduped by src, so a design published with no code deploy
+     shows up in that leaf's design pickers on the next page load. Mirrors the
+     hero carousel's HERO_MANIFEST_URL pattern (index.html).
+
+     Two deliberate scoping choices:
+     - Only products that ALREADY opt into a design picker (`Array.isArray(
+       p.images)`) receive manifest designs. A leaf like print-office has
+       products with no design list at all (lamination, binding) — growing one
+       onto them would invent a picker where the product has no such concept.
+     - The fetch NEVER blocks first render. renderCatalog() runs immediately on
+       the static catalog; this re-renders only if the manifest actually added
+       something. A missing / 404 / malformed / offline manifest is a no-op,
+       silently — the storefront is then byte-for-byte today's behavior.
+
+     Every field is attacker-adjacent (staff-authored, but it reaches the DOM
+     and an <img src>), so `image` must pass SAFE_IMAGE_RE — relative path
+     only, no scheme (blocks javascript:/data:), no leading slash, no "..",
+     known raster extension — and `name` is length-clamped. Display text still
+     goes through the same textContent/escapeHtml paths as static designs.
+     `image` is site-root-relative WITHOUT a leading slash on purpose: the one
+     manifest resolves on both kcmps.com and dev.kcmps.com (whose CloudFront
+     maps the dev-site/ prefix onto the site root). Never prepend a slash,
+     a host, or `dev-site/`. */
+  var DESIGN_MANIFEST_URL = "assets/designs/design-manifest.json";
+
+  // src -> staff-authored display name, consulted by designTitle() below.
+  var manifestNames = Object.create(null);
+
+  var SAFE_IMAGE_RE = /^(?!\/)(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9/._-]*\.(png|jpe?g|webp|gif)$/i;
+
+  function safeManifestImage(src) {
+    return (typeof src === "string" && src.length <= 300 && SAFE_IMAGE_RE.test(src)) ? src : null;
+  }
+
+  // Returns true only if at least one product's images[] actually grew.
+  function mergeDesignManifest(manifest) {
+    if (!manifest || typeof manifest !== "object") return false;
+    var designs = manifest.designs;
+    if (!Array.isArray(designs)) return false;
+
+    var byLeaf = Object.create(null);
+    designs.forEach(function (d) {
+      if (!d || typeof d !== "object") return;
+      var src = safeManifestImage(d.image);
+      if (!src) return;
+      var leaf = typeof d.category === "string" ? d.category : "";
+      if (!leaf || !DATA.leaves[leaf]) return; // unknown catalog leaf → ignore
+      (byLeaf[leaf] || (byLeaf[leaf] = [])).push(src);
+      // Prefer the manifest's own staff-authored name; designTitle() falls
+      // back to titleFromFilename() when it's absent/blank, so a nameless
+      // entry still reads like every other tile.
+      if (typeof d.name === "string" && d.name.trim()) {
+        manifestNames[src] = d.name.trim().slice(0, 120);
+      }
+    });
+
+    var changed = false;
+    DATA.products.forEach(function (p) {
+      var extra = byLeaf[p.leaf];
+      if (!extra || !Array.isArray(p.images)) return;
+      var seen = Object.create(null);
+      p.images.forEach(function (s) { seen[s] = true; });
+      var merged = p.images.slice();
+      extra.forEach(function (s) { if (!seen[s]) { seen[s] = true; merged.push(s); } });
+      if (merged.length !== p.images.length) { p.images = merged; changed = true; }
+    });
+    return changed;
+  }
+
+  function loadDesignManifest() {
+    if (typeof window.fetch !== "function") return;
+    var req;
+    try { req = window.fetch(DESIGN_MANIFEST_URL, { cache: "no-store" }); } catch (e) { return; }
+    req.then(function (res) { return (res && res.ok) ? res.json() : null; })
+      .then(function (m) { if (mergeDesignManifest(m)) renderCatalog(); })
+      .catch(function () { /* absent / 404 / bad JSON / offline — static images only, deliberately silent */ });
+  }
+
   // titleFromFilename lives in products.js (window.KCMPS_TEXT) so the hero
   // carousel, catalog design cards, and cart thumbnails all format names the
-  // same way; fall back to the raw filename if it's ever missing.
+  // same way; fall back to the raw filename if it's ever missing. Designs that
+  // came from design-manifest.json carry a staff-authored name instead — it
+  // wins over the filename convention (their filename is a bare uuid).
   function designTitle(src) {
+    if (manifestNames[src]) return manifestNames[src];
     return window.KCMPS_TEXT ? window.KCMPS_TEXT.titleFromFilename(src) : src;
   }
 
@@ -2098,6 +2187,9 @@
 
   /* ---------- init ---------- */
   renderCatalog();
+  // Fire-and-forget, AFTER first render — published Design Library items get
+  // folded in and the catalog re-rendered only if the manifest added any.
+  loadDesignManifest();
   buildDrawer();
   updateBadge();
 

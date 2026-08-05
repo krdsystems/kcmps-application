@@ -85,6 +85,20 @@
       ...opts,
       headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts && opts.headers) },
     });
+    // Mirrors orders-data.js's customer-side 401 semantics (clear tokens,
+    // treat the session as gone) — but instead of an immediate hard
+    // redirect, this surfaces through the shell's session-guard overlay
+    // (stage 2) so staff aren't bounced mid-task and don't lose whatever
+    // they were typing. The caller's promise still rejects (every existing
+    // caller already has error handling for a failed apiFetch), it just
+    // also raises the overlay first.
+    if (res.status === 401) {
+      try { sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
+      if (global.KCMPS_DASH_SHELL && global.KCMPS_DASH_SHELL.escalateSessionGuard) {
+        global.KCMPS_DASH_SHELL.escalateSessionGuard();
+      }
+      throw new Error("Your session has expired. Please refresh or log in again.");
+    }
     let body = {};
     try { body = await res.json(); } catch { /* empty/non-JSON body */ }
     if (!res.ok) throw new Error(body.error || res.statusText);

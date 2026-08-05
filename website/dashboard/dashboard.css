@@ -392,3 +392,47 @@ select.input { appearance: auto; }
   .dash-user-name { display: none; }
   .timeline-row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ---- Session guard (idle privacy lock / session-staleness overlay) ----
+   Two-stage overlay: stage 1 (15min idle, default) is a privacy screen so
+   an unattended dashboard showing real order/customer/payment data can't be
+   read by a passer-by; stage 2 (60min idle, or immediately on a 401) warns
+   the session may be expired and offers Refresh/Log out. Same element for
+   both stages — see dashboard-shell.js's openSessionGuard().
+
+   Fail-closed obscuring: .session-guard-backdrop's own background-color is
+   var(--color-neutral-100), an OPAQUE (alpha-free) token — that alone fully
+   hides the page with zero blur support. The ::before pseudo-element layers
+   a tint + backdrop-filter blur purely for the frosted look; never rely on
+   it for the privacy guarantee. z-index sits above every other z-index in
+   this file (highest prior was 50) and above design-library.html's own
+   .dialog-backdrop (200). */
+.session-guard-backdrop {
+  position: fixed; inset: 0; z-index: 500;
+  background-color: var(--color-neutral-100);
+  display: flex; align-items: center; justify-content: center; padding: var(--space-3);
+}
+.session-guard-backdrop::before {
+  content: ""; position: absolute; inset: 0;
+  background: color-mix(in srgb, var(--color-neutral-900) 6%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.session-guard-box {
+  position: relative; z-index: 1;
+  background: var(--color-neutral-100); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3, 14px); box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,0.18));
+  max-width: 380px; width: 100%; padding: var(--space-5); text-align: center;
+}
+.session-guard-icon {
+  width: 44px; height: 44px; margin: 0 auto var(--space-3); border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-accent-700);
+}
+.session-guard-box h3 { margin: 0 0 var(--space-2); font-size: 17px; }
+.session-guard-box p { margin: 0 0 var(--space-4); font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.session-guard-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.session-guard-box[data-stage="2"] .session-guard-icon { background: color-mix(in srgb, #dc2626 14%, transparent); color: #b91c1c; }
+@media (prefers-reduced-motion: reduce) { .session-guard-backdrop, .session-guard-box { transition: none; animation: none; } }
+@media (max-width: 480px) {
+  .session-guard-box { padding: var(--space-4); }
+}

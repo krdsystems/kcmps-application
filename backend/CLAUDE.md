@@ -177,6 +177,17 @@ exact basename), so only a key this system would itself have issued is ever acce
 promoted to `published` — `publish-design.js` refuses a second write for the same designId.
 That transition belongs to the roadmap's `PATCH /designs/{id}` route, which isn't built.
 
+## Hard rule before you send ANY test email
+
+Read the "Hard rule: sending email during testing" section in the root `CLAUDE.md` first. In
+short: **the only permitted test recipient anywhere is `admin+admin.kcmps.uat@kcmps.com`**, and
+**never design a test whose success condition is a bounce or a rejected send** — prove negative
+cases by inspecting config (`describe-active-receipt-rule-set`, `sesv2 get-email-identity`) or by
+invoking a Lambda with a synthetic event. SES is in production; every bounce is charged against
+the reputation of the identity that delivers real customer order mail, and AWS suspends near a
+10% bounce rate. This was violated once (2026-08-06) by a "confirm SES rejects it" verification
+step — the config check was available, free, and stronger evidence.
+
 ## `mail/` — what's in it (STAGING ONLY, hardened 2026-08-06)
 
 SES relay inbound-mail ingest + staff mail read/reply API (`docs/roadmap.md`'s "Parallel track —

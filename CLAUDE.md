@@ -312,6 +312,36 @@ cd website && python3 -m http.server 5500
 
 Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `README.md`.
 
+## Hard rule: sending email during testing
+
+**SES is in production and sends real customer mail. Every test send is charged against the
+`kcmps.com` sending reputation. Two rules, no exceptions, in every session and every subagent:**
+
+1. **The only permitted test recipient is `admin+admin.kcmps.uat@kcmps.com`.** Never a fake,
+   placeholder, `example.com`, or made-up address. Never a real customer address. If a test
+   needs a second address, it needs the owner's explicit approval first, not a guess.
+2. **Never design a test whose success condition is a bounce or a rejected send.** Prove
+   negative cases by *inspecting configuration*, never by sending mail that is expected to fail:
+   - accepted recipients / receipt rules → `aws ses describe-active-receipt-rule-set`
+   - identity, verification, suppression, quota → `aws sesv2 get-email-identity` / `get-account`
+   - routing, parsing, authz logic → invoke the Lambda directly with a synthetic event, or
+     unit-test the pure module
+   If a check genuinely cannot be made without a bad send, **it does not get made** — say so in
+   the report and let the owner decide.
+
+**Why this is a hard rule.** AWS warns at roughly a 5% bounce rate and can suspend sending near
+10%; suspension would silently kill every customer order notification. On 2026-08-06 a task brief
+told a subagent to "send to a non-permitted address and confirm SES rejects it" as proof a
+receipt-rule catchall had been removed — in the same brief that forbade non-approved recipients.
+The contradictory instruction won, produced a real bounce, and pushed the trailing-24h rate to
+~10%. The check was also **entirely unnecessary**: `describe-active-receipt-rule-set` shows the
+accepted-recipient list directly — faster, free, and stronger evidence than inferring config from
+a failed delivery. Before dispatching any task, audit its verification steps against both rules.
+
+Staging (`kcmps-backend-staging`) is SES-dark by construction — `FROM_EMAIL`/`SES_SENDER` are
+deliberately unset there, and `send-reply.js` additionally refuses any recipient except the
+address above. Prefer staging for anything mail-adjacent.
+
 ## Standard deploy workflow: dev.kcmps.com first, then production
 
 **Hard rule, every session, no exceptions: staging first, production only on the owner's

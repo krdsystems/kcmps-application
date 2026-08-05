@@ -1933,6 +1933,19 @@ const COGNITO_CONFIG = {
   scopes:      "email openid profile",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
+  // Public storefront auth entry points on/off. FALSE hides the nav
+  // "Login / Sign-up" button and the ?login=required "Sign in" banner, so a
+  // visitor has no way to start a login or sign-up from this page.
+  //
+  // Deliberately narrow: it hides the two ENTRY points only. An existing
+  // session still restores and still renders the user's name, My Orders and
+  // (for Staff/Admin) the Dashboard link, and the OAuth popup callback still
+  // completes — so staff who sign in via the Hosted UI or the dashboard are
+  // unaffected. Nothing server-side is disabled: the pool still permits
+  // self-registration, so this is a UI gate, NOT a security control.
+  //
+  // Flip to true to reopen public sign-up.
+  authUiEnabled: false,
   // Any of these groups unlocks the dashboard — Staff (dashboard-only)
   // and Admin (founders — dashboard plus whatever admin-only surface
   // gets built later). Keep in sync with dashboard/dashboard-shell.js's copy.
@@ -2152,9 +2165,13 @@ async function exchangeCodeForTokens(code) {
 /* ---- UI updates (site design system) ---- */
 function renderLoggedOut() {
   const area = document.getElementById("auth-area");
-  area.innerHTML =
-    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
-  document.getElementById("auth-btn").addEventListener("click", openAuthModal);
+  // authUiEnabled: false leaves the auth area empty rather than rendering a
+  // disabled-looking button — a greyed-out control invites "is it broken?",
+  // whereas an absent one reads as "not offered yet".
+  area.innerHTML = COGNITO_CONFIG.authUiEnabled
+    ? '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>'
+    : "";
+  document.getElementById("auth-btn")?.addEventListener("click", openAuthModal);
   document.getElementById("dashboard-link").classList.add("is-hidden");
   document.getElementById("orders-link").classList.add("is-hidden");
 }
@@ -2458,9 +2475,14 @@ function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
 
 /* ---- Login orchestration ---- */
 async function startLogin() {
+  // Optional-chained: with authUiEnabled false there is no #auth-btn to put
+  // into a pending state, and startLogin() is still reachable from the auth
+  // modal if something re-enables it mid-session.
   const btn = document.getElementById("auth-btn");
-  btn.disabled = true;
-  btn.textContent = "Signing in…";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+  }
   try {
     const tokens = await openLoginPopup(); // resolves with tokens (popup does the exchange)
     log("Token exchange succeeded.");
@@ -2532,7 +2554,10 @@ function logout() {
     try { history.replaceState(null, "", window.location.pathname); } catch {}
     if (tokens) {
       window.location.href = "orders.html";
-    } else {
+    } else if (COGNITO_CONFIG.authUiEnabled) {
+      // Suppressed when authUiEnabled is false — this banner is the second
+      // storefront login entry point, and leaving it would let a stale
+      // orders.html link reopen the flow the nav button no longer offers.
       const banner = document.getElementById("login-required-banner");
       banner.classList.remove("is-hidden");
       document.getElementById("login-required-btn").addEventListener("click", async () => {

@@ -88,18 +88,24 @@
     sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ id_token: fakeIdToken, access_token: "local-dev-token", expires_in: 3600 }));
   }
 
+  // Ordered live-first, then previews, with Settings pinned last. `soon: true`
+  // renders a "Soon" badge and dims the link, but still points at a real
+  // placeholder page — a dead/disabled nav item reads as a bug, and the
+  // placeholder becomes the real page's shell later (only <main> changes).
+  // Promoting a page to live = delete its `soon` flag AND move it up into the
+  // first group; the two must stay in step or the ordering stops meaning
+  // anything. Settings stays at the bottom either way, live or not.
   const NAV_ITEMS = [
+    // Live — wired to the real backend.
     { key: "today", href: "today.html", label: "Today", hint: "Daily control" },
+    { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
+    { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
+    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library" },
+    // Previews — localStorage mock only.
     { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling", soon: true },
     { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin", soon: true },
-    { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
     { key: "clients", href: "clients.html", label: "Clients", hint: "CRM", soon: true },
-    { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
-    // `soon: true` renders a "Soon" badge and dims the link, but still points at
-    // a real placeholder page — a dead/disabled nav item reads as a bug, and the
-    // placeholder becomes the real page's shell later (only <main> changes).
-    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library" },
     { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs", soon: true },
   ];
 

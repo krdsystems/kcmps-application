@@ -22,6 +22,7 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { extractClaims, isStaff } = require("../lib/auth");
 const { scanResultPk, metaSk } = require("../lib/keys");
 const { redactForCustomer } = require("../lib/customer-view");
+const { contentDispositionFor, INLINE_VIEWABLE_TYPES } = require("../lib/upload-types");
 
 const TABLE = process.env.TABLE_NAME;
 const SCREENSHOT_URL_EXPIRY_SECONDS = 15 * 60;
@@ -124,15 +125,18 @@ async function attachLineItems(order) {
 //     list load. The verdict is written once, on the scan event, and read
 //     from DynamoDB here.
 //
-//  2. FORCED DOWNLOAD. Presigned GETs carry
-//     ResponseContentDisposition=attachment and
-//     ResponseContentType=application/octet-stream, so a browser can never
-//     render or execute an upload inline regardless of its real content.
-//     Set on the READ side, not baked in at PUT time, so it stays entirely
-//     server-controlled — the uploading client can't influence it.
-//     (Exception: the GCash screenshot, which staff need to actually LOOK
-//     at in an <img> to verify a payment. It keeps an inline-viewable url,
-//     but only once it has passed the same scan gate — see below.)
+//  2. DISPOSITION. Set on the READ side, not baked in at PUT time, so it
+//     stays entirely server-controlled — the uploading client can't
+//     influence it. Images and PDFs are served `inline` so staff can open
+//     them in a tab; every other type gets `attachment` +
+//     application/octet-stream and can never render or execute. The
+//     allowlist is closed and lives in backend/lib/upload-types.js's
+//     contentDispositionFor(); SVG is deliberately absent and must stay
+//     absent, since rendering one runs its script. Inline is only ever
+//     reached after rule 1 passes, and renders from the S3 presigned host
+//     rather than kcmps.com, so nothing can reach the dashboard session.
+//     (The GCash screenshot already worked this way — staff must LOOK at
+//     it in an <img> to verify a payment. It is no longer the exception.)
 function isClean(att) {
   return att && att.scanStatus === "NO_THREATS_FOUND";
 }
@@ -165,15 +169,23 @@ async function resolveVerdict(att) {
 }
 
 // Shared by correspondence + message + design-file attachments.
-async function attachDownloadUrl(raw) {
+// `allowInline` is opt-in per call site, not a global default:
+//   - correspondence + message attachments → TRUE. Staff open these to LOOK
+//     at them (a photo of a misprint, a payment screenshot, a one-page spec);
+//     forcing a download meant a detour through the Downloads folder and left
+//     a pile of customer files on disk.
+//   - customer design files → FALSE. These are production inputs to be saved
+//     and opened in real software, not previewed, and job-detail.html renders
+//     them with a `download` attribute to say so. A design PDF flipping to
+//     inline would silently contradict that.
+// Either way the scan gate above runs first and unchanged.
+async function attachDownloadUrl(raw, { allowInline = false } = {}) {
   const att = await resolveVerdict(raw);
   if (!att || !att.ref) return att;
   if (!isClean(att)) return { ...att, url: null, scanStatus: att.scanStatus || "PENDING" };
-  const url = await presignS3Uri(att.ref, {
-    ResponseContentDisposition: `attachment; filename="${downloadFilename(att.filename)}"`,
-    ResponseContentType: "application/octet-stream",
-  });
-  return { ...att, url };
+  const inline = allowInline && INLINE_VIEWABLE_TYPES.has(String(att.contentType || "").toLowerCase());
+  const url = await presignS3Uri(att.ref, contentDispositionFor(att.contentType, att.filename, { allowInline }));
+  return { ...att, url, inlineViewable: inline };
 }
 
 // The GCash screenshot is the one upload staff must see rendered, not
@@ -199,7 +211,7 @@ async function withCorrespondenceUrls(order) {
   if (!Array.isArray(order.correspondenceLog) || !order.correspondenceLog.length) return order;
   order.correspondenceLog = await Promise.all(order.correspondenceLog.map(async (entry) => {
     if (!Array.isArray(entry.attachments) || !entry.attachments.length) return entry;
-    return { ...entry, attachments: await Promise.all(entry.attachments.map(attachDownloadUrl)) };
+    return { ...entry, attachments: await Promise.all(entry.attachments.map((a) => attachDownloadUrl(a, { allowInline: true }))) };
   }));
   return order;
 }
@@ -228,14 +240,6 @@ async function presignS3Uri(s3Uri, opts) {
 // go. Non-ASCII is dropped rather than RFC 5987-encoded: this is a
 // convenience label on a download, not something worth a second encoding
 // scheme, and the real name is always shown in the dashboard next to it.
-function downloadFilename(name) {
-  const cleaned = String(name || "file")
-    .replace(/[^\x20-\x7e]/g, "")
-    .replace(/["\\]/g, "")
-    .trim()
-    .slice(0, 120);
-  return cleaned || "file";
-}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

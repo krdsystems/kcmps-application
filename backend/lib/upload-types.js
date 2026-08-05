@@ -115,11 +115,71 @@ function extensionOf(filename) {
   return m ? m[1].toLowerCase() : "";
 }
 
+/* ── Inline viewing vs forced download ────────────────────────────────────
+   Staff open customer attachments constantly — a payment screenshot, a photo
+   of a misprint, a PDF spec. Forcing every one of them to download meant a
+   trip through the Downloads folder to look at a picture, and left a pile of
+   customer files on disk. These open in a tab instead.
+
+   This is the same trade the GCash screenshot already makes (see
+   get-orders.js's "FORCED DOWNLOAD" note): inline is allowed ONLY after the
+   file has passed the GuardDuty scan gate. Callers must still check
+   NO_THREATS_FOUND before presigning — this helper decides *how* to serve a
+   file that is already known clean, never *whether* to serve it.
+
+   The allowlist is deliberately narrow and closed:
+   - Images and PDF only. These are exactly the types send-message.js accepts,
+     so nothing else can reach a message thread anyway.
+   - SVG is NOT here and must never be added. An SVG is a script container —
+     rendering one inline executes its JavaScript. `backend/lib/upload-types.js`
+     already excludes it at upload time for the same reason; this is the
+     second layer.
+   - HTML, JS and anything unrecognised fall through to `attachment`, so an
+     unexpected type can only ever be downloaded, never rendered.
+
+   Cross-origin note: these render from the S3 presigned host, not kcmps.com,
+   so even a hostile file that slipped past the scanner cannot reach the
+   dashboard's session or DOM. */
+const INLINE_VIEWABLE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+]);
+
+/* Returns the S3 presign response-header overrides for an already-scanned
+   attachment. Pass the stored contentType; anything not explicitly listed
+   above is served as a download. */
+function contentDispositionFor(contentType, filename, { allowInline = true } = {}) {
+  // Filename lands inside a quoted header value, so anything that could
+  // terminate the quoting or inject a header is replaced, and the result is
+  // length-capped. Deliberately an allowlist, not a blocklist of `"` and `\`.
+  const safeName = String(filename || "file")
+    .replace(/[^A-Za-z0-9._ -]/g, "_")
+    .trim()
+    .slice(0, 120) || "file";
+  if (allowInline && INLINE_VIEWABLE_TYPES.has(String(contentType || "").toLowerCase())) {
+    return {
+      ResponseContentDisposition: `inline; filename="${safeName}"`,
+      // Serve the real type so the browser renders it; octet-stream would
+      // force a download no matter what the disposition says.
+      ResponseContentType: contentType,
+    };
+  }
+  return {
+    ResponseContentDisposition: `attachment; filename="${safeName}"`,
+    ResponseContentType: "application/octet-stream",
+  };
+}
+
 module.exports = {
   ALLOWED_UPLOAD_TYPES,
   ALLOWED_UPLOAD_EXTENSIONS,
   MAX_UPLOAD_BYTES,
   MAX_UPLOADS_PER_ORDER,
+  INLINE_VIEWABLE_TYPES,
   resolveUploadType,
   extensionOf,
+  contentDispositionFor,
 };

@@ -44,6 +44,7 @@ const { DynamoDBDocumentClient, GetCommand, QueryCommand, UpdateCommand } = requ
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { orderPk, metaSk, scanResultPk, extractClaims, isStaff } = require("../lib");
+const { contentDispositionFor, INLINE_VIEWABLE_TYPES } = require("../lib/upload-types");
 
 const TABLE = process.env.TABLE_NAME;
 const ATTACHMENT_URL_EXPIRY_SECONDS = 15 * 60;
@@ -109,12 +110,22 @@ exports.handler = async (event) => {
 //     files are already deleted from S3 by that Lambda, and the attachment
 //     record survives so both sides can see what was sent and that it was
 //     destroyed. No persisted verdict yet = PENDING = blocked (fail closed).
-//  2. FORCED DOWNLOAD — attachment disposition + octet-stream, so nothing
-//     renders inline. This matters more here than anywhere else in the
-//     system: send-message.js accepts attachments from CUSTOMERS (any
-//     logged-in customer, on their own order), so this is the one upload
-//     path where an outsider's file was previously presigned for staff with
-//     neither a scan nor a disposition override. Both were added 2026-08-05.
+//  2. DISPOSITION — images and PDFs are served `inline` so staff can open a
+//     customer's photo or spec in a tab instead of routing it through the
+//     Downloads folder; every other type still gets `attachment` +
+//     octet-stream. The allowlist lives in backend/lib/upload-types.js's
+//     contentDispositionFor() and is closed — SVG is excluded there on
+//     purpose and must stay excluded, since rendering one executes its
+//     script. Inline is reached ONLY after rule 1 passes.
+//
+//     This path deserves the most care in the system: send-message.js
+//     accepts attachments from CUSTOMERS (any logged-in customer, on their
+//     own order), so it is the one upload path fed by an outsider. It was
+//     presigned for staff with neither a scan nor a disposition override
+//     until 2026-08-05, when both were added. What makes inline acceptable
+//     now is the combination — a closed type allowlist, a mandatory clean
+//     scan verdict, and rendering from the S3 presigned host rather than
+//     kcmps.com, so a hostile file cannot reach the dashboard's session.
 async function withAttachmentUrls(message) {
   if (!Array.isArray(message.attachments) || !message.attachments.length) return message;
   const attachments = await Promise.all(message.attachments.map(async (raw) => {
@@ -137,13 +148,15 @@ async function withAttachmentUrls(message) {
     if (!match) return a;
     const [, bucket, key] = match;
     try {
+      // Images and PDFs open in a tab; anything else still downloads. The
+      // NO_THREATS_FOUND gate above is unchanged and still runs first — see
+      // contentDispositionFor() in backend/lib/upload-types.js.
       const url = await getSignedUrl(s3, new GetObjectCommand({
         Bucket: bucket,
         Key: key,
-        ResponseContentDisposition: `attachment; filename="${downloadFilename(a.filename)}"`,
-        ResponseContentType: "application/octet-stream",
+        ...contentDispositionFor(a.contentType, a.filename),
       }), { expiresIn: ATTACHMENT_URL_EXPIRY_SECONDS });
-      return { ...a, url };
+      return { ...a, url, inlineViewable: INLINE_VIEWABLE_TYPES.has(String(a.contentType || "").toLowerCase()) };
     } catch (err) {
       console.error("get-messages: failed to presign attachment", a.ref, err.message);
       return { ...a, url: null };
@@ -154,14 +167,6 @@ async function withAttachmentUrls(message) {
 
 // Mirrors get-orders.js's helper — strips quotes/backslashes/control chars
 // (CR/LF would be header injection) out of the Content-Disposition value.
-function downloadFilename(name) {
-  const cleaned = String(name || "file")
-    .replace(/[^\x20-\x7e]/g, "")
-    .replace(/["\\]/g, "")
-    .trim()
-    .slice(0, 120);
-  return cleaned || "file";
-}
 
 function response(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

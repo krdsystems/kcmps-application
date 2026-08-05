@@ -102,6 +102,33 @@ h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-headi
    ══════════════════════════════════════════════════════════════════════ */
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* ── Horizontal containment ───────────────────────────────────────────────
+   The page must never pan or rubber-band sideways on a phone. Two DIFFERENT
+   problems, which is why there are two declarations:
+
+   1. `overflow-x` clips anything wider than the viewport. On this site that
+      is the off-screen cart drawer and the carousel's neighbouring slides —
+      both intentional, both must stay invisible rather than scrollable-to.
+   2. `overscroll-behavior-x: none` stops the elastic horizontal bounce. This
+      is the one that fixes "the whole page bleeds left/right when I swipe":
+      the document does NOT overflow (measured — scrollWidth == 375 at 375px),
+      so what a shopper feels is the browser's rubber-band gesture, not real
+      content. `overflow-x` alone cannot stop it. It also stops swipe-to-go-back
+      hijacking a horizontal drag inside the design carousel.
+
+   `clip` on BODY, not `hidden` — this is the load-bearing detail. Per the
+   root CLAUDE.md gotcha (and docs/history.md step 12), `overflow-x: hidden`
+   on body promotes it to a scroll container and silently breaks every
+   `position: sticky` on the site — the nav, the scroll indicator, the hero
+   card-deck pin. `clip` clips without creating a scroll container, so sticky
+   keeps working; verified empirically at 375px, nav stayed pinned at top 0
+   after scrolling 900px. Safari < 16 ignores `clip` and falls through to
+   `visible`, which is why html keeps the documented-safe `hidden` as the
+   fallback layer. Do not "simplify" these to one rule. */
+html { overflow-x: hidden; overscroll-behavior-x: none; }
+body { overflow-x: clip; overscroll-behavior-x: none; }
+
 body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);

@@ -14,7 +14,7 @@ const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
 const { redactForCustomer } = require("./customer-view");
-const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES } = require("./upload-types");
+const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES, contentDispositionFor } = require("./upload-types");
 const { describeThreats } = require("./threat-descriptions");
 
 // ---- money.js ----
@@ -611,4 +611,40 @@ test("assessVerdicts persists all four verdicts and never launders an unknown on
   // ...but an unrecognized non-PASS value DOES quarantine (fail closed on
   // anything SES actually said that we don't recognize).
   assert.equal(assessVerdicts({ virusVerdict: "weird" }).quarantine, true);
+});
+
+/* ---- contentDispositionFor: inline viewing allowlist ----
+   Security-relevant: this decides whether a customer-uploaded file renders in
+   the browser or is forced to disk. The allowlist must stay closed. */
+test("contentDispositionFor: images and PDF are served inline with their real type", () => {
+  for (const t of ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]) {
+    const r = contentDispositionFor(t, "proof.jpg");
+    assert.match(r.ResponseContentDisposition, /^inline;/, t + " should be inline");
+    assert.equal(r.ResponseContentType, t);
+  }
+});
+
+test("contentDispositionFor: SVG and scriptable types are NEVER inline", () => {
+  // An SVG is a script container — rendering one executes its JavaScript.
+  for (const t of ["image/svg+xml", "text/html", "application/javascript", "text/xml", ""]) {
+    const r = contentDispositionFor(t, "x.svg");
+    assert.match(r.ResponseContentDisposition, /^attachment;/, t + " must download");
+    assert.equal(r.ResponseContentType, "application/octet-stream");
+  }
+});
+
+test("contentDispositionFor: allowInline:false forces download even for an allowed type", () => {
+  const r = contentDispositionFor("application/pdf", "spec.pdf", { allowInline: false });
+  assert.match(r.ResponseContentDisposition, /^attachment;/);
+  assert.equal(r.ResponseContentType, "application/octet-stream");
+});
+
+test("contentDispositionFor: filename cannot break out of the quoted header", () => {
+  const r = contentDispositionFor("image/png", 'evil".png\r\nX-Injected: 1');
+  assert.ok(!r.ResponseContentDisposition.includes('"evil"'), "quote must not survive");
+  assert.ok(!/[\r\n]/.test(r.ResponseContentDisposition), "CR/LF must not survive");
+  const r2 = contentDispositionFor("image/png", "é".repeat(300));
+  const name = /filename="([^"]*)"/.exec(r2.ResponseContentDisposition)[1];
+  assert.ok(name.length <= 120, "filename must be length-capped, got " + name.length);
+  assert.equal(contentDispositionFor("image/png", "").ResponseContentDisposition, 'inline; filename="file"');
 });

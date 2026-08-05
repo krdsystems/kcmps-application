@@ -821,8 +821,19 @@ aws apigatewayv2 update-stage --api-id 6msg2uho6c --stage-name '$default' --rout
   "POST /orders/{orderId}/cancel": {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5.0}
 }' --region ap-southeast-1 --profile kcmps-claude-priv
 ```
-(That call replaces the whole `RouteSettings` map on the stage — include the existing
-`POST /orders`/`POST /orders/{orderId}/payment-proof` entries too if re-running this.)
+(That call replaces the whole `RouteSettings` map on the stage — it's an overwrite, not a
+merge, so any re-run must include the FULL current map or it silently drops entries. As of
+2026-08-05 the live `$default` stage has five throttled routes:
+```
+"POST /orders":                        {"ThrottlingBurstLimit": 20, "ThrottlingRateLimit": 10.0}
+"POST /orders/{orderId}/payment-proof": {"ThrottlingBurstLimit": 20, "ThrottlingRateLimit": 10.0}
+"POST /design-uploads":                 {"ThrottlingBurstLimit": 20, "ThrottlingRateLimit": 10.0}
+"POST /orders/lookup":                  {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5.0}
+"POST /orders/{orderId}/cancel":        {"ThrottlingBurstLimit": 10, "ThrottlingRateLimit": 5.0}
+```
+Verify with `aws apigatewayv2 get-stage --api-id 6msg2uho6c --stage-name '$default'` before any
+`update-stage` call and copy the current map forward, rather than trusting this snapshot to stay
+current.)
 
 **Env vars**: `TABLE_NAME=kcmps` on both; `cancel-order.js` also needs `COGNITO_USER_POOL_ID`/
 `COGNITO_CLIENT_ID` (same values as `kcmps-create-order`) for its optional JWT verification.

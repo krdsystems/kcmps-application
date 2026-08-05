@@ -22,7 +22,7 @@
      tag — set them as real response headers at CloudFront for full
      clickjacking protection.
      ============================================================ -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 <title>KCMPS — Kaalyados Creatives</title>
@@ -1920,16 +1920,17 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <script>
 /* ---- Cognito config (specific to this User Pool / App Client) ---- */
 const COGNITO_CONFIG = {
-  userPoolId:  "ap-southeast-1_iDvAEumNp",
+  userPoolId:  "ap-southeast-1_LHJsFdCgo",
   region:      "ap-southeast-1",
-  domain:      "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
-  clientId:    "95rrk0mflffentqdiomg1fipc",
+  domain:      "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
+  clientId:    "2rsbhkjooja4h5e0ijpl4siuug",
   // Must EXACTLY match an allowed callback/sign-out URL on the app client.
   // We use origin + "/" (not origin + pathname) so it resolves to the
   // registered root URL — https://site.kcmps.com/ in prod, http://localhost:5500/
   // locally — regardless of whether the page was opened as "/" or "/index.html".
   redirectUri: window.location.origin + "/",
-  scopes:      "email openid profile phone",
+  // No `phone` scope — the pool has no phone attribute to consent to.
+  scopes:      "email openid profile",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
   // Any of these groups unlocks the dashboard — Staff (dashboard-only)
@@ -2185,19 +2186,19 @@ function renderLoggedIn(claims) {
 }
 
 /* ---- Custom sign-up (Cognito IdP API, separate from the Hosted UI flow) ----
-   The pool's schema requires several standard attributes on top of email —
-   given_name/family_name/middle_name/name/preferred_username — baked in at
-   pool creation and immutable now (Cognito has no API to change Required
-   after the fact). None of it is ever read anywhere in this app (checkout
-   collects its own contact/delivery details separately), so routing
-   customers through Cognito's own Hosted UI signup page means asking a
-   shopper for a full name and a separate username before they can buy a
-   print job. This calls the same public, secretless SPA client as the
-   Hosted UI flow above — only the network endpoint differs (regional IdP
-   JSON API vs the Hosted UI domain) — to build a minimal custom "Create
-   account" form that asks for just email + password, with placeholder
-   values supplied for the rest. Login stays exactly as it was: the
-   existing Hosted UI popup. See docs/history.md entry 63. ---- */
+   Every field this form asks for is a field the pool actually requires:
+   username, email, first name, last name, password. That wasn't true before
+   — the original pool (ap-southeast-1_LHJsFdCgo) also required middle_name,
+   `name` and preferred_username, and since Required flags are immutable
+   after pool creation, the only fix was a new pool. See backend/infra/
+   user-pool-v2.cfn.yaml and docs/history.md entry 64.
+
+   This form is kept (rather than handing sign-up to the Hosted UI, which
+   would now ask for the same short list) because it stays on-brand, inside
+   the page, and shares the auth-choice modal with login. It calls the same
+   public, secretless SPA client as the Hosted UI flow above — only the
+   network endpoint differs (regional IdP JSON API vs the Hosted UI domain).
+   Login stays exactly as it was: the existing Hosted UI popup. ---- */
 const IDP_ENDPOINT = `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/`;
 
 async function idpRequest(target, body) {
@@ -2217,7 +2218,10 @@ async function idpRequest(target, body) {
 function idpErrorMessage(data) {
   const type = (data.__type || "").split("#").pop();
   const known = {
-    UsernameExistsException: "An account with this email already exists — try logging in instead.",
+    // Cognito raises this for a taken username OR an already-registered email
+    // alias, and PreventUserExistenceErrors means we can't tell which — so the
+    // copy has to cover both without confirming either exists.
+    UsernameExistsException: "That username or email is already taken — try another, or log in instead.",
     InvalidPasswordException: "Password must be at least 8 characters and include upper/lowercase letters, a number, and a symbol.",
     InvalidParameterException: "Please check your email and password and try again.",
     CodeMismatchException: "That code doesn't match. Please check it and try again.",
@@ -2229,25 +2233,31 @@ function idpErrorMessage(data) {
   return known[type] || data.message || "Something went wrong. Please try again.";
 }
 
-// A non-email placeholder Username — the pool aliases sign-in by email
-// (AliasAttributes), so this string is never seen or typed by the
-// customer again; it only exists because this pool's Usernames can't be
-// email-formatted (email is the alias, not the username itself).
-function generateUsername() {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return "u" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+// The customer picks their own username, and can sign in afterwards with
+// EITHER it or their email (the pool sets AliasAttributes: [email], so both
+// are valid sign-in identifiers).
+//
+// The one hard rule: a Username can never be email-SHAPED. Because email is
+// an alias, Cognito rejects an email-formatted Username outright with
+// InvalidParameterException — so an "@" here is a client-side error, not
+// something to pass through and let the API reject with a cryptic message.
+const USERNAME_RE = /^[a-zA-Z0-9._-]{3,30}$/;
+
+function usernameError(username) {
+  if (!username) return "Please choose a username.";
+  if (username.includes("@")) return "Usernames can't contain “@”. You'll be able to sign in with your email address as well.";
+  if (!USERNAME_RE.test(username)) return "Usernames are 3–30 characters, using letters, numbers, dots, dashes or underscores.";
+  return null;
 }
 
 function escapeAuthHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-async function signUpCustomer(email, password, firstName, lastName) {
-  const username = generateUsername();
-  // middle_name/preferred_username: required by the pool, never read
-  // anywhere in this app — placeholders so the customer is never asked to
-  // type them.
+async function signUpCustomer(username, email, password, firstName, lastName) {
+  // email/given_name/family_name are the pool's three required attributes.
+  // `name` is optional but set anyway so renderLoggedIn()'s
+  // `claims.name || claims.email` greets a person by name, not an address.
   await idpRequest("SignUp", {
     ClientId: COGNITO_CONFIG.clientId,
     Username: username,
@@ -2257,8 +2267,6 @@ async function signUpCustomer(email, password, firstName, lastName) {
       { Name: "name", Value: `${firstName} ${lastName}`.trim() },
       { Name: "given_name", Value: firstName },
       { Name: "family_name", Value: lastName },
-      { Name: "middle_name", Value: "-" },
-      { Name: "preferred_username", Value: username },
     ],
   });
   return username;
@@ -2334,6 +2342,8 @@ function renderSignUpStep() {
   authModalBody.innerHTML =
     '<div class="field"><label for="su-first-name">First Name</label><input class="input" id="su-first-name" type="text" autocomplete="given-name" /></div>' +
     '<div class="field"><label for="su-last-name">Last Name</label><input class="input" id="su-last-name" type="text" autocomplete="family-name" /></div>' +
+    '<div class="field"><label for="su-username">Username</label><input class="input" id="su-username" type="text" autocomplete="username" /></div>' +
+    '<p style="font-size:12px;opacity:0.7;margin-top:-4px">You can sign in with either your username or your email.</p>' +
     '<div class="field"><label for="su-email">Email</label><input class="input" id="su-email" type="email" autocomplete="email" /></div>' +
     '<div class="field"><label for="su-password">Password</label><input class="input" id="su-password" type="password" autocomplete="new-password" /></div>' +
     '<p style="font-size:12px;opacity:0.7;margin-top:-4px">At least 8 characters, with upper and lowercase letters, a number, and a symbol.</p>' +
@@ -2348,11 +2358,13 @@ function renderSignUpStep() {
 async function submitSignUp() {
   const firstNameEl = document.getElementById("su-first-name");
   const lastNameEl = document.getElementById("su-last-name");
+  const usernameEl = document.getElementById("su-username");
   const emailEl = document.getElementById("su-email");
   const passwordEl = document.getElementById("su-password");
   const errorEl = document.getElementById("su-error");
   const firstName = firstNameEl.value.trim();
   const lastName = lastNameEl.value.trim();
+  const username = usernameEl.value.trim();
   const email = emailEl.value.trim();
   const password = passwordEl.value;
   function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
@@ -2360,6 +2372,8 @@ async function submitSignUp() {
 
   if (!firstName) { showError("Please enter your first name."); return; }
   if (!lastName) { showError("Please enter your last name."); return; }
+  const unErr = usernameError(username);
+  if (unErr) { showError(unErr); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError("Please enter a valid email address."); return; }
   if (!password) { showError("Please enter a password."); return; }
 
@@ -2367,7 +2381,7 @@ async function submitSignUp() {
   const origText = btn.textContent;
   btn.disabled = true; btn.textContent = "Creating account…";
   try {
-    const username = await signUpCustomer(email, password, firstName, lastName);
+    await signUpCustomer(username, email, password, firstName, lastName);
     renderConfirmStep(username, email);
   } catch (err) {
     showError(err.message);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Terms of Service — KCMPS</title>
 <meta name="description" content="Review KCMPS's terms of service, including payment methods, order policies, liability, and your responsibilities as a customer." />
 <link rel="canonical" href="https://kcmps.com/terms.html" />
@@ -153,7 +153,14 @@
 (function() {
   var cartBtn = document.getElementById('cart-btn');
   if (cartBtn) {
-    cartBtn.addEventListener('click', window.KCMPS_STORE?.openCart || function() {});
+    // The seam exports this as `open` (store.js's window.KCMPS_STORE), not
+    // `openCart` — the old name silently resolved to undefined and fell through
+    // to the no-op, so this button did nothing at all on the legal pages.
+    // Resolve at click time rather than capturing at script-run time so this
+    // can't break again on a script load-order change.
+    cartBtn.addEventListener('click', function () {
+      if (window.KCMPS_STORE && window.KCMPS_STORE.open) window.KCMPS_STORE.open();
+    });
   }
 })();
 </script>

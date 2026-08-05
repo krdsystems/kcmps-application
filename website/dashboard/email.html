@@ -55,6 +55,9 @@
   const { escapeHtml, fmtDateTime, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
   let currentMailboxId = null;
+  // Set by renderMailboxSelector() when the API returns zero mailboxes, so the
+  // list/read panes can distinguish "no access" from "no mail" (see there).
+  let noMailboxAccess = false;
   let currentMessageId = null;
   let search = "";
   let replyDraft = "";
@@ -85,11 +88,21 @@
   async function renderMailboxSelector() {
     const boxes = await KCMPS_DASH.getMailboxes();
     if (!boxes.length) {
+      // An empty list is NOT the same as "no mail has arrived" — mailbox
+      // capability is group-based (backend/lib/mail.js's canAccessMailbox:
+      // Sales/Finance/Admin, deliberately NOT Staff), so a legitimately
+      // signed-in Staff-only account gets `{"mailboxes":[]}` here. Rendering
+      // that identically to an empty inbox is how a permissions problem
+      // masquerades as "quiet day". Say which it is.
+      noMailboxAccess = true;
       selectEl.innerHTML = "";
-      unreadEl.textContent = "0 unread";
+      selectEl.disabled = true;
+      unreadEl.textContent = "";
       unreadEl.classList.remove("has-red");
       return boxes;
     }
+    noMailboxAccess = false;
+    selectEl.disabled = false;
     if (!currentMailboxId) currentMailboxId = boxes[0].id;
     selectEl.innerHTML = boxes.map((mb) => {
       const label = mb.label + " — " + mb.address;
@@ -105,7 +118,9 @@
   /* ---- message list ---- */
   async function renderList() {
     if (!currentMailboxId) {
-      listEl.innerHTML = '<p class="q-empty">No mailboxes available.</p>';
+      listEl.innerHTML = noMailboxAccess
+        ? '<p class="q-empty">No mailboxes are assigned to your account.</p>'
+        : '<p class="q-empty">No mailboxes available.</p>';
       return;
     }
     const res = await KCMPS_DASH.getMessages(currentMailboxId, { search });
@@ -264,7 +279,12 @@
 
   async function renderRead(flash) {
     if (!currentMailboxId) {
-      readEl.innerHTML = '<div class="empty-state">Select a message to read it.</div>';
+      readEl.innerHTML = noMailboxAccess
+        ? '<div class="empty-state"><p><b>No mailboxes are assigned to your account.</b></p>' +
+          '<p class="hint">Shared mailbox access comes from the <b>Sales</b>, <b>Finance</b> or ' +
+          '<b>Admin</b> group — a <b>Staff</b>-only account has dashboard access but no mailbox ' +
+          'of its own. Ask an Admin to add you to the group that matches your work.</p></div>'
+        : '<div class="empty-state">Select a message to read it.</div>';
       return;
     }
     const [boxes, m] = await Promise.all([

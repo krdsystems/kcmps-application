@@ -14,6 +14,10 @@ listed under [Deliberately deferred](#deliberately-deferred) below so nobody "ge
 
 ## Where we are today (2026-07)
 
+> **[Updated 2026-08-05] Status in this section is stale.** Milestones 1.0–1.5 have shipped —
+> a full payment backend (17 Lambdas, DynamoDB table, observability stack) is deployed and live.
+> Sections below are preserved for historical context; current project state → top of this file.
+
 **Done and deployed (`website/`, static, S3):**
 - Storefront: catalog, mixed cart (`sku` + `custom`), bulk estimator, hero category priming,
   scroll indicator, responsive/mobile. Cart lives in `localStorage` behind the
@@ -71,9 +75,10 @@ table write, even though nothing uses most of them yet.
     in the legacy `Staff` group (see below) until that group is retired.
   - **Legacy groups found in the pool, not created by this stack:** `Staff` (precedence 10,
     what `dashboard-shell.js` currently gates on) and `Customers` (precedence 100, plural).
-    Both are deprecated in favor of `Admin`/`Customer` — see "Legacy groups" in
-    `backend/infra/README.md` for the retirement steps (migrate members, then update
-    `dashboard-shell.js`'s client-side check, then delete the two old groups).
+    `Customers` is now retired; `Staff` is a first-class role (not deprecated) — see "Legacy
+    groups" in `backend/infra/README.md` for the retirement details (only `Customers` was
+    deleted after migrating its one member; `Staff` is kept and accepted at both frontend
+    and backend layers).
   - **`Customer` membership auto-assigned (2026-08-03):** the group sat permanently empty
     until now — no `PostConfirmation` trigger existed, so a self-signup landed with zero
     groups (harmless in practice, since `backend/lib/auth.js`'s `isStaff()` check means "not
@@ -187,10 +192,11 @@ can't be fulfilled from an online order alone.
   independently via direct API calls (order created → proof submitted → real image landed in
   `kcmps-payment-uploads-est-2026` → `payment` sub-object correctly shaped) — then all test
   artifacts (DynamoDB items, the S3 object) were deleted.
-- [ ] SES sending identity for the checkout confirmation email — **blocked on the pending SES
-  production-access request** (`docs/roadmap.md` "SES relay" section, status pending as of
-  2026-07-31). `submit-payment-proof.js` degrades gracefully without it (skips the email,
-  proof is still recorded) so this doesn't block anything above.
+- [x] SES sending identity for the checkout confirmation email — **deployed and live
+  (2026-08-03/04)**. `ProductionAccessEnabled: true`, 50k/day quota, DKIM/MAIL FROM verified
+  live. `FROM_EMAIL` set on all 5 notification Lambdas (`create-order`, `submit-payment-proof`,
+  `verify-payment`, `advance-line-item`, `expire-pending-orders`). See `backend/infra/README.md`
+  "SES customer notifications" section for full wiring detail.
 - [x] GCash matching mechanism decided (2026-08-01): keep the typed reference number as the
   only cross-check field — see [open decisions](#open-decisions-that-gate-milestone-1). No
   further implementation needed.
@@ -317,9 +323,9 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
 - [x] `backend/staff-api/verify-payment.js` sends the two customer emails the Payment System spec
   always called for but never had (`verifyPayment`/`setOnHold` sent nothing; only the
   "under verification" email at submission existed). Same best-effort pattern as
-  `submit-payment-proof.js` — gated on `FROM_EMAIL`, which is still unset (SES remains sandboxed,
-  `ProductionAccessEnabled: false`, confirmed via `sesv2 get-account`), so this ships dark and
-  activates the moment that env var is set.
+  `submit-payment-proof.js` — wired live (2026-08-03/04): `FROM_EMAIL` set, SES production
+  access enabled (`ProductionAccessEnabled: true`), DKIM/MAIL FROM verified working. See
+  `backend/infra/README.md` "SES customer notifications" section.
 
 **Phase 3 (two new routes on the existing `kcmps-checkout-api`, id `6msg2uho6c`):**
 - [x] `POST /orders/lookup` → new `kcmps-lookup-order` Lambda

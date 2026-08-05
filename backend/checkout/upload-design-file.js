@@ -74,9 +74,10 @@
    anything not cleanly scanned, so an infected file cannot be one click
    away from the machine that drives the press.
 
-   Cost: ~US$0.60/GB scanned + ~US$0.19 per 1,000 objects. At an
-   estimated ~200 uploads/mo averaging ~10MB that is ~US$1.30/mo (~₱75),
-   roughly 15% of the ₱500/mo Stage-0 soft cap — under the cap, but large
+   Cost: **measured live (docs/cost-governance.md lines 77–94):** with 42 objects / 56 MB
+   across all uploads in 2026-07-31→08-05, the cost is **$0.00/mo** (free tier). At an
+   estimated ~200 uploads/mo averaging ~10MB that projects to ~₱10 (~2% of cap) — under the
+   cap, negligible
    enough relative to a ~$1/mo baseline to be logged rather than shipped
    silently. Recorded in docs/cost-governance.md's decision log per that
    file's rule. Scanning is capped by a monthly GB limit on the GuardDuty

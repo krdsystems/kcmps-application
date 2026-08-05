@@ -38,11 +38,11 @@ key-formatting and status logic that quietly drifts.
   `ops-dashboard/infra/backend-infra-to-deploy.md` §2 so the two can't drift.
 - `README.md` — validate/apply/rollback commands, and how the stack's outputs
   (`TableName`/`TableStreamArn`/`GSI1Name`) feed the 1.1+ Lambdas.
-- `observability.cfn.yaml` — Milestone 1.5: SNS alert topic, shared Lambda DLQ, and 17
-  CloudWatch alarms (Errors/Throttles per Lambda, `streams-handler`'s IteratorAge, DLQ depth,
-  checkout API 5xx). Deployed as stack `kcmps-observability`. Full detail, plus the CLI-only
-  updates it doesn't cover (Streams ESM retry/DLQ config, `expire-pending-orders`' async invoke
-  config, API Gateway route throttling), in `README.md`'s "Observability" section.
+- `observability.cfn.yaml` — Milestone 1.5: SNS alert topic, shared Lambda DLQ, and 37
+  CloudWatch alarms (Errors/Throttles on all 17 deployed Lambdas, `streams-handler`'s IteratorAge,
+  DLQ depth, checkout API 5xx). Deployed as stack `kcmps-observability`. Full detail, plus the
+  CLI-only updates it doesn't cover (Streams ESM retry/DLQ config, `expire-pending-orders`' async
+  invoke config, API Gateway route throttling), in `README.md`'s "Observability" section.
 
 ## `lib/` — what's in it
 

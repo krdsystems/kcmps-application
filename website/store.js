@@ -1550,12 +1550,25 @@
           '</div>' +
           '<div class="field"><label for="co-notes">Custom request details / design links</label><textarea class="input" id="co-notes" placeholder="For custom items: describe your design, sizes, quantities, or paste file links."></textarea></div>' +
           '<p class="f-note">You\'ll get an email confirmation, with delivery (if selected) arriving within 1–2 business days.</p>' +
+          // Sits last in the checkout view so it renders directly above the
+          // Place-order button in .cart-foot — the message and the control it
+          // blocks stay adjacent. role="alert" so it's announced when it
+          // appears; see showCheckoutError().
+          '<p class="checkout-error" id="co-error" role="alert" style="display:none"></p>' +
         '</div>' +
       '</div>' +
       '<div class="cart-foot" id="cart-foot"></div>';
 
     document.body.appendChild(overlay);
     document.body.appendChild(drawer);
+
+    // Clear a validation error the moment the shopper starts fixing it —
+    // leaving a stale red message under a field they've already corrected
+    // reads as "still broken". Delegated on the drawer so it covers the
+    // delivery fields too, which are toggled in and out of the DOM flow.
+    drawer.addEventListener("input", function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains("input")) clearCheckoutError();
+    });
 
     overlay.addEventListener("click", closeDrawer);
     drawer.querySelector(".cart-close").addEventListener("click", closeDrawer);
@@ -2062,13 +2075,24 @@
       '<p>Order <strong>' + escapeHtml(state.orderId) + '</strong> — scan to pay <strong>' + peso(state.payNowTotal) + '</strong> ' +
       'via GCash, then tell us the reference number and attach your payment screenshot below.</p>' +
       '<img class="order-popup-qr" src="assets/gcash-qr.jpg" alt="KCMPS GCash QR code — scan to pay" width="200" height="384" />' +
-      '<div class="field"><label for="pp-ref">GCash reference number</label><input class="input" id="pp-ref" placeholder="e.g. 8017 442 99331" /></div>' +
+      // inputmode="numeric" (not type="number" — the value is a formatted
+      // digit group, not a quantity, and type=number would strip the spaces
+      // and attach a spinner): a GCash reference is always digits, so the
+      // phone should open straight onto the numeric keypad.
+      '<div class="field"><label for="pp-ref">GCash reference number</label><input class="input" id="pp-ref" inputmode="numeric" autocomplete="off" placeholder="e.g. 8017 442 99331" /></div>' +
       '<div class="field"><label for="pp-amount">Amount you sent (₱)</label><input class="input" id="pp-amount" type="number" min="0" step="0.01" value="' + state.payNowTotal + '" /></div>' +
       '<div class="field"><label for="pp-file">Payment screenshot</label><input class="input" id="pp-file" type="file" accept="image/png,image/jpeg,image/webp" /></div>' +
       '<p class="order-popup-error" id="pp-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
       '<p style="font-size:12.5px;opacity:0.75;margin-top:var(--space-2)">Trouble uploading? Message us at ' +
       '<a href="mailto:' + ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + state.orderId + " — payment proof") + '">' + escapeHtml(ORDER_EMAIL) + '</a> ' +
-      'with your order ID and screenshot instead.</p>';
+      'with your order ID and screenshot instead.</p>' +
+      // This step used to be the ONE popup state with no way back to the
+      // order (renderCustomOnlyConfirmation and renderProofSubmittedConfirmation
+      // both call trackOrderLink). It's also the state most likely to be
+      // dismissed accidentally: the customer backgrounds the tab to open
+      // GCash, comes back, and the popup is gone — leaving them with no path
+      // to their order at the exact moment they've already sent money.
+      trackOrderLink(state.orderId);
     orderPopupActions.innerHTML =
       '<button type="button" class="btn btn-secondary" id="order-popup-later">I\'ll send it later</button>' +
       '<button type="button" class="btn btn-primary" id="order-popup-submit-proof">Submit payment proof</button>';
@@ -2162,21 +2186,58 @@
     });
   }
 
+  /* Inline checkout validation, replacing four native alert() dialogs.
+     An alert() on a phone covers the form, names no field, and costs a
+     dismiss tap before the shopper can even see what went wrong. Same rules
+     and same order as before — only the presentation of the failure changed.
+     `field` is optional (the "wait for your upload" case blocks on no
+     particular input). */
+  function clearCheckoutError() {
+    var el = drawer && drawer.querySelector("#co-error");
+    if (el) { el.style.display = "none"; el.textContent = ""; }
+    if (drawer) {
+      Array.prototype.forEach.call(drawer.querySelectorAll(".input.is-invalid"), function (i) {
+        i.classList.remove("is-invalid");
+        i.removeAttribute("aria-invalid");
+      });
+    }
+  }
+
+  function showCheckoutError(msg, field) {
+    clearCheckoutError();
+    var el = drawer && drawer.querySelector("#co-error");
+    if (!el) { alert(msg); return; } // shell not built yet — never swallow the message
+    el.textContent = msg;
+    el.style.display = "";
+    if (field) {
+      field.classList.add("is-invalid");
+      field.setAttribute("aria-invalid", "true");
+      // Scroll before focus: focus alone scrolls the field to wherever the
+      // browser likes, which on a short drawer can leave the error message
+      // itself off screen.
+      try { field.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" }); } catch (e) { /* older browsers */ }
+      field.focus({ preventScroll: true });
+    } else {
+      try { el.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" }); } catch (e) { /* older browsers */ }
+    }
+  }
+
   function submitOrder() {
+    clearCheckoutError();
     var name = (document.getElementById("co-name").value || "").trim();
     var email = (document.getElementById("co-email").value || "").trim();
     var phone = (document.getElementById("co-phone").value || "").trim();
     var messenger = (document.getElementById("co-messenger").value || "").trim();
     var otherContact = (document.getElementById("co-other-contact").value || "").trim();
-    if (!name) { alert("Please add your name."); return; }
-    if (!email && !phone && !messenger && !otherContact) { alert("Please add at least one way to reach you (email, phone, Messenger, or other)."); return; }
+    if (!name) { showCheckoutError("Please add your name so we know whose order this is.", document.getElementById("co-name")); return; }
+    if (!email && !phone && !messenger && !otherContact) { showCheckoutError("Add at least one way to reach you — email, phone, Messenger, or another method.", document.getElementById("co-email")); return; }
     var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
     var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
     var notes = (document.getElementById("co-notes").value || "").trim();
     // Placing the order mid-upload would drop the file silently — its ref
     // only lands in uploadedDesignFiles once the S3 PUT actually completes.
     if (pendingUploads.length) {
-      alert("Please wait for your file upload" + (pendingUploads.length > 1 ? "s" : "") + " to finish before placing the order.");
+      showCheckoutError("Your file upload" + (pendingUploads.length > 1 ? "s are" : " is") + " still finishing — give it a moment, then place the order.");
       return;
     }
 
@@ -2185,7 +2246,7 @@
       var courierEl = document.querySelector('input[name="co-courier"]:checked');
       var address = (document.getElementById("co-address").value || "").trim();
       var landmark = (document.getElementById("co-landmark").value || "").trim();
-      if (!address) { alert("Please add your delivery address."); return; }
+      if (!address) { showCheckoutError("Add the delivery address so the rider can find you.", document.getElementById("co-address")); return; }
       shipping = { courier: courierEl ? courierEl.value : "Grab", address: address, landmark: landmark };
     }
 
@@ -2230,7 +2291,12 @@
       clearCart();
       openOrderPopup({ orderId: data.orderId, payNowTotal: data.payNowTotal });
     }).catch(function (err) {
-      alert("We couldn't place your order right now (" + err.message + "). Please try again in a moment, or message us directly at " + ORDER_EMAIL + ".");
+      // Same inline surface as the validation errors rather than an alert():
+      // this one appears AFTER a failed network round trip, when the shopper
+      // is already anxious about whether they were charged — a modal they
+      // have to dismiss to re-read the message is the worst possible place
+      // to put it.
+      showCheckoutError("We couldn't place your order right now (" + err.message + "). Please try again in a moment, or message us at " + ORDER_EMAIL + ".");
     }).then(function () {
       if (placeBtn) { placeBtn.disabled = false; placeBtn.textContent = placeBtnOrigText; }
     });
@@ -2254,6 +2320,7 @@
   function openDrawer() {
     if (!drawer) return;
     drawer.classList.remove("checkout-mode");
+    clearCheckoutError();
     renderCart();
     var restore = skipMotion(overlay, drawer);
     overlay.classList.add("is-open");

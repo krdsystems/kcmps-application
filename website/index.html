@@ -542,7 +542,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         <div class="price-anchor">
           <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱160</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
         </div>
-        <p class="sub" id="hero-sub">Pick a ready-made design or upload your own. We print it on premium DTF, press it onto a quality shirt, and you pick it up — no minimums, no design fee.</p>
+        <p class="sub" id="hero-sub">Pick a ready-made design or upload your own — we print it on premium DTF and press it onto a quality shirt. No minimums, no design fee.</p>
       </div>
       <ul class="hero-checklist">
         <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Free design file check &amp; prep — we fix it before we print</li>
@@ -740,6 +740,11 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
       <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
       <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱160</span></div>
+      <!-- Presentation only (2026-08-06): a struck-through comparison figure with
+           no stated basis reads as a former KCMPS price, which it is not. This
+           caption says what it actually is. It introduces no new number and no
+           new promise — both are still the owner-editable placeholders above. -->
+      <p class="vstack-note">Comparison figure is what these inclusions typically cost when bought separately elsewhere — not a previous KCMPS price.</p>
     </div>
   </section>
 
@@ -1319,6 +1324,23 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   }
   selectOption(groups[defaultLeaf][0].id, { silent: true });
 
+  /* Scroll affordance for the capped product grid (A10 in
+     docs/conversion-audit-2026-08-06.md). The 256px max-height is deliberate —
+     CLAUDE.md records that an uncapped grid pushes Step 02 off the page — but at
+     375px the grid holds ~1549px of content, so >80% of the catalog sat behind
+     an internal scroll with no cue at all. styles.css fades the bottom edge by
+     default; this only removes the fade once there's genuinely nothing more
+     below, since a permanent fade over the final row just looks like a bug.
+     Purely visual: no layout shift, nothing to gate on prefers-reduced-motion. */
+  function syncGridFade(grid) {
+    const atEnd = grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 2;
+    grid.classList.toggle('is-scrolled-end', atEnd);
+  }
+  document.querySelectorAll('#estimator .est-product-grid').forEach((grid) => {
+    syncGridFade(grid);
+    grid.addEventListener('scroll', () => syncGridFade(grid), { passive: true });
+  });
+
   if (merchLink) {
     merchLink.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1545,7 +1567,12 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         kicker: 'Bulk printing & office supplies · 2–3 day turnaround',
         headline: ['Your bulk print job,', 'done in days', '— not weeks.'],
         anchor: { from: 'Turnaround', amount: '2–3 days', was: 'clear pricing, no back-and-forth' },
-        sub: "Send your file, get a quote back in minutes, and pick up in 2–3 business days. Small per-order minimums keep pricing fair, bulk discounts apply automatically — just documents, forms, and office essentials printed right the first time.",
+        // Measured at 375px, the previous 236-character version ran 6 lines
+        // (144px tall) and pushed the primary CTA to y=781 of an 812px
+        // viewport. Same three promises — speed, automatic bulk pricing, right
+        // the first time — in half the lines. See
+        // docs/conversion-audit-2026-08-06.md finding A8.
+        sub: "Send your file, get a quote back in minutes, and pick it up in 2–3 business days. Bulk discounts apply automatically — printed right the first time.",
         cta: 'Get an instant quote',
         tabTarget: 'panel-print-office',
       },
@@ -1717,7 +1744,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
           `<div class="vstack-line"><span class="label">${line.label}</span><span class="val${line.free ? ' free' : ''}">${line.free ? 'FREE' : line.val}</span></div>`
         ).join('') +
         (vs.totalLabel ? `<div class="vstack-total"><span>${vs.totalLabel}</span><span class="val">${vs.totalVal}</span></div>` : '') +
-        `<div class="vstack-pay"><span class="lbl">${vs.payLabel}</span><span class="amt">${vs.payAmt}</span></div>`;
+        `<div class="vstack-pay"><span class="lbl">${vs.payLabel}</span><span class="amt">${vs.payAmt}</span></div>` +
+        // Must be repeated here, not only in the static markup: this renderer
+        // replaces #vstack-card's entire innerHTML on every category prime, so
+        // a caption that lived only in index.html's source would be wiped the
+        // moment PAGE_VARIANTS applied. Only rendered when there IS a
+        // struck-through comparison figure to explain.
+        (vs.totalLabel ? `<p class="vstack-note">Comparison figure is what these inclusions typically cost when bought separately elsewhere — not a previous KCMPS price.</p>` : '');
     }
 
     /* ---- how it works ---- */

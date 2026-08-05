@@ -103,7 +103,7 @@ buildEvent shape, ACTIVE_STATUSES membership, and hasRole/isStaff on both cognit
 Runnable with `node --test`.
 
 Do NOT build any actual Lambda handlers, DynamoDB clients, or API routes here — foundation
-only. Acceptance: `node --test backend/lib/` passes; field names/strings match §2.1/§2.2
+only. Acceptance: `node --test backend/lib/*.test.js` passes; field names/strings match §2.1/§2.2
 verbatim; money is integer centavos throughout; no dependency beyond @aws-sdk/* (and lib.test
 uses only node:test).
 ```

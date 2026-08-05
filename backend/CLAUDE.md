@@ -66,7 +66,14 @@ with what it builds.
 | `threat-descriptions.js` | `describeThreats()` — turns an AV signature name (`Trojan:Win32/Emotet`) into plain English a non-technical staffer can act on: label, one-line explanation, what-to-do advice, severity, plus the raw name kept for real investigation. Static table, **not** an LLM call — deterministic, free, no latency, unit-tested. Resolved once at scan time by `jobs/handle-scan-result.js` and stored on the record |
 | `index.js` | Re-exports everything above from one require |
 
-Run the tests: `node --test backend/lib/`.
+Run the tests: `node --test backend/lib/*.test.js`.
+
+**Name the files explicitly — never `node --test backend/lib/`.** The directory form is a
+false green in this repo: it reports `ok 1 - backend/lib` / `# tests 1` and **exits 0 even
+when a test in that directory fails** (verified 2026-08-06 on Node v22.23.2 by dropping a
+deliberately-failing probe file into `backend/lib/` — the directory form passed, the glob form
+correctly exited 1). A future session trusting it would see "tests pass" while running nothing.
+The glob form reports the real count (71 as of 2026-08-06).
 
 ## `checkout/` — what's in it
 

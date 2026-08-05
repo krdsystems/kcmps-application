@@ -788,7 +788,7 @@ signal exactly when it should matter most.
   `businessMinutesBetween`/`isWithinOperatingHours`/`nextOperatingStart`, fixed +8h Asia/Manila
   offset (no DST, so no timezone library needed). Unit-tested
   (`backend/lib/business-hours.test.js`) for same-day, overnight-spanning, and
-  weekend-spanning cases — run via `node --test backend/lib/`.
+  weekend-spanning cases — run via `node --test backend/lib/*.test.js`.
 - `CONFIG#OPERATING_HOURS`/`META` — a new item type (`keys.js`'s `configPk()`), no CFN change.
   Doesn't exist in the table yet; every reader falls back to
   `DEFAULT_OPERATING_HOURS` (Mon–Fri 09:00–18:00, Sat 09:00–14:00, Sun closed) until a future

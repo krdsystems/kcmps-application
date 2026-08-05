@@ -2327,7 +2327,24 @@ function ensureAuthModalShell() {
       '<div class="dialog-actions" id="auth-modal-actions"></div>' +
     "</div>";
   document.body.appendChild(backdrop);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeAuthModal(); });
+
+  // Click-outside-to-close, guarded on the press STARTING on the backdrop too.
+  //
+  // A `click` fires on the nearest common ancestor of its mousedown and mouseup
+  // targets — so a press that begins inside the dialog (dragging to select text
+  // in a field, releasing over a browser autofill suggestion, a touch that
+  // drifts) and ends outside it retargets the click to the backdrop. Testing
+  // `e.target === backdrop` alone therefore closed the dialog *while the user
+  // was typing*, wiping a half-filled sign-up form. Requiring the press to have
+  // started on the backdrop makes "outside click" mean an actual outside click.
+  let pressStartedOnBackdrop = false;
+  backdrop.addEventListener("pointerdown", (e) => {
+    pressStartedOnBackdrop = e.target === backdrop;
+  });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop && pressStartedOnBackdrop) closeAuthModal();
+    pressStartedOnBackdrop = false;
+  });
   authModal = backdrop;
   authModalTitle = backdrop.querySelector("#auth-modal-title");
   authModalBody = backdrop.querySelector("#auth-modal-body");
@@ -2343,6 +2360,11 @@ function openAuthModal() {
 
 function closeAuthModal() {
   if (!authModal) return;
+  // Move focus out BEFORE hiding: aria-hidden on an ancestor of the focused
+  // element hides a focused control from assistive tech, which browsers now
+  // warn about and refuse to apply. Closing while a field had focus (the
+  // common case) triggered exactly that.
+  if (authModal.contains(document.activeElement)) document.activeElement.blur();
   authModal.classList.remove("is-open");
   authModal.setAttribute("aria-hidden", "true");
 }

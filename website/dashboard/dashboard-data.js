@@ -145,11 +145,12 @@
      blockers/metrics) used to develop every dashboard page before any real
      backend existed. Milestone 1.3 cut jobs.html/job-detail.html over to
      the real API — every OTHER page (Today/Week/Month/Clients/Inventory/
-     Email/Settings) still reads only this local blob. Per explicit request
+     Settings) still reads only this local blob. Per explicit request
      (2026-07-31), a fresh dashboard now starts genuinely empty rather than
-     pre-populated with fake demo tickets — mailboxes are the one exception,
-     kept as bare folder scaffolding (no messages) since email.html's layout
-     assumes at least one mailbox exists. */
+     pre-populated with fake demo tickets. Mail (email.html) moved to the
+     real backend/mail/*.js API on 2026-08-06 (see the "MAIL" section
+     below) — it never reads this blob at all anymore, so there is no
+     mailboxes/emails seed here to keep in sync. */
   function buildSeed() {
     return {
       orders: [],
@@ -158,155 +159,9 @@
       blockers: [],
       inventory: [],
       clients: [],
-      mailboxes: seedMailboxes(),
-      emails: [],
       stations: STATIONS,
       seededAt: nowIso(),
     };
-  }
-
-  /* ---- seed data: staff mailboxes + mock mail ----
-     Shapes mirror an IMAP FETCH deliberately (see the "mail" section further
-     down) so swapping these mock functions for real Lambda calls is a
-     function-body change with no caller/UI change.
-
-     NOTE: this file must stay identity-free. It loads BEFORE
-     dashboard-shell.js, so it cannot read Cognito claims — the personal
-     mailbox is seeded with a fixed address and email.html overrides only its
-     display label from the signed-in claims. ---- */
-  function seedMailboxes() {
-    return [
-      { id: "order@kcmps.com", address: "order@kcmps.com", label: "Orders", kind: "shared", canSend: true },
-      { id: "info@kcmps.com", address: "info@kcmps.com", label: "General enquiries", kind: "shared", canSend: true },
-      { id: "me@kcmps.com", address: "me@kcmps.com", label: "My mailbox", kind: "personal", canSend: true },
-    ];
-  }
-
-  function seedEmails(orders) {
-    const ord = (i) => (orders && orders[i] ? orders[i].orderId : null);
-    const threadA = uid("THR");
-    const msg = (o) => Object.assign({
-      messageId: uid("MSG"), uid: 0, folder: "INBOX", threadId: uid("THR"),
-      to: [{ name: "", address: o.mailboxId }], cc: [],
-      snippet: "", hasHtmlPart: false, attachments: [],
-      flags: { seen: true, answered: false, flagged: false }, relatedOrderId: null,
-    }, o, { snippet: (o.snippet || o.bodyText || "").replace(/\s+/g, " ").slice(0, 140) });
-
-    let n = 10400;
-    const withUid = (m) => Object.assign(m, { uid: n++ });
-
-    return [
-      /* — order@kcmps.com — */
-      withUid(msg({
-        mailboxId: "order@kcmps.com", threadId: threadA,
-        from: { name: "Mika Reyes", address: "mika.reyes@gmail.com" },
-        subject: "Follow up po sa 30 pcs DTF shirts",
-        date: hoursAgo(2), relatedOrderId: ord(0),
-        flags: { seen: false, answered: false, flagged: false },
-        bodyText: "Hi KCMPS!\n\nNag-place po ako ng order kahapon for 30 pcs DTF shirts, black.\nNakapag-GCash na po ako kaninang umaga. Pwede po bang ma-confirm kung na-receive niyo na?\n\nSalamat po!\nMika",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com",
-        from: { name: "GCash", address: "no-reply@gcash.com" },
-        subject: "You have received PHP 9,000.00",
-        date: hoursAgo(3),
-        flags: { seen: false, answered: false, flagged: false },
-        bodyText: "You have received PHP 9,000.00 from MIKA R.\nReference No. 8017 442 99331\nDate: today\n\nThis is an automated notification. Do not reply to this message.",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com",
-        from: { name: "Ateneo Dev Society", address: "events@ateneodev.org" },
-        subject: "Pwede pa bang mag-add ng 10 pcs?",
-        date: hoursAgo(7), relatedOrderId: ord(1),
-        flags: { seen: false, answered: false, flagged: false },
-        bodyText: "Good afternoon,\n\nMay we add 10 more pieces to our existing order? Same design, sizes L and XL.\nIf it delays the schedule we can also do it as a separate batch.\n\nThank you,\nPaolo",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com",
-        from: { name: "Bea Fernandez", address: "bea.fernandez@yahoo.com" },
-        subject: "Ready na po ba for pickup?",
-        date: daysAgo(1),
-        bodyText: "Hello po, tanong ko lang kung pwede na po ma-pickup yung tote bags ko this week? Salamat!",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com",
-        from: { name: "GCash", address: "no-reply@gcash.com" },
-        subject: "You have received PHP 2,450.00",
-        date: daysAgo(1),
-        bodyText: "You have received PHP 2,450.00 from BEA F.\nReference No. 8017 118 20044\n\nThis is an automated notification. Do not reply to this message.",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com",
-        from: { name: "Grind Coffee Co.", address: "ops@grindcoffee.ph" },
-        subject: "Reorder — 50 pcs staff aprons",
-        date: daysAgo(2),
-        bodyText: "Hi team,\n\nSame spec as our last run — 50 pcs, embroidered logo, charcoal.\nPlease send a quote and we'll process payment right away.\n\nRegards,\nDenise",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com", threadId: threadA,
-        from: { name: "KCMPS Orders", address: "order@kcmps.com" },
-        subject: "Re: Follow up po sa 30 pcs DTF shirts",
-        folder: "SENT", date: hoursAgo(26),
-        bodyText: "Hi Mika,\n\nReceived po ang order niyo. Under verification pa po ang payment — we'll confirm within 24 hours.\n\nSalamat po!\nKCMPS",
-      })),
-      withUid(msg({
-        mailboxId: "order@kcmps.com", threadId: threadA,
-        from: { name: "Mika Reyes", address: "mika.reyes@gmail.com" },
-        subject: "Re: Follow up po sa 30 pcs DTF shirts",
-        date: hoursAgo(28),
-        bodyText: "Sending po the GCash screenshot. Reference number is 8017 442 99331.\n\nThanks!",
-        attachments: [{ filename: "gcash-receipt.jpg", sizeBytes: 284310, mimeType: "image/jpeg" }],
-      })),
-
-      /* — info@kcmps.com — */
-      withUid(msg({
-        mailboxId: "info@kcmps.com",
-        from: { name: "Sunrise Ink Supply", address: "sales@sunriseink.com.ph" },
-        subject: "Quotation — DTF film & white ink (Q3 pricing)",
-        date: hoursAgo(5),
-        flags: { seen: false, answered: false, flagged: false },
-        bodyText: "Good day KCMPS,\n\nAttached is our updated quotation for DTF film rolls and white ink.\nPrices are valid for 30 days. Free delivery within Metro Manila for orders over PHP 15,000.\n\nBest regards,\nArnel Cruz\nSunrise Ink Supply",
-        attachments: [{ filename: "sunrise-quotation-q3.pdf", sizeBytes: 141882, mimeType: "application/pdf" }],
-      })),
-      withUid(msg({
-        mailboxId: "info@kcmps.com",
-        from: { name: "HeatPro Parts", address: "support@heatpro.asia" },
-        subject: "Backorder notice — thermostat assembly",
-        date: daysAgo(2),
-        bodyText: "Dear customer,\n\nThe thermostat assembly you ordered is on backorder until the 18th.\nWe can ship the rest of your order now, or hold it complete. Please advise.\n\nHeatPro Parts",
-      })),
-      withUid(msg({
-        mailboxId: "info@kcmps.com",
-        from: { name: "PrintTech Expo", address: "news@printtechexpo.com" },
-        subject: "Last call: exhibitor booths for 2026",
-        date: daysAgo(4), hasHtmlPart: true,
-        bodyText: "View this email in your browser. Book your booth before slots run out.",
-      })),
-      withUid(msg({
-        mailboxId: "info@kcmps.com",
-        from: { name: "QC South Barangay", address: "sportsfest@qcsouth.gov.ph" },
-        subject: "Request for quotation — 200 pcs event shirts",
-        date: daysAgo(5),
-        bodyText: "Magandang araw,\n\nWe are canvassing suppliers for 200 pcs event shirts for our sports fest.\nKindly send your quotation with unit price and lead time.\n\nSalamat,\nBarangay QC South",
-      })),
-
-      /* — personal — */
-      withUid(msg({
-        mailboxId: "me@kcmps.com",
-        from: { name: "Mikko Dela Cruz", address: "mikko@kcmps.com" },
-        subject: "Heat press #2 — still inconsistent",
-        date: hoursAgo(9),
-        flags: { seen: false, answered: false, flagged: false },
-        bodyText: "Boss, yung heat press #2 pa rin. Nag-vary ng 15 degrees kanina mid-run.\nBaka kailangan na talaga i-replace yung thermostat. Nag-email na ako sa HeatPro.\n\n- Mikko",
-      })),
-      withUid(msg({
-        mailboxId: "me@kcmps.com",
-        from: { name: "Spaceship Billing", address: "billing@spaceship.com" },
-        subject: "Your invoice is ready",
-        date: daysAgo(6),
-        bodyText: "Your monthly invoice for kcmps.com services is now available in your account dashboard.",
-      })),
-    ];
   }
 
   // Delivered (courier) and Picked Up (pickup fulfillment) are equivalent
@@ -338,9 +193,12 @@
      can't produce e.g. mailboxes-without-messages. ---- */
   function ensureCollections(state) {
     let dirty = false;
-    if (!Array.isArray(state.mailboxes) || !Array.isArray(state.emails)) {
-      state.mailboxes = seedMailboxes();
-      state.emails = seedEmails(state.orders);
+    // A pre-2026-08-06 blob may still carry stale mock `mailboxes`/`emails`
+    // collections — mail is live now (see the "MAIL" section below), so
+    // drop them rather than re-seed; nothing reads them anymore.
+    if (state.mailboxes !== undefined || state.emails !== undefined) {
+      delete state.mailboxes;
+      delete state.emails;
       dirty = true;
     }
     state.orders.forEach((o) => {
@@ -1116,133 +974,90 @@
   }
 
   /* ============================================================
-     MAIL — staff email panel (mock; see docs/roadmap.md "Parallel track —
-     Staff email panel")
+     MAIL — staff email panel (LIVE since 2026-08-06)
      ============================================================
-     Every shape here is chosen to be directly derivable from a real IMAP
-     response, so the eventual swap to getInboxMessages/sendEmail Lambdas is a
-     function-BODY change only:
+     Real fetch() calls to backend/mail/*.js (get-mailboxes.js,
+     get-mail-messages.js, get-mail-message.js, mark-mail-read.js,
+     send-reply.js), routed through apiFetch() like every other live
+     KCMPS_DASH function — no localStorage fallback, matching
+     getAllOrders/verifyPayment/etc. Signatures and return shapes are kept
+     byte-compatible with the mock this replaced, so email.html's render
+     functions needed no structural change — only its call sites gained
+     `await` (these are now async).
 
-       messageId  <- RFC822 Message-ID      uid       <- IMAP UID (stable cursor)
-       from/to/cc <- ENVELOPE               date      <- INTERNALDATE
-       snippet    <- BODY.PEEK[1]<0.200>    bodyText  <- text/plain part
-       flags      <- \Seen \Answered \Flagged
-       hasHtmlPart / attachments <- BODYSTRUCTURE
+     Three contract deltas vs. the old mock, absorbed here so callers don't
+     have to know about them:
+       - no `uid` field on any message (the mock had one)
+       - `nextCursor` is an opaque base64 token, passed back verbatim as
+         `cursor` — never treat it as a number
+       - `snippet` is 200 chars server-side (mock was 140)
+     Messages also carry a `provenance` field the mock never had —
+     email.html's renderProvenance() already reads it, untouched here.
 
-     The envelope/body split is deliberate: real IMAP fetches the list
-     (ENVELOPE) and the body (BODY[]) in two round-trips, so getMessages()
-     omits bodyText/attachments and getMessage() adds them. Mirroring that now
-     means the list view never has to change shape later.
-     ============================================================ */
+     mailboxId/messageId are URL-encoded in every path — messageId
+     contains "<", "@", ">" (it's an RFC822 Message-ID). ============ */
 
-  function findMailbox(state, mailboxId) {
-    const mb = state.mailboxes.find((m) => m.id === mailboxId);
-    if (!mb) throw new Error("Unknown mailbox: " + mailboxId);
-    return mb;
-  }
-  function isInbox(m) { return m.folder === "INBOX"; }
-  function envelopeOf(m) {
-    // strip the body-only fields — the list must not depend on them
-    const e = Object.assign({}, m);
-    delete e.bodyText;
-    delete e.attachments;
-    return e;
+  function mailPath(mailboxId, rest) {
+    return "/mail/mailboxes/" + encodeURIComponent(mailboxId) + (rest || "");
   }
 
-  function getMailboxes() {
-    const state = load();
-    return state.mailboxes.map((mb) => {
-      const mine = state.emails.filter((m) => m.mailboxId === mb.id && isInbox(m));
-      return Object.assign({}, mb, {
-        total: mine.length,
-        unreadCount: mine.filter((m) => !m.flags.seen).length,
-      });
-    });
+  async function getMailboxes() {
+    const { mailboxes } = await apiFetch("/mail/mailboxes", { method: "GET" });
+    return mailboxes || [];
   }
 
-  function getMessages(mailboxId, opts) {
+  async function getMessages(mailboxId, opts) {
     const o = opts || {};
-    const folder = o.folder || "INBOX";
-    const limit = o.limit || 50;
-    const search = (o.search || "").trim().toLowerCase();
-    const state = load();
-    findMailbox(state, mailboxId);
-
-    let rows = state.emails.filter((m) => m.mailboxId === mailboxId && m.folder === folder);
-    const total = rows.length;
-    const unreadCount = rows.filter((m) => !m.flags.seen).length;
-    if (search) {
-      rows = rows.filter((m) =>
-        (m.subject || "").toLowerCase().includes(search) ||
-        (m.from.name || "").toLowerCase().includes(search) ||
-        (m.from.address || "").toLowerCase().includes(search) ||
-        (m.snippet || "").toLowerCase().includes(search)
-      );
-    }
-    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const page = rows.slice(0, limit);
-    return {
-      mailboxId, folder, total, unreadCount,
-      messages: page.map(envelopeOf),
-      // real backend: lowest UID in the page, fed back as opts.cursor
-      nextCursor: rows.length > limit ? page[page.length - 1].uid : null,
-    };
+    const qs = new URLSearchParams();
+    if (o.folder) qs.set("folder", o.folder);
+    if (o.limit) qs.set("limit", String(o.limit));
+    if (o.search) qs.set("search", o.search);
+    if (o.cursor) qs.set("cursor", o.cursor);
+    const q = qs.toString();
+    return apiFetch(mailPath(mailboxId, "/messages" + (q ? "?" + q : "")), { method: "GET" });
   }
 
-  function getMessage(mailboxId, messageId) {
-    const state = load();
-    findMailbox(state, mailboxId);
-    return state.emails.find((m) => m.mailboxId === mailboxId && m.messageId === messageId);
+  async function getMessage(mailboxId, messageId) {
+    const { message } = await apiFetch(mailPath(mailboxId, "/messages/" + encodeURIComponent(messageId)), { method: "GET" });
+    return message;
   }
 
-  function getThread(mailboxId, threadId) {
-    const state = load();
-    findMailbox(state, mailboxId);
-    return state.emails
-      .filter((m) => m.mailboxId === mailboxId && m.threadId === threadId)
+  // No dedicated thread endpoint on the real API — get-mail-messages.js's
+  // envelopes already carry threadId, so this pages through INBOX + SENT
+  // (a thread can span both) and filters/sorts client-side, same shape the
+  // mock returned (ascending by date, envelope fields only — email.html's
+  // thread rows only ever read t.date/t.snippet/t.messageId, never
+  // t.bodyText, so envelopes are sufficient here).
+  async function getThread(mailboxId, threadId) {
+    if (!threadId) return [];
+    const [inbox, sent] = await Promise.all([
+      getMessages(mailboxId, { folder: "INBOX", limit: 200 }),
+      getMessages(mailboxId, { folder: "SENT", limit: 200 }),
+    ]);
+    return [...(inbox.messages || []), ...(sent.messages || [])]
+      .filter((m) => m.threadId === threadId)
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
-  function markMessageRead(mailboxId, messageId, seen) {
-    const state = load();
-    findMailbox(state, mailboxId);
-    const m = state.emails.find((x) => x.mailboxId === mailboxId && x.messageId === messageId);
-    if (!m) throw new Error("Unknown message: " + messageId);
-    m.flags.seen = seen !== false;
-    save(state);
+  async function markMessageRead(mailboxId, messageId, seen) {
+    await apiFetch(mailPath(mailboxId, "/messages/" + encodeURIComponent(messageId) + "/read"), {
+      method: "POST",
+      body: JSON.stringify({ seen: seen !== false }),
+    });
     return getMessages(mailboxId);
   }
 
-  function sendReply(mailboxId, messageId, payload) {
+  // Returns { sent, list } like the mock. On the rare "sent but local
+  // write failed" path the backend returns 200 with list: null plus a
+  // `warning` — that is not a failure (the email already went out, there
+  // is no un-send), so it is passed through rather than thrown; the caller
+  // renders the warning.
+  async function sendReply(mailboxId, messageId, payload) {
     const p = payload || {};
-    const bodyText = (p.bodyText || "").trim();
-    if (!bodyText) throw new Error("Reply body cannot be empty.");
-    const state = load();
-    const mb = findMailbox(state, mailboxId);
-    if (!mb.canSend) throw new Error("This mailbox is read-only.");
-    const original = state.emails.find((x) => x.mailboxId === mailboxId && x.messageId === messageId);
-    if (!original) throw new Error("Unknown message: " + messageId);
-
-    const subject = /^re:/i.test(original.subject) ? original.subject : "Re: " + original.subject;
-    const sent = {
-      messageId: uid("MSG"),
-      uid: Math.max.apply(null, state.emails.map((m) => m.uid)) + 1,
-      mailboxId, folder: "SENT", threadId: original.threadId,
-      from: { name: "KCMPS", address: mb.address },
-      to: [original.from], cc: p.cc || [],
-      subject, date: nowIso(),
-      snippet: bodyText.replace(/\s+/g, " ").slice(0, 140),
-      bodyText, hasHtmlPart: false, attachments: [],
-      flags: { seen: true, answered: false, flagged: false },
-      relatedOrderId: original.relatedOrderId || null,
-    };
-    // The three side effects a real send performs: SMTP send, IMAP APPEND to
-    // Sent, and STORE +FLAGS (\Answered) on the original.
-    state.emails.push(sent);
-    original.flags.answered = true;
-    original.flags.seen = true;
-    save(state);
-    return { sent, list: getMessages(mailboxId) };
+    return apiFetch(mailPath(mailboxId, "/messages/" + encodeURIComponent(messageId) + "/reply"), {
+      method: "POST",
+      body: JSON.stringify({ bodyText: p.bodyText, cc: p.cc }),
+    });
   }
 
   /* ---- Design Asset Library (live — Milestone: Design Asset Library) ----

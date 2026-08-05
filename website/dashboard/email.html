@@ -45,11 +45,6 @@
   if (!claims) return;
   const { escapeHtml, fmtDateTime, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
-  /* dashboard-data.js is deliberately identity-free, so the personal mailbox
-     is seeded with a fixed address. The signed-in identity is used HERE, and
-     only as a display label. */
-  const myName = claims.name || claims.email || "Staff";
-
   let currentMailboxId = null;
   let currentMessageId = null;
   let search = "";
@@ -76,22 +71,33 @@
   }
 
   /* ---- mailbox selector ---- */
-  function renderMailboxSelector() {
-    const boxes = KCMPS_DASH.getMailboxes();
+  async function renderMailboxSelector() {
+    const boxes = await KCMPS_DASH.getMailboxes();
+    if (!boxes.length) {
+      selectEl.innerHTML = "";
+      unreadEl.textContent = "0 unread";
+      unreadEl.classList.remove("has-red");
+      return boxes;
+    }
     if (!currentMailboxId) currentMailboxId = boxes[0].id;
     selectEl.innerHTML = boxes.map((mb) => {
-      const label = mb.kind === "personal" ? myName + " — " + mb.address : mb.label + " — " + mb.address;
+      const label = mb.label + " — " + mb.address;
       const badge = mb.unreadCount ? " (" + mb.unreadCount + ")" : "";
       return `<option value="${escapeHtml(mb.id)}"${mb.id === currentMailboxId ? " selected" : ""}>${escapeHtml(label)}${badge}</option>`;
     }).join("");
     const active = boxes.find((mb) => mb.id === currentMailboxId);
     unreadEl.textContent = active ? active.unreadCount + " unread" : "0 unread";
     unreadEl.classList.toggle("has-red", !!(active && active.unreadCount));
+    return boxes;
   }
 
   /* ---- message list ---- */
-  function renderList() {
-    const res = KCMPS_DASH.getMessages(currentMailboxId, { search });
+  async function renderList() {
+    if (!currentMailboxId) {
+      listEl.innerHTML = '<p class="q-empty">No mailboxes available.</p>';
+      return;
+    }
+    const res = await KCMPS_DASH.getMessages(currentMailboxId, { search });
     if (!res.messages.length) {
       listEl.innerHTML = '<p class="q-empty">' + (search ? "No messages match that search." : "Inbox is empty.") + "</p>";
       return;
@@ -114,14 +120,14 @@
     });
   }
 
-  function openMessage(messageId) {
+  async function openMessage(messageId) {
     currentMessageId = messageId;
     replyDraft = "";
-    KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
+    await KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
     pane.classList.add("show-read");
-    renderMailboxSelector();
-    renderList();
-    renderRead();
+    await renderMailboxSelector();
+    await renderList();
+    await renderRead();
   }
 
   /* ---- read pane ----
@@ -208,15 +214,22 @@
       notes.map((n) => '<p class="q-empty">' + escapeHtml(n) + "</p>").join("") + "</div>";
   }
 
-  function renderRead(flash) {
-    const mb = KCMPS_DASH.getMailboxes().find((x) => x.id === currentMailboxId);
-    const m = currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : null;
+  async function renderRead(flash) {
+    if (!currentMailboxId) {
+      readEl.innerHTML = '<div class="empty-state">Select a message to read it.</div>';
+      return;
+    }
+    const [boxes, m] = await Promise.all([
+      KCMPS_DASH.getMailboxes(),
+      currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : Promise.resolve(null),
+    ]);
+    const mb = boxes.find((x) => x.id === currentMailboxId);
     if (!m) {
       readEl.innerHTML = '<div class="empty-state">Select a message to read it.</div>';
       return;
     }
 
-    const thread = KCMPS_DASH.getThread(currentMailboxId, m.threadId).filter((t) => t.messageId !== m.messageId);
+    const thread = (await KCMPS_DASH.getThread(currentMailboxId, m.threadId)).filter((t) => t.messageId !== m.messageId);
     const parts = [];
 
     parts.push('<button type="button" class="btn btn-ghost mail-back" id="mail-back">&larr; Back to list</button>');
@@ -293,14 +306,19 @@
       document.getElementById("reply-send").addEventListener("click", async (e) => {
         replyErrorHost.innerHTML = "";
         await withBusy(e.currentTarget, async () => {
+          let result;
           try {
-            KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
+            result = await KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
           } catch (err) {
             showInlineError(replyErrorHost, err.message);
             return;
           }
           replyDraft = "";
-          renderAll(true);
+          await renderAll(true);
+          // "Sent but local record couldn't be updated" is not a failure —
+          // the email already went out and there is no un-send — so this
+          // is shown after the repaint, not treated as an error.
+          if (result && result.warning) showInlineError(replyErrorHost, result.warning);
         });
       });
       document.getElementById("reply-discard").addEventListener("click", () => {
@@ -310,10 +328,10 @@
     }
   }
 
-  function renderAll(flash) {
-    renderMailboxSelector();
-    renderList();
-    renderRead(flash);
+  async function renderAll(flash) {
+    await renderMailboxSelector();
+    await renderList();
+    await renderRead(flash);
   }
 
   selectEl.addEventListener("change", () => {

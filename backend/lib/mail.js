@@ -24,16 +24,27 @@
    catchall@/unparseable@) are therefore listed explicitly below, Admin-
    only, rather than being reachable by accident.
 
-   WHY `Staff` APPEARS ON THE SHARED MAILBOXES. The roadmap matrix is
-   written in terms of the post-split roles (Sales/Finance/Production/
-   Admin), but ../lib/auth.js's header is clear that `Staff` is the
-   pre-role-split group *every founder is actually in today* — a
-   first-class member of STAFF_ROLES, not a legacy bolt-on. Implementing
-   the matrix literally would deny the only real users this feature has.
-   So `Staff` is granted the same shared-mailbox reach as Sales (order@ +
-   info@) and deliberately NOT admin@/catchall@/unparseable@. When the
-   first non-founder hire makes the finer roles real, deleting ROLES.STAFF
-   from the two arrays below is the entire change.
+   WHY `Staff` IS **NOT** ON THE SHARED MAILBOXES (owner decision,
+   2026-08-06). An earlier pass granted `Staff` Sales-equivalent reach,
+   reasoning that ../lib/auth.js calls it the pre-role-split group every
+   founder is actually in, so a literal matrix would deny the feature's
+   only current users. That was reverted deliberately.
+
+   The reason is what `Staff` *means*: the docs define it as "dashboard
+   access only" — the tier that says you may open the building, with
+   Production/Sales/Finance held in reserve for the first non-founder
+   hire. Granting mail on the tier means every future dashboard user
+   silently inherits the right to read customer correspondence, including
+   a part-time production assistant who only needs the job queue. That is
+   capability leaking out of the access tier instead of coming from a
+   role, and the moment it bites is the first hire — precisely when
+   nobody remembers this rule exists.
+
+   So capability comes from roles only. Founders get mail access by being
+   in `Admin` (or `Sales`), not by being in `Staff`. If you ever decide a
+   flat "everyone here handles customer mail" model is correct for a shop
+   this size, adding ROLES.STAFF back to the two arrays below is the
+   entire change — but do it knowingly, not by default.
    ============================================================ */
 
 const { ROLES, getGroups } = require("./auth");
@@ -56,7 +67,7 @@ const MAILBOX_ACCESS = Object.freeze({
     label: "Orders",
     kind: "shared",
     canSend: true,
-    roles: Object.freeze([ROLES.SALES, ROLES.FINANCE, ROLES.ADMIN, ROLES.STAFF]),
+    roles: Object.freeze([ROLES.SALES, ROLES.FINANCE, ROLES.ADMIN]),
   }),
   "info@mirror.kcmps.com": Object.freeze({
     id: "info@mirror.kcmps.com",
@@ -64,7 +75,7 @@ const MAILBOX_ACCESS = Object.freeze({
     label: "General enquiries",
     kind: "shared",
     canSend: true,
-    roles: Object.freeze([ROLES.SALES, ROLES.ADMIN, ROLES.STAFF]),
+    roles: Object.freeze([ROLES.SALES, ROLES.ADMIN]),
   }),
   "admin@mirror.kcmps.com": Object.freeze({
     id: "admin@mirror.kcmps.com",

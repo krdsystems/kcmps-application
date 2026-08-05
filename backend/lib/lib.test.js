@@ -364,8 +364,8 @@ const PERSONAL = { [KEN_MB]: "sub-ken-111", "mae@mirror.kcmps.com": "sub-mae-222
 const claimsFor = (groups, sub) => ({ "cognito:groups": "[" + groups.join(" ") + "]", sub: sub || "sub-anon" });
 
 test("MAILBOX_ACCESS encodes the roadmap matrix for the shared mailboxes", () => {
-  assert.deepEqual([...MAILBOX_ACCESS[ORDER_MB].roles].sort(), ["Admin", "Finance", "Sales", "Staff"]);
-  assert.deepEqual([...MAILBOX_ACCESS[INFO_MB].roles].sort(), ["Admin", "Sales", "Staff"]);
+  assert.deepEqual([...MAILBOX_ACCESS[ORDER_MB].roles].sort(), ["Admin", "Finance", "Sales"]);
+  assert.deepEqual([...MAILBOX_ACCESS[INFO_MB].roles].sort(), ["Admin", "Sales"]);
   assert.deepEqual([...MAILBOX_ACCESS[ADMIN_MB].roles], ["Admin"]);
   // Finance is order@-only: it must NOT reach general enquiries.
   assert.equal(MAILBOX_ACCESS[INFO_MB].roles.includes("Finance"), false);
@@ -434,11 +434,22 @@ test("canAccessMailbox: operational catchall/unparseable mailboxes are Admin-onl
   }
 });
 
-test("canAccessMailbox: pre-split Staff gets Sales-equivalent shared reach, not Admin's", () => {
+// Owner decision 2026-08-06: `Staff` is the "may open the dashboard" tier, not a
+// capability. Mail access must come from a role (Sales/Finance/Admin) so a future
+// hire who only needs the job queue can't silently read customer correspondence.
+// See the header comment in lib/mail.js before changing this.
+test("canAccessMailbox: Staff alone opens no mailbox — capability comes from roles, not the access tier", () => {
   const staff = claimsFor(["Staff"]);
-  assert.equal(canAccessMailbox(staff, ORDER_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(staff, INFO_MB, PERSONAL), true);
+  assert.equal(canAccessMailbox(staff, ORDER_MB, PERSONAL), false);
+  assert.equal(canAccessMailbox(staff, INFO_MB, PERSONAL), false);
   assert.equal(canAccessMailbox(staff, ADMIN_MB, PERSONAL), false);
+  assert.deepEqual(visibleMailboxes(staff, PERSONAL), []);
+
+  // ...but Staff+Sales (how a founder account should actually be set up) works.
+  const staffSales = claimsFor(["Staff", "Sales"]);
+  assert.equal(canAccessMailbox(staffSales, ORDER_MB, PERSONAL), true);
+  assert.equal(canAccessMailbox(staffSales, INFO_MB, PERSONAL), true);
+  assert.equal(canAccessMailbox(staffSales, ADMIN_MB, PERSONAL), false);
 });
 
 test("visibleMailboxes lists what a caller may open and never leaks the roles allow-list", () => {

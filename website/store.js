@@ -63,6 +63,34 @@
     ? "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com"
     : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
 
+  // Shared reduced-motion check, mirroring index.html's deck-scroll bail-out
+  // (grep --deck-progress there). CSS already carries `prefers-reduced-motion`
+  // overrides for every open/close transition this file drives via class
+  // toggles (.lightbox-overlay, .cart-drawer/.cart-overlay, .order-popup*,
+  // .cap-popup*, .design-popup, .design-subcatalog — see styles.css). This
+  // is belt-and-suspenders: it lets JS force those same transitions off
+  // inline at the moment of open/close, so behavior doesn't depend on the
+  // CSS file staying in sync if a future edit adds a new JS-driven transition
+  // here without a matching CSS rule.
+  function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  // Applied to an overlay/panel pair right before toggling `.is-open` so the
+  // upcoming transition (if any) is skipped instantly instead of animating.
+  function skipMotion() {
+    if (!prefersReducedMotion()) return function () {};
+    var els = Array.prototype.slice.call(arguments);
+    els.forEach(function (el) { if (el) el.style.transition = "none"; });
+    return function () {
+      // Restore on the next frame so a *later* open/close (e.g. a user who
+      // toggles the OS setting mid-session) isn't permanently stuck with
+      // transitions disabled from a stale inline style.
+      requestAnimationFrame(function () {
+        els.forEach(function (el) { if (el) el.style.transition = ""; });
+      });
+    };
+  }
+
   /* ---- design-file upload allowlist (checkout drag-and-drop) ----
      MIRROR of backend/lib/upload-types.js — this copy exists purely so a
      customer gets an instant "that file type isn't accepted" instead of a
@@ -387,10 +415,22 @@
   var lightboxOverlay, lightboxImg, lightboxCounter, lightboxPrevBtn, lightboxNextBtn, lightboxSelectBtn;
   var lightboxControlsPanel, lightboxSizeSeg, lightboxQtyVal, lightboxQtyMinusBtn, lightboxQtyPlusBtn, lightboxAddBtn;
   var lightboxImages = [], lightboxIndex = 0, lightboxOnSelect = null, lightboxControls = null;
+  // Focus management: the element that had focus before openLightbox() was
+  // called (the thumb/tile/button that triggered it), so closeLightbox() can
+  // return focus there instead of dropping it back to <body>.
+  var lightboxLastTrigger = null;
+  function focusLightbox() {
+    if (!lightboxOverlay) return;
+    var target = lightboxOverlay.querySelector(".lightbox-close");
+    if (target && typeof target.focus === "function") target.focus();
+  }
 
   function buildLightbox() {
     lightboxOverlay = document.createElement("div");
     lightboxOverlay.className = "lightbox-overlay";
+    lightboxOverlay.setAttribute("role", "dialog");
+    lightboxOverlay.setAttribute("aria-modal", "true");
+    lightboxOverlay.setAttribute("aria-label", "Full-size design view");
     lightboxOverlay.setAttribute("aria-hidden", "true");
     lightboxOverlay.innerHTML =
       '<button type="button" class="lightbox-close" aria-label="Close full-size view">' +
@@ -496,11 +536,26 @@
     });
     document.addEventListener("keydown", function (e) {
       if (!lightboxOverlay.classList.contains("is-open")) return;
+      if (e.key === "Tab") { trapLightboxTab(e); return; }
       if (e.target === lightboxQtyVal) return;
       if (e.key === "Escape") closeLightbox();
       else if (e.key === "ArrowLeft") stepLightbox(-1);
       else if (e.key === "ArrowRight") stepLightbox(1);
     });
+  }
+
+  // Minimal focus trap: keeps Tab/Shift+Tab cycling within the lightbox's
+  // focusable controls instead of escaping to the page underneath.
+  function trapLightboxTab(e) {
+    var focusable = lightboxOverlay.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusable.length) return;
+    var list = Array.prototype.filter.call(focusable, function (el) { return el.offsetParent !== null; });
+    if (!list.length) return;
+    var first = list[0], last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
   function renderLightbox() {
@@ -571,18 +626,26 @@
     lightboxControls = controls || null;
     renderLightbox();
     renderLightboxControls();
+    var restore = skipMotion(lightboxOverlay);
     lightboxOverlay.classList.add("is-open");
     lightboxOverlay.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
+    restore();
+    lightboxLastTrigger = document.activeElement;
+    focusLightbox();
   }
 
   function closeLightbox() {
     if (!lightboxOverlay) return;
+    var restore = skipMotion(lightboxOverlay);
     lightboxOverlay.classList.remove("is-open");
     lightboxOverlay.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
     lightboxOnSelect = null;
     lightboxControls = null;
+    restore();
+    if (lightboxLastTrigger && typeof lightboxLastTrigger.focus === "function") lightboxLastTrigger.focus();
+    lightboxLastTrigger = null;
   }
 
   /* ---------- published Design Library merge (design-manifest.json) ----------
@@ -1431,6 +1494,7 @@
     overlay = document.createElement("div"); overlay.className = "cart-overlay"; overlay.id = "cart-overlay";
     drawer = document.createElement("aside"); drawer.className = "cart-drawer"; drawer.id = "cart-drawer";
     drawer.setAttribute("aria-label", "Your cart"); drawer.setAttribute("aria-hidden", "true");
+    drawer.setAttribute("role", "dialog"); drawer.setAttribute("aria-modal", "true");
     drawer.innerHTML =
       '<div class="cart-head"><h3>Your cart</h3>' +
         '<button type="button" class="cart-close" aria-label="Close cart">&times;</button></div>' +
@@ -1485,7 +1549,11 @@
     overlay.addEventListener("click", closeDrawer);
     drawer.querySelector(".cart-close").addEventListener("click", closeDrawer);
     drawer.querySelector(".checkout-back").addEventListener("click", function () { drawer.classList.remove("checkout-mode"); });
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && drawer.classList.contains("is-open")) closeDrawer(); });
+    document.addEventListener("keydown", function (e) {
+      if (!drawer.classList.contains("is-open")) return;
+      if (e.key === "Escape") { closeDrawer(); return; }
+      if (e.key === "Tab") trapDrawerTab(e);
+    });
 
     // Courier + shipping-address fields only make sense for Delivery; the
     // 3-day forfeiture note only makes sense for Pickup. Toggle between them
@@ -2157,20 +2225,44 @@
     });
   }
 
+  // Minimal focus trap, same pattern as trapLightboxTab() — keeps Tab/
+  // Shift+Tab cycling within the drawer's focusable controls.
+  function trapDrawerTab(e) {
+    var focusable = drawer.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusable.length) return;
+    var list = Array.prototype.filter.call(focusable, function (el) { return el.offsetParent !== null; });
+    if (!list.length) return;
+    var first = list[0], last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
+  var drawerLastTrigger = null;
   function openDrawer() {
     if (!drawer) return;
     drawer.classList.remove("checkout-mode");
     renderCart();
+    var restore = skipMotion(overlay, drawer);
     overlay.classList.add("is-open");
     drawer.classList.add("is-open");
     drawer.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
+    restore();
+    drawerLastTrigger = document.activeElement;
+    var closeBtn = drawer.querySelector(".cart-close");
+    if (closeBtn && typeof closeBtn.focus === "function") closeBtn.focus();
   }
   function closeDrawer() {
+    var restore = skipMotion(overlay, drawer);
     overlay.classList.remove("is-open");
     drawer.classList.remove("is-open");
     drawer.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
+    restore();
+    if (drawerLastTrigger && typeof drawerLastTrigger.focus === "function") drawerLastTrigger.focus();
+    drawerLastTrigger = null;
   }
 
   /* ---------- shared UI sync ---------- */

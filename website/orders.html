@@ -73,7 +73,7 @@
 
   function renderLine(li) {
     var thumb = li.image
-      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="" loading="lazy" />'
+      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="' + O.escapeHtml(li.name || "") + '" loading="lazy" />'
       : '<span class="line-thumb-fallback">' + O.escapeHtml(initials(li.name)) + '</span>';
     return (
       '<div class="line-row">' + thumb +

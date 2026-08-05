@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Privacy Policy — KCMPS</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <a href="index.html" class="nav-brand" style="text-decoration:none">
+    <img src="assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
+  <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
+    <a href="index.html">Back to shop</a>
+    <button type="button" id="cart-btn" class="btn btn-icon btn-secondary" aria-label="Cart" title="Cart">
+      <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M222.14,58.87A8,8,0,0,0,216,56H54.68L49.79,29.14A16,16,0,0,0,34.05,16H16a8,8,0,0,0,0,16h18l25.16,138.28A24,24,0,0,0,82.76,190H197.2a24,24,0,0,0,23.6-19.71l12.16-66.86A8,8,0,0,0,222.14,58.87ZM96,224a16,16,0,1,1-16-16A16,16,0,0,1,96,224Zm104,0a16,16,0,1,1-16-16A16,16,0,0,1,200,224Z"/></svg>
+      <span id="cart-badge" class="is-hidden">0</span>
+    </button>
+  </div>
+</nav>
+
+<main class="legal-page">
+  <div class="wrap" style="max-width:800px">
+    <h1>Privacy Policy</h1>
+    <p class="text-muted">Effective date: <!-- OWNER: confirm --> August 5, 2026</p>
+
+    <section>
+      <h2>Overview</h2>
+      <p>KCMPS ("we," "us," or "our") respects your privacy. This Privacy Policy explains what personal information we collect, how we use it, where it's stored, and your rights under Philippine law.</p>
+      <p><strong>Important:</strong> This is an informational summary, not legal advice. We recommend you have legal counsel review this policy to ensure compliance with your specific circumstances.</p>
+    </section>
+
+    <section>
+      <h2>What We Collect</h2>
+      <p>When you use KCMPS's website or place an order, we collect:</p>
+      <ul>
+        <li><strong>Account information:</strong> Your given name, family name, email address, and password (via AWS Cognito)</li>
+        <li><strong>Order information:</strong> Delivery address, phone number, and order history</li>
+        <li><strong>Payment information:</strong> GCash payment reference number and your payment proof screenshot</li>
+        <li><strong>Design files:</strong> Custom design files you upload for printing or design services</li>
+        <li><strong>Support correspondence:</strong> Messages, notes, and files related to your orders or support requests</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Why We Collect It</h2>
+      <p>We collect this information to:</p>
+      <ul>
+        <li>Fulfill and manage your orders</li>
+        <li>Verify payment and prevent fraud</li>
+        <li>Send you order updates and important notifications</li>
+        <li>Provide customer support and respond to inquiries</li>
+        <li>Improve our services</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Where Your Data Lives</h2>
+      <p>Your personal information is stored on Amazon Web Services (AWS) infrastructure in the <strong>Asia Pacific (Singapore) ap-southeast-1</strong> region, including:</p>
+      <ul>
+        <li><strong>DynamoDB:</strong> Order records, account data, and correspondence logs</li>
+        <li><strong>S3:</strong> Uploaded design files and payment proof screenshots</li>
+        <li><strong>Cognito:</strong> Authentication credentials and user identity</li>
+        <li><strong>SES (Simple Email Service):</strong> Order and support emails, with a backup copy sent to our shared inbox</li>
+      </ul>
+      <p>All data transfers use encrypted HTTPS connections.</p>
+    </section>
+
+    <section>
+      <h2>Data Retention</h2>
+      <ul>
+        <li><strong>Payment evidence (proof screenshots, GCash references):</strong> Kept indefinitely as financial records, per Philippine accounting law</li>
+        <li><strong>Design files:</strong> Retained for the duration of your order and support period; infected files (detected by AWS GuardDuty malware scanning) are automatically deleted and you're notified</li>
+        <li><strong>Order history:</strong> Kept for customer service and dispute resolution</li>
+        <li><strong>Account data:</strong> Retained while your account is active; you may request erasure subject to legal record-keeping requirements</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Who Can See Your Data</h2>
+      <p><strong>Your data is not sold, shared, or disclosed to third parties for marketing purposes.</strong></p>
+      <p>Your information is accessed only by:</p>
+      <ul>
+        <li><strong>KCMPS staff:</strong> Role-gated access (production, sales, and administrative staff) to fulfill and support your orders</li>
+        <li><strong>Necessary service providers:</strong> AWS (infrastructure), GCash (payment processing), and courier partners (Grab/Lalamove) when you choose courier delivery for pickup or address information only</li>
+        <li><strong>Legal requests:</strong> If required by law or court order</li>
+      </ul>
+      <p><strong>Malware scanning:</strong> Uploaded files are automatically scanned by AWS GuardDuty for malware. Infected files are deleted and you're notified; staff are never exposed to potentially dangerous files.</p>
+    </section>
+
+    <section>
+      <h2>Your Rights Under Philippine Law</h2>
+      <p>The <strong>Philippine Data Privacy Act of 2012 (Republic Act 10173)</strong> grants you the following rights:</p>
+      <ul>
+        <li><strong>Right to access:</strong> You can request a copy of your personal information that we hold</li>
+        <li><strong>Right to correction:</strong> You can request that inaccurate or incomplete data be corrected</li>
+        <li><strong>Right to erasure:</strong> You can request deletion of your data, subject to legal obligations (e.g., financial records must be retained per law)</li>
+        <li><strong>Right to object:</strong> You can object to certain processing of your data</li>
+        <li><strong>Right to lodge a complaint:</strong> You can file a complaint with the <strong>National Privacy Commission (NPC)</strong> if you believe your privacy rights have been violated</li>
+      </ul>
+      <p>To exercise any of these rights, contact us at <a href="mailto:info@kcmps.com">info@kcmps.com</a>.</p>
+    </section>
+
+    <section>
+      <h2>Data Controller</h2>
+      <p>KCMPS acts as the <strong>personal information controller</strong> under the Data Privacy Act, meaning we determine how and why your data is collected and used.</p>
+    </section>
+
+    <section>
+      <h2>Security</h2>
+      <p>We use industry-standard practices to protect your data, including:</p>
+      <ul>
+        <li>HTTPS encryption for all data in transit</li>
+        <li>AWS security features (DynamoDB encryption, S3 access controls)</li>
+        <li>Automatic malware scanning of uploaded files</li>
+        <li>Role-based access control for staff</li>
+      </ul>
+      <p>No method is 100% secure, but we take reasonable precautions.</p>
+    </section>
+
+    <section>
+      <h2>Changes to This Policy</h2>
+      <p>We may update this privacy policy from time to time. We'll notify you of significant changes via email or by posting the new policy on our website.</p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>If you have questions about this privacy policy or how we handle your data, contact us at:</p>
+      <p>
+        <strong>KCMPS</strong><br />
+        Email: <a href="mailto:info@kcmps.com">info@kcmps.com</a><br />
+        Manila, Philippines
+      </p>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div>
+        <div class="foot-brand"><img src="assets/logo-mark.png" alt="" /><span>KCMPS</span></div>
+        <p class="tagline">Kaalyados Creatives — merchandise and printing services. High-fidelity print, pre-press drafting, precision 3D fabrication and curated hardware storage, made in Manila.</p>
+      </div>
+      <div class="foot-links">
+        <a href="index.html#storefront">Shop</a>
+        <a href="index.html#how">How it works</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="index.html#contact">Contact</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="refunds.html">Refunds</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>All prices are directional estimates in PHP (₱), subject to stock and queue availability.</span>
+      <span>© 2026 KCMPS — Kaalyados Creatives. Manila, Philippines.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="products.js"></script>
+<script src="store.js"></script>
+<script>
+(function() {
+  var cartBtn = document.getElementById('cart-btn');
+  if (cartBtn) {
+    cartBtn.addEventListener('click', window.KCMPS_STORE?.openCart || function() {});
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -343,25 +343,37 @@ test("describeThreats returns null when there are no threats, and keeps the raw 
   assert.equal(describeThreats(["A", "B"]).technical, "A, B");
 });
 
-// ---- mail.js (per-mailbox access model) ----
-// The roadmap calls the client-supplied-sub path "the sharpest trap in
-// this feature", so the personal-mailbox cases below are deliberately
-// heavier than the shared-mailbox ones.
+// ---- mail.js (shared-mailbox access model + inbound routing) ----
+// Personal mailboxes were removed on 2026-08-06 (owner scope decision: a
+// forward-based mirror is a one-way copy, so it's the wrong architecture
+// for an individual's inbox). Their tests went with them; everything below
+// covers live behaviour only.
 
 const {
-  MAILBOX_ACCESS, canAccessMailbox, visibleMailboxes, parsePersonalMailboxes,
-  canSendFrom, sendAddressFor, normalizeMailboxId, isMailbox,
+  MAILBOX_ACCESS, canAccessMailbox, visibleMailboxes, canSendFrom, sendAddressFor,
+  normalizeMailboxId, isMailbox, resolveMailboxes, isRoutableAlias,
+  isInfrastructureNotice, assessVerdicts, normalizeVerdict,
+  MIRROR_ADDRESS, UNROUTED_MAILBOX, QUARANTINE_MAILBOX,
 } = require("./mail");
 
-const ORDER_MB = "order@mirror.kcmps.com";
-const INFO_MB = "info@mirror.kcmps.com";
-const ADMIN_MB = "admin@mirror.kcmps.com";
-const KEN_MB = "ken@mirror.kcmps.com";
-const PERSONAL = { [KEN_MB]: "sub-ken-111", "mae@mirror.kcmps.com": "sub-mae-222" };
+// mailboxId is the REAL address now, never the mirror address.
+const ORDER_MB = "order@kcmps.com";
+const INFO_MB = "info@kcmps.com";
+const ADMIN_MB = "admin@kcmps.com";
 
 // API Gateway hands groups over as a bracketed space-separated string —
 // build claims the same way so these tests exercise getGroups' real path.
 const claimsFor = (groups, sub) => ({ "cognito:groups": "[" + groups.join(" ") + "]", sub: sub || "sub-anon" });
+
+test("MAILBOX_ACCESS is keyed by the real address, not the mirror address", () => {
+  // The mirror domain is plumbing; it must not leak into the data model or
+  // the staff UI. C4 depends on this: mailboxIds are @kcmps.com.
+  for (const id of Object.keys(MAILBOX_ACCESS)) {
+    assert.equal(id.endsWith("@kcmps.com"), true, id);
+    assert.equal(id.includes("mirror."), false, id);
+  }
+  assert.equal(MIRROR_ADDRESS, "shop@mirror.kcmps.com");
+});
 
 test("MAILBOX_ACCESS encodes the roadmap matrix for the shared mailboxes", () => {
   assert.deepEqual([...MAILBOX_ACCESS[ORDER_MB].roles].sort(), ["Admin", "Finance", "Sales"]);
@@ -372,139 +384,231 @@ test("MAILBOX_ACCESS encodes the roadmap matrix for the shared mailboxes", () =>
 });
 
 test("canAccessMailbox: order@ allows Sales/Finance/Admin, denies Production", () => {
-  assert.equal(canAccessMailbox(claimsFor(["Sales"]), ORDER_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Finance"]), ORDER_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Admin"]), ORDER_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Production"]), ORDER_MB, PERSONAL), false);
+  assert.equal(canAccessMailbox(claimsFor(["Sales"]), ORDER_MB), true);
+  assert.equal(canAccessMailbox(claimsFor(["Finance"]), ORDER_MB), true);
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), ORDER_MB), true);
+  assert.equal(canAccessMailbox(claimsFor(["Production"]), ORDER_MB), false);
 });
 
 test("canAccessMailbox: info@ allows Sales/Admin, denies Finance and Production", () => {
-  assert.equal(canAccessMailbox(claimsFor(["Sales"]), INFO_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Admin"]), INFO_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Finance"]), INFO_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Production"]), INFO_MB, PERSONAL), false);
+  assert.equal(canAccessMailbox(claimsFor(["Sales"]), INFO_MB), true);
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), INFO_MB), true);
+  assert.equal(canAccessMailbox(claimsFor(["Finance"]), INFO_MB), false);
+  assert.equal(canAccessMailbox(claimsFor(["Production"]), INFO_MB), false);
 });
 
-test("canAccessMailbox: Customer is denied every mailbox, including its own name-alike", () => {
-  for (const mb of [ORDER_MB, INFO_MB, ADMIN_MB, KEN_MB, "catchall@mirror.kcmps.com"]) {
-    assert.equal(canAccessMailbox(claimsFor(["Customer"], "sub-ken-111"), mb, PERSONAL), false, mb);
+test("canAccessMailbox: Customer is denied every mailbox", () => {
+  for (const mb of Object.keys(MAILBOX_ACCESS)) {
+    assert.equal(canAccessMailbox(claimsFor(["Customer"]), mb), false, mb);
   }
 });
 
-test("canAccessMailbox: Production reaches its own personal mailbox and nothing else", () => {
-  const prod = claimsFor(["Production"], "sub-ken-111");
-  assert.equal(canAccessMailbox(prod, KEN_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(prod, ORDER_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(prod, INFO_MB, PERSONAL), false);
+test("canAccessMailbox: Production reaches nothing at all", () => {
+  // Personal mailboxes are gone, so Production — a role with no mail duty —
+  // now has no mail access whatsoever. That is the intended end state.
+  const prod = claimsFor(["Production"]);
+  for (const mb of Object.keys(MAILBOX_ACCESS)) {
+    assert.equal(canAccessMailbox(prod, mb), false, mb);
+  }
+  assert.deepEqual(visibleMailboxes(prod), []);
 });
 
-test("canAccessMailbox: a personal mailbox is owner-only — Admin cannot read a colleague's", () => {
-  // The one place a group grant must NOT win. Admin sees every shared
-  // mailbox but still gets nothing here.
-  assert.equal(canAccessMailbox(claimsFor(["Admin"], "sub-someone-else"), KEN_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Sales"], "sub-mae-222"), KEN_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Sales"], "sub-ken-111"), KEN_MB, PERSONAL), true);
-});
-
-test("canAccessMailbox matches the sub exactly — no prefix, blank, or missing-sub match", () => {
-  assert.equal(canAccessMailbox(claimsFor(["Admin"], "sub-ken-1"), KEN_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Admin"], "sub-ken-1111"), KEN_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox({ "cognito:groups": "[Admin]" }, KEN_MB, PERSONAL), false); // no sub at all
-  assert.equal(canAccessMailbox(claimsFor(["Admin"], ""), KEN_MB, PERSONAL), false);
+test("canAccessMailbox is purely group-based — the sub claim cannot influence it", () => {
+  // The old model matched a personal mailbox on claims.sub, which made a
+  // client-supplied sub the sharpest trap in the feature. There is no
+  // sub-reading path left; pin that by varying the sub and asserting the
+  // decision never moves.
+  for (const sub of ["", "sub-a", "sub-b", "admin@kcmps.com"]) {
+    assert.equal(canAccessMailbox(claimsFor(["Sales"], sub), ORDER_MB), true, sub);
+    assert.equal(canAccessMailbox(claimsFor(["Sales"], sub), ADMIN_MB), false, sub);
+  }
 });
 
 test("canAccessMailbox fails closed on unknown mailboxes, empty input, and no groups", () => {
-  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "nobody@mirror.kcmps.com", PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "order@evil.example", PERSONAL), false);
-  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "", PERSONAL), false);
-  assert.equal(canAccessMailbox(null, ORDER_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox({ sub: "sub-ken-111" }, ORDER_MB, PERSONAL), false); // no groups claim
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "nobody@kcmps.com"), false);
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "order@evil.example"), false);
+  // The retired mirror-address ids must NOT resolve any more.
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), "order@mirror.kcmps.com"), false);
+  assert.equal(canAccessMailbox(claimsFor(["Admin"]), ""), false);
+  assert.equal(canAccessMailbox(null, ORDER_MB), false);
+  assert.equal(canAccessMailbox({ sub: "sub-1" }, ORDER_MB), false); // no groups claim
 });
 
 test("canAccessMailbox normalizes case and surrounding whitespace on mailboxId", () => {
-  assert.equal(canAccessMailbox(claimsFor(["Sales"]), "  ORDER@Mirror.KCMPS.com ", PERSONAL), true);
-  assert.equal(canAccessMailbox(claimsFor(["Sales"], "sub-ken-111"), "KEN@MIRROR.KCMPS.COM", PERSONAL), true);
+  assert.equal(canAccessMailbox(claimsFor(["Sales"]), "  ORDER@KCMPS.com "), true);
 });
 
-test("canAccessMailbox: operational catchall/unparseable mailboxes are Admin-only", () => {
-  for (const mb of ["catchall@mirror.kcmps.com", "unparseable@mirror.kcmps.com"]) {
-    assert.equal(canAccessMailbox(claimsFor(["Admin"]), mb, PERSONAL), true, mb);
-    assert.equal(canAccessMailbox(claimsFor(["Sales"]), mb, PERSONAL), false, mb);
-    assert.equal(canAccessMailbox(claimsFor(["Staff"]), mb, PERSONAL), false, mb);
+test("canAccessMailbox: system mailboxes are Admin-only", () => {
+  for (const mb of [UNROUTED_MAILBOX, "unparseable@kcmps.com", QUARANTINE_MAILBOX]) {
+    assert.equal(canAccessMailbox(claimsFor(["Admin"]), mb), true, mb);
+    assert.equal(canAccessMailbox(claimsFor(["Sales"]), mb), false, mb);
+    assert.equal(canAccessMailbox(claimsFor(["Staff"]), mb), false, mb);
   }
 });
 
-// Owner decision 2026-08-06: `Staff` is the "may open the dashboard" tier, not a
-// capability. Mail access must come from a role (Sales/Finance/Admin) so a future
-// hire who only needs the job queue can't silently read customer correspondence.
-// See the header comment in lib/mail.js before changing this.
+// Owner decision 2026-08-06 (commit 49dad04): `Staff` is the "may open the
+// dashboard" tier, not a capability. Mail access must come from a role
+// (Sales/Finance/Admin) so a future hire who only needs the job queue can't
+// silently read customer correspondence. See lib/mail.js's header.
 test("canAccessMailbox: Staff alone opens no mailbox — capability comes from roles, not the access tier", () => {
   const staff = claimsFor(["Staff"]);
-  assert.equal(canAccessMailbox(staff, ORDER_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(staff, INFO_MB, PERSONAL), false);
-  assert.equal(canAccessMailbox(staff, ADMIN_MB, PERSONAL), false);
-  assert.deepEqual(visibleMailboxes(staff, PERSONAL), []);
+  assert.equal(canAccessMailbox(staff, ORDER_MB), false);
+  assert.equal(canAccessMailbox(staff, INFO_MB), false);
+  assert.equal(canAccessMailbox(staff, ADMIN_MB), false);
+  assert.deepEqual(visibleMailboxes(staff), []);
 
   // ...but Staff+Sales (how a founder account should actually be set up) works.
   const staffSales = claimsFor(["Staff", "Sales"]);
-  assert.equal(canAccessMailbox(staffSales, ORDER_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(staffSales, INFO_MB, PERSONAL), true);
-  assert.equal(canAccessMailbox(staffSales, ADMIN_MB, PERSONAL), false);
+  assert.equal(canAccessMailbox(staffSales, ORDER_MB), true);
+  assert.equal(canAccessMailbox(staffSales, INFO_MB), true);
+  assert.equal(canAccessMailbox(staffSales, ADMIN_MB), false);
 });
 
 test("visibleMailboxes lists what a caller may open and never leaks the roles allow-list", () => {
-  const sales = visibleMailboxes(claimsFor(["Sales"], "sub-ken-111"), PERSONAL);
-  const ids = sales.map((m) => m.id).sort();
-  assert.deepEqual(ids, [INFO_MB, KEN_MB, ORDER_MB].sort());
+  const sales = visibleMailboxes(claimsFor(["Sales"]));
+  assert.deepEqual(sales.map((m) => m.id).sort(), [INFO_MB, ORDER_MB].sort());
   assert.equal(sales.every((m) => m.roles === undefined), true);
-  assert.equal(sales.find((m) => m.id === KEN_MB).kind, "personal");
 
-  assert.deepEqual(visibleMailboxes(claimsFor(["Customer"], "sub-ken-111"), PERSONAL), []);
-  assert.deepEqual(visibleMailboxes(claimsFor(["Production"], "sub-mae-222"), PERSONAL).map((m) => m.id),
-    ["mae@mirror.kcmps.com"]);
-  assert.equal(visibleMailboxes(claimsFor(["Admin"], "sub-admin"), PERSONAL).length, 5); // 5 shared/system, no personal
+  assert.deepEqual(visibleMailboxes(claimsFor(["Customer"])), []);
+  assert.deepEqual(visibleMailboxes(claimsFor(["Finance"])).map((m) => m.id), [ORDER_MB]);
+  // Admin sees all 3 shared + all 3 system mailboxes.
+  assert.equal(visibleMailboxes(claimsFor(["Admin"])).length, 6);
 });
 
-test("parsePersonalMailboxes accepts a JSON string or object and fails closed on junk", () => {
-  assert.deepEqual(parsePersonalMailboxes('{"Ken@Mirror.kcmps.com":" sub-1 "}'), { "ken@mirror.kcmps.com": "sub-1" });
-  assert.deepEqual(parsePersonalMailboxes({ [KEN_MB]: "sub-1" }), { [KEN_MB]: "sub-1" });
-  // Never throws — a malformed env var must degrade to "no personal
-  // mailboxes", not 500 every mail request.
-  assert.deepEqual(parsePersonalMailboxes("not json"), {});
-  assert.deepEqual(parsePersonalMailboxes(""), {});
-  assert.deepEqual(parsePersonalMailboxes(null), {});
-  assert.deepEqual(parsePersonalMailboxes("[1,2]"), {});
-  // A blank sub would otherwise match a claims object that also lacks one.
-  assert.deepEqual(parsePersonalMailboxes('{"a@mirror.kcmps.com":""}'), {});
+test("canSendFrom allows the shared mailboxes but never the system ones", () => {
+  assert.equal(canSendFrom(ORDER_MB), true);
+  assert.equal(canSendFrom(INFO_MB), true);
+  assert.equal(canSendFrom(ADMIN_MB), true);
+  assert.equal(canSendFrom(UNROUTED_MAILBOX), false);
+  assert.equal(canSendFrom("unparseable@kcmps.com"), false);
+  assert.equal(canSendFrom(QUARANTINE_MAILBOX), false);
+  assert.equal(canSendFrom("nobody@kcmps.com"), false);
 });
 
-test("canSendFrom allows shared+personal mailboxes but never the routing-failure mailboxes", () => {
-  assert.equal(canSendFrom(ORDER_MB, PERSONAL), true);
-  assert.equal(canSendFrom(INFO_MB, PERSONAL), true);
-  assert.equal(canSendFrom(KEN_MB, PERSONAL), true);
-  assert.equal(canSendFrom("catchall@mirror.kcmps.com", PERSONAL), false);
-  assert.equal(canSendFrom("unparseable@mirror.kcmps.com", PERSONAL), false);
-  assert.equal(canSendFrom("nobody@mirror.kcmps.com", PERSONAL), false);
-});
-
-test("sendAddressFor rewrites the receiving domain onto the verified sending identity", () => {
-  // mirror.kcmps.com receives; kcmps.com sends. SES will not send from the
-  // former, so this rewrite is load-bearing, not cosmetic.
+test("sendAddressFor returns the verified sending identity only for sendable mailboxes", () => {
   assert.equal(sendAddressFor(ORDER_MB), "order@kcmps.com");
-  assert.equal(sendAddressFor("Info@Mirror.KCMPS.com"), "info@kcmps.com");
-  // Anything off the mirror domain returns null so a caller can't be
-  // tricked into sending as an arbitrary domain.
+  assert.equal(sendAddressFor("Info@KCMPS.com"), "info@kcmps.com");
+  // System mailboxes, unknown ids, and the retired mirror domain (SES will
+  // not send from a receiving identity) all return null so a caller can't
+  // be tricked into sending as an arbitrary address.
+  assert.equal(sendAddressFor(UNROUTED_MAILBOX), null);
+  assert.equal(sendAddressFor("order@mirror.kcmps.com"), null);
   assert.equal(sendAddressFor("order@evil.example"), null);
-  assert.equal(sendAddressFor("@mirror.kcmps.com"), null);
   assert.equal(sendAddressFor(""), null);
   assert.equal(sendAddressFor(null), null);
 });
 
-test("normalizeMailboxId and isMailbox behave for known, personal, and unknown ids", () => {
-  assert.equal(normalizeMailboxId("  ORDER@Mirror.kcmps.com "), ORDER_MB);
+test("normalizeMailboxId and isMailbox behave for known and unknown ids", () => {
+  assert.equal(normalizeMailboxId("  ORDER@KCMPS.com "), ORDER_MB);
   assert.equal(normalizeMailboxId(null), "");
-  assert.equal(isMailbox(ORDER_MB, PERSONAL), true);
-  assert.equal(isMailbox(KEN_MB, PERSONAL), true);
-  assert.equal(isMailbox(KEN_MB, {}), false);
-  assert.equal(isMailbox("nope@mirror.kcmps.com", PERSONAL), false);
+  assert.equal(isMailbox(ORDER_MB), true);
+  assert.equal(isMailbox(UNROUTED_MAILBOX), true);
+  assert.equal(isMailbox("order@mirror.kcmps.com"), false);
+  assert.equal(isMailbox("nope@kcmps.com"), false);
+});
+
+// ---- inbound routing ----
+
+test("resolveMailboxes prefers the forwarder header over To:/Cc:", () => {
+  // The BCC case, which is the whole reason the envelope header wins: the
+  // message names info@ in To: but was actually delivered to order@.
+  const r = resolveMailboxes({ forwardedTo: ["order@kcmps.com"], toCc: ["info@kcmps.com"] });
+  assert.deepEqual(r.mailboxes, ["order@kcmps.com"]);
+  assert.equal(r.routedBy, "forwarder");
+});
+
+test("resolveMailboxes falls back to To:/Cc: when no forwarder header is present", () => {
+  const r = resolveMailboxes({ forwardedTo: [], toCc: ["Info@KCMPS.com"] });
+  assert.deepEqual(r.mailboxes, [INFO_MB]);
+  assert.equal(r.routedBy, "to-cc");
+});
+
+test("resolveMailboxes routes a true BCC (no To:/Cc: at all) off the forwarder header", () => {
+  const r = resolveMailboxes({ forwardedTo: ["order@kcmps.com"], toCc: [] });
+  assert.deepEqual(r.mailboxes, ["order@kcmps.com"]);
+});
+
+test("resolveMailboxes fans out to every alias named, deduped and normalized", () => {
+  const r = resolveMailboxes({ forwardedTo: ["ORDER@kcmps.com", "order@kcmps.com", "info@kcmps.com"] });
+  assert.deepEqual(r.mailboxes, [ORDER_MB, INFO_MB]);
+});
+
+test("resolveMailboxes sends unknown recipients to ONE unrouted mailbox, never a new one", () => {
+  const r = resolveMailboxes({ forwardedTo: ["sales@kcmps.com"], toCc: ["hello@kcmps.com"] });
+  assert.deepEqual(r.mailboxes, [UNROUTED_MAILBOX]);
+  assert.equal(r.routedBy, "unrouted");
+  // Nothing at all -> still unrouted, never empty, never dropped.
+  assert.deepEqual(resolveMailboxes({}).mailboxes, [UNROUTED_MAILBOX]);
+  assert.deepEqual(resolveMailboxes().mailboxes, [UNROUTED_MAILBOX]);
+});
+
+test("resolveMailboxes never routes into a system mailbox by address", () => {
+  // A sender must not be able to address their way into quarantine@ or
+  // unparseable@ and have it show up as ordinary mail there.
+  for (const mb of [QUARANTINE_MAILBOX, "unparseable@kcmps.com", UNROUTED_MAILBOX]) {
+    assert.equal(isRoutableAlias(mb), false, mb);
+    assert.equal(resolveMailboxes({ toCc: [mb] }).routedBy, "unrouted", mb);
+  }
+});
+
+test("resolveMailboxes diverts AWS infrastructure notices out of the customer view", () => {
+  // Both SNS topics alerting this shop are subscribed to admin@kcmps.com,
+  // the exact mailbox being forwarded — without this, every CloudWatch
+  // alarm lands next to real customer mail. Backstop only; the primary fix
+  // is a Spacemail-side filter (see backend/infra/README.md).
+  const r = resolveMailboxes({ forwardedTo: [ADMIN_MB], from: "no-reply@sns.amazonaws.com" });
+  assert.deepEqual(r.mailboxes, [UNROUTED_MAILBOX]);
+  assert.equal(r.routedBy, "infra-notice");
+  assert.equal(isInfrastructureNotice("No-Reply@SNS.amazonaws.com"), true);
+  assert.equal(isInfrastructureNotice("no-reply-aws@amazon.com"), true);
+  // A real customer must not be caught by it.
+  assert.equal(isInfrastructureNotice("someone@gmail.com"), false);
+  assert.equal(resolveMailboxes({ forwardedTo: [ADMIN_MB], from: "customer@gmail.com" }).routedBy, "forwarder");
+});
+
+// ---- SES verdicts ----
+
+test("assessVerdicts hard-rejects virus and spam", () => {
+  assert.equal(assessVerdicts({ virusVerdict: "FAIL", spamVerdict: "PASS" }).quarantine, true);
+  assert.equal(assessVerdicts({ virusVerdict: "PASS", spamVerdict: "FAIL" }).quarantine, true);
+  assert.match(assessVerdicts({ virusVerdict: "FAIL" }).reason, /virus/i);
+  assert.match(assessVerdicts({ virusVerdict: "PASS", spamVerdict: "FAIL" }).reason, /spam/i);
+});
+
+test("assessVerdicts NEVER rejects on SPF — forwarding breaks SPF by design", () => {
+  // This is the single most important assertion in this block: enforcing
+  // SPF would discard every legitimate forwarded message, i.e. all of them.
+  const a = assessVerdicts({ spfVerdict: "FAIL", dkimVerdict: "PASS", spamVerdict: "PASS", virusVerdict: "PASS" });
+  assert.equal(a.quarantine, false);
+  assert.equal(a.reason, null);
+  assert.equal(a.verdicts.spf, "FAIL"); // recorded, just not enforced
+});
+
+test("assessVerdicts treats a DKIM pass as the positive signal", () => {
+  assert.equal(assessVerdicts({ dkimVerdict: "pass" }).authenticated, true);
+  // Absent DKIM is "unverified", not "hostile" — plenty of small senders
+  // still don't sign, and quarantining them would lose real customer mail.
+  assert.equal(assessVerdicts({}).authenticated, false);
+  assert.equal(assessVerdicts({}).quarantine, false);
+  assert.equal(assessVerdicts({ dkimVerdict: "fail" }).quarantine, false);
+});
+
+test("assessVerdicts persists all four verdicts and never launders an unknown one into PASS", () => {
+  const a = assessVerdicts({ spfVerdict: "pass", dkimVerdict: "pass", spamVerdict: "PASS", virusVerdict: "PASS" });
+  assert.deepEqual(a.verdicts, { spf: "PASS", dkim: "PASS", spam: "PASS", virus: "PASS" });
+  assert.equal(a.quarantine, false);
+
+  assert.equal(normalizeVerdict(""), "UNKNOWN");
+  assert.equal(normalizeVerdict(null), "UNKNOWN");
+  assert.equal(normalizeVerdict("GRAY"), "UNKNOWN");
+  assert.equal(normalizeVerdict("PROCESSING_FAILED"), "UNKNOWN");
+  assert.equal(normalizeVerdict("softfail"), "FAIL");
+  assert.equal(normalizeVerdict("weird"), "WEIRD");
+  // A missing scanner verdict must not quarantine (fail-open on scanning is
+  // correct here: SES always stamps these, so UNKNOWN means "not an SES
+  // receipt", e.g. a replayed test fixture — not "hostile").
+  assert.equal(assessVerdicts({ spamVerdict: "", virusVerdict: "" }).quarantine, false);
+  // ...but an unrecognized non-PASS value DOES quarantine (fail closed on
+  // anything SES actually said that we don't recognize).
+  assert.equal(assessVerdicts({ virusVerdict: "weird" }).quarantine, true);
 });

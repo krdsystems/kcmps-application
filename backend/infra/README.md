@@ -1580,3 +1580,310 @@ was available in this session): `get-mailboxes` → correct `total`/`unreadCount
 → correct envelope (no `bodyText`/`attachments`); `get-mail-message` → full body + attachment
 metadata; `mark-mail-read` → `flags.seen` flipped to `true` and persisted. `node --test
 backend/lib/lib.test.js backend/lib/business-hours.test.js` stayed green (45/45) throughout.
+
+### Inbound hardening + shared-mailbox-only scope (C5, 2026-08-06)
+
+Supersedes parts of C1/C2/C3 above. Read this section rather than those where they disagree —
+the domain catchall, the mirror-address `mailboxId`s, and the personal-mailbox parameter are all
+gone.
+
+#### The real-world mail setup (this is the thing to internalize)
+
+There is exactly **one** Spacemail mailbox: `admin@kcmps.com`. `order@kcmps.com` and
+`info@kcmps.com` are **aliases that deliver into it** — one mailbox, three addresses. Both
+aliases are publicly committed and may never be retired (`order@` is `ORDER_EMAIL` in
+`website/store.js` + `orders-data.js`; `info@` is in the site footer, the JSON-LD schema, and
+the refunds policy).
+
+That single fact drives the whole design: **one forwarding rule, not three**, and the split back
+into three logical mailboxes happens in `ingest-inbound.js`, not in Spacemail.
+
+#### Scope decision: shared mailboxes only
+
+Personal staff-mailbox mirroring is **permanently out of scope**. A forward-based mirror is a
+one-way copy — it can never reconcile sent mail or read state with the real mailbox — so it is
+the wrong architecture for an individual's inbox. The `PersonalMailboxes` stack parameter and
+every personal-mailbox branch in `backend/lib/mail.js` and the read Lambdas were **deleted, not
+left inert**: a dormant `{mailboxId: sub}` parameter is an invitation for a future dev to
+repopulate it and silently revive a rejected design. Its unit tests went with it; the remaining
+suite covers live behaviour only and went from 45 → 61 → **71 passing**.
+
+`canAccessMailbox(claims, mailboxId)` is now **purely group-based** (the `personalMailboxes` third
+argument is gone from the signature — grep for stale 3-arg calls if you see an odd 403):
+
+| Mailbox (`mailboxId` = the REAL address) | Who may open it | Sendable |
+|---|---|---|
+| `order@kcmps.com` | Sales, Finance, Admin | yes |
+| `info@kcmps.com` | Sales, Admin | yes |
+| `admin@kcmps.com` | Admin | yes |
+| `unrouted@kcmps.com` | Admin | no |
+| `unparseable@kcmps.com` | Admin | no |
+| `quarantine@kcmps.com` | Admin | no |
+| Customer | nothing, anywhere | — |
+
+**Do not re-add `ROLES.STAFF`.** The owner already reverted that grant once (commit `49dad04`).
+`Staff` means "may open the dashboard", not a capability; granting mail on the tier means the
+first part-time production hire silently inherits the right to read customer correspondence.
+Read the header comment in `backend/lib/mail.js` before touching the matrix.
+
+#### `mailboxId` changed: mirror address → real address
+
+`order@kcmps.com`, **never** `order@mirror.kcmps.com`. The mirror domain is plumbing (an SES
+*receiving* identity); leaking it into the data model made every mailbox tab read as an address
+no customer has ever written to, and it is the identifier the access rules key on. C2's existing
+`MAILBOX#*@mirror.kcmps.com` items were throwaway test data and **were deleted** from
+`kcmps-staging` in this session. Anything downstream that hardcoded a mirror-domain mailboxId
+must be updated.
+
+#### Hardening step 1 — the domain catchall is gone (APPLIED)
+
+The receipt rule `mirror-domain-catchall` (recipients: the whole `mirror.kcmps.com` domain) was
+**deleted** and replaced with `mirror-single-recipient`, whose `Recipients` list holds exactly
+one address:
+
+```
+shop@mirror.kcmps.com
+```
+
+This is the highest-value change in the set: with a domain catchall, anyone on the internet
+could guess a local part and inject a message straight into the staff mail UI. Now everything
+except that one address is rejected at SMTP time, before it ever reaches S3 or a Lambda.
+
+```bash
+aws ses describe-receipt-rule-set --rule-set-name kcmps-mirror-inbound \
+  --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+`TlsPolicy` was deliberately left `Optional`. Flipping it to `Require` is a genuine further
+hardening, but it is fail-closed against a forwarder whose TLS behaviour has not been observed
+even once — revisit after real forwarded mail is flowing.
+
+#### Hardening step 2 — SES IP allowlist (NOT APPLIED — owner follow-up)
+
+The ranges **were** determined, so this is not blocked on research. Spacemail publishes its
+sending IPs through its SPF chain (`spacemail.com` → `spf.spacemail.com` →
+`spf-spacemail.jellyfish.systems`), resolved live on 2026-08-06:
+
+```
+66.29.159.64/27   63.250.43.64/26    198.54.127.64/27   198.177.127.128/28
+198.54.127.128/26 104.207.68.0/24    198.177.127.192/27
+```
+
+**It was deliberately not applied, for one reason: no forwarded message exists yet.** The
+Spacemail forwarding rule below is still an owner manual step, so not a single genuine forwarded
+message has ever been observed. Applying a `0.0.0.0/0` block before then means the very first
+forwarded message could be dropped at the SMTP edge with no bounce visible to anyone, and the
+symptom ("the mail panel is empty") looks identical to "nobody has emailed us". Set up the
+forward, confirm mail is landing, confirm the source IPs in the `Received` chain, *then* apply.
+
+Apply with (order matters — create the ALLOW entries before the block, since filters evaluate
+most-specific-first but a window where only the block exists drops everything):
+
+```bash
+for cidr in 66.29.159.64/27 63.250.43.64/26 198.54.127.64/27 198.177.127.128/28 \
+            198.54.127.128/26 104.207.68.0/24 198.177.127.192/27; do
+  name="allow-spacemail-$(echo $cidr | tr './' '--')"
+  aws ses create-receipt-filter --filter "{\"Name\":\"$name\",\"IpFilter\":{\"Policy\":\"Allow\",\"Cidr\":\"$cidr\"}}" \
+    --profile kcmps-claude-priv --region ap-southeast-1
+done
+
+aws ses create-receipt-filter --filter \
+  '{"Name":"block-all-other-senders","IpFilter":{"Policy":"Block","Cidr":"0.0.0.0/0"}}' \
+  --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+**Two caveats, both loud:**
+
+1. **Receipt filters are ACCOUNT-WIDE, not per-rule.** There is no way to scope them to one
+   receipt rule or one identity. Every SES inbound path in account `600929977538` is affected,
+   now and in future. This is fine today (`mirror.kcmps.com` is the only receiving identity) and
+   is a trap the moment a second one is added.
+2. **Spacemail can change its egress IPs without notice**, and the failure mode is silent: all
+   forwarded mail stops arriving, with no bounce and no alarm. The list above is Spacemail's
+   *sending* pool inferred from SPF — a forward is a send, so it should be the same set, but that
+   is inference and not a published forwarding-egress guarantee. If mail ever stops, delete the
+   block filter FIRST and diagnose second:
+   ```bash
+   aws ses delete-receipt-filter --filter-name block-all-other-senders \
+     --profile kcmps-claude-priv --region ap-southeast-1
+   ```
+   Worth pairing with a CloudWatch alarm on "zero inbound messages in 24h" before enabling it.
+
+Note that applying this also blocks direct `aws ses send-raw-email` verification sends (they come
+from Amazon SES's own IPs), so the end-to-end test procedure below stops working once it is on.
+
+#### Hardening step 3 — SES verdicts enforced at ingest (APPLIED)
+
+`backend/lib/mail.js`'s `assessVerdicts()` is the pure, unit-tested decision; `mail-parse.js`
+extracts the raw values. All four verdicts are **persisted on every message item** under
+`provenance.verdicts` and rendered in the UI.
+
+| Verdict | Treatment | Why |
+|---|---|---|
+| `virus` | **hard reject** | SES's own scanner calling it hostile |
+| `spam` | **hard reject** | same |
+| `spf` | recorded, **never enforced** | forwarding breaks SPF by design — the forwarder relays from its own IPs, so enforcing it would discard *every* legitimate message this relay exists to carry |
+| `dkim` | the **positive** signal | DKIM survives forwarding intact, so a pass genuinely means "from who it claims". Its absence is "unverified", not "hostile" — plenty of small senders still don't sign |
+
+A hard reject writes a **metadata-only stub** into `quarantine@kcmps.com` (Admin-only): subject
+replaced, `bodyText`/`snippet`/`attachments` stripped, verdicts kept. Same "show the verdict,
+withhold the payload" shape as `backend/jobs/handle-scan-result.js`. The raw MIME stays in S3 for
+forensics. Nothing is ever silently dropped.
+
+**Where the verdicts come from:** the receipt rule uses an S3 action and the Lambda is triggered
+by the S3 `ObjectCreated` event, so there is **no SES `receipt` object in the event at all**.
+They are read off the headers SES stamps onto the raw MIME instead — `X-SES-Spam-Verdict`,
+`X-SES-Virus-Verdict`, and `Authentication-Results` (`spf=` / `dkim=`), with `Received-SPF` as a
+fallback. Confirmed against real messages in `kcmps-inbound-mail-est-2026`.
+
+**Explicitly NOT ARC.** Authenticated Received Chain is the textbook answer for authenticating
+forwarded mail and we are deliberately not building on it: the IETF rechartered the DMARC working
+group on 2026-04-16 to move ARC to **Historic by November 2026**. No ARC validation, no ARC
+headers, not now and not as a follow-up.
+
+#### Hardening step 4 — provenance in the staff UI (APPLIED)
+
+`website/dashboard/email.html`'s `renderProvenance()` renders a "Delivery checks" block: the four
+verdicts as pills, whether the expected forwarder appears in the `Received` chain, how the message
+was routed, and the original recipient it was routed on. SPF is labelled *"not enforced —
+forwarding breaks SPF"* in the UI itself so nobody reads an expected fail as an alarm.
+
+**The page's plain-text-only rules are intact and must stay that way** — no HTML rendering, no
+remote images, no attachment download, no auto-linkification, every field through `escapeHtml`.
+That remains the strongest anti-phishing control in the design. The new block adds no links and
+no markup of its own.
+
+`email.html` is still on the mock seam (C4 does the swap). `renderProvenance()` degrades to a
+single "Delivery checks are not recorded for this message." line when `m.provenance` is absent,
+so the current mock still renders, and it lights up automatically once C4 lands.
+
+#### Routing: by original recipient, not delivery address
+
+Because there is one forwarding rule into one mirror address, the **delivery** address carries no
+routing information — it's identical on every message. `ingest-inbound.js` routes on the
+**original recipient** instead:
+
+1. **Forwarder-stamped envelope headers first**, in `mail.js`'s `FORWARDER_HEADERS` order:
+   `Delivered-To`, `X-Original-To`, `X-Envelope-To`, `Envelope-To`, `X-Forwarded-To`,
+   `X-Forwarded-For`, `Resent-To`. First hit wins.
+2. **`To:`/`Cc:` only as a fallback.**
+3. Anything matching none of the three aliases → the single `unrouted@kcmps.com` mailbox. Never
+   silently dropped, never auto-creating a mailbox.
+
+**Why the envelope header outranks `To:`:** a message **BCC'd** to `order@kcmps.com` has no `To:`
+header naming it, so `To:`-based routing would mis-file it into `unrouted@` where nobody is
+watching. Verified end-to-end below.
+
+**Which header Spacemail actually stamps is still UNCONFIRMED.** No genuinely forwarded message
+exists yet — every message in the inbound bucket is a direct SES test send. The header list above
+covers the common forwarding MTAs; once the owner sets up the forward, **inspect one real message
+and move the header Spacemail actually uses to the front of `FORWARDER_HEADERS`**:
+
+```bash
+aws s3 ls s3://kcmps-inbound-mail-est-2026/inbound/ --profile kcmps-claude-priv --region ap-southeast-1
+aws s3 cp s3://kcmps-inbound-mail-est-2026/inbound/<key> - --profile kcmps-claude-priv \
+  --region ap-southeast-1 | head -60
+```
+
+While you have that message open, note the forwarder's hostname from the `Received:` chain and set
+it as the `ExpectedForwarderHost` stack parameter (env var `EXPECTED_FORWARDER_HOST` on
+`kcmps-staging-ingest-inbound`). It gates nothing — it only lets the UI say "this did/didn't
+arrive via the expected path". Left empty it renders no claim at all, which is the honest default.
+
+#### OWNER MANUAL STEP — the Spacemail forwarding rule
+
+No Spacemail credentials are available to any Claude session, so this cannot be automated.
+
+**Create exactly ONE forwarding rule:**
+
+| | |
+|---|---|
+| Mailbox | `admin@kcmps.com` (the only real mailbox — `order@`/`info@` alias into it) |
+| Forward to | `shop@mirror.kcmps.com` |
+| Keep a local copy | **yes** — the relay is a read-only mirror, not a replacement; Spacemail stays the system of record |
+
+Do **not** create per-alias rules to `order@mirror.kcmps.com` / `info@mirror.kcmps.com`. They
+would be rejected anyway (only `shop@` is an accepted recipient now), and there is nothing to
+attach them to — Spacemail delivers all three aliases into the one mailbox.
+
+**Add a filter excluding AWS notification mail from the forward.** Two SNS topics deliver to
+`admin@kcmps.com` — `kcmps-ses-bounce-complaint` (bounce/complaint events on the live `kcmps.com`
+sending identity) and `kcmps-ops-alerts` (37 CloudWatch alarms across the 17 production Lambdas),
+both confirmed subscribed as of 2026-08-06. Without a filter, every alarm state change and bounce
+notice flows through the relay into the dashboard's Admin mailbox, mixing infrastructure alerts
+into a customer-correspondence view.
+
+Exclude senders:
+
+- `no-reply@sns.amazonaws.com` — **UNCONFIRMED.** This is AWS's documented sender for SNS email
+  notifications, but no real SNS notification was available in this session to verify it against.
+  **Owner: check it before relying on it** — open one of the alarm/bounce emails already sitting
+  in `admin@kcmps.com` and read the actual `From:`/`Return-Path:`, then use what's really there.
+- `no-reply-aws@amazon.com` — **confirmed**, read off a real "Amazon SES Setup Notification"
+  message in `s3://kcmps-inbound-mail-est-2026/inbound/AMAZON_SES_SETUP_NOTIFICATION`.
+
+A **defensive backstop** for a missing or mistyped filter already exists in code:
+`mail.js`'s `isInfrastructureNotice()` routes mail from those two senders to `unrouted@` instead
+of `admin@`. It is a deliberate two-address exact match and **not** a general filtering framework
+— the moment that becomes a rules engine, mail starts disappearing for reasons nobody can
+reconstruct. Keep it small.
+
+#### Deploy (staging)
+
+Same packaging convention as C2, plus: `mail-parse.js` now also imports `../lib`, so the
+`require("../lib")` → `require("./lib")` rewrite must be applied to **both** `index.js` and
+`mail-parse.js` in every mail zip.
+
+```bash
+cd backend/mail && npm install --omit=dev
+# per function: index.js + mail-parse.js (both require-rewritten) + flattened backend/lib/
+# (minus *.test.js) + node_modules for ingest-inbound only
+aws s3 cp kcmps-<fn>.zip s3://kcmps-lambda-artifacts-staging/<new-prefix>/kcmps-<fn>.zip \
+  --profile kcmps-claude-priv --region ap-southeast-1
+# NOTE: ArtifactsPrefix is stack-wide — every one of the 17 functions reads its zip from it.
+# Carry the unchanged zips forward first, or the deploy fails on missing objects:
+aws s3 sync s3://kcmps-lambda-artifacts-staging/<old-prefix>/ \
+            s3://kcmps-lambda-artifacts-staging/<new-prefix>/ \
+  --exclude "*" --include "*.zip" --profile kcmps-claude-priv --region ap-southeast-1
+# ...then re-upload the changed zips (sync will have overwritten them with the old versions).
+aws cloudformation deploy --stack-name kcmps-backend-staging \
+  --template-file backend/infra/backend-lambdas.cfn.yaml \
+  --s3-bucket kcmps-lambda-artifacts-staging --s3-prefix cfn-templates \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides ArtifactsPrefix=<new-prefix> \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Applied 2026-08-06 as `ArtifactsPrefix=mail-hardening-2026-08-06`. The template is >51,200 bytes,
+so `--s3-bucket`/`--s3-prefix` remain required on every `deploy` of this stack.
+
+**Production promotion — NOT performed, needs the owner's separate explicit go-ahead.** No
+production Lambda, route, or bucket was created or modified in this session. To promote, the same
+zips go to a production artifacts prefix and the stack deploys against production parameters;
+additionally the S3→Lambda notification on the *production* inbound bucket must be re-run by hand
+(`put-bucket-notification-configuration`, as in the C2 section above) because CloudFormation does
+not own that bucket. Note the receipt-rule change in step 1 is **not** environment-scoped — there
+is one `mirror.kcmps.com` receiving identity and one rule set, shared.
+
+#### Verified end-to-end (2026-08-06, staging)
+
+All sends from `admin+admin.kcmps.uat@kcmps.com`, the only permitted test address.
+
+| Test | Sent to (envelope) | `To:` header | Landed in | `routedBy` |
+|---|---|---|---|---|
+| T1 | `shop@mirror.kcmps.com` | `order@kcmps.com` | `order@kcmps.com` | `to-cc` |
+| T2 | `shop@mirror.kcmps.com` | `info@kcmps.com` | `info@kcmps.com` | `to-cc` |
+| T3 | `shop@mirror.kcmps.com` | `admin@kcmps.com` | `admin@kcmps.com` | `to-cc` |
+| T4 | `shop@mirror.kcmps.com` | `somebodyelse@example.com` | `unrouted@kcmps.com` | `unrouted` |
+| T5 | `shop@mirror.kcmps.com` | *(none — BCC)* + `Delivered-To: order@kcmps.com` | `order@kcmps.com` | **`forwarder`** |
+
+T5 is the important one: it proves the envelope header outranks `To:` and that a BCC'd message
+still files correctly.
+
+**Catchall-gone proof:** a send to `notallowed@mirror.kcmps.com` produced **no** object in
+`s3://kcmps-inbound-mail-est-2026/inbound/` and no table item — SES rejected it at the edge.
+
+All four verdicts persisted on every item (`spf`/`dkim`/`spam`/`virus` = `PASS` on these sends).
+`node --test backend/lib/lib.test.js backend/lib/business-hours.test.js` → **71 passing**, with
+`canAccessMailbox` coverage intact (and extended: a test now pins that varying `claims.sub` cannot
+move the decision, which is what replaces the deleted ownership tests).

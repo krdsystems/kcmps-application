@@ -99,18 +99,30 @@ Parameters:
     Default: kcmps.com
     Description: SES identity ARN suffix — IAM grant only. FROM_EMAIL/SES_SENDER env vars stay unset (dark), matching notify-unread-messages.js's existing pattern, so staging never actually sends customer email.
 
-  PersonalMailboxes:
+  # NOTE: there is deliberately NO personal-mailbox parameter here any more
+  # (removed 2026-08-06 along with the personal-mailbox code path). A
+  # forward-based mirror of an individual's inbox is a one-way copy that can
+  # never reconcile sent mail or read state, so the design was rejected
+  # outright. Leaving the parameter behind "inert" would have invited a
+  # future dev to repopulate it and silently revive it — hence deleted, not
+  # defaulted to {}. See backend/lib/mail.js's header and docs/roadmap.md.
+  #
+  # No mailbox-password parameter exists anywhere in this stack either: the
+  # roadmap's Tier 1 (stored Spacemail credentials) is now rejected outright,
+  # not merely unbuilt.
+
+  ExpectedForwarderHost:
     Type: String
-    Default: "{}"
+    Default: ""
     Description: >
-      JSON object mapping a personal staff mailbox to its owner's Cognito
-      `sub`, e.g. {"ken@mirror.kcmps.com":"<sub-uuid>"}. Consumed by
-      backend/lib/mail.js's parsePersonalMailboxes(); an empty object means
-      no personal mailboxes exist yet, which is the current state. NOT a
-      secret (a `sub` is an opaque user id, not a credential), so a plain
-      template parameter is appropriate — the stored *mailbox passwords*
-      the roadmap's Tier 1 would need are explicitly NOT built and no
-      parameter for them exists anywhere in this stack.
+      Hostname the inbound `Received:` chain should mention if a message
+      genuinely arrived via Spacemail's forwarder (e.g. a *.spacemail.com
+      relay host). Read by backend/mail/mail-parse.js and surfaced as
+      provenance in the staff mail UI — it gates NOTHING, it only lets staff
+      see when a message did not arrive by the expected path. Left empty
+      until the owner sets up the forwarding rule and a real forwarded
+      message shows which host to expect; empty renders as "unknown", not as
+      a false "did not arrive via the forwarder".
 
   MailAllowedRecipients:
     Type: String
@@ -914,6 +926,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          EXPECTED_FORWARDER_HOST: !Ref ExpectedForwarderHost
 
   PermIngestInboundS3:
     Type: AWS::Lambda::Permission
@@ -939,7 +952,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
-          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   GetMailMessagesFunction:
     Type: AWS::Lambda::Function
@@ -956,7 +968,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
-          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   GetMailMessageFunction:
     Type: AWS::Lambda::Function
@@ -973,7 +984,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
-          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   MarkMailReadFunction:
     Type: AWS::Lambda::Function
@@ -990,7 +1000,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
-          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
 
   # The one mail Lambda that SENDS. Unlike the customer-notification
   # Lambdas elsewhere in this template — which stay dark on staging by
@@ -1013,7 +1022,6 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
-          PERSONAL_MAILBOXES: !Ref PersonalMailboxes
           MAIL_ALLOWED_RECIPIENTS: !Ref MailAllowedRecipients
           MAIL_SENDER_NAME: KCMPS
 

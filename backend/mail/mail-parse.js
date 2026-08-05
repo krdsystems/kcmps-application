@@ -32,9 +32,16 @@
    ============================================================ */
 
 const crypto = require("crypto");
+const { FORWARDER_HEADERS, resolveMailboxes, assessVerdicts } = require("../lib");
 
 const MIRROR_DOMAIN = "mirror.kcmps.com";
 const SNIPPET_MAX_CHARS = 200;
+
+/* The hostname the `Received:` chain should mention if the message really
+   came via Spacemail's forwarder. Config, not code — set
+   EXPECTED_FORWARDER_HOST on the ingest Lambda. Unset means "unknown", and
+   the UI renders no provenance claim at all rather than a false negative. */
+const EXPECTED_FORWARDER_HOST = (process.env.EXPECTED_FORWARDER_HOST || "").trim().toLowerCase();
 
 function hashMessageId(messageId) {
   return crypto.createHash("sha256").update(String(messageId || "")).digest("hex").slice(0, 32);
@@ -56,25 +63,113 @@ function deriveThreadId(parsed) {
   return `THR#subj#${hashMessageId(normalized || parsed.messageId || Math.random().toString(36))}`;
 }
 
-// Every mirror.kcmps.com address seen in To/Cc, lowercased and deduped —
-// each is a "mailbox" a mail item gets written under. mailparser exposes
-// .to/.cc as either a single AddressObject or undefined for a single
-// recipient, or an AddressObject for multiple (already merged) — .value is
-// always the flat {name,address}[] either way.
-function extractMailboxRecipients(parsed) {
-  const addrs = []
-    .concat(parsed.to && parsed.to.value || [])
-    .concat(parsed.cc && parsed.cc.value || []);
-  const seen = new Set();
+/* ------------------------------------------------------------
+   ROUTING + PROVENANCE HEADER EXTRACTION
+   ------------------------------------------------------------
+   Everything below only *extracts* raw values out of the parsed MIME. The
+   decisions (which mailbox, quarantine or not) live in ../lib/mail.js's
+   resolveMailboxes()/assessVerdicts(), which are pure and unit-tested —
+   don't reimplement either of them here.
+   ------------------------------------------------------------ */
+
+// Case-insensitive header read. mailparser exposes parsed.headers as a Map
+// keyed by lowercased header name; a repeated header comes back as an
+// array. Always returns a flat string[].
+function headerValues(parsed, name) {
+  const h = parsed && parsed.headers;
+  if (!h || typeof h.get !== "function") return [];
+  const v = h.get(String(name).toLowerCase());
+  if (v === undefined || v === null) return [];
+  const list = Array.isArray(v) ? v : [v];
+  return list.map((x) => (typeof x === "string" ? x : (x && x.text) || String(x || ""))).filter(Boolean);
+}
+
+const ADDRESS_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+function addressesIn(text) {
+  return (String(text || "").match(ADDRESS_RE) || []).map((a) => a.toLowerCase());
+}
+
+/* Every address found in the forwarder-stamped envelope headers, in
+   ../lib/mail.js's FORWARDER_HEADERS priority order. This is what routing
+   PREFERS over To:/Cc: — a message BCC'd to order@kcmps.com has no To:
+   header naming it, and would otherwise be mis-filed. Returns raw
+   addresses; the alias filtering is resolveMailboxes()' job. */
+function extractForwardedRecipients(parsed) {
   const out = [];
-  for (const a of addrs) {
-    const address = String(a.address || "").toLowerCase().trim();
-    if (!address || !address.endsWith(`@${MIRROR_DOMAIN}`)) continue;
-    if (seen.has(address)) continue;
-    seen.add(address);
-    out.push(address);
+  for (const name of FORWARDER_HEADERS) {
+    for (const raw of headerValues(parsed, name)) out.push(...addressesIn(raw));
   }
   return out;
+}
+
+// Every address in To: + Cc:, lowercased. The fallback routing input.
+function extractToCcRecipients(parsed) {
+  return []
+    .concat(parsed.to && parsed.to.value || [])
+    .concat(parsed.cc && parsed.cc.value || [])
+    .map((a) => String(a.address || "").toLowerCase().trim())
+    .filter(Boolean);
+}
+
+/* SES's four verdicts, read off the headers SES stamps onto the raw MIME
+   it writes to S3.
+
+   WHY HEADERS AND NOT THE RECEIPT PAYLOAD: the receipt rule uses an S3
+   action and this Lambda is triggered by the S3 ObjectCreated event, so
+   there is no SES `receipt` object in the event at all — only the message
+   SES already annotated. SES stamps `X-SES-Spam-Verdict` and
+   `X-SES-Virus-Verdict` directly, and folds SPF/DKIM into
+   `Authentication-Results` (plus a standalone `Received-SPF`). Confirmed
+   against real messages in kcmps-inbound-mail-est-2026.
+
+   Missing header -> "" -> normalizeVerdict() yields UNKNOWN, which
+   assessVerdicts() treats as "record it, don't quarantine on it". Only an
+   explicit non-PASS virus/spam verdict quarantines — see that function. */
+function extractSesVerdicts(parsed) {
+  const authResults = headerValues(parsed, "authentication-results").join(" ; ");
+  return {
+    spamVerdict: firstWord(headerValues(parsed, "x-ses-spam-verdict")[0]),
+    virusVerdict: firstWord(headerValues(parsed, "x-ses-virus-verdict")[0]),
+    spfVerdict: verdictFromAuthResults(authResults, "spf") || spfFromReceivedSpf(headerValues(parsed, "received-spf")[0]),
+    dkimVerdict: verdictFromAuthResults(authResults, "dkim"),
+  };
+}
+
+function firstWord(s) {
+  return String(s || "").trim().split(/\s+/)[0] || "";
+}
+
+// `Authentication-Results:` is a semicolon-separated list of
+// `method=result` clauses with optional trailing properties, e.g.
+// "spf=pass (spfCheck: ...) client-ip=...; dkim=pass header.i=@kcmps.com".
+// A message can carry MULTIPLE dkim= clauses (one per signature); a single
+// pass is a pass, so "any pass wins" is the correct fold here.
+function verdictFromAuthResults(text, method) {
+  const re = new RegExp(`\\b${method}\\s*=\\s*([a-z]+)`, "gi");
+  let m, seen = null;
+  while ((m = re.exec(String(text || "")))) {
+    const v = m[1].toLowerCase();
+    if (v === "pass") return "pass";
+    if (!seen) seen = v;
+  }
+  return seen || "";
+}
+
+function spfFromReceivedSpf(text) {
+  return String(text || "").trim().split(/\s+/)[0].toLowerCase() || "";
+}
+
+/* Did the message actually traverse the forwarder we expect? Scans the
+   `Received:` chain for the expected hostname/domain. A false here doesn't
+   block anything — it is surfaced in the staff UI so a message that
+   arrived by some other path is visibly odd rather than invisibly
+   trusted. */
+function receivedViaExpectedForwarder(parsed, expectedHost) {
+  const needle = String(expectedHost || "").trim().toLowerCase();
+  if (!needle) return null; // not configured — "unknown", not "no"
+  const chain = headerValues(parsed, "received").join("\n").toLowerCase();
+  return chain.includes(needle);
 }
 
 function toAddressList(addressObject) {
@@ -101,8 +196,16 @@ function toMailFields(parsed, { s3Ref }) {
   }));
   const dateIso = (parsed.date instanceof Date && !isNaN(parsed.date)) ? parsed.date.toISOString() : new Date().toISOString();
 
+  const forwardedTo = extractForwardedRecipients(parsed);
+  const toCc = extractToCcRecipients(parsed);
+  const routing = resolveMailboxes({ forwardedTo, toCc, from: (fromList[0] || {}).address || "" });
+  const assessment = assessVerdicts(extractSesVerdicts(parsed));
+
   return {
-    mailboxes: extractMailboxRecipients(parsed),
+    mailboxes: routing.mailboxes,
+    routedBy: routing.routedBy,
+    quarantine: assessment.quarantine,
+    quarantineReason: assessment.reason,
     fields: {
       messageId: parsed.messageId || `<generated-${hashMessageId(s3Ref + dateIso)}@kcmps.com>`,
       threadId: deriveThreadId(parsed),
@@ -118,8 +221,39 @@ function toMailFields(parsed, { s3Ref }) {
       flags: { seen: false, answered: false, flagged: false },
       folder: "INBOX",
       s3Ref,
+      /* PROVENANCE — persisted on every message item and rendered in
+         website/dashboard/email.html so staff can see when a message did
+         not arrive by the expected path. All four verdicts are stored
+         even though only virus/spam gate anything (see assessVerdicts). */
+      provenance: {
+        verdicts: assessment.verdicts,
+        authenticated: assessment.authenticated,
+        routedBy: routing.routedBy,
+        // The original recipient(s) we actually routed on, for the "why is
+        // this in this mailbox" question.
+        deliveredTo: dedupeStrings(routing.routedBy === "to-cc" ? toCc : forwardedTo).slice(0, 5),
+        viaExpectedForwarder: receivedViaExpectedForwarder(parsed, EXPECTED_FORWARDER_HOST),
+        expectedForwarder: EXPECTED_FORWARDER_HOST || null,
+      },
     },
   };
 }
 
-module.exports = { MIRROR_DOMAIN, hashMessageId, deriveThreadId, extractMailboxRecipients, toMailFields, buildSnippet, normalizeSubjectForThread };
+function dedupeStrings(list) {
+  return [...new Set((list || []).map((s) => String(s || "").toLowerCase()).filter(Boolean))];
+}
+
+module.exports = {
+  MIRROR_DOMAIN,
+  EXPECTED_FORWARDER_HOST,
+  hashMessageId,
+  deriveThreadId,
+  headerValues,
+  extractForwardedRecipients,
+  extractToCcRecipients,
+  extractSesVerdicts,
+  receivedViaExpectedForwarder,
+  toMailFields,
+  buildSnippet,
+  normalizeSubjectForThread,
+};

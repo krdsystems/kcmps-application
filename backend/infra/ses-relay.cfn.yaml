@@ -120,9 +120,21 @@ Outputs:
   InboundMailBucketName:
     Value: !Ref InboundMailBucket
     Description: >
-      Private bucket receiving raw inbound MIME under the "inbound/" prefix
-      (single domain-catchall receipt rule for mirror.kcmps.com — no per-recipient
-      prefix split yet; C2's parser Lambda should read the MIME "To" header to
-      route by mailbox rather than relying on key prefix).
+      Private bucket receiving raw inbound MIME under the "inbound/" prefix.
+
+      SUPERSEDED 2026-08-06: the domain-catchall receipt rule this originally
+      described was DELETED and replaced with `mirror-single-recipient`, whose
+      Recipients list holds exactly one address, shop@mirror.kcmps.com — the
+      single address Spacemail forwards the one real admin@kcmps.com mailbox to.
+      A domain catchall let anyone guess a local part and inject a message into
+      the staff mail UI; that surface is now gone. Do not restore it.
+
+      Routing therefore does NOT come from the delivery address (identical on
+      every message) and NOT from the S3 key. ingest-inbound.js routes on the
+      ORIGINAL recipient: forwarder-stamped envelope headers (Delivered-To /
+      X-Original-To / ...) first, To:/Cc: only as a fallback, unrouted@kcmps.com
+      if nothing matches. The envelope header wins because a BCC'd message has
+      no To: header naming the alias it was actually sent to. See
+      backend/infra/README.md's "Inbound hardening" section.
   BounceComplaintTopicArn:
     Value: !Ref BounceComplaintTopic

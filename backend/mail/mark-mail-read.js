@@ -22,9 +22,8 @@
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
-const { mailboxPk, mailMessageSk, extractClaims, canAccessMailbox, parsePersonalMailboxes } = require("../lib");
+const { mailboxPk, mailMessageSk, extractClaims, canAccessMailbox } = require("../lib");
 
-const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 const { hashMessageId } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
@@ -37,11 +36,11 @@ exports.handler = async (event) => {
   const mailboxId = decodeURIComponent(event.pathParameters?.mailboxId || "");
   const messageId = decodeURIComponent(event.pathParameters?.messageId || "");
   if (!mailboxId || !messageId) return response(400, { error: "mailboxId and messageId path parameters are required" });
-  if (!canAccessMailbox(claims, mailboxId, PERSONAL_MAILBOXES)) {
+  if (!canAccessMailbox(claims, mailboxId)) {
     // 403, not 404: the caller is authenticated staff, just not for THIS
     // mailbox. Deliberately identical for "mailbox exists but you may not
     // open it" and "no such mailbox" so the response can't be used to
-    // enumerate which personal mailboxes exist.
+    // enumerate which mailboxes exist.
     return response(403, { error: "Forbidden" });
   }
 

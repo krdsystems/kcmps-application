@@ -8,15 +8,33 @@
    ../lib/keys.js's mailboxPk()/mailMessageSk() header for the key-shape
    reasoning.
 
-   SINGLE DOMAIN-WIDE CATCHALL, NOT PER-MAILBOX: the receipt rule doesn't
-   split by recipient, so routing is done here by parsing the MIME To/Cc
-   headers (extractMailboxRecipients() in ./mail-parse.js), never by S3
-   key. A message with no mirror.kcmps.com address in To/Cc (Bcc'd,
-   forwarded, or a sender that omitted them) falls back to CATCHALL_MAILBOX
-   below rather than being silently dropped — the S3 object (source of
-   truth) is never the thing that's lost; only the routing may be
-   imprecise. See ./mail-parse.js's header for why this is inherent to a
-   plain-S3 SES receipt action (no envelope-recipient header is injected).
+   ONE STREAM IN, THREE LOGICAL MAILBOXES OUT. The SES receipt rule no
+   longer accepts the whole mirror.kcmps.com domain — its Recipients list
+   holds exactly one address, ../lib/mail.js's MIRROR_ADDRESS, which is
+   what Spacemail forwards the single real admin@kcmps.com mailbox to.
+   That kills the "guess a local part and inject a message into the staff
+   UI" surface, but it also means the DELIVERY address carries no routing
+   information: it's the same for every message.
+
+   So routing is on the ORIGINAL recipient. ./mail-parse.js pulls the
+   forwarder-stamped envelope headers (Delivered-To / X-Original-To / …)
+   and, only as a fallback, To:/Cc:; ../lib/mail.js's resolveMailboxes()
+   makes the decision. A message BCC'd to order@kcmps.com is exactly why
+   the envelope header is preferred — it has no To: header naming order@
+   and routing on To:/Cc: would mis-file it.
+
+   Anything matching no known alias goes to ONE unrouted@ mailbox. Never
+   silently dropped (the S3 object is the source of truth regardless), and
+   never auto-creating a mailbox — an unknown local part must not be able
+   to conjure a new tab in the staff UI.
+
+   VERDICTS ARE ENFORCED HERE. ../lib/mail.js's assessVerdicts() reads the
+   four SES verdicts off the message headers. Virus or spam = hard reject:
+   the message never enters a shared mailbox, only a metadata-only stub in
+   quarantine@ (Admin-only, no bodyText, no attachment metadata). SPF is
+   recorded but NEVER enforced — forwarding breaks SPF by design, so
+   rejecting on it would discard every legitimate message this relay
+   exists to carry. See that function's header.
 
    NEVER CRASH ON MALFORMED MAIL. handle-scan-result.js's own header notes
    a bug where "never throw" once hid a real ValidationException for days
@@ -36,12 +54,10 @@ const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
 const { simpleParser } = require("mailparser");
-const { mailboxPk, mailMessageSk, baseItem } = require("../lib");
+const { mailboxPk, mailMessageSk, baseItem, UNPARSEABLE_MAILBOX, QUARANTINE_MAILBOX } = require("../lib");
 const { hashMessageId, toMailFields } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
-const CATCHALL_MAILBOX = "catchall@mirror.kcmps.com";
-const UNPARSEABLE_MAILBOX = "unparseable@mirror.kcmps.com";
 
 const s3 = new S3Client({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -83,10 +99,31 @@ async function processRecord(record) {
   }
 
   try {
-    const { mailboxes, fields } = toMailFields(parsed, { s3Ref });
-    const targets = mailboxes.length ? mailboxes : [CATCHALL_MAILBOX];
-    await Promise.all(targets.map((mailboxId) => writeMailItem(mailboxId, fields)));
-    return { ok: true, s3Ref, mailboxes: targets };
+    const { mailboxes, routedBy, quarantine, quarantineReason, fields } = toMailFields(parsed, { s3Ref });
+
+    if (quarantine) {
+      // HARD REJECT. The message body and attachment metadata are dropped
+      // on the floor — a quarantined message must not be readable in the
+      // staff UI, and the snippet alone is enough of a phishing payload to
+      // be worth withholding too. The raw MIME stays in S3 for forensics.
+      console.warn("ingest-inbound: quarantined", s3Ref, quarantineReason, JSON.stringify(fields.provenance.verdicts));
+      await writeMailItem(QUARANTINE_MAILBOX, {
+        ...fields,
+        subject: "(quarantined message)",
+        snippet: quarantineReason,
+        bodyText: "",
+        attachments: [],
+        hasHtmlPart: false,
+        quarantineReason,
+        // Keep from/date/provenance so staff can see WHAT arrived and that
+        // it was withheld — same "show the verdict, withhold the payload"
+        // shape as backend/jobs/handle-scan-result.js.
+      });
+      return { ok: true, s3Ref, mailboxes: [QUARANTINE_MAILBOX], quarantined: true };
+    }
+
+    await Promise.all(mailboxes.map((mailboxId) => writeMailItem(mailboxId, fields)));
+    return { ok: true, s3Ref, mailboxes, routedBy };
   } catch (err) {
     console.error("ingest-inbound: failed to write item(s) for", s3Ref, err.message);
     return { ok: false, reason: "write-failed", s3Ref };
@@ -125,6 +162,17 @@ async function writeUnparseable(s3Ref, errorMessage) {
     flags: { seen: false, answered: false, flagged: false },
     folder: "INBOX",
     s3Ref,
+    // Nothing could be parsed, so every verdict is genuinely unknown —
+    // render it as such rather than omitting the block and letting the UI
+    // fall back to "no provenance recorded", which reads as older data.
+    provenance: {
+      verdicts: { spf: "UNKNOWN", dkim: "UNKNOWN", spam: "UNKNOWN", virus: "UNKNOWN" },
+      authenticated: false,
+      routedBy: "unparseable",
+      deliveredTo: [],
+      viaExpectedForwarder: null,
+      expectedForwarder: null,
+    },
   };
   delete item.status;
   await ddb.send(new PutCommand({ TableName: TABLE, Item: item }));

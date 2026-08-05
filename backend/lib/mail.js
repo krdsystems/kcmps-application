@@ -1,34 +1,65 @@
 /* ============================================================
-   KCMPS backend — per-mailbox access model (SES relay / staff mail panel)
+   KCMPS backend — shared shop mailboxes: access model + inbound routing
    ============================================================
-   The matrix docs/roadmap.md (~608-617) specifies for the staff mail
-   panel, encoded here as a PURE module — no AWS SDK, no env reads, no I/O —
-   so it unit-tests with the rest of backend/lib/ (`node --test
-   backend/lib/lib.test.js`). Every backend/mail/*.js read/write handler
-   calls canAccessMailbox(); none of them re-derive the rules locally, so
-   the model can't drift between endpoints. That was the explicit warning
-   in the roadmap: "getMailboxes decides *visibility*, but every other
-   handler must re-check — never trust the client's mailboxId."
+   A PURE module — no AWS SDK, no env reads, no I/O — so it unit-tests with
+   the rest of backend/lib/ (`node --test backend/lib/lib.test.js`). Every
+   backend/mail/*.js read/write handler calls canAccessMailbox(); none of
+   them re-derive the rules locally, so the model can't drift between
+   endpoints. The roadmap's warning still holds: getMailboxes decides
+   *visibility*, but every other handler must re-check — never trust the
+   client's mailboxId.
 
-   THE SHARPEST TRAP (roadmap's word, not ours): personal-mailbox
-   ownership is matched on the VERIFIED JWT `sub` — claims.sub, off the
-   object API Gateway's JWT authorizer already validated against Cognito's
-   JWKS. It is never read from a request body, query string, or path
-   parameter. Accepting a client-supplied sub would let any staff member
-   read (and, via send-reply.js, send as) anyone else's personal mailbox.
-   canAccessMailbox() takes `claims`, not a bare sub string, specifically
-   so a caller cannot accidentally pass one it made up.
+   ------------------------------------------------------------
+   OWNER SCOPE DECISION, 2026-08-06: SHARED MAILBOXES ONLY
+   ------------------------------------------------------------
+   Personal staff-mailbox mirroring is PERMANENTLY OUT OF SCOPE and the
+   code path for it has been deleted, not left dormant. A forward-based
+   mirror is a one-way copy: it can never reconcile sent mail or read
+   state with the real mailbox, so a staffer would see a permanently
+   diverging shadow of their own inbox. That is the wrong architecture for
+   an individual's mail, and no amount of polish fixes it.
 
-   FAIL CLOSED: an unknown mailboxId is denied, not defaulted. Mailboxes
-   inbound routing invents on the fly (ingest-inbound.js's
-   catchall@/unparseable@) are therefore listed explicitly below, Admin-
-   only, rather than being reachable by accident.
+   The previous implementation carried a `PersonalMailboxes` stack
+   parameter holding {mailboxId: cognitoSub}. It is gone. Do not
+   reintroduce it "inert, just in case" — a dormant parameter is an
+   invitation for a future dev to repopulate it and silently revive a
+   rejected design. If personal mailboxes are ever genuinely wanted, the
+   only correct path is real two-way IMAP/OAuth (Google Workspace / M365),
+   which is a paid-seat decision, not a code change. See docs/roadmap.md.
 
-   WHY `Staff` IS **NOT** ON THE SHARED MAILBOXES (owner decision,
-   2026-08-06). An earlier pass granted `Staff` Sales-equivalent reach,
-   reasoning that ../lib/auth.js calls it the pre-role-split group every
-   founder is actually in, so a literal matrix would deny the feature's
-   only current users. That was reverted deliberately.
+   ------------------------------------------------------------
+   ONE REAL MAILBOX, THREE ADDRESSES
+   ------------------------------------------------------------
+   In Spacemail there is exactly ONE mailbox, admin@kcmps.com.
+   order@kcmps.com and info@kcmps.com are ALIASES that deliver into it.
+   Both aliases are publicly committed and may never be retired:
+   order@ is ORDER_EMAIL in website/store.js + orders-data.js; info@ is in
+   the site footer, the JSON-LD schema, and the refunds policy.
+
+   So the relay is ONE Spacemail forwarding rule — admin@kcmps.com to the
+   single mirror address below — and ingest-inbound.js splits that one
+   stream back into three LOGICAL mailboxes by original recipient. There
+   is no per-alias forwarding rule and there must not be: Spacemail
+   delivers all three aliases into one mailbox, so a per-alias rule has
+   nothing to attach to.
+
+   ------------------------------------------------------------
+   mailboxId IS THE REAL ADDRESS
+   ------------------------------------------------------------
+   `order@kcmps.com`, never `order@mirror.kcmps.com`. It is what staff see
+   in the UI and what these access rules key on; mirror.kcmps.com is
+   plumbing (an SES *receiving* identity) and leaking it into the data
+   model made every mailbox tab read as an address no customer has ever
+   written to. An earlier build keyed on the mirror address; those
+   MAILBOX#*@mirror.kcmps.com items were throwaway test data.
+
+   ------------------------------------------------------------
+   WHY `Staff` IS **NOT** ON THE SHARED MAILBOXES (owner decision)
+   ------------------------------------------------------------
+   An earlier pass granted `Staff` Sales-equivalent reach, reasoning that
+   ./auth.js calls it the pre-role-split group every founder is actually
+   in, so a literal matrix would deny the feature's only current users.
+   That was reverted deliberately (commit 49dad04).
 
    The reason is what `Staff` *means*: the docs define it as "dashboard
    access only" — the tier that says you may open the building, with
@@ -40,113 +71,107 @@
    role, and the moment it bites is the first hire — precisely when
    nobody remembers this rule exists.
 
-   So capability comes from roles only. Founders get mail access by being
-   in `Admin` (or `Sales`), not by being in `Staff`. If you ever decide a
-   flat "everyone here handles customer mail" model is correct for a shop
-   this size, adding ROLES.STAFF back to the two arrays below is the
-   entire change — but do it knowingly, not by default.
+   Capability comes from roles ONLY. Founders get mail access by being in
+   `Admin` (or `Sales`), not by being in `Staff`. DO NOT re-add
+   ROLES.STAFF to the arrays below.
+
+   FAIL CLOSED: an unknown mailboxId is denied, not defaulted. The system
+   mailboxes routing falls back to (unrouted@/unparseable@/quarantine@)
+   are therefore listed explicitly, Admin-only and never sendable, rather
+   than being reachable by accident or auto-created on the fly.
    ============================================================ */
 
 const { ROLES, getGroups } = require("./auth");
 
-// Inbound mail lands on mirror.kcmps.com (the SES *receiving* identity);
-// outbound replies must be sent from the verified *sending* identity,
+// Inbound mail lands on mirror.kcmps.com (the SES *receiving* identity) at
+// ONE address; outbound replies go from the verified *sending* identity,
 // kcmps.com. Two different SES identities on purpose — see
 // backend/infra/ses-relay.cfn.yaml.
 const MIRROR_DOMAIN = "mirror.kcmps.com";
 const SENDING_DOMAIN = "kcmps.com";
 
-// The shared shop mailboxes. `roles` is the allow-list; `canSend` marks
-// which ones send-reply.js will accept a reply for. Operational mailboxes
-// (catchall/unparseable) are read-only — nobody should ever reply *from*
-// an address that only exists because routing failed.
+/* THE single address Spacemail forwards admin@kcmps.com to, and the ONLY
+   recipient the SES receipt rule accepts (the domain catchall was deleted
+   — see backend/infra/README.md "Inbound hardening"). Everything else on
+   mirror.kcmps.com is rejected at SMTP time, which removes the entire
+   "guess a local part and inject a message into the staff UI" surface. */
+const MIRROR_ADDRESS = `shop@${MIRROR_DOMAIN}`;
+
+const UNROUTED_MAILBOX = "unrouted@kcmps.com";
+const UNPARSEABLE_MAILBOX = "unparseable@kcmps.com";
+const QUARANTINE_MAILBOX = "quarantine@kcmps.com";
+
+// The shared shop mailboxes, keyed by REAL address. `roles` is the
+// allow-list; `canSend` marks which ones send-reply.js will accept a reply
+// for. System mailboxes are read-only — nobody should ever reply *from* an
+// address that only exists because routing, parsing, or scanning failed
+// (unrouted@/unparseable@/quarantine@ are not real deliverable addresses).
 const MAILBOX_ACCESS = Object.freeze({
-  "order@mirror.kcmps.com": Object.freeze({
-    id: "order@mirror.kcmps.com",
-    address: "order@mirror.kcmps.com",
+  "order@kcmps.com": Object.freeze({
+    id: "order@kcmps.com",
+    address: "order@kcmps.com",
     label: "Orders",
     kind: "shared",
     canSend: true,
     roles: Object.freeze([ROLES.SALES, ROLES.FINANCE, ROLES.ADMIN]),
   }),
-  "info@mirror.kcmps.com": Object.freeze({
-    id: "info@mirror.kcmps.com",
-    address: "info@mirror.kcmps.com",
+  "info@kcmps.com": Object.freeze({
+    id: "info@kcmps.com",
+    address: "info@kcmps.com",
     label: "General enquiries",
     kind: "shared",
     canSend: true,
     roles: Object.freeze([ROLES.SALES, ROLES.ADMIN]),
   }),
-  "admin@mirror.kcmps.com": Object.freeze({
-    id: "admin@mirror.kcmps.com",
-    address: "admin@mirror.kcmps.com",
+  "admin@kcmps.com": Object.freeze({
+    id: "admin@kcmps.com",
+    address: "admin@kcmps.com",
     label: "Admin",
     kind: "shared",
     canSend: true,
     roles: Object.freeze([ROLES.ADMIN]),
   }),
-  "catchall@mirror.kcmps.com": Object.freeze({
-    id: "catchall@mirror.kcmps.com",
-    address: "catchall@mirror.kcmps.com",
+  [UNROUTED_MAILBOX]: Object.freeze({
+    id: UNROUTED_MAILBOX,
+    address: UNROUTED_MAILBOX,
     label: "Unrouted",
     kind: "system",
     canSend: false,
     roles: Object.freeze([ROLES.ADMIN]),
   }),
-  "unparseable@mirror.kcmps.com": Object.freeze({
-    id: "unparseable@mirror.kcmps.com",
-    address: "unparseable@mirror.kcmps.com",
+  [UNPARSEABLE_MAILBOX]: Object.freeze({
+    id: UNPARSEABLE_MAILBOX,
+    address: UNPARSEABLE_MAILBOX,
     label: "Unparseable",
+    kind: "system",
+    canSend: false,
+    roles: Object.freeze([ROLES.ADMIN]),
+  }),
+  [QUARANTINE_MAILBOX]: Object.freeze({
+    id: QUARANTINE_MAILBOX,
+    address: QUARANTINE_MAILBOX,
+    label: "Quarantined",
     kind: "system",
     canSend: false,
     roles: Object.freeze([ROLES.ADMIN]),
   }),
 });
 
+// The three real aliases inbound mail may be routed to. Deliberately NOT
+// derived from MAILBOX_ACCESS — the system mailboxes must never be a
+// routing target that a sender can address their way into.
+const ROUTABLE_ALIASES = Object.freeze(["admin@kcmps.com", "order@kcmps.com", "info@kcmps.com"]);
+
 function normalizeMailboxId(mailboxId) {
   return String(mailboxId || "").trim().toLowerCase();
 }
 
-/* Personal mailboxes are NOT hardcoded — there is one per staff member and
-   the set changes with hiring, so it's configuration (a PERSONAL_MAILBOXES
-   env var holding a JSON object) rather than code. This parser is pure and
-   never throws: malformed config yields an empty registry, which fails
-   closed (no personal mailbox is accessible) instead of crashing every mail
-   request. Shape: { "<mailboxId>": "<cognito sub>" }. */
-function parsePersonalMailboxes(raw) {
-  if (!raw) return {};
-  let obj = raw;
-  if (typeof raw === "string") {
-    try { obj = JSON.parse(raw); } catch { return {}; }
-  }
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
-  const out = {};
-  for (const [mailboxId, ownerSub] of Object.entries(obj)) {
-    const id = normalizeMailboxId(mailboxId);
-    const sub = String(ownerSub || "").trim();
-    // Both halves must be non-empty — an entry with a blank sub would
-    // otherwise match a claims object that also has no sub.
-    if (id && sub) out[id] = sub;
-  }
-  return out;
-}
-
-function personalMailboxDescriptor(mailboxId, ownerSub) {
-  const id = normalizeMailboxId(mailboxId);
-  return {
-    id,
-    address: id,
-    label: id.split("@")[0] || id,
-    kind: "personal",
-    canSend: true,
-    ownerSub,
-  };
-}
-
 /* The one authorization decision. `claims` MUST be the verified claims
-   object (../lib/auth.js's extractClaims(event)); `personalMailboxes` is a
-   registry from parsePersonalMailboxes(). Returns a plain boolean. */
-function canAccessMailbox(claims, mailboxId, personalMailboxes) {
+   object (./auth.js's extractClaims(event)). Purely group-based now that
+   personal mailboxes are gone — there is no sub-matching path left, and
+   therefore no way for a client-supplied identifier to influence it at
+   all. Returns a plain boolean. */
+function canAccessMailbox(claims, mailboxId) {
   if (!claims) return false;
   const id = normalizeMailboxId(mailboxId);
   if (!id) return false;
@@ -154,92 +179,238 @@ function canAccessMailbox(claims, mailboxId, personalMailboxes) {
   const groups = getGroups(claims);
   if (!groups.length) return false;
 
-  const registry = personalMailboxes && typeof personalMailboxes === "object" ? personalMailboxes : {};
-
-  // Customer never reaches ANY staff mailbox — checked first, before the
-  // personal-mailbox lookup. Ordering is load-bearing and a unit test
-  // caught it the wrong way round: a customer account whose `sub` also
-  // appears in the personal registry (a staffer who once ordered from the
-  // shop, or a stale registry entry) would otherwise be let straight in
-  // by the sub match, since that branch never looked at groups at all.
+  // Customer never reaches ANY staff mailbox. Redundant with the role
+  // matrix below (no mailbox lists ROLES.CUSTOMER) but kept explicit and
+  // first: it is the check a future edit to the matrix must not be able to
+  // accidentally undo.
   if (!groups.some((g) => g !== ROLES.CUSTOMER)) return false;
-
-  // Personal mailbox: owner only, matched on the verified sub. Checked
-  // BEFORE the group matrix so no role — not even Admin — can read a
-  // colleague's personal mail by group membership alone.
-  if (Object.prototype.hasOwnProperty.call(registry, id)) {
-    const sub = claims.sub ? String(claims.sub) : "";
-    return !!sub && sub === registry[id];
-  }
 
   const mb = MAILBOX_ACCESS[id];
   if (!mb) return false; // unknown mailbox — fail closed
   return mb.roles.some((r) => groups.includes(r));
 }
 
-/* What get-mailboxes.js renders tabs from: every shared mailbox this
-   caller may open, plus their own personal mailbox if one is registered.
-   Visibility only — every other handler still re-checks with
-   canAccessMailbox(). */
-function visibleMailboxes(claims, personalMailboxes) {
+/* What get-mailboxes.js renders tabs from: every mailbox this caller may
+   actually open. Visibility only — every other handler still re-checks
+   with canAccessMailbox(). */
+function visibleMailboxes(claims) {
   if (!claims) return [];
-  const registry = personalMailboxes && typeof personalMailboxes === "object" ? personalMailboxes : {};
   const out = [];
-
   for (const mb of Object.values(MAILBOX_ACCESS)) {
-    if (canAccessMailbox(claims, mb.id, registry)) {
+    if (canAccessMailbox(claims, mb.id)) {
       const { roles, ...pub } = mb; // never leak the allow-list to the client
       out.push(pub);
     }
   }
+  return out;
+}
 
-  // Route the personal entries through canAccessMailbox() too rather than
-  // re-testing `ownerSub === sub` here — that duplicate check is exactly
-  // how the Customer-ordering bug above would have survived in one place
-  // after being fixed in the other.
-  for (const [id, ownerSub] of Object.entries(registry)) {
-    if (canAccessMailbox(claims, id, registry)) out.push(personalMailboxDescriptor(id, ownerSub));
+function isMailbox(mailboxId) {
+  return !!MAILBOX_ACCESS[normalizeMailboxId(mailboxId)];
+}
+
+function canSendFrom(mailboxId) {
+  const mb = MAILBOX_ACCESS[normalizeMailboxId(mailboxId)];
+  return !!mb && mb.canSend === true;
+}
+
+/* mailboxId is already the real, verified-sending-identity address, so
+   this is now near-identity — but it stays a function, and stays the ONLY
+   thing send-reply.js derives its From: from, so a caller can never send
+   from an arbitrary address. Returns null for anything that isn't a
+   sendable shared mailbox: system mailboxes, unknown ids, and (still)
+   anything on the mirror domain, which SES will not send from. */
+function sendAddressFor(mailboxId) {
+  const id = normalizeMailboxId(mailboxId);
+  const mb = MAILBOX_ACCESS[id];
+  if (!mb || mb.canSend !== true) return null;
+  if (!id.endsWith(`@${SENDING_DOMAIN}`)) return null;
+  return id;
+}
+
+/* ------------------------------------------------------------
+   INBOUND ROUTING
+   ------------------------------------------------------------
+   ONE inbound stream (everything Spacemail forwards from the single
+   admin@kcmps.com mailbox) has to be split back into the three logical
+   aliases. The delivery address is useless for this — it is always the
+   one MIRROR_ADDRESS — so routing is done on the ORIGINAL recipient.
+
+   HEADER PREFERENCE, AND WHY IT IS NOT `To:`. A message BCC'd to
+   order@kcmps.com has no To:/Cc: header naming it at all; routing on
+   To:/Cc: would mis-file it (in practice: dump it in unrouted@, where
+   nobody is watching). A forwarder-stamped envelope header carries the
+   real delivery target instead. FORWARDER_HEADERS below is tried in
+   order, first hit wins; To:/Cc: is the LAST resort, not the primary.
+
+   Mail matching no known alias goes to the single UNROUTED_MAILBOX. It is
+   never silently dropped (the S3 object is the source of truth either
+   way) and it never auto-creates a mailbox — an unknown local part must
+   not be able to conjure a new tab in the staff UI.
+   ------------------------------------------------------------ */
+
+/* Priority order. `Delivered-To` and `X-Original-To` are what the common
+   forwarding MTAs (Postfix, Google) stamp; `X-Envelope-To`/`Envelope-To`/
+   `X-Forwarded-To` cover the rest; `Resent-To` is the RFC 5322 resend
+   header. See backend/infra/README.md for which of these Spacemail was
+   actually observed to stamp. */
+const FORWARDER_HEADERS = Object.freeze([
+  "delivered-to",
+  "x-original-to",
+  "x-envelope-to",
+  "envelope-to",
+  "x-forwarded-to",
+  "x-forwarded-for",
+  "resent-to",
+]);
+
+function isRoutableAlias(address) {
+  return ROUTABLE_ALIASES.includes(normalizeMailboxId(address));
+}
+
+/* AWS infrastructure notices, kept OUT of the customer-correspondence
+   view. Both SNS topics that alert this shop (kcmps-ses-bounce-complaint,
+   kcmps-ops-alerts — 37 CloudWatch alarms) are subscribed to
+   admin@kcmps.com, which is the exact mailbox being forwarded to the
+   mirror. Without this, every bounce notice and every alarm state change
+   lands in the dashboard's Admin mailbox next to real customer mail.
+
+   The PRIMARY fix is a Spacemail-side filter excluding these senders from
+   the forward — see backend/infra/README.md. This is the defensive
+   backstop for a missing or mistyped filter, deliberately a two-address
+   exact match and NOT a general filtering framework: the moment this
+   becomes a rules engine, mail starts disappearing for reasons nobody can
+   reconstruct. Matched mail is routed to unrouted@ — still visible to an
+   Admin who goes looking, just not in the correspondence stream. */
+const INFRA_NOTICE_SENDERS = Object.freeze([
+  "no-reply@sns.amazonaws.com",  // SNS email notifications (AWS's documented sender)
+  "no-reply-aws@amazon.com",     // confirmed on a real SES notice in the inbound bucket
+]);
+
+function isInfrastructureNotice(fromAddress) {
+  return INFRA_NOTICE_SENDERS.includes(normalizeMailboxId(fromAddress));
+}
+
+/* Pure routing decision.
+     forwardedTo — every address found in FORWARDER_HEADERS, in priority order
+     toCc        — every address in To: + Cc:
+     from        — the message's From: address, for the infra-notice backstop
+   Returns { mailboxes: string[], routedBy: "forwarder"|"to-cc"|"unrouted"|"infra-notice" }.
+   mailboxes is never empty. */
+function resolveMailboxes({ forwardedTo = [], toCc = [], from = "" } = {}) {
+  if (isInfrastructureNotice(from)) {
+    return { mailboxes: [UNROUTED_MAILBOX], routedBy: "infra-notice" };
+  }
+
+  const fromForwarder = dedupeAliases(forwardedTo);
+  if (fromForwarder.length) return { mailboxes: fromForwarder, routedBy: "forwarder" };
+
+  const fromToCc = dedupeAliases(toCc);
+  if (fromToCc.length) return { mailboxes: fromToCc, routedBy: "to-cc" };
+
+  return { mailboxes: [UNROUTED_MAILBOX], routedBy: "unrouted" };
+}
+
+function dedupeAliases(addresses) {
+  const seen = new Set();
+  const out = [];
+  for (const a of addresses || []) {
+    const id = normalizeMailboxId(a);
+    if (!isRoutableAlias(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
   }
   return out;
 }
 
-function isMailbox(mailboxId, personalMailboxes) {
-  const id = normalizeMailboxId(mailboxId);
-  const registry = personalMailboxes && typeof personalMailboxes === "object" ? personalMailboxes : {};
-  return !!MAILBOX_ACCESS[id] || Object.prototype.hasOwnProperty.call(registry, id);
+/* ------------------------------------------------------------
+   SES AUTHENTICATION VERDICTS
+   ------------------------------------------------------------
+   HARD-REJECT VIRUS AND SPAM. Those are SES's own scanner saying the
+   message is hostile; it must not be written into a staff mailbox as
+   ordinary mail.
+
+   DO NOT HARD-REJECT ON SPF. Forwarding breaks SPF by design — the
+   forwarder relays with its own envelope sender from its own IPs, so the
+   original domain's SPF record will not authorize it. Rejecting on SPF
+   here would discard ALL legitimate forwarded mail, which is to say every
+   message this relay exists to carry. The SPF verdict is recorded and
+   surfaced, never enforced.
+
+   DKIM IS THE POSITIVE SIGNAL. DKIM signatures survive forwarding (the
+   body hash and signed headers are unchanged), so a DKIM pass is the one
+   verdict that still means what it claims after a hop. Treat it as
+   confirmation, and its absence as "unverified", not as "hostile" —
+   plenty of small senders still do not sign.
+
+   EXPLICITLY NOT ARC. Authenticated Received Chain is the textbook answer
+   for authenticating forwarded mail, and we are deliberately not building
+   on it: the IETF rechartered the DMARC working group on 2026-04-16 to
+   move ARC to Historic by November 2026. No ARC validation, no ARC
+   headers, not now and not as a follow-up.
+   ------------------------------------------------------------ */
+
+const VERDICT_PASS = "PASS";
+const VERDICT_FAIL = "FAIL";
+const VERDICT_UNKNOWN = "UNKNOWN";
+
+function normalizeVerdict(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (!s) return VERDICT_UNKNOWN;
+  if (s === "PASS") return VERDICT_PASS;
+  if (s === "FAIL" || s === "PERMFAIL" || s === "SOFTFAIL" || s === "HARDFAIL") return VERDICT_FAIL;
+  if (s === "GRAY" || s === "GREY" || s === "PROCESSING_FAILED" || s === "DISABLED") return VERDICT_UNKNOWN;
+  return s; // preserve anything unexpected verbatim rather than laundering it into PASS
 }
 
-function canSendFrom(mailboxId, personalMailboxes) {
-  const id = normalizeMailboxId(mailboxId);
-  const registry = personalMailboxes && typeof personalMailboxes === "object" ? personalMailboxes : {};
-  if (Object.prototype.hasOwnProperty.call(registry, id)) return true;
-  const mb = MAILBOX_ACCESS[id];
-  return !!mb && mb.canSend === true;
-}
+/* Returns { verdicts: {spf,dkim,spam,virus}, quarantine: bool, reason: string|null,
+             authenticated: bool }.
+   `quarantine` true means: do not write this into a shared mailbox. */
+function assessVerdicts(raw) {
+  const verdicts = {
+    spf: normalizeVerdict(raw && raw.spfVerdict),
+    dkim: normalizeVerdict(raw && raw.dkimVerdict),
+    spam: normalizeVerdict(raw && raw.spamVerdict),
+    virus: normalizeVerdict(raw && raw.virusVerdict),
+  };
 
-/* mirror.kcmps.com is a RECEIVING identity — SES will not send from it.
-   A reply from the order@ mailbox goes out as order@kcmps.com, on the
-   verified sending identity. Returns null for anything that isn't a
-   mirror-domain address, so a caller can't be tricked into sending from
-   an arbitrary domain. */
-function sendAddressFor(mailboxId) {
-  const id = normalizeMailboxId(mailboxId);
-  const suffix = `@${MIRROR_DOMAIN}`;
-  if (!id.endsWith(suffix)) return null;
-  const local = id.slice(0, -suffix.length);
-  if (!local) return null;
-  return `${local}@${SENDING_DOMAIN}`;
+  let reason = null;
+  if (verdicts.virus !== VERDICT_PASS && verdicts.virus !== VERDICT_UNKNOWN) {
+    reason = "SES virus scan did not pass";
+  } else if (verdicts.spam !== VERDICT_PASS && verdicts.spam !== VERDICT_UNKNOWN) {
+    reason = "SES spam scan did not pass";
+  }
+
+  return {
+    verdicts,
+    quarantine: !!reason,
+    reason,
+    // The positive signal, surfaced to staff as "this really is from who it
+    // says". SPF deliberately plays no part — see the block comment above.
+    authenticated: verdicts.dkim === VERDICT_PASS,
+  };
 }
 
 module.exports = {
   MIRROR_DOMAIN,
+  MIRROR_ADDRESS,
   SENDING_DOMAIN,
   MAILBOX_ACCESS,
+  ROUTABLE_ALIASES,
+  UNROUTED_MAILBOX,
+  UNPARSEABLE_MAILBOX,
+  QUARANTINE_MAILBOX,
+  FORWARDER_HEADERS,
   normalizeMailboxId,
-  parsePersonalMailboxes,
   canAccessMailbox,
   visibleMailboxes,
   isMailbox,
   canSendFrom,
   sendAddressFor,
+  isRoutableAlias,
+  isInfrastructureNotice,
+  INFRA_NOTICE_SENDERS,
+  resolveMailboxes,
+  normalizeVerdict,
+  assessVerdicts,
 };

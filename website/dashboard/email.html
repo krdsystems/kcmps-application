@@ -136,6 +136,78 @@
        - attachments are metadata-only; there is no download path yet
        - URLs are not auto-linkified; auto-<a> on arbitrary mail is a
          phishing amplifier                                               ---- */
+  /* ---- provenance strip ----
+     Mail reaches this panel by being FORWARDED — Spacemail relays the one
+     real admin@kcmps.com mailbox to an SES receiving address, and
+     backend/mail/ingest-inbound.js splits it back into order@/info@/admin@.
+     A forwarded message is a message that has been through a third party,
+     so staff need to see how much of it is actually vouched for.
+
+     What the four verdicts mean here (backend/lib/mail.js's assessVerdicts
+     has the authoritative version):
+       virus / spam — SES's scanners. A non-pass never reaches this page at
+         all; ingest hard-rejects it into the Admin-only quarantine mailbox
+         with the body stripped. Shown because "scanned, clean" is itself
+         the useful signal.
+       dkim — THE positive signal. DKIM survives forwarding intact, so a
+         pass genuinely means the message is from who it claims.
+       spf — recorded, NEVER enforced. Forwarding breaks SPF by design (the
+         forwarder relays from its own IPs), so an SPF fail on this page is
+         expected and means nothing on its own. Labelled as such so nobody
+         reads it as an alarm.
+     Plus whether the expected forwarder appears in the `Received:` chain —
+     a message that did not come via the forwarder got here some other way,
+     which is worth a look even though nothing blocks it.
+
+     SAFETY: same rules as the rest of this page. Every value is
+     server-derived rather than attacker-supplied, but it still goes
+     through escapeHtml — the whole point of the plain-text-only design is
+     that no field gets a pass. No links, no HTML, no images.
+
+     C4 NOTE: reads m.provenance, which the real backend attaches to every
+     message item. Absent on the current mock data, in which case this
+     renders a single "not recorded" line rather than breaking. ---- */
+  function renderProvenance(m) {
+    const p = m && m.provenance;
+    if (!p) {
+      return '<p class="mail-notice">Delivery checks are not recorded for this message.</p>';
+    }
+    const v = p.verdicts || {};
+    const chip = (label, value, note) => {
+      const val = String(value || "UNKNOWN").toUpperCase();
+      const cls = val === "PASS" ? "st-good" : (val === "UNKNOWN" ? "st-neutral" : "st-warn");
+      return '<span class="status-pill ' + cls + '">' + escapeHtml(label) + ": " + escapeHtml(val) + "</span> " +
+        (note ? '<span class="q-empty" style="display:inline">' + escapeHtml(note) + "</span> " : "");
+    };
+
+    const rows = [
+      chip("Virus", v.virus),
+      chip("Spam", v.spam),
+      chip("DKIM", v.dkim, v.dkim === "PASS" ? "sender verified" : "sender not cryptographically verified"),
+      chip("SPF", v.spf, "not enforced — forwarding breaks SPF"),
+    ].join("");
+
+    const notes = [];
+    if (p.viaExpectedForwarder === false) {
+      notes.push("This message does NOT show the expected forwarder in its Received chain — it reached the relay by some other path. Treat it with suspicion.");
+    } else if (p.viaExpectedForwarder === true) {
+      notes.push("Arrived via the expected forwarder" + (p.expectedForwarder ? " (" + p.expectedForwarder + ")" : "") + ".");
+    }
+    if (p.routedBy === "to-cc") {
+      notes.push("Filed using the To/Cc header — no forwarder envelope header was present, so the mailbox is a best guess.");
+    } else if (p.routedBy === "unrouted") {
+      notes.push("No known KCMPS address was found on this message.");
+    } else if (p.routedBy === "infra-notice") {
+      notes.push("Automated AWS notification, kept out of the customer mailboxes.");
+    }
+    if (p.deliveredTo && p.deliveredTo.length) {
+      notes.push("Originally addressed to: " + p.deliveredTo.join(", "));
+    }
+
+    return '<div class="m-block" style="margin-top:var(--space-3)"><h4>Delivery checks</h4><p>' + rows + "</p>" +
+      notes.map((n) => '<p class="q-empty">' + escapeHtml(n) + "</p>").join("") + "</div>";
+  }
+
   function renderRead(flash) {
     const mb = KCMPS_DASH.getMailboxes().find((x) => x.id === currentMailboxId);
     const m = currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : null;
@@ -164,6 +236,8 @@
           encodeURIComponent(m.relatedOrderId) + '">' + escapeHtml(m.relatedOrderId) + "</a></p></div>"
         : "");
     parts.push('<div class="ticket-meta">' + meta + "</div>");
+
+    parts.push(renderProvenance(m));
 
     if (m.hasHtmlPart) {
       parts.push('<p class="mail-notice">This message has an HTML version. KCMPS Ops shows the plain-text version only, and never loads remote images.</p>');

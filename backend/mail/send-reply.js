@@ -57,12 +57,11 @@ const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryComm
 const { SESClient, SendRawEmailCommand } = require("@aws-sdk/client-ses");
 const {
   mailboxPk, mailMessageSk, baseItem, extractClaims,
-  canAccessMailbox, canSendFrom, sendAddressFor, parsePersonalMailboxes, normalizeMailboxId,
+  canAccessMailbox, canSendFrom, sendAddressFor, normalizeMailboxId,
 } = require("../lib");
 const { hashMessageId } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
-const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 const SENDER_NAME = process.env.MAIL_SENDER_NAME || "KCMPS";
 const ALLOWED_RECIPIENTS = (process.env.MAIL_ALLOWED_RECIPIENTS || "")
   .split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
@@ -87,10 +86,10 @@ exports.handler = async (event) => {
 
   // Same 403-for-both-cases rule the read Lambdas use — never let the
   // response distinguish "not yours" from "doesn't exist".
-  if (!canAccessMailbox(claims, mailboxId, PERSONAL_MAILBOXES)) {
+  if (!canAccessMailbox(claims, mailboxId)) {
     return response(403, { error: "Forbidden" });
   }
-  if (!canSendFrom(mailboxId, PERSONAL_MAILBOXES)) {
+  if (!canSendFrom(mailboxId)) {
     return response(403, { error: "This mailbox is read-only." });
   }
   const fromAddress = sendAddressFor(mailboxId);

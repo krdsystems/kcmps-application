@@ -177,35 +177,58 @@ exact basename), so only a key this system would itself have issued is ever acce
 promoted to `published` — `publish-design.js` refuses a second write for the same designId.
 That transition belongs to the roadmap's `PATCH /designs/{id}` route, which isn't built.
 
-## `mail/` — what's in it (STAGING ONLY, 2026-08-06)
+## `mail/` — what's in it (STAGING ONLY, hardened 2026-08-06)
 
-SES relay inbound-mail ingest + staff mail read API (`docs/roadmap.md`'s "Parallel track —
-Staff email panel", "SES relay" track). **Deployed to `kcmps-backend-staging` only.** Built on
-top of C1's SES receiving infra (`backend/infra/ses-relay.cfn.yaml`: `mirror.kcmps.com`
-receiving identity, the domain-wide catchall receipt rule, and the private
-`kcmps-inbound-mail-est-2026` S3 bucket raw MIME lands in).
+SES relay inbound-mail ingest + staff mail read/reply API (`docs/roadmap.md`'s "Parallel track —
+Staff email panel"). **Deployed to `kcmps-backend-staging` only.** Infra:
+`backend/infra/ses-relay.cfn.yaml` (`mirror.kcmps.com` receiving identity, the
+`kcmps-inbound-mail-est-2026` private bucket) — but note the domain-wide catchall receipt rule it
+originally described is **gone**, see below.
+
+**The one thing to internalize:** there is exactly ONE real Spacemail mailbox,
+`admin@kcmps.com`. `order@kcmps.com` and `info@kcmps.com` are **aliases delivering into it**
+(both publicly committed — `order@` is `ORDER_EMAIL` in `website/store.js`, `info@` is in the
+site footer/JSON-LD/refunds policy — neither may be retired). So: **one** Spacemail forwarding
+rule into **one** mirror address, and `ingest-inbound.js` splits that single stream back into
+three logical mailboxes.
 
 | File | Purpose |
 |---|---|
-| `ingest-inbound.js` | S3-`ObjectCreated`-triggered — parses raw MIME (`mailparser`, vendored — see its own package.json) and writes one `MAILBOX#<address>`/`MSG#<hash>` item per matched recipient mailbox. Never crashes on malformed mail — falls back to a minimal record under `unparseable@mirror.kcmps.com` so the S3 ref is never lost |
-| `mail-parse.js` | Shared MIME→mock-contract field mapping (`toMailFields()`), `hashMessageId()`, thread-id derivation. The one place to look if a field doesn't match `dashboard-data.js`'s mock shape |
-| `get-mailboxes.js` / `get-mail-messages.js` / `get-mail-message.js` / `mark-mail-read.js` | JWT-authorized, `isStaff()`-gated read/mark-read API — mirrors `dashboard-data.js`'s `getMailboxes`/`getMessages`/`getMessage`/`markMessageRead()` mock contract field-for-field (verified in the 2026-08-06 session report) so C4's swap to real `fetch()` calls is a function-body change only |
+| `ingest-inbound.js` | S3-`ObjectCreated`-triggered — parses raw MIME (`mailparser`, vendored, see its package.json), routes by ORIGINAL recipient, enforces the SES verdicts, writes one `MAILBOX#<address>`/`MSG#<hash>` item per target mailbox. Never crashes on malformed mail — falls back to a minimal record under `unparseable@kcmps.com` so the S3 ref is never lost |
+| `mail-parse.js` | MIME→contract field mapping (`toMailFields()`), thread-id derivation, and the routing/provenance header extraction (`extractForwardedRecipients`, `extractSesVerdicts`, `receivedViaExpectedForwarder`). Extraction only — the *decisions* live in `../lib/mail.js` so they stay pure and unit-tested. Also imports `../lib`, so the packaging require-rewrite applies to this file too, not just `index.js` |
+| `get-mailboxes.js` / `get-mail-messages.js` / `get-mail-message.js` / `mark-mail-read.js` / `send-reply.js` | JWT-authorized read/reply API, every one gated on `../lib/mail.js`'s `canAccessMailbox()`. Mirrors `dashboard-data.js`'s mock contract field-for-field so C4's swap to real `fetch()` is a function-body change only |
 
-**Key shape**: `PK: MAILBOX#<mailboxId>` (lowercased recipient address, e.g.
-`order@mirror.kcmps.com`), `SK: MSG#<sha256(messageId)[0:32]>` — see `../lib/keys.js`'s
-`mailboxPk()`/`mailMessageSk()` header for why the SK has no date component (a single GetItem
-on `{mailboxId, messageId}` alone must work) and why the hash makes ingest naturally idempotent
-on S3-event retry.
+**Key shape**: `PK: MAILBOX#<mailboxId>`, `SK: MSG#<sha256(messageId)[0:32]>` — see
+`../lib/keys.js`'s `mailboxPk()`/`mailMessageSk()` header for why the SK has no date component
+and why the hash makes ingest naturally idempotent on S3-event retry.
 
-**TODO(C3)**: every read-path Lambda here uses a permissive `isStaff()` check with a `MAILBOX_ACCESS`
-TODO comment — `backend/lib/mail.js` (not built yet) is supposed to gate `order@`/`info@`/personal
-mailboxes by Cognito group per `docs/roadmap.md` ~608-617. Fix all 4 Lambdas together so the
-model can't drift between endpoints.
+**`mailboxId` is the REAL address** — `order@kcmps.com`, never `order@mirror.kcmps.com`. The
+mirror domain is plumbing; it must not leak into the data model, the UI, or the access rules.
+(It also keeps a future provider migration a backend-only change — `order@kcmps.com` is the
+identifier under Gmail/Graph too. See the roadmap's "replaceable backend" note.) A unit test
+pins this. The old mirror-address items were throwaway test data and were deleted.
 
-**Single domain-wide catchall, not per-mailbox**: routing is by parsing the MIME To/Cc headers,
-never by S3 key (see `ses-relay.cfn.yaml`'s own note). A message with no `mirror.kcmps.com`
-address in To/Cc falls back to `catchall@mirror.kcmps.com` — inherent to a plain-S3 SES receipt
-action, which doesn't expose the true envelope recipient.
+**Access is purely group-based** (`../lib/mail.js`): `order@` → Sales/Finance/Admin, `info@` →
+Sales/Admin, `admin@` → Admin, system mailboxes (`unrouted@`/`unparseable@`/`quarantine@`) →
+Admin read-only. **Do not add `ROLES.STAFF`** — the owner reverted that once (commit `49dad04`);
+`Staff` means "may open the dashboard", not a capability. Personal mailboxes are permanently out
+of scope and their code path is deleted, not dormant. Read that module's header first.
+
+**Routing is by ORIGINAL recipient, not delivery address.** The receipt rule now accepts exactly
+one recipient (`shop@mirror.kcmps.com` — the domain catchall was deleted, which removed the
+"guess a local part and inject a message into the staff UI" surface), so the delivery address is
+identical on every message and carries no information. `resolveMailboxes()` prefers
+forwarder-stamped envelope headers (`Delivered-To`, `X-Original-To`, …) and falls back to
+`To:`/`Cc:` — **the envelope header wins because a BCC'd message has no `To:` naming the alias**
+and would otherwise be mis-filed. No match → the single `unrouted@kcmps.com`; never dropped,
+never auto-creating a mailbox. Which header Spacemail really stamps is still unconfirmed (no
+genuinely forwarded message exists yet) — move it to the front of `FORWARDER_HEADERS` once one does.
+
+**Verdicts are enforced at ingest.** Virus/spam = hard reject into a metadata-only
+`quarantine@kcmps.com` stub (body/snippet/attachments stripped). **SPF is recorded but NEVER
+enforced** — forwarding breaks SPF by design, so enforcing it would discard every legitimate
+forwarded message. DKIM pass is the positive signal. All four persist on `provenance.verdicts`
+and render in `email.html`. **No ARC** — the IETF is moving it to Historic by Nov 2026.
 
 ## Where this is going (not now)
 

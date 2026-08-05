@@ -154,7 +154,8 @@ function designPk(designId) {
 // ---- Inbound mail (SES relay, docs/roadmap.md "Parallel track — Staff email
 // panel", "SES relay" track) ----
 // PK: MAILBOX#<mailboxId> (mailboxId is the lowercased recipient address,
-// e.g. "order@mirror.kcmps.com"), SK: MSG#<messageIdHash> — deliberately NOT
+// e.g. "order@kcmps.com" — the REAL address, never the mirror address; see
+// ./mail.js), SK: MSG#<messageIdHash> — deliberately NOT
 // MSG#<internaldate>#<messageId> (the EVENT#/order-message convention): the
 // read path (get-mail-message.js) is only ever handed {mailboxId, messageId}
 // by the dashboard, with no date, so the SK must be derivable from those two

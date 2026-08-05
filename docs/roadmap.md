@@ -587,10 +587,10 @@ the gap is confirmed. Do this test before starting the build.
 **Checklist:**
 - [ ] Empirically test Spacemail app-password support (2FA + third-party client login test
   above) — resolves which tier of the fallback plan applies
-- [ ] SSM Parameter Store `SecureString`: one parameter per staff `sub`, written only via a
-  Lambda the staff calls from their own authenticated session
-- [ ] `getInboxMessages` / `sendEmail` Lambdas — JWT-authenticated, IMAP/SMTP client, reads
-  only the caller's own parameter
+- [~] **WITHDRAWN 2026-08-06** — SSM Parameter Store `SecureString`, one parameter per staff
+  `sub`. This is Tier 1 (stored real mailbox passwords) and personal mailboxes, both rejected.
+- [~] **WITHDRAWN 2026-08-06** — `getInboxMessages` / `sendEmail` IMAP/SMTP Lambdas reading a
+  stored per-staffer credential. Replaced by `backend/mail/*.js` over the SES relay.
 - [x] **DONE (mock data), 2026-07-31 — `website/dashboard/email.html`.** The full Email tab,
   running on mock data behind the `window.KCMPS_DASH` seam exactly like every other dashboard
   page, so it was unblocked by the still-pending app-password test. Scope: **read + reply**
@@ -605,7 +605,12 @@ the gap is confirmed. Do this test before starting the build.
   closed), attachments are metadata-only (no download path exists yet), and URLs are not
   auto-linkified (auto-`<a>` on arbitrary mail is a phishing amplifier). Verified against
   injected `<script>`/`<img onerror>` in every field — sender name, subject, body, filename.
-- [ ] Shared-mailbox credentials are a **second namespace** the architecture above doesn't cover:
+- [~] **WITHDRAWN 2026-08-06** (see the decision record further down this section — Tier 1
+  stored-credential IMAP is rejected outright, and the access model below now lives in
+  `backend/lib/mail.js` over the SES relay with **no credential storage anywhere**; `order@`/
+  `info@` are aliases into the single `admin@kcmps.com` mailbox, not separate mailboxes with
+  separate passwords). Kept for the reasoning, which still holds:
+  Shared-mailbox credentials are a **second namespace** the architecture above doesn't cover:
   `/kcmps/shared/order/email-cred`, `/kcmps/shared/info/email-cred`, written once by an admin,
   one credential per shop inbox rather than per staff `sub`. Access decided by **Cognito group**:
   `order@` → Sales/Finance/Admin, `info@` → Sales/Admin, Production → personal mailbox only,
@@ -615,10 +620,10 @@ the gap is confirmed. Do this test before starting the build.
 - [ ] **Trap to honour when writing `putEmailCredential`:** derive `<sub>` from the *verified
   JWT*, never from the request body. Accepting a client-supplied `sub` lets any staff member
   overwrite anyone else's stored credential. Sharpest trap in this feature.
-- [ ] SSM Parameter Store `SecureString`: one parameter per staff `sub`, written only via a
-  Lambda the staff calls from their own authenticated session
-- [ ] `getInboxMessages` / `sendEmail` Lambdas — JWT-authenticated, IMAP/SMTP client, reads
-  only the caller's own parameter
+- [~] **WITHDRAWN 2026-08-06** — SSM Parameter Store `SecureString`, one parameter per staff
+  `sub`. This is Tier 1 (stored real mailbox passwords) and personal mailboxes, both rejected.
+- [~] **WITHDRAWN 2026-08-06** — `getInboxMessages` / `sendEmail` IMAP/SMTP Lambdas reading a
+  stored per-staffer credential. Replaced by `backend/mail/*.js` over the SES relay.
 - [ ] Explicitly **not building**: any iframe/embedded-session approach to Spacemail's webmail
   — closed off above as a hard constraint, not a missing feature
 
@@ -693,13 +698,79 @@ as of 2026-08-06):**
   end-to-end: a real send from `admin+admin.kcmps.uat@kcmps.com` to `test@mirror.kcmps.com`
   landed in the bucket within seconds. Full detail + CFN doc in `backend/infra/README.md` /
   `backend/infra/ses-relay.cfn.yaml`.
-- [ ] Spacemail forwarding rule from each mailbox to an address on `mirror.kcmps.com` — **owner
-  manual step**, no Spacemail credentials available to any Claude session; documented in
-  `backend/infra/README.md`.
-- [ ] Parser Lambda: S3-object-created trigger → parse MIME → write into the same
+- [x] Parser Lambda: S3-object-created trigger → parse MIME → write into the same
   `MESSAGE#`/mailbox shape `email.html`'s mock already expects (swap-in, not a rewrite) — C2
-- [ ] `sendReply`-equivalent Lambda via `SES.SendEmail`/`SendRawEmail` on the verified
+- [x] `sendReply`-equivalent Lambda via `SES.SendEmail`/`SendRawEmail` on the verified
   `kcmps.com` identity — C3
+- [x] **Inbound hardening + shared-mailbox-only scope** (C5, 2026-08-06) — see the decision
+  record immediately below, and `backend/infra/README.md`'s "Inbound hardening" section for the
+  applied commands and the verification matrix.
+- [ ] **ONE** Spacemail forwarding rule, `admin@kcmps.com` → `shop@mirror.kcmps.com`, plus a
+  filter excluding AWS/SNS notification senders — **owner manual step**, no Spacemail
+  credentials available to any Claude session. Exact instructions in `backend/infra/README.md`.
+  Until this exists, nothing external reaches the relay.
+- [ ] SES IP allowlist (`CreateReceiptFilter`, block `0.0.0.0/0` + allow Spacemail's ranges) —
+  ranges resolved and commands written, deliberately **not applied** until real forwarded mail
+  has been observed. Rationale and the fail-closed risk are in `backend/infra/README.md`.
+
+### DECISION RECORD — staff email panel scope (owner, 2026-08-06)
+
+**Shared shop mailboxes only.** `order@kcmps.com`, `info@kcmps.com`, `admin@kcmps.com` — read
+and reply, inside the dashboard, off an SES relay of forwarded mail. That is the whole feature.
+
+**Personal staff-mailbox mirroring: REJECTED, permanently.** Not deferred. A forward-based
+mirror is a **one-way copy**: it can never reconcile sent mail or read state back to the real
+mailbox. A staffer would open their "inbox" in the dashboard and see a permanently diverging
+shadow — replies they sent from their phone missing, messages they already read still bold.
+That is the wrong architecture for an individual's mail and no amount of polish fixes it. The
+code path, its stack parameter, and its unit tests were **deleted, not left inert** — a dormant
+`{mailboxId: sub}` parameter is an invitation to repopulate it and silently revive a rejected
+design.
+
+**Tier 1 (stored Spacemail mailbox passwords): REJECTED outright.** Previously carried above as
+"a materially weaker design" pending a decision; the decision is now no. Spacemail has no
+app-password mechanism (confirmed 2026-07-31), so Tier 1 means storing the *real* mailbox
+password — which grants full mailbox takeover to anything that reads the parameter, and applies
+active pressure to turn 2FA **off** so the automation can log in. Meanwhile the shared-mailbox
+relay already covers the real use case at zero credential risk. A design that trades away
+account security for a capability we already have is not worth building at any price.
+Consequently the "shared-mailbox credentials as a second namespace"
+(`/kcmps/shared/order/email-cred` …) and `putEmailCredential` items above are **withdrawn** —
+the access model they described survives, but as `backend/lib/mail.js`'s group matrix over the
+relay, with no credential storage anywhere.
+
+**Tier 2 (Google Workspace or M365, OAuth, real two-way IMAP/Graph): the only correct path IF
+personal mailboxes are ever genuinely wanted.** ~₱1,400–1,600/mo for 4 users, which is over the
+₱500/mo soft cap on its own — a real decision, not a code change, and one for the owner with
+`docs/cost-governance.md` open. Nobody should attempt to approximate it with forwarding again.
+
+### The SES relay is a REPLACEABLE BACKEND, not a lock-in
+
+Recorded at the owner's request so a later session doesn't unknowingly break it. Four properties
+keep a future migration to Google Workspace (Gmail API) or M365 (Graph) a **backend-only**
+change. **This is documentation, not a mandate to build a provider-abstraction layer** — there
+is exactly one provider today, and building an abstraction for a second one that doesn't exist
+would violate this repo's "build only when a real transaction has no home" rule.
+
+1. **The `KCMPS_DASH` mail contract is provider-neutral.** `getMailboxes` / `getMessages` /
+   `getMessage` / `getThread` / `markMessageRead` / `sendReply` are IMAP-shaped because IMAP is
+   the lowest common denominator across Gmail, Graph, and raw IMAP. `email.html` does not change
+   on a migration — only Lambda function bodies do. **Never leak SES-, S3-, or
+   DynamoDB-specific fields into these responses.**
+2. **`mailboxId` is the real address** (`order@kcmps.com`), never the mirror address. This is
+   why the 2026-08-06 change matters beyond UX: `order@kcmps.com` is the identifier under *any*
+   provider, whereas `order@mirror.kcmps.com` is relay-specific and would itself need migrating.
+3. **Message identity is the RFC822 `Message-ID`**, which every provider preserves. `threadId`
+   however is currently *derived* (References / In-Reply-To → normalized-subject fallback),
+   whereas Gmail and Graph supply native thread ids. **Treat `threadId` as an opaque string
+   everywhere — never parse it, never reconstruct it.** It is the one field a migration has to
+   remap.
+4. **`backend/lib/mail.js` stays pure and SDK-free**, so the access model and its unit tests
+   survive a provider change untouched.
+
+Two of today's compromises **disappear** on such a migration rather than needing fixes: sent-mail
+divergence and read-state divergence both resolve, because you would be reading the real mailbox
+instead of a forwarded copy of it.
 
 ---
 

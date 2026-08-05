@@ -4,12 +4,14 @@
    Mirrors dashboard-data.js's getMailboxes(): [{id, address, label, kind,
    canSend, total, unreadCount}].
 
-   THE LIST IS NOW PER-CALLER, not a hardcoded constant. ../lib/mail.js's
-   visibleMailboxes(claims, PERSONAL_MAILBOXES) returns only the mailboxes
-   this staffer may actually open — the shared shop inboxes their Cognito
-   groups allow, plus their own personal mailbox if one is registered. The
-   `roles` allow-list is stripped before it reaches the client (see that
-   module), so the response never advertises who else can read a mailbox.
+   THE LIST IS PER-CALLER, not a hardcoded constant. ../lib/mail.js's
+   visibleMailboxes(claims) returns only the mailboxes this staffer may
+   actually open: the shared shop inboxes their Cognito groups allow, and
+   nothing else. Shared mailboxes are the whole feature as of the
+   2026-08-06 owner scope decision — personal-mailbox mirroring is out of
+   scope and its code path is deleted, not dormant (see that module's
+   header). The `roles` allow-list is stripped before it reaches the
+   client, so the response never advertises who else can read a mailbox.
 
    VISIBILITY IS NOT AUTHORIZATION. docs/roadmap.md is explicit that every
    other handler must re-check, because nothing stops a client asking
@@ -17,22 +19,21 @@
    all three of those handlers now do, via the same canAccessMailbox().
 
    STILL A STATIC MAILBOX LIST in the sense that matters: it comes from
-   MAILBOX_ACCESS/PERSONAL_MAILBOXES, not from what's landed in the table
+   MAILBOX_ACCESS, not from what's landed in the table
    — same reasoning as the mock's seedMailboxes(), the dashboard needs a
    stable set of tabs to render even when a mailbox is empty.
 
-   `canSend` is now true for the shared + personal mailboxes (send-reply.js
-   exists as of C3) and false for the operational catchall/unparseable
-   mailboxes — replying *from* an address that only exists because routing
-   failed is never right.
+   `canSend` is true for the three shared shop mailboxes and false for the
+   operational unrouted@/unparseable@/quarantine@ mailboxes — replying
+   *from* an address that only exists because routing, parsing, or
+   scanning failed is never right.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, QueryCommand } = require("@aws-sdk/lib-dynamodb");
-const { mailboxPk, extractClaims, visibleMailboxes, parsePersonalMailboxes } = require("../lib");
+const { mailboxPk, extractClaims, visibleMailboxes } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
-const PERSONAL_MAILBOXES = parsePersonalMailboxes(process.env.PERSONAL_MAILBOXES);
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -40,10 +41,10 @@ exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
 
-  const allowed = visibleMailboxes(claims, PERSONAL_MAILBOXES);
-  // An authenticated caller with no mailboxes (Customer, or Production
-  // with no personal mailbox registered) gets an empty list, not a 403 —
-  // the dashboard renders "no mailboxes available" rather than an error.
+  const allowed = visibleMailboxes(claims);
+  // An authenticated caller with no mailboxes (Customer, Production, or a
+  // Staff-only account) gets an empty list, not a 403 — the dashboard
+  // renders "no mailboxes available" rather than an error.
   if (!allowed.length) return response(200, { mailboxes: [] });
 
   const mailboxes = await Promise.all(allowed.map(async (mb) => {

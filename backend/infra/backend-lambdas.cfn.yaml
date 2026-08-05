@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  KCMPS staging backend — all 17 Lambdas + the checkout/staff HTTP API + EventBridge
+  KCMPS staging backend — all 20 Lambdas + the checkout/staff HTTP API + EventBridge
   schedules + the DynamoDB Streams trigger, as CloudFormation. Built during the
   Node.js 20.x EOL migration (backend/infra/README.md's "Staging" section) to give
   dev.kcmps.com its own backend instead of sharing production's. Not staging-specific
@@ -225,7 +225,10 @@ Resources:
             Statement:
               - Sid: TableReadWrite
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:PutItem, dynamodb:UpdateItem]
+                # DeleteItem is purge-archived-designs.js's — the ONLY hard-delete
+                # path in the Design Asset Library, gated by that Lambda's own
+                # 90-day-archived filter, not by anything IAM-side.
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem]
                 Resource:
                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/index/*
@@ -390,6 +393,9 @@ Resources:
   PostConfirmationLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-post-confirmation", RetentionInDays: 14 } }
   DesignUploadUrlLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-design-upload-url", RetentionInDays: 14 } }
   PublishDesignLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-publish-design", RetentionInDays: 14 } }
+  ListDesignsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-list-designs", RetentionInDays: 14 } }
+  PatchDesignLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-patch-design", RetentionInDays: 14 } }
+  PurgeArchivedDesignsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-purge-archived-designs", RetentionInDays: 14 } }
 
   # ---------------------------------------------------------------------------
   # Lambda functions — 17, all arm64/index.handler, code from the shared
@@ -715,6 +721,65 @@ Resources:
           PUBLIC_ASSETS_KEY_PREFIX: !Ref PublicAssetsKeyPrefix
           PUBLIC_ASSETS_PATH: !Ref PublicAssetsPath
 
+  ListDesignsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ListDesignsLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-list-designs
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      # Reuses DesignLibraryLambdaRole even though this is a read — it
+      # already grants exactly the S3 GetObject this handler's presigned
+      # downloads need on the originals bucket, and a read-only Lambda
+      # doesn't warrant a third IAM role for this one feature.
+      Role: !GetAtt DesignLibraryLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 15
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-list-designs.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  PatchDesignFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PatchDesignLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-patch-design
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt DesignLibraryLambdaRole.Arn
+      MemorySize: 256
+      # Same headroom as PublishDesignFunction: the draft->published action
+      # runs the identical scan-verdict read + S3 copy + manifest Scan.
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-patch-design.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          DESIGN_ORIGINALS_BUCKET: !Ref DesignOriginalsBucket
+          PUBLIC_ASSETS_BUCKET: !Ref PublicAssetsBucket
+          PUBLIC_ASSETS_KEY_PREFIX: !Ref PublicAssetsKeyPrefix
+          PUBLIC_ASSETS_PATH: !Ref PublicAssetsPath
+
+  PurgeArchivedDesignsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PurgeArchivedDesignsLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-purge-archived-designs
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt JobsLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 60
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-purge-archived-designs.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          DESIGN_ORIGINALS_BUCKET: !Ref DesignOriginalsBucket
+
   # ---------------------------------------------------------------------------
   # HTTP API — same 13 routes/shape as prod's kcmps-checkout-api, same Cognito
   # JWT authorizer config (literally the same pool/client, since staging reuses
@@ -727,7 +792,9 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins: [https://dev.kcmps.com, http://localhost:5500, http://localhost:5501]
-        AllowMethods: [GET, POST, OPTIONS]
+        # PATCH added for PATCH /designs/{id} (patch-design.js) — every other
+        # route in this API is GET/POST only.
+        AllowMethods: [GET, POST, PATCH, OPTIONS]
         AllowHeaders: [content-type, authorization]
         MaxAge: 300
 
@@ -765,6 +832,8 @@ Resources:
 
   DesignUploadUrlIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt DesignUploadUrlFunction.Arn, PayloadFormatVersion: "2.0" } }
   PublishDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PublishDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
+  ListDesignsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt ListDesignsFunction.Arn, PayloadFormatVersion: "2.0" } }
+  PatchDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PatchDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
 
   # -- Routes (13 matching prod's route table exactly, + 2 staging-only
   #    Design Asset Library routes not yet present in production) --
@@ -784,6 +853,8 @@ Resources:
 
   RouteDesignUploadUrl: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs/upload-url", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DesignUploadUrlIntegration}" } }
   RoutePublishDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PublishDesignIntegration}" } }
+  RouteListDesigns: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${ListDesignsIntegration}" } }
+  RoutePatchDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /designs/{id}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PatchDesignIntegration}" } }
 
   # -- Lambda invoke permissions (API Gateway -> each function, wildcard stage/method) --
   PermCreateOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
@@ -800,6 +871,8 @@ Resources:
   PermGetUnreadMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetUnreadMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/messages/unread" } }
   PermDesignUploadUrl: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref DesignUploadUrlFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/upload-url" } }
   PermPublishDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PublishDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
+  PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
+  PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/*" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
 
   # ---------------------------------------------------------------------------
@@ -846,6 +919,34 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt NotifyUnreadMessagesRule.Arn
+
+  # Same 15-minute cadence and shape as ExpirePendingOrdersRule above — the
+  # Design Asset Library's recycle-bin sweep (docs/roadmap.md's "Recycle
+  # bin" section: archives older than 90 days get hard-deleted).
+  PurgeArchivedDesignsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub kcmps-${EnvName}-purge-archived-designs-schedule
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: PurgeArchivedDesignsTarget
+          Arn: !GetAtt PurgeArchivedDesignsFunction.Arn
+  PermPurgeArchivedDesignsEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PurgeArchivedDesignsFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PurgeArchivedDesignsRule.Arn
+  PurgeArchivedDesignsAsyncConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref PurgeArchivedDesignsFunction
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 2
+      DestinationConfig:
+        OnFailure: { Destination: !GetAtt LambdaDlq.Arn }
 
   GuardDutyScanResultRule:
     Type: AWS::Events::Rule

@@ -366,7 +366,13 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
 Cost impact of the plan below is tracked in [docs/cost-governance.md](cost-governance.md)'s
 decision log — check it before deviating from the storage/lifecycle choices here.
 
-**Status (2026-08-02): architecture finalized below, still no backend built.** A minimal,
+**Status (2026-08-06): backend fully built and live on staging** — all 5 Lambdas (upload-url,
+publish, list, patch, purge), all 4 API routes, and the recycle-bin cron, per the checklist
+below. **Not yet done:** the dashboard's real upload/browse/recycle-bin UI (still the
+placeholder page) and the one-time `store.js` manifest-merge that makes a published design
+actually appear in the storefront's design picker — see the two open checklist items near the
+end of this section. Production has none of this — promotion is owner-gated. Original
+(2026-08-02) note, now historical: architecture finalized, no backend built. A minimal,
 non-functional structure was
 built deliberately small so a future session can implement the real backend (S3 buckets,
 Lambdas, IAM, API routes) with full context in one pass, rather than half-building it here:
@@ -473,17 +479,23 @@ naming schemes.
   (no server-side resize) into the public storefront assets path via `titleFromFilename()`,
   writes the `DESIGN#` record, and regenerates the design-grid manifest (same pattern as the
   hero carousel's manifest, new leaf)
-- [ ] Recycle-bin sweep Lambda (15-min cron, shape of `expire-pending-orders.js`) — archives
-  older than 90 days get hard-deleted from both DynamoDB and both S3 objects
-- [~] Wire the 4 API routes onto the existing HTTP API Gateway, JWT-authorizer-gated —
-  **2 of 4 live on staging** (`POST /designs/upload-url`, `POST /designs`, both gated to the
-  Production/Sales/Admin groups via `requireRole()`, deployed 2026-08-06 in
-  `kcmps-backend-staging`). `GET /designs` and `PATCH /designs/{id}` not built. **Production
-  has neither route** — promotion is owner-gated, see `backend/infra/README.md`'s "Design
-  Asset Library Lambdas" section
-- [ ] `PATCH /designs/{id}` also owns the missing **draft → published** transition:
-  `publish-design.js` refuses a second write for the same designId, so a design saved as a
-  draft today cannot later be published without it
+- [x] Recycle-bin sweep Lambda (2026-08-06, `backend/jobs/purge-archived-designs.js`, 15-min
+  cron, shape of `expire-pending-orders.js`) — archives older than 90 days get hard-deleted
+  from both DynamoDB (with an `EVENT#` audit record written in the same transaction, before
+  the delete) and both S3 objects on the private originals bucket. Live-tested against a
+  backdated real record on staging. Staging only — production promotion is owner-gated, see
+  `backend/infra/README.md`
+- [x] Wire the 4 API routes onto the existing HTTP API Gateway, JWT-authorizer-gated — **all 4
+  live on staging** as of 2026-08-06: `POST /designs/upload-url` + `POST /designs` (gated to
+  Production/Sales/Admin via `requireRole()`, 2026-08-06), `GET /designs` (gated to any staff
+  role via `isStaff()` — a read) + `PATCH /designs/{id}` (gated to Production/Sales/Admin,
+  2026-08-06). **Production has none of the 4** — promotion is owner-gated, see
+  `backend/infra/README.md`'s "Design Asset Library Lambdas" section
+- [x] `PATCH /designs/{id}` also owns the **draft → published** transition (2026-08-06,
+  `backend/design-library/patch-design.js`'s `publish` action) — reuses `publish-design.js`'s
+  exact scan-gate + public-bucket-copy logic rather than a second copy of it. Live-tested:
+  uploaded a real design as a draft, promoted it once GuardDuty's scan landed, confirmed the
+  manifest and public S3 copy both picked it up
 - [x] A **"Soon"-badged placeholder page exists**: `website/dashboard/design-library.html`
   (nav key `design`, 2026-07-31). It already carries the correct shell, `mount("design")`, and
   topbar title — building the real page means replacing its `<main>` contents, nothing else.

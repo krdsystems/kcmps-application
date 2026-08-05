@@ -325,25 +325,53 @@ GuardDuty plan exist — not done here.
 
 ### Design Asset Library Lambdas — staging only (2026-08-06)
 
-Two new functions in `backend/design-library/`, deployed as part of `kcmps-backend-staging`
-(**not** production — production has neither an originals bucket nor these routes; see the
-promotion checklist at the end of this subsection):
+Five functions in `backend/design-library/` + `backend/jobs/purge-archived-designs.js`,
+deployed as part of `kcmps-backend-staging` (**not** production — production has neither an
+originals bucket nor these routes; see the promotion checklist at the end of this subsection).
+The first two are the write path (built first); the next two close the read/patch/promote gap
+`publish-design.js`'s header originally flagged; the last is the recycle-bin's hard-delete
+sweep:
 
 | Function | Route | Purpose |
 |---|---|---|
 | `kcmps-staging-design-upload-url` | `POST /designs/upload-url` (JWT) | `get-upload-url.js` — presigned PUT URLs for the source file and the web-ready image, both onto the private originals bucket under `designs/<category>/<designId>/{original,web}.<ext>` |
 | `kcmps-staging-publish-design` | `POST /designs` (JWT) | `publish-design.js` — writes the `DESIGN#<id>` META record + an `EVENT#` audit item, then (on publish) copies the web-ready image into the public bucket and regenerates `design-manifest.json` |
+| `kcmps-staging-list-designs` | `GET /designs` (JWT) | `list-designs.js` — every `DESIGN#<id>` record including archived ones (an `archived` flag lets the dashboard's recycle-bin tab filter client-side), with a presigned original-file download URL gated on the SAME fail-closed scan check as `get-orders.js`'s attachments — no verdict yet or a bad verdict means no url at all |
+| `kcmps-staging-patch-design` | `PATCH /designs/{id}` (JWT) | `patch-design.js` — one handler, four `action`s: `update` (name/description/tags), `archive` (soft delete — status flips to `archived`, `deletedAt` stamped, S3 untouched), `restore` (clears the archive back to whatever status — draft or published — it had before), `publish` (the `draft`→`published` promotion `publish-design.js`'s header called out as missing; reuses that Lambda's exact scan-gate + public-bucket-copy logic rather than a second copy of it). Any action that changes what's published ends with `manifest.js`'s `regenerateManifest()` |
+| `kcmps-staging-purge-archived-designs` | none (15-min EventBridge cron) | `backend/jobs/purge-archived-designs.js` — the **only** hard-delete path anywhere in this feature. Designs archived >90 days ago get their DynamoDB `DESIGN#<id>` META item AND both private-bucket S3 objects (original + web) permanently deleted. An `EVENT#` audit record is written in the SAME transaction as the DynamoDB item delete — so even a botched sweep leaves proof of what was destroyed. Does NOT touch the public-bucket copy of an archived design's web image (already dropped from `design-manifest.json` the moment it was archived, so it's unreachable — just not yet reclaimed; a follow-up, not done here) |
 
-Both are gated to the **Production/Sales/Admin** groups via `backend/lib/auth.js`'s
-`requireRole()` — deliberately *not* `isStaff()`, which would also let `Finance` write to the
-design library. Verified live: a `[Finance]` claim gets 403, a `[Customer]` claim gets 403,
-`[Production Admin]` and `[Sales]` succeed.
+`list-designs.js` is gated on `isStaff()` (a read — any staff role, including Finance, can
+browse the library), while `patch-design.js` is gated on `requireRole(Production/Sales/Admin)`
+— same as the two write Lambdas. Verified live for both gates: a `[Customer]` claim gets 403 on
+`PATCH /designs/{id}`; `[Production]` succeeds on update/archive/restore/publish.
 
 New IAM role `kcmps-staging-design-library-lambda-role`, separate from the staff-api role
-because these two Lambdas hold the **only** grant in the account that moves an object from the
+because these Lambdas hold the **only** grant in the account that moves an object from the
 private originals bucket into the public site bucket. That grant is scoped to
 `designs/*` on the source and to `PublicAssetsKeyPrefix*` on the destination — it can never
-overwrite an arbitrary live-site object.
+overwrite an arbitrary live-site object. `list-designs.js` reuses this same role purely because
+it needs the same-scoped `s3:GetObject` for its presigned original-file downloads, not because
+it writes anything. `purge-archived-designs.js` instead reuses `JobsLambdaRole` (same role as
+`expire-pending-orders.js`), which picked up two additions for this feature: `dynamodb:DeleteItem`
+on the table (the only Lambda in the account that ever hard-deletes a table item) and — already
+present from the GuardDuty quarantine grant — `s3:DeleteObject` on the originals bucket's
+`designs/*` prefix.
+
+**Live end-to-end verification (2026-08-06, direct Lambda invoke with synthetic JWT claims —
+no real Cognito login was available in-session):** listed both of B2's UAT test designs
+(confirmed `archived: false`, `scanStatus: "NO_THREATS_FOUND"`, clean presigned download URLs);
+patched metadata on one; archived it and confirmed `design-manifest.json`'s count dropped from
+2 to 1; restored it and confirmed the count went back to 2; uploaded a brand-new design as a
+`draft`, confirmed `PATCH .../publish` correctly gated on GuardDuty's verdict then succeeded
+once the scan landed (~13s later — real object, real GuardDuty scan, not simulated), confirmed
+the manifest and the public S3 copy both picked it up; archived that same design, backdated its
+`deletedAt` via a direct table write, and manually invoked `kcmps-staging-purge-archived-designs`
+— confirmed exactly the backdated item purged (its META item gone, an `EVENT#...to":"purged"`
+audit record present, both private-bucket S3 objects gone), while a second invoke against the
+un-backdated UAT designs did nothing until they were archived+backdated too. Confirmed a
+`[Customer]` claim gets 403 on `PATCH /designs/{id}`. All 3 UAT/test designs' `DESIGN#` items,
+`EVENT#` audit trails, and public-bucket images were deleted afterward — the table and
+`dev-site/assets/designs/` are back to holding only the empty manifest.
 
 Three parameters control where a published design lands, and the split between the last two
 is load-bearing rather than redundant:
@@ -370,10 +398,15 @@ is load-bearing rather than redundant:
 
 **Promotion to production — NOT run, owner-gated.** In order: create the production originals
 bucket + GuardDuty plan (commands above), then add to whatever manages production's Lambdas
-the two functions, the `kcmps-design-library-lambda-role`, the two JWT routes + integrations +
-invoke permissions, and set `PublicAssetsKeyPrefix=assets/designs/`. Note that publishing in
-production writes to the **live site's** asset prefix, so the first production publish is a
-real content change to `kcmps.com` — treat it as one.
+all **five** functions (`design-upload-url`, `publish-design`, `list-designs`, `patch-design`,
+`purge-archived-designs`), the `kcmps-design-library-lambda-role`, the `JobsLambdaRole` additions
+(`dynamodb:DeleteItem` + the originals-bucket `s3:DeleteObject` grant `purge-archived-designs`
+needs), the `GET /designs`/`PATCH /designs/{id}` routes + integrations + invoke permissions, the
+`purge-archived-designs` EventBridge schedule, and set `PublicAssetsKeyPrefix=assets/designs/`.
+Note that publishing in production writes to the **live site's** asset prefix, so the first
+production publish is a real content change to `kcmps.com` — treat it as one. Also note the
+purge cron is a genuine hard-delete path once live in production — rehearse it against a
+throwaway record there before trusting the 15-minute schedule unattended.
 
 ## Checkout Lambdas — deployed (2026-07-31)
 

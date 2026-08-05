@@ -676,20 +676,30 @@ still the more complete end state and its infra cost is near-zero. Progress so f
   `~/Desktop/ses-production-access-response.txt` (not committed — support-ticket correspondence,
   not project documentation). **Status: pending AWS review as of 2026-07-31.**
 
-**Remaining SES-relay checklist (blocked on production access, except where noted):**
-- [ ] Configure an SNS topic on the `kcmps.com` identity for bounce/complaint notifications —
-  doable now, independent of the access request, and strengthens the pending support case if
-  done before AWS's review completes
-- [ ] Verify a second identity, `mirror.kcmps.com`, for **receiving** — not gated by sandbox
-  mode (only sending is restricted), so this can be built and tested today
-- [ ] MX record for `mirror.kcmps.com` → `inbound-smtp.<region>.amazonaws.com`, S3 bucket +
-  SES receipt rule delivering incoming mail there
-- [ ] Spacemail forwarding rule from each mailbox to an address on `mirror.kcmps.com`
+**Remaining SES-relay checklist (production access cleared — `ProductionAccessEnabled: true`
+as of 2026-08-06):**
+- [x] **Bounce/complaint SNS notifications** (2026-08-06) — topic `kcmps-ses-bounce-complaint`,
+  subscribed to `admin@kcmps.com`, wired as an event destination on the `kcmps.com` identity's
+  existing configuration set. **Owner still needs to click the SNS confirmation email** —
+  subscription is `PendingConfirmation`. See `backend/infra/README.md`'s new SES-relay section.
+- [x] **`mirror.kcmps.com` verified as a receiving identity** (2026-08-06) —
+  `VerificationStatus: SUCCESS`. Confirmed SES email receiving **is available in
+  `ap-southeast-1`**, so no cross-region workaround was needed.
+- [x] **MX record + DKIM CNAMEs for `mirror.kcmps.com`, S3 bucket, SES receipt rule** (2026-08-06)
+  — MX → `inbound-smtp.ap-southeast-1.amazonaws.com` added via `UPSERT` to the real zone
+  (change `C10397382N3T7IMLFR6TL`, no existing record touched); bucket
+  `kcmps-inbound-mail-est-2026` (private, 30-day IA lifecycle); receipt rule set
+  `kcmps-mirror-inbound` (active), one domain-catchall rule delivering to `inbound/`. Verified
+  end-to-end: a real send from `admin+admin.kcmps.uat@kcmps.com` to `test@mirror.kcmps.com`
+  landed in the bucket within seconds. Full detail + CFN doc in `backend/infra/README.md` /
+  `backend/infra/ses-relay.cfn.yaml`.
+- [ ] Spacemail forwarding rule from each mailbox to an address on `mirror.kcmps.com` — **owner
+  manual step**, no Spacemail credentials available to any Claude session; documented in
+  `backend/infra/README.md`.
 - [ ] Parser Lambda: S3-object-created trigger → parse MIME → write into the same
-  `MESSAGE#`/mailbox shape `email.html`'s mock already expects (swap-in, not a rewrite)
+  `MESSAGE#`/mailbox shape `email.html`'s mock already expects (swap-in, not a rewrite) — C2
 - [ ] `sendReply`-equivalent Lambda via `SES.SendEmail`/`SendRawEmail` on the verified
-  `kcmps.com` identity — buildable now, testable against your own verified address even while
-  in sandbox, full production traffic once access clears
+  `kcmps.com` identity — C3
 
 ---
 

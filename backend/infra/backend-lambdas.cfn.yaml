@@ -99,6 +99,19 @@ Parameters:
     Default: kcmps.com
     Description: SES identity ARN suffix — IAM grant only. FROM_EMAIL/SES_SENDER env vars stay unset (dark), matching notify-unread-messages.js's existing pattern, so staging never actually sends customer email.
 
+  InboundMailBucket:
+    Type: String
+    Default: kcmps-inbound-mail-est-2026
+    Description: >
+      SES relay's private inbound-mail bucket (backend/infra/ses-relay.cfn.yaml,
+      CLI-managed — not owned by this stack). Referenced here only for
+      IngestInboundFunction's read-only IAM grant and its S3-invoke
+      Lambda::Permission; the actual S3 -> Lambda notification config is set
+      via `aws s3api put-bucket-notification-configuration` against the bucket
+      directly (see backend/infra/README.md's "SES relay" staging section),
+      same CLI-managed-trigger pattern as this template's own comment on why
+      InboundMailBucket isn't a AWS::S3::Bucket resource here.
+
 Resources:
   # ---------------------------------------------------------------------------
   # Dead-letter queue (shared by streams-handler's OnFailure destination and
@@ -369,6 +382,40 @@ Resources:
                 Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kcmps-${EnvName}-post-confirmation*
 
+  # SES relay / staff mail panel (backend/mail/*.js). One role for all 5
+  # Lambdas — read-only against InboundMailBucket (ingest-inbound.js is the
+  # only one that touches S3; the 4 read-path Lambdas only need the table
+  # grants) since none of them ever write back to that bucket.
+  MailLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-mail-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: mail-table
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: mail-inbound-bucket-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadRawMimeOnly
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::${InboundMailBucket}/inbound/*
+
   # ---------------------------------------------------------------------------
   # Log groups — 14-day retention for staging (shorter than prod's 30-day
   # convention in backend/CLAUDE.md; staging logs lose their debugging value
@@ -396,6 +443,11 @@ Resources:
   ListDesignsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-list-designs", RetentionInDays: 14 } }
   PatchDesignLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-patch-design", RetentionInDays: 14 } }
   PurgeArchivedDesignsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-purge-archived-designs", RetentionInDays: 14 } }
+  IngestInboundLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-ingest-inbound", RetentionInDays: 14 } }
+  GetMailboxesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-mailboxes", RetentionInDays: 14 } }
+  GetMailMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-mail-messages", RetentionInDays: 14 } }
+  GetMailMessageLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-mail-message", RetentionInDays: 14 } }
+  MarkMailReadLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-mark-mail-read", RetentionInDays: 14 } }
 
   # ---------------------------------------------------------------------------
   # Lambda functions — 17, all arm64/index.handler, code from the shared
@@ -781,6 +833,103 @@ Resources:
           DESIGN_ORIGINALS_BUCKET: !Ref DesignOriginalsBucket
 
   # ---------------------------------------------------------------------------
+  # SES relay / staff mail panel (backend/mail/*.js) — 5 functions, MailLambdaRole.
+  # IngestInboundFunction is S3-event-triggered (permission below; the actual S3
+  # notification config is set via CLI against InboundMailBucket, which this
+  # stack doesn't own — see that parameter's description). The other 4 are API-
+  # invoked, JWT-authorizer-gated, wired into HttpApi below like every other
+  # staff-api route.
+  # ---------------------------------------------------------------------------
+  IngestInboundFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: IngestInboundLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-ingest-inbound
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-ingest-inbound.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  PermIngestInboundS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IngestInboundFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${InboundMailBucket}
+      SourceAccount: !Ref AWS::AccountId
+
+  GetMailboxesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetMailboxesLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-mailboxes
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-mailboxes.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  GetMailMessagesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetMailMessagesLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-mail-messages
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-mail-messages.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  GetMailMessageFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetMailMessageLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-mail-message
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-mail-message.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  MarkMailReadFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: MarkMailReadLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-mark-mail-read
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt MailLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-mark-mail-read.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  # ---------------------------------------------------------------------------
   # HTTP API — same 13 routes/shape as prod's kcmps-checkout-api, same Cognito
   # JWT authorizer config (literally the same pool/client, since staging reuses
   # kcmps-user-pool-v2). CORS scoped to staging origins only.
@@ -835,6 +984,11 @@ Resources:
   ListDesignsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt ListDesignsFunction.Arn, PayloadFormatVersion: "2.0" } }
   PatchDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PatchDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
 
+  GetMailboxesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMailboxesFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetMailMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMailMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetMailMessageIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMailMessageFunction.Arn, PayloadFormatVersion: "2.0" } }
+  MarkMailReadIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt MarkMailReadFunction.Arn, PayloadFormatVersion: "2.0" } }
+
   # -- Routes (13 matching prod's route table exactly, + 2 staging-only
   #    Design Asset Library routes not yet present in production) --
   RouteCreateOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders", Target: !Sub "integrations/${CreateOrderIntegration}" } }
@@ -856,6 +1010,11 @@ Resources:
   RouteListDesigns: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${ListDesignsIntegration}" } }
   RoutePatchDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /designs/{id}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PatchDesignIntegration}" } }
 
+  RouteGetMailboxes: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailboxesIntegration}" } }
+  RouteGetMailMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes/{mailboxId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailMessagesIntegration}" } }
+  RouteGetMailMessage: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes/{mailboxId}/messages/{messageId}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailMessageIntegration}" } }
+  RouteMarkMailRead: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${MarkMailReadIntegration}" } }
+
   # -- Lambda invoke permissions (API Gateway -> each function, wildcard stage/method) --
   PermCreateOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
   PermSubmitPaymentProof: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SubmitPaymentProofFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/payment-proof" } }
@@ -874,6 +1033,10 @@ Resources:
   PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
   PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/*" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
+  PermGetMailboxes: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailboxesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes" } }
+  PermGetMailMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages" } }
+  PermGetMailMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*" } }
+  PermMarkMailRead: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref MarkMailReadFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*/read" } }
 
   # ---------------------------------------------------------------------------
   # EventBridge schedules — same cadence as prod.

@@ -1335,3 +1335,152 @@ diff (e.g. if you edit group `Precedence` values later). It will refuse to
 change `TableName` on an existing stack without a replacement, since DynamoDB
 table names are immutable post-creation; to rename, deploy a new stack with a
 new `TableName` and migrate data separately.
+
+## SES inbound-mail relay — `mirror.kcmps.com` (applied 2026-08-06)
+
+Part of `docs/roadmap.md`'s "Staff email panel" / SES-relay track. Built same-day, resources
+created directly via CLI (see `backend/infra/ses-relay.cfn.yaml`'s header for why, and for a
+CFN description of the same setup for future rebuilds). All in account `600929977538`
+(`kcmps-claude-priv`), region `ap-southeast-1`, except the one DNS change below.
+
+**What exists now:**
+- **Bounce/complaint alerting** on the *existing* `kcmps.com` sending identity — an SNS topic
+  `kcmps-ses-bounce-complaint`, subscribed to `admin@kcmps.com` (email protocol), wired as an
+  event destination (`kcmps-bounce-complaint-sns`, `MatchingEventTypes: [BOUNCE, COMPLAINT]`)
+  on the configuration set `my-first-configuration-set` that's already attached to the
+  `kcmps.com` identity. **This is purely additive** — verified after applying that the
+  identity's DKIM (`SUCCESS`), MAIL FROM (`mail.kcmps.com`, `SUCCESS`), and
+  `VerificationStatus` (`SUCCESS`) were all unchanged. **The email subscription is sitting in
+  `PendingConfirmation` and needs the owner to click the confirmation link SNS sent to
+  `admin@kcmps.com`** — same trap `kcmps-ops-alerts` hit before; nothing auto-confirms it.
+- **`mirror.kcmps.com`** verified as an SES receiving identity (`VerificationStatus: SUCCESS`).
+  SES email receiving **is available in `ap-southeast-1`** (confirmed via a live
+  `aws ses describe-active-receipt-rule-set` call succeeding, `inbound-smtp.ap-southeast-1
+  .amazonaws.com` resolving, and an actual end-to-end send/receive test below) — no
+  cross-region workaround was needed.
+- **DNS**, added via `UPSERT` to the real hosted zone `Z06397161LBTJCRTPLL62` in account
+  `260866268499` (`default` profile) — change ID `C10397382N3T7IMLFR6TL`, confirmed `INSYNC`:
+  - `MX mirror.kcmps.com` → `10 inbound-smtp.ap-southeast-1.amazonaws.com`
+  - 3 DKIM CNAMEs: `<token>._domainkey.mirror.kcmps.com` → `<token>.dkim.amazonses.com`
+    (tokens are `mirror.kcmps.com`'s own, distinct from `kcmps.com`'s DKIM tokens)
+
+    No existing `kcmps.com`/`www`/`site`/`dev`/`mail`/`_dmarc`/DKIM record was read, modified,
+    or deleted — every change above targets only the new `mirror.kcmps.com` subdomain name.
+- **`kcmps-inbound-mail-est-2026`** — private S3 bucket for raw inbound MIME. All public
+  access blocked, SSE-S3 default encryption, lifecycle transitions objects to Standard-IA at
+  30 days. Bucket policy grants `ses.amazonaws.com` `s3:PutObject` scoped to this account's
+  receipt rules only (`aws:SourceAccount`/`aws:SourceArn` conditions).
+- **Receipt rule set `kcmps-mirror-inbound`** (active), one rule `mirror-domain-catchall`
+  matching all recipients `@mirror.kcmps.com`, delivering to `kcmps-inbound-mail-est-2026`
+  under the `inbound/` prefix. **Not split per-mailbox** — a single domain-catchall rule was
+  used since the actual list of staff mailboxes that will forward here isn't fixed yet;
+  splitting into per-recipient rules (each with its own `ObjectKeyPrefix`) is a cheap follow-up
+  once that list exists. **For now, C2's parser Lambda should read the MIME `To:` header to
+  determine which staff mailbox a message is for**, not the S3 key.
+
+**Verified end-to-end (2026-08-06):** sent a real email via `aws ses send-email` from
+`admin+admin.kcmps.uat@kcmps.com` (the only permitted test address) to `test@mirror.kcmps.com`;
+the raw MIME object landed in `s3://kcmps-inbound-mail-est-2026/inbound/<ses-message-id>` within
+seconds, `X-SES-Spam-Verdict: PASS` / `X-SES-Virus-Verdict: PASS`, DKIM/SPF/DMARC all `pass`.
+
+**What C2 needs:**
+- Bucket: `kcmps-inbound-mail-est-2026`, region `ap-southeast-1`, prefix `inbound/`.
+- Object key = the SES-generated message ID (opaque); route by parsing the MIME `To:` header,
+  not the key, until/unless per-recipient rules get added.
+- Trigger the parser off S3 `ObjectCreated:Put` under `inbound/`, same pattern as the design
+  library's GuardDuty-scan-result Lambda (EventBridge) or a direct S3 event notification —
+  your call.
+- Target shape to write into: `email.html`'s mock `MESSAGE#`/mailbox shape (see
+  `docs/roadmap.md`'s "Staff email panel" checklist) — this session didn't touch that file.
+
+**Owner manual step (not attempted — no Spacemail credentials available to this session):**
+configure a Spacemail-side forwarding rule from each staff `@kcmps.com` mailbox to its own
+address on `mirror.kcmps.com` (e.g. `order@kcmps.com` → `order@mirror.kcmps.com`). Until this
+is set up, nothing external will actually land in the inbound bucket — only directly-addressed
+test sends like the verification above will.
+
+**Explicitly not built this session (C2/C3 scope):** the MIME parser Lambda, the
+`sendReply`-equivalent Lambda over `SES.SendRawEmail`. No production Lambda was touched, and
+`notify-unread-messages`'s `SES_SENDER` was left unset as instructed.
+
+### C2 — ingest parser + staff mail read API (deployed to `kcmps-backend-staging`, 2026-08-06)
+
+Built the pieces C1 flagged as needed: `backend/mail/ingest-inbound.js` (S3-triggered MIME
+parser) and 4 JWT-authorized read Lambdas (`get-mailboxes.js`/`get-mail-messages.js`/
+`get-mail-message.js`/`mark-mail-read.js`). Full field-by-field contract, key shape, and vendoring
+notes are in `backend/CLAUDE.md`'s `mail/` row — this section only covers the infra/deploy
+mechanics.
+
+**Stack changes** (`backend/infra/backend-lambdas.cfn.yaml`): added `MailLambdaRole` (table
+`Get/Put/Update/Query` + read-only `s3:GetObject` on `${InboundMailBucket}/inbound/*`), 5 log
+groups, 5 `AWS::Lambda::Function` resources, 4 API integrations/routes/permissions under the
+existing `HttpApi` (`GET /mail/mailboxes`, `GET /mail/mailboxes/{mailboxId}/messages`,
+`GET /mail/mailboxes/{mailboxId}/messages/{messageId}`,
+`POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read`, all JWT-gated same as the rest of
+staff-api), and a new `InboundMailBucket` parameter (default `kcmps-inbound-mail-est-2026`) used
+only for the IAM grant — that bucket is CLI-managed (`ses-relay.cfn.yaml`), not owned by this
+stack.
+
+**S3 → Lambda trigger is CLI-managed, not in the CFN template**, for the same reason
+`InboundMailBucket` is a parameter rather than a resource: `backend-lambdas.cfn.yaml` doesn't own
+`kcmps-inbound-mail-est-2026`, and CloudFormation can't attach an `AWS::S3::Bucket`
+`NotificationConfiguration` to a bucket it doesn't manage without an import. Wired instead via:
+
+```bash
+aws lambda add-permission \  # (done automatically by the stack's PermIngestInboundS3 resource)
+  --function-name kcmps-staging-ingest-inbound ...
+
+aws s3api put-bucket-notification-configuration \
+  --bucket kcmps-inbound-mail-est-2026 \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+      "Id": "kcmps-staging-ingest-inbound-on-create",
+      "LambdaFunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-ingest-inbound",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": "inbound/"}]}}
+    }]
+  }' \
+  --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+If `ingest-inbound.js` is ever rebuilt against a *production* inbound bucket, the equivalent
+`put-bucket-notification-configuration` call (and a prod `MailLambdaRole`-equivalent IAM grant)
+needs to be re-run by hand against that bucket — production promotion needs its own explicit
+go-ahead per the standing workflow rule, and no production Lambda/route/bucket was touched or
+even planned in this session.
+
+**Deploying a code change to any of the 5 Lambdas** (same packaging convention as every other
+staging function — `index.js` with `require("../lib")` rewritten to `require("./lib")`, a
+flattened copy of `backend/lib/`, and `node_modules` from `backend/mail/package.json`;
+`ingest-inbound.js` is the only one of the 5 that actually needs `mailparser` vendored in — the
+4 read-path Lambdas only import `@aws-sdk/*`, already provided by the Node.js Lambda runtime):
+
+```bash
+cd backend/mail && npm install --omit=dev   # vendors mailparser + deps into node_modules/
+# build each zip: index.js (with the require rewrite) + mail-parse.js + flattened lib/
+# (+ node_modules only for ingest-inbound.js), then:
+aws s3 cp kcmps-<fn>.zip s3://kcmps-lambda-artifacts-staging/<new-prefix>/kcmps-<fn>.zip \
+  --profile kcmps-claude-priv --region ap-southeast-1
+aws cloudformation deploy --stack-name kcmps-backend-staging \
+  --template-file ../infra/backend-lambdas.cfn.yaml \
+  --s3-bucket kcmps-lambda-artifacts-staging --s3-prefix cfn-templates \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides TableStreamArn=<unchanged> ArtifactsPrefix=<new-prefix> \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Note the template is >51,200 bytes, so `--s3-bucket`/`--s3-prefix` are required on `deploy` (a
+plain `--template-file` upload fails with a size error) — this applies to every future update of
+this stack, not just this change.
+
+**Verified end-to-end (2026-08-06):** sent 3 real emails from
+`admin+admin.kcmps.uat@kcmps.com` to `order@`/`info@`/`admin@mirror.kcmps.com` (plain text, HTML
+multipart, and a `text/plain` attachment respectively) via `aws ses send-email`/`send-raw-email`.
+All 3 raw MIME objects landed in the inbound bucket, the S3 trigger fired
+`kcmps-staging-ingest-inbound` with no errors, and all 3 wrote correctly-shaped `MAILBOX#`/`MSG#`
+items — confirmed via a direct `dynamodb query` per mailbox, then re-confirmed through the actual
+read-path Lambdas via direct `aws lambda invoke` (synthetic JWT claims, since no browser session
+was available in this session): `get-mailboxes` → correct `total`/`unreadCount`; `get-mail-messages`
+→ correct envelope (no `bodyText`/`attachments`); `get-mail-message` → full body + attachment
+metadata; `mark-mail-read` → `flags.seen` flipped to `true` and persisted. `node --test
+backend/lib/lib.test.js backend/lib/business-hours.test.js` stayed green (45/45) throughout.

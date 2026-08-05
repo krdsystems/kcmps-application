@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SES inbound-mail relay for mirror.kcmps.com (staff-email-panel "SES relay" track,
+  docs/roadmap.md "Parallel track — Staff email panel"). Covers steps 1, 2, 4 of the
+  remaining SES-relay checklist: bounce/complaint SNS notifications on the existing
+  kcmps.com sending identity, the mirror.kcmps.com receiving identity + receipt rule,
+  and the private inbound-mail S3 bucket. Does NOT touch kcmps.com's DKIM, MAIL FROM,
+  or verification state — purely additive.
+
+  NOTE: as of 2026-08-06 the resources this template describes were created directly
+  via AWS CLI (S3 bucket kcmps-inbound-mail-est-2026, SNS topic
+  kcmps-ses-bounce-complaint, the SES configuration-set event destination on the
+  existing my-first-configuration-set, the mirror.kcmps.com identity, and the
+  kcmps-mirror-inbound receipt rule set/rule) because a same-day fix for an
+  unmonitored elevated bounce rate was the priority. This template is provided so the
+  setup is reproducible/auditable and so a future environment (e.g. disaster
+  recovery) doesn't have to reverse-engineer the CLI history. Deploying it against
+  the account that already has these resources will fail with "already exists"
+  errors — either import the existing resources into the stack first
+  (`aws cloudformation deploy` doesn't support import; use a separate
+  `create-stack --change-set-type IMPORT` for that), or treat this template as
+  documentation and keep using the CLI-managed resources for now.
+
+Parameters:
+  Region:
+    Type: String
+    Default: ap-southeast-1
+    Description: SES email-receiving is not offered in every region; confirmed available here.
+  ExistingConfigurationSetName:
+    Type: String
+    Default: my-first-configuration-set
+    Description: >
+      The configuration set already attached to the kcmps.com sending identity.
+      This stack only adds an event destination to it — it does not create or
+      re-attach the configuration set itself.
+  AlertEmail:
+    Type: String
+    Default: admin@kcmps.com
+    Description: Bounce/complaint notification recipient. Subscription requires manual email confirmation.
+
+Resources:
+  BounceComplaintTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: kcmps-ses-bounce-complaint
+      DisplayName: KCMPS SES Bounce/Complaint Alerts
+
+  BounceComplaintSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref BounceComplaintTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+      # Sits in PendingConfirmation until the recipient clicks the confirmation
+      # link SNS emails them — CloudFormation does not (and cannot) auto-confirm this.
+
+  BounceComplaintEventDestination:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    Properties:
+      ConfigurationSetName: !Ref ExistingConfigurationSetName
+      EventDestination:
+        Name: kcmps-bounce-complaint-sns
+        Enabled: true
+        MatchingEventTypes:
+          - bounce
+          - complaint
+        SnsDestination:
+          TopicArn: !Ref BounceComplaintTopic
+
+  InboundMailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: kcmps-inbound-mail-est-2026
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: transition-to-ia-30d
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+
+  InboundMailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InboundMailBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSESPuts
+            Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${InboundMailBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              StringLike:
+                aws:SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:receipt-rule-set/*:receipt-rule/*"
+
+  # mirror.kcmps.com receiving identity (AWS::SES::EmailIdentity is CFN-supported
+  # via the SESv2 resource type in newer CFN; kept here for documentation even
+  # though it was verified via CLI — DNS (MX + 3 DKIM CNAMEs) was added manually
+  # to hosted zone Z06397161LBTJCRTPLL62, see docs/roadmap.md).
+  MirrorEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: mirror.kcmps.com
+
+Outputs:
+  InboundMailBucketName:
+    Value: !Ref InboundMailBucket
+    Description: >
+      Private bucket receiving raw inbound MIME under the "inbound/" prefix
+      (single domain-catchall receipt rule for mirror.kcmps.com — no per-recipient
+      prefix split yet; C2's parser Lambda should read the MIME "To" header to
+      route by mailbox rather than relying on key prefix).
+  BounceComplaintTopicArn:
+    Value: !Ref BounceComplaintTopic

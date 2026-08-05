@@ -10,7 +10,7 @@ are live secrets.
 ```json
 [
   { "ParameterKey": "BucketName", "ParameterValue": "kcmps-online-bucket-est-2026" },
-  { "ParameterKey": "CognitoDomainPrefix", "ParameterValue": "ap-southeast-1idvaeumnp" },
+  { "ParameterKey": "CognitoDomainPrefix", "ParameterValue": "kcmps-auth" },
   { "ParameterKey": "GoogleClientId", "ParameterValue": "REPLACE-ME.apps.googleusercontent.com" },
   { "ParameterKey": "GoogleClientSecret", "ParameterValue": "REPLACE-ME" }
 ]

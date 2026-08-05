@@ -297,7 +297,7 @@ aws apigatewayv2 create-authorizer \
   --api-id <YOUR_HTTP_API_ID> \
   --authorizer-type JWT \
   --identity-source '$request.header.Authorization' \
-  --jwt-configuration Audience=<YOUR_APP_CLIENT_ID>,Issuer=https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_iDvAEumNp \
+  --jwt-configuration Audience=<YOUR_APP_CLIENT_ID>,Issuer=https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_LHJsFdCgo \
   --name kcmps-staff-jwt-authorizer
 ```
 

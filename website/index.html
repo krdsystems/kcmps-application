@@ -348,6 +348,13 @@ html { overflow-x: hidden; }
 .contact-figure { aspect-ratio: 4/3; }
 .status-row { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-green); margin-bottom: var(--space-3); }
 .status-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-green); }
+/* Closed / closing-soon states for the live studio status. Colour is not the
+   only signal — the label itself always says open or closed, so this still
+   reads correctly for a colour-blind visitor or in forced-colours mode. */
+.status-row.is-closed { color: var(--color-neutral-600); }
+.status-row.is-closed .dot { background: var(--color-neutral-500); }
+.status-row.is-soon { color: var(--color-accent-800); }
+.status-row.is-soon .dot { background: var(--color-accent-500); }
 .info-block { margin-bottom: var(--space-4); }
 .info-block h4 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin: 0 0 6px; }
 .info-block p { margin: 0; font-size: 15px; line-height: 1.6; }
@@ -840,7 +847,11 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <section class="contact" id="contact">
     <div class="contact-grid">
       <div>
-        <span class="status-row"><span class="dot"></span>Studio currently active</span>
+        <!-- Filled in by the operating-hours script near the bottom of this file.
+             The static text here is the no-JS fallback: it states the schedule
+             rather than claiming a live status, because "currently active" that
+             cannot update is a lie at 2am. -->
+        <span class="status-row" id="studio-status"><span class="dot"></span>Open weekdays 9:00 AM – 6:00 PM</span>
         <div class="section-head" style="margin-bottom:var(--space-4)">
           <span class="kicker-pill"><span class="dot"></span>04 · Location</span>
           <h2>Manila HQ</h2>
@@ -851,7 +862,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         </div>
         <div class="info-block">
           <h4>Studio hours</h4>
-          <p>Monday – Friday, 9:00 AM – 6:00 PM (PST)<br />Closed weekends &amp; holidays</p>
+          <!-- Rendered from the same OPERATING_HOURS constant that drives the live
+               status above, so the schedule and the open/closed badge can never
+               disagree. Static text is the no-JS fallback. -->
+          <p id="studio-hours">Monday – Friday, 9:00 AM – 6:00 PM<br />Saturday, 9:00 AM – 2:00 PM<br />Closed Sundays &amp; holidays</p>
         </div>
         <div class="info-block">
           <h4>Contact channels</h4>
@@ -2666,6 +2680,144 @@ function logout() {
       });
     }
   }
+})();
+</script>
+
+<script>
+/* ---- Live studio open/closed status (contact section) ----
+   Replaces the old hardcoded "Studio currently active", which claimed the
+   studio was open at 3am on a Sunday.
+
+   TIMEZONE: the studio's status depends on MANILA time, not the visitor's.
+   A customer browsing from Dubai must see "closed, opens Monday 9:00 AM",
+   not their own local reckoning — so every calculation below is done in
+   Manila terms by shifting the UTC epoch by a fixed +8h. The Philippines
+   has observed no DST since 1978, which is why a fixed offset is correct
+   here and no timezone library is needed. This mirrors exactly what
+   backend/lib/business-hours.js does server-side; keep the two in step.
+
+   SOURCE OF TRUTH: OPERATING_HOURS below is a deliberate copy of
+   DEFAULT_OPERATING_HOURS in backend/lib/business-hours.js (there is no
+   build step and no shared module between backend and this static page).
+   If the backend config changes — or the future Settings API starts
+   writing CONFIG#OPERATING_HOURS — update this too, or the storefront will
+   advertise hours the SLA clock disagrees with. Both the status line AND
+   the "Studio hours" block are rendered from this constant so they cannot
+   drift from each other. */
+(() => {
+  const statusEl = document.getElementById("studio-status");
+  const hoursEl = document.getElementById("studio-hours");
+  if (!statusEl) return;
+
+  const MANILA_OFFSET_MIN = 480; // UTC+8, no DST
+  const OPERATING_HOURS = {
+    sun: null,
+    mon: { open: "09:00", close: "18:00" },
+    tue: { open: "09:00", close: "18:00" },
+    wed: { open: "09:00", close: "18:00" },
+    thu: { open: "09:00", close: "18:00" },
+    fri: { open: "09:00", close: "18:00" },
+    sat: { open: "09:00", close: "14:00" },
+  };
+  const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const CLOSING_SOON_MIN = 60;
+
+  const toMin = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const fmt = (mins) => {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + (m ? ":" + String(m).padStart(2, "0") : ":00") + " " + ampm;
+  };
+
+  // "Now" expressed in Manila wall-clock terms.
+  function manilaNow() {
+    const d = new Date(Date.now() + MANILA_OFFSET_MIN * 60000);
+    return { dow: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  }
+
+  // The next opening at or after `fromDow`, scanning a full week. Returns null
+  // only if every day is closed, which would be a misconfiguration.
+  function nextOpening(fromDow, afterMinutes) {
+    for (let i = 0; i < 8; i++) {
+      const dow = (fromDow + i) % 7;
+      const day = OPERATING_HOURS[DAY_KEYS[dow]];
+      if (!day) continue;
+      const openMin = toMin(day.open);
+      if (i === 0 && afterMinutes >= openMin) continue; // today's window already passed
+      const when = i === 0 ? "today" : (i === 1 ? "tomorrow" : DAY_NAMES[dow]);
+      return { when, time: fmt(openMin) };
+    }
+    return null;
+  }
+
+  function render() {
+    const { dow, minutes } = manilaNow();
+    const today = OPERATING_HOURS[DAY_KEYS[dow]];
+    statusEl.classList.remove("is-closed", "is-soon");
+
+    let label;
+    if (today && minutes >= toMin(today.open) && minutes < toMin(today.close)) {
+      const left = toMin(today.close) - minutes;
+      if (left <= CLOSING_SOON_MIN) {
+        statusEl.classList.add("is-soon");
+        label = "Closing soon — open until " + fmt(toMin(today.close));
+      } else {
+        label = "Studio open now — until " + fmt(toMin(today.close));
+      }
+    } else {
+      statusEl.classList.add("is-closed");
+      const next = nextOpening(dow, minutes);
+      label = next ? "Closed now — opens " + next.when + " at " + next.time : "Closed";
+    }
+    // textContent, not innerHTML — the dot is re-created rather than parsed.
+    statusEl.textContent = "";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    statusEl.appendChild(dot);
+    statusEl.appendChild(document.createTextNode(label));
+  }
+
+  // Render the hours block from the same constant, grouping identical runs
+  // (Mon–Fri collapses to one line) so it reads like a sign on the door.
+  function renderHours() {
+    if (!hoursEl) return;
+    const lines = [];
+    let runStart = null, runSpec = null;
+    const flush = (endDow) => {
+      if (runStart === null) return;
+      const spec = OPERATING_HOURS[DAY_KEYS[runStart]];
+      const range = runStart === endDow ? DAY_NAMES[runStart]
+        : DAY_NAMES[runStart] + " – " + DAY_NAMES[endDow];
+      lines.push(range + ", " + fmt(toMin(spec.open)) + " – " + fmt(toMin(spec.close)));
+      runStart = null; runSpec = null;
+    };
+    const closed = [];
+    for (let dow = 0; dow < 7; dow++) {
+      const day = OPERATING_HOURS[DAY_KEYS[dow]];
+      const key = day ? day.open + "-" + day.close : null;
+      if (!day) { flush(dow - 1); closed.push(DAY_NAMES[dow]); continue; }
+      if (key !== runSpec) { flush(dow - 1); runStart = dow; runSpec = key; }
+    }
+    flush(6);
+    if (closed.length) lines.push("Closed " + closed.join(", ") + " & holidays");
+    hoursEl.textContent = "";
+    lines.forEach((l, i) => {
+      if (i) hoursEl.appendChild(document.createElement("br"));
+      hoursEl.appendChild(document.createTextNode(l));
+    });
+  }
+
+  render();
+  renderHours();
+  // Re-check every minute so a page left open across closing time updates.
+  setInterval(render, 60000);
+  // A backgrounded tab throttles timers; recompute the moment it is seen again.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
 })();
 </script>
 </body>

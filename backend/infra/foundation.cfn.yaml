@@ -8,6 +8,13 @@ Description: >
   rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md
   §2.1/§2.3 for the schema this template must stay in sync with.
 
+  Reused for the staging environment (stack kcmps-foundation-staging,
+  TableName=kcmps-staging, CreateCognitoGroups=false, EnablePitr=false) — see
+  the Node.js 20.x EOL migration's staging build in README.md. Staging reuses
+  the existing kcmps-user-pool-v2 groups rather than creating a second set, so
+  CreateCognitoGroups defaults true (unchanged behavior for the original
+  kcmps-foundation stack) but can be turned off.
+
 Parameters:
   TableName:
     Type: String
@@ -22,7 +29,28 @@ Parameters:
     Description: >
       ID of the EXISTING Cognito User Pool the storefront/dashboard already
       authenticate against. This template adds groups to this pool — it does
-      NOT create a new pool.
+      NOT create a new pool. Ignored when CreateCognitoGroups is false.
+
+  CreateCognitoGroups:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Whether to create the 5 Cognito groups on UserPoolId. Set false when
+      reusing a pool that already has them (e.g. the staging stack reusing
+      kcmps-user-pool-v2's existing groups).
+
+  EnablePitr:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Point-in-time recovery on the table. Off for staging — PITR exists to
+      protect real customer/order data, and staging holds neither.
+
+Conditions:
+  ShouldCreateCognitoGroups: !Equals [!Ref CreateCognitoGroups, "true"]
+  ShouldEnablePitr: !Equals [!Ref EnablePitr, "true"]
 
 Resources:
   KcmpsTable:
@@ -56,13 +84,14 @@ Resources:
           Projection:
             ProjectionType: ALL
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [ShouldEnablePitr, true, false]
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       DeletionProtectionEnabled: true
 
   CustomerGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Customer
@@ -71,6 +100,7 @@ Resources:
 
   ProductionGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Production
@@ -79,6 +109,7 @@ Resources:
 
   SalesGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Sales
@@ -87,6 +118,7 @@ Resources:
 
   FinanceGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Finance
@@ -95,6 +127,7 @@ Resources:
 
   AdminGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Admin

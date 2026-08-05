@@ -237,7 +237,7 @@ drops out of the index automatically.
 
 ## 3. Lambda functions
 
-All code is in `logic-inputs/`. Runtime: **Node.js 20.x**, ARM64
+All code is in `logic-inputs/`. Runtime: **Node.js 24.x**, ARM64
 (`arm64`/Graviton — cheaper, and these are small I/O-bound functions).
 
 | File | Trigger | Purpose |

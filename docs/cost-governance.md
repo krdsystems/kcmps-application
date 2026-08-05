@@ -124,3 +124,23 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
   client-side only; the S3 object lingers until lifecycle collects it. An unauthenticated
   pre-checkout `DELETE` (checkout is guest-friendly, so there is no identity to authorize
   against) is a worse thing to expose than a few orphan objects costing fractions of a centavo.
+- **Staging backend for `dev.kcmps.com`** (`kcmps-foundation-staging` + `kcmps-backend-staging`,
+  applied 2026-08-05 as part of the Node.js 20.x EOL migration) — **~₱3/mo**: DynamoDB on-demand
+  against a table matching prod's current size (~300 items, well under free-tier-adjacent
+  pricing), near-zero API Gateway/Lambda invocation volume (staging traffic is deliberate
+  rehearsal only, not real customers), and CloudWatch log storage at 14-day retention. No PITR
+  (staging holds no data worth protecting), no SES sending (`FROM_EMAIL`/`SES_SENDER` env vars
+  omitted — staging can never email a real customer by construction, not by discipline). Chosen
+  over skipping staging entirely because the AWS cost was never the blocker — the labor cost of a
+  second Lambda deploy target was — and chosen over parameterizing it away because
+  `dev.kcmps.com` sharing production's backend meant every "safe to rehearse on dev" claim in
+  this repo was false for anything past static HTML.
+- **GuardDuty Malware Protection added to the staging bucket too** (plan
+  `b2cfe8b34e713cef6b48`, applied 2026-08-05, hours after the entry above) — **~₱0/mo**, staging's
+  volume is nowhere near the 1GB/1,000-object free tier. Reverses the "skip GuardDuty on staging"
+  call from the entry above: that turned out not to be a cosmetic gap but a dead end — the
+  read-path "fail closed" rule (no scan verdict = no download link, ever) means an attachment
+  uploaded to a bucket with no GuardDuty plan watching it stays stuck at "Scanning…" permanently.
+  Found via the owner's own real use of the new staging environment within hours of it shipping.
+  See `docs/history.md` entry 69 for the full story, including a second bug (an unfiltered
+  EventBridge rule pattern) this surfaced along the way.

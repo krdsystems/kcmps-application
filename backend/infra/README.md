@@ -206,7 +206,7 @@ aws s3api get-bucket-cors --bucket kcmps-payment-uploads-est-2026 --profile kcmp
 
 ## Checkout Lambdas — deployed (2026-07-31)
 
-`kcmps-create-order` and `kcmps-submit-payment-proof`, both `nodejs20.x`/`arm64` in
+`kcmps-create-order` and `kcmps-submit-payment-proof`, both `nodejs24.x`/`arm64` in
 `ap-southeast-1`, built from `backend/checkout/*.js` (see that folder's header comments for
 what each does). Neither is reachable from the internet yet — no API Gateway route exists, so
 they can only be invoked directly (`aws lambda invoke`) or by whatever wires the storefront to
@@ -245,6 +245,91 @@ aws lambda update-function-code \
   --zip-file fileb://create-order.zip \
   --region ap-southeast-1 --profile kcmps-claude-priv
 ```
+
+**Bump the runtime** (e.g. the next Node.js EOL cycle) is a *different* command —
+`update-function-code` never touches `Runtime`, and there's no template that holds the
+runtime value (all 17 Lambdas were created by CLI, not CloudFormation):
+
+```bash
+aws lambda update-function-configuration \
+  --function-name kcmps-create-order \
+  --runtime nodejs24.x \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+aws lambda wait function-updated-v2 --function-name kcmps-create-order \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Rehearse on the staging stack first (see "Staging" below) — this exact command flipped
+all 17 functions from `nodejs20.x` to `nodejs24.x` on 2026-08-05 (the Node.js 20.x EOL
+migration), one at a time in blast-radius order, verifying `CodeSha256` was unchanged
+and `State: Active` after each before moving to the next. Rollback is the same command
+with `--runtime nodejs20.x` — available until AWS blocks function updates on the old
+runtime (currently Mar 3 2027 for `nodejs20.x`; check
+https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html for current dates).
+
+## Staging — kcmps-foundation-staging / kcmps-backend-staging (2026-08-05)
+
+`dev.kcmps.com` used to be S3-content-only, sharing production's Lambdas/API/table —
+there was no way to rehearse a backend change before it went live. Built during the
+Node.js 20.x EOL migration as the natural place to prove the new runtime before
+flipping production, and now stands as a permanent rehearsal environment for any future
+backend change:
+
+- **`kcmps-foundation-staging`** — `backend/infra/foundation.cfn.yaml` reused with
+  `TableName=kcmps-staging`, `CreateCognitoGroups=false` (staging reuses
+  `kcmps-user-pool-v2`'s existing groups), `EnablePitr=false`. Also created by hand:
+  S3 bucket `kcmps-payment-uploads-staging` (versioned, SSE, CORS scoped to
+  `dev.kcmps.com`/localhost only, no lifecycle rules — disposable data) and
+  `kcmps-lambda-artifacts-staging` (holds the deployment zips CloudFormation reads
+  `AWS::Lambda::Function.Code` from).
+- **`kcmps-backend-staging`** — `backend/infra/backend-lambdas.cfn.yaml` (new,
+  first-ever CloudFormation-managed Lambdas in this repo): all 17 functions, 4 IAM
+  roles, log groups, the HTTP API + JWT authorizer + 13 routes + CORS, 3 EventBridge
+  rules, the DynamoDB Streams trigger, and a DLQ — same shape as production, built
+  entirely from parameters (`EnvName`, `Runtime`, `TableName`, `UploadsBucket`,
+  `ArtifactsBucket`/`ArtifactsPrefix`). Deploy/update:
+  ```bash
+  aws cloudformation deploy \
+    --stack-name kcmps-backend-staging \
+    --template-file backend/infra/backend-lambdas.cfn.yaml \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --parameter-overrides \
+      TableStreamArn=<kcmps-foundation-staging's TableStreamArn output> \
+      ArtifactsPrefix=<S3 key prefix under kcmps-lambda-artifacts-staging holding this build's zips> \
+    --region ap-southeast-1 --profile kcmps-claude-priv
+  ```
+  Reuses `kcmps-user-pool-v2` (same pool prod's authorizer validates against), so a
+  real logged-in customer/staff JWT works against staging unmodified.
+- **Frontend routing**: `website/store.js`'s `CHECKOUT_API_BASE`,
+  `website/orders-data.js`'s `API_BASE`, and `website/dashboard/dashboard-data.js`'s
+  `API_BASE` all branch on `location.hostname === "dev.kcmps.com"` to point at
+  staging's API instead of production's — a runtime check, not build-time, since
+  `website/` has no build step. Every page whose CSP `connect-src` lists the
+  production API/uploads-bucket host must list the staging equivalents too.
+- **Rehearsal workflow for any future backend change**: rebuild the changed
+  function's zip, upload it to `kcmps-lambda-artifacts-staging` under a new prefix,
+  `aws cloudformation deploy` the updated `ArtifactsPrefix`, sync `website/` to the
+  `dev-site/` prefix, exercise it on `dev.kcmps.com`, *then* repeat the change against
+  production. `dev.kcmps.com` is Basic-Auth gated — see `storefront-infra/CLAUDE.md`.
+- **Cost**: ~₱3/mo (DynamoDB on-demand against ~300 items, near-zero API Gateway/
+  Lambda invocations, log storage) — see `docs/cost-governance.md`'s decision log.
+- **GuardDuty Malware Protection is enabled on the staging bucket** (plan
+  `b2cfe8b34e713cef6b48`, added 2026-08-05 — see `docs/history.md` entry 69), same 4
+  prefixes as production, reusing the `kcmps-guardduty-malware-s3` IAM role via a
+  second bucket-scoped inline policy. Skipping it was tried first and turned out to be
+  a real dead end, not a cosmetic gap: `get-messages.js`'s "fail closed" read rule means
+  an attachment with no scan verdict never gets a download link, so any staging
+  attachment test would hang at "Scanning…" forever with no GuardDuty plan watching
+  that bucket. Both environments' GuardDuty EventBridge rules
+  (`kcmps-guardduty-scan-result` / `kcmps-staging-guardduty-scan-result`) filter on
+  `detail.s3ObjectDetails.bucketName` — **do not remove that filter**, the account has
+  one EventBridge bus and an unfiltered rule matches scan events from *either* bucket,
+  as entry 69 found the hard way (a production upload's scan verdict got duplicated
+  into the staging table before the filter existed).
+- **What staging deliberately doesn't have**: PITR, Cognito `PostConfirmation` wiring
+  (would displace production's — that Lambda's trigger is tested via direct/synthetic
+  invoke instead), and SES sending (`FROM_EMAIL`/`SES_SENDER` env vars are omitted, so
+  staging never emails a real customer).
 
 ## API Gateway — deployed (2026-07-31)
 
@@ -428,7 +513,7 @@ infra (same bucket as GCash proof uploads, same `kcmps-staff-api-lambda-role`).
 |---|---|---|
 | POST | `/orders/{orderId}/correspondence` | `kcmps-add-correspondence` (new) |
 
-`kcmps-add-correspondence` is a new Lambda on `kcmps-staff-api-lambda-role` (nodejs20.x, arm64,
+`kcmps-add-correspondence` is a new Lambda on `kcmps-staff-api-lambda-role` (nodejs24.x, arm64,
 256MB/10s, same shape as its siblings), env vars `TABLE_NAME`/`UPLOADS_BUCKET`
 (`kcmps-payment-uploads-est-2026` — same bucket `submit-payment-proof.js` already uses). JWT
 authorizer attached, scoped `lambda:AddPermission`, 30-day log retention set at creation.
@@ -469,7 +554,7 @@ Lambda.
 |---|---|---|---|
 | POST | `/design-uploads` | `kcmps-upload-design-file` (new) | **None** — guest checkout, same as `POST /orders` |
 
-New Lambda `kcmps-upload-design-file` on the existing `kcmps-checkout-lambda-role` (nodejs20.x,
+New Lambda `kcmps-upload-design-file` on the existing `kcmps-checkout-lambda-role` (nodejs24.x,
 arm64, 256MB/10s), env `UPLOADS_BUCKET=kcmps-payment-uploads-est-2026`, 30-day log retention set
 at creation. Route throttled to **10 req/s burst 20**, matching `POST /orders` — it is an
 unauthenticated write primitive, so it does not get the default (unlimited) setting.
@@ -526,7 +611,7 @@ destruction of infected objects.
 `correspondence/`. Widened with `update-malware-protection-plan`; status re-checked `ACTIVE`.
 
 **New Lambda `kcmps-handle-scan-result`** (`backend/jobs/handle-scan-result.js`) on the existing
-`kcmps-jobs-lambda-role`, nodejs20.x/arm64/256MB/**60s**, `TABLE_NAME=kcmps`, 30-day log
+`kcmps-jobs-lambda-role`, nodejs24.x/arm64/256MB/**60s**, `TABLE_NAME=kcmps`, 30-day log
 retention. Triggered by EventBridge rule `kcmps-guardduty-scan-result`
 (`source: aws.guardduty`, detail-type `GuardDuty Malware Protection Object Scan Result`) with a
 scoped `lambda:AddPermission`.
@@ -563,7 +648,7 @@ uploaded alongside scanned `NO_THREATS_FOUND` and came back downloadable.
 
 ## `auth/` — Cognito PostConfirmation trigger (deployed 2026-08-03)
 
-`kcmps-post-confirmation`, `nodejs20.x`/`arm64`, `ap-southeast-1`, built from
+`kcmps-post-confirmation`, `nodejs24.x`/`arm64`, `ap-southeast-1`, built from
 `backend/auth/post-confirmation.js`. Auto-adds every self-signup to the `Customer` Cognito
 group — see `docs/history.md` entry 62 for the full trigger, including why the handler
 deliberately never throws.

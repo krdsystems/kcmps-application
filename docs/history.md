@@ -2834,6 +2834,130 @@ generic photo via `thumbImage()`. Real photos still needed at
 `website/assets/printing-office-supplies/print-rush-id.jpg`, `print-scan.jpg`,
 `print-inkjet-photo.jpg` before they look visually distinct in the grid.
 
+### 67. Node.js 20.x Lambda EOL migration, plus a real staging backend for dev.kcmps.com (2026-08-05)
+
+AWS notified the account that `nodejs20.x` (the runtime all 17 deployed Lambdas ran on)
+had reached end-of-life. AWS's own deprecation table (checked live, not recalled) put
+function-update blocking at Mar 3 2027 — no outage risk, but unpatched, and `nodejs22.x`
+itself would only buy ~8 more months before repeating the exercise. Chose `nodejs24.x`
+(Active LTS, Lambda deprecation Apr 30 2028) as the target.
+
+**The bigger finding wasn't the runtime — it was that `dev.kcmps.com` had no backend of
+its own.** It was S3-content-only, sharing production's Lambdas/API/DynamoDB table, so
+every "safe to rehearse on dev first" claim in this repo was false for anything past
+static HTML. Building staging was chosen as the vehicle for the runtime migration itself
+(not a prerequisite project) — the AWS cost was never the blocker (~₱3/mo, see
+`docs/cost-governance.md`), the *labor* cost of maintaining a second manually-deployed
+Lambda fleet was. Solved by making `backend/infra/backend-lambdas.cfn.yaml` — the first
+CloudFormation-managed Lambdas in this repo — parameterized enough to stand up either
+environment, then deploying it once as `kcmps-backend-staging`.
+
+**De-risking move that mattered most:** separating the runtime change from dependency
+drift. There are no `package-lock.json` files anywhere in `backend/` — a fresh
+`npm install` would resolve `^3.600.0` to whatever AWS SDK v3 shipped that week, so
+building staging from source would have rehearsed a *different* codebase on the new
+runtime, not production's actual code. Instead, all 17 deployed zips were downloaded via
+`aws lambda get-function`'s presigned URL, sha256-verified byte-identical against each
+function's live `CodeSha256`, and staging was built from those exact artifacts. The
+production flip was then `update-function-configuration --runtime` only, never
+`update-function-code` — `CodeSha256` was checked unchanged after every single one of
+the 17 flips. Lockfiles were generated and committed afterward so the *next* rebuild is
+reproducible.
+
+**What actually shipped:**
+1. `backend/infra/foundation.cfn.yaml` gained `CreateCognitoGroups`/`EnablePitr`
+   parameters (both defaulting to today's behavior — verified via an empty changeset
+   against the live `kcmps-foundation` stack before touching anything), reused as
+   `kcmps-foundation-staging` (table `kcmps-staging`, no PITR, reusing
+   `kcmps-user-pool-v2`'s existing groups rather than creating a second set).
+2. `backend/infra/backend-lambdas.cfn.yaml` (new): all 17 functions, 4 IAM roles, log
+   groups, the HTTP API + JWT authorizer + 13 routes + CORS, 3 EventBridge rules, the
+   DynamoDB Streams trigger, a DLQ — deployed as `kcmps-backend-staging`, CREATE_COMPLETE
+   on the first attempt.
+3. `website/store.js`/`orders-data.js`/`dashboard/dashboard-data.js` each gained a
+   `location.hostname === "dev.kcmps.com"` branch (runtime check, not build-time — this
+   repo has no build step) routing to staging's API instead of production's. Every
+   page's CSP `connect-src` was extended to allow both hosts.
+4. Rehearsed on staging via the *actual* checkout UI on `dev.kcmps.com` (not just direct
+   Lambda invokes) — placed a real order through the live cart/checkout flow, confirmed
+   it landed in `kcmps-staging` via the DB rather than the network monitor (which
+   doesn't capture in-page `fetch()` calls in this environment). All 17 functions also
+   exercised individually by direct invoke; every response was a correct success or a
+   correct business-logic rejection — zero runtime crashes, zero import/require errors.
+5. `backend/infra/observability.cfn.yaml` extended from 7 to all 17 functions'
+   Errors/Throttles alarm pairs *before* touching production, verified as a pure-`Add`
+   changeset first. The 10 previously-uncovered: `cancel-order`, `lookup-order`,
+   `upload-design-file`, `get-messages`, `send-message`, `get-unread-messages`,
+   `add-correspondence`, `handle-scan-result`, `notify-unread-messages`,
+   `post-confirmation`.
+6. Production flip: all 17 functions, one at a time in blast-radius order (read-only
+   staff → guest read → staff write → guest write/revenue → async jobs →
+   `streams-handler` → `post-confirmation` last), `CodeSha256` and alarm state checked
+   after each. Closed with a real order placed through the live `kcmps.com` checkout UI
+   (phone-only contact, no email, specifically to avoid triggering a real SES send to a
+   fake customer) — confirmed `create-order` and `streams-handler` both ran correctly on
+   `nodejs24.x` end-to-end, then the test order was deleted.
+
+**Found along the way, not caused by this migration:**
+- `kcmps-create-order`/`kcmps-cancel-order`'s `COGNITO_USER_POOL_ID` env vars had
+  apparently pointed at the *retired* Cognito pool rather than the `kcmps-user-pool-v2`
+  the API Gateway authorizer actually validates against — by the time this was checked
+  directly (mid-migration), the env vars already showed the correct pool v2 values
+  (`LastModified` timestamped earlier the same day), so it was fixed by someone/something
+  else before this session touched it. Not this migration's doing; flagged here so the
+  timeline is on record.
+- `kcmps-lambda-dlq` had one stale message from 2026-08-03 — `notify-unread-messages`
+  hit an `AccessDeniedException` on `dynamodb:Scan` at that time. The role's inline
+  policy already grants `Scan` as of this session, so that gap was closed days before
+  this migration too; the DLQ message itself was left in place (not this migration's
+  data to clear) and the alarm it drives was still `ALARM` throughout the entire runtime
+  flip — worth noting as a false-positive-risk pattern: an unrelated pre-existing alarm
+  can mask whether a new one fires during a change window.
+- `website/index.html`/`orders-data.js`/`dashboard/dashboard-shell.js`'s `COGNITO_CONFIG`
+  all still pointed at the old retired pool's Hosted UI domain/client — see entry 68,
+  fixed the same day once the user reported login broken site-wide.
+
+### 68. Site-wide login outage: old Cognito pool was deleted, frontend never repointed (2026-08-05)
+
+Reported by the owner as `ERR_NAME_NOT_RESOLVED` on
+`ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com`. Root cause: the old
+Cognito user pool `ap-southeast-1_iDvAEumNp` **no longer exists** —
+`aws cognito-idp describe-user-pool` returns `ResourceNotFoundException` — which tore
+down its Hosted UI domain along with it. Three frontend files still hardcoded that
+domain, the old pool's client ID, and (for `index.html`) an `email openid profile
+phone` scope string: `website/index.html`, `website/orders-data.js`,
+`website/dashboard/dashboard-shell.js`. Every login surface on the site — main-site
+login/signup, dashboard staff login, and customer order-tracking login — was broken,
+not just one page. This is the same retired-pool pattern flagged (and by-then-already-
+fixed by someone else) in entry 67's `create-order`/`cancel-order` env vars — the
+frontend's Cognito config had just never been migrated when the account moved to
+`kcmps-user-pool-v2`.
+
+**Fix:** repointed all three files at pool v2's actual values — domain
+`https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com` (pool v2's real custom
+subdomain, not a guessed auto-generated one — read via `describe-user-pool`), client
+`2rsbhkjooja4h5e0ijpl4siuug` (`kcmps-web-client`), pool ID
+`ap-southeast-1_LHJsFdCgo`. Also dropped `phone` from `index.html`'s requested scopes
+— `kcmps-web-client`'s `AllowedOAuthScopes` on pool v2 is `email openid profile` only,
+so requesting `phone` would have failed the redirect with `invalid_scope` even after
+the domain was fixed. Verified directly against the OAuth `/oauth2/authorize` endpoint
+(not just "the button doesn't 404") — a live `curl` with the new client/scope/redirect
+params returned a real `302` to Cognito's hosted login page, not `invalid_client` or
+`invalid_scope`.
+
+**Also removed:** `website/login-test.html`, the original standalone Hosted-UI
+proof-of-concept (see entry 5) that the working `index.html` flow was ported from back
+in 2026-07 — same dead-pool references, and the owner judged it no longer worth keeping
+as a reference now that the real flow is stable. Deleted from the repo and from the
+`dev-site/` S3 prefix; **left in place in the production bucket root** at the owner's
+explicit instruction ("don't promote to production, just to dev.kcmps.com") — this
+whole fix (login-test.html removal included) is staged on `dev.kcmps.com` only as of
+this entry, not yet promoted live.
+
+**Verification:** confirmed on `dev.kcmps.com` only — `COGNITO_CONFIG` read back
+correct values in-browser, and the `/oauth2/authorize` `curl` check above. Production
+(`kcmps.com`) still runs the old broken config until the owner promotes this sync.
+
 ## Auth implementation notes
 
 Building `login-test.html` surfaced several non-obvious problems specific to doing OAuth from
@@ -2890,3 +3014,64 @@ The ID token is decoded in the browser to read `name` and `cognito:groups` for U
 constraint to carry forward: any backend that later receives a token from this app must
 independently verify its signature against Cognito's JWKS. Client-decoded claims must never
 be trusted server-side just because the UI already displayed them.
+
+### 69. dev.kcmps.com's own CSP still pointed at the old Cognito domain (login fix, cont'd); GuardDuty coverage gap on staging (2026-08-05)
+
+Two follow-ups from entries 67/68, both found through the owner actively using
+`dev.kcmps.com` right after it got a real backend.
+
+**a. The CSP fix in entry 68 was incomplete.** `website/index.html`/`orders.html`/
+`order-detail.html`'s `COGNITO_CONFIG.domain` got repointed at `kcmps-auth.auth...`
+(pool v2's real domain), but each page's CSP `connect-src` meta tag still allow-listed
+only the *old* dead domain — so the OAuth *redirect* worked (browser navigation isn't
+CSP-restricted), but the token-exchange `fetch()` call afterward was silently blocked
+by the browser, throwing and landing in `handleAuthRedirect()`'s catch block as
+"Sign-in failed. You can close this window." Confirmed by reproducing the full flow
+directly: filled the real Cognito Hosted UI login form with a real test account
+(`newsignuptest`), got a real authorization code back, and traced the failure to the
+CSP violation specifically — the token endpoint fetch, not the authorize redirect.
+Fixed by adding `kcmps-auth.auth.ap-southeast-1.amazoncognito.com` to `connect-src` on
+all three pages (`ap-southeast-1idvaeumnp...`, the dead domain, removed). Staged on
+`dev.kcmps.com` only per the owner's explicit instruction not to promote to production
+yet.
+
+**b. Staging attachments got permanently stuck at "Scanning…".** The owner tested the
+order-message attachment feature for real on `dev.kcmps.com` (a genuine use of the new
+staging environment, not this session's own testing) and hit a dead end: `get-messages.js`'s
+"fail closed" rule (no GuardDuty verdict = no download link, ever) meant an attachment
+on staging could never resolve, because Phase 1 of the Node.js 20.x EOL migration
+(entry 67) deliberately skipped enabling GuardDuty Malware Protection on the staging
+bucket as a cost-governance call — without registering that this makes any staging
+attachment test a permanent dead end, not a cosmetic gap. Root-caused by checking the
+*production* bucket first (empty, as expected — staging traffic never touches it) before
+finding the file safely landed in `kcmps-payment-uploads-staging`.
+
+Fixed by creating a second GuardDuty Malware Protection Plan
+(`b2cfe8b34e713cef6b48`) on `kcmps-payment-uploads-staging`, same 4 prefixes as
+production, reusing the existing `kcmps-guardduty-malware-s3` IAM role (its trust
+policy was already generic — `malware-protection-plan/*` — so only a second inline
+policy statement set scoped to the staging bucket was needed, not a new role). Cost:
+effectively ₱0, staging's volume is nowhere near the 1GB/1,000-object free tier.
+
+**A second, more interesting bug fell out of debugging (b):** both GuardDuty
+EventBridge rules — production's original `kcmps-guardduty-scan-result` *and* the new
+`kcmps-staging-guardduty-scan-result` added in entry 67 — matched on
+`source`/`detail-type` only, no bucket filter. The account has one EventBridge bus, so
+once two GuardDuty malware-protection plans existed, **every scan event fired both
+rules**, regardless of which bucket the file was actually in. Caught in the act: this
+session's own presigned-upload regression test (against the *production* bucket) got
+processed by production's `kcmps-handle-scan-result` as expected, but its scan-verdict
+record also landed in the *staging* table via `kcmps-staging-handle-scan-result` — an
+identical duplicate `SCAN#s3://...` item, cross-environment. No data was corrupted (the
+duplicate content was correct, just redundantly written into the wrong table), but the
+isolation contract staging exists for was silently broken from the moment the second
+plan went live. Fixed both rules with an explicit
+`detail.s3ObjectDetails.bucketName` filter — production's via CLI
+(`aws events put-rule`), staging's in `backend/infra/backend-lambdas.cfn.yaml`
+(`!Ref UploadsBucket`) and redeployed.
+
+**Not backfilled:** the owner's 3 pre-existing staging test uploads (attached to test
+order `ORD-344FACB480`, already `Cancelled`) stay permanently unscanned — S3 malware
+protection plans only watch for new `PutObject` events from their creation forward,
+there is no retroactive scan for objects that predate the plan. Re-uploading is the fix,
+not worth building tooling around for three throwaway test files.

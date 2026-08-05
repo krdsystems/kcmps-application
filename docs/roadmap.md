@@ -160,7 +160,7 @@ can't be fulfilled from an online order alone.
   already has `AdministratorAccess` attached (see `docs/history.md`'s audit entry), but the
   Lambda's own execution role was still built least-privilege regardless, since the deploying
   profile's permissions and what the function itself can do are two separate things.
-  `kcmps-create-order` and `kcmps-submit-payment-proof` both `nodejs20.x`/`arm64` in
+  `kcmps-create-order` and `kcmps-submit-payment-proof` both `nodejs24.x`/`arm64` in
   `ap-southeast-1`, each bundled with its own copy of `backend/lib/` (no Lambda Layer yet — two
   small functions didn't justify one). Smoke-tested with a synthetic guest order via direct
   `aws lambda invoke` (not through API Gateway, which doesn't exist yet): order created with

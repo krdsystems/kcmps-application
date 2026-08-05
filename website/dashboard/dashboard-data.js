@@ -62,7 +62,12 @@
      Uses the ID token (not the access token) from sessionStorage's
      kcmps_tokens — the JWT authorizer and the Lambdas' role checks both
      need `aud` and `cognito:groups`, which only the ID token carries. */
-  const API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  // dev.kcmps.com routes staff dashboard pages to the staging backend too
+  // (kcmps-backend-staging, API id 162ufc121j) — same branch as store.js's
+  // CHECKOUT_API_BASE / orders-data.js's API_BASE.
+  const API_BASE = (typeof location !== "undefined" && location.hostname === "dev.kcmps.com")
+    ? "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com"
+    : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
   const TOKEN_STORAGE_KEY = "kcmps_tokens";
   function idToken() {
     try {

@@ -1,0 +1,745 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  KCMPS staging backend — all 17 Lambdas + the checkout/staff HTTP API + EventBridge
+  schedules + the DynamoDB Streams trigger, as CloudFormation. Built during the
+  Node.js 20.x EOL migration (backend/infra/README.md's "Staging" section) to give
+  dev.kcmps.com its own backend instead of sharing production's. Not staging-specific
+  by construction — same file could later, deliberately, stand up a CFN-managed
+  production stack — but only ever deploy this as kcmps-backend-staging for now.
+  Lambda code comes from S3 (ArtifactsBucket/ArtifactsPrefix/<fn>.zip), never inlined.
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: staging
+    Description: Short environment tag, used in resource names (kcmps-<EnvName>-<fn>).
+
+  Runtime:
+    Type: String
+    Default: nodejs24.x
+    Description: >
+      Lambda runtime identifier for every function in this stack. The single point of
+      truth this migration exists to create — bumping this one value and redeploying
+      is what a future Node.js EOL migration should look like instead of 17 CLI calls.
+
+  TableName:
+    Type: String
+    Default: kcmps-staging
+    Description: DynamoDB table this environment's Lambdas read/write (from kcmps-foundation-staging's TableName output).
+
+  TableStreamArn:
+    Type: String
+    Description: Stream ARN of TableName (from kcmps-foundation-staging's TableStreamArn output).
+
+  UploadsBucket:
+    Type: String
+    Default: kcmps-payment-uploads-staging
+    Description: S3 bucket for payment proofs / design uploads / message & correspondence attachments.
+
+  ArtifactsBucket:
+    Type: String
+    Default: kcmps-lambda-artifacts-staging
+    Description: S3 bucket holding the per-function deployment zips.
+
+  ArtifactsPrefix:
+    Type: String
+    Description: >
+      S3 key prefix under ArtifactsBucket, e.g. "node20-eol-migration-2026-08-05" — the
+      folder holding <function-name>.zip for all 17 functions, one immutable snapshot.
+
+  CognitoUserPoolId:
+    Type: String
+    Default: ap-southeast-1_LHJsFdCgo
+    Description: Existing Cognito user pool (kcmps-user-pool-v2) — same pool prod's API Gateway authorizer already uses.
+
+  CognitoClientId:
+    Type: String
+    Default: 2rsbhkjooja4h5e0ijpl4siuug
+    Description: Existing app client (kcmps-web-client) on CognitoUserPoolId.
+
+  SesSenderIdentity:
+    Type: String
+    Default: kcmps.com
+    Description: SES identity ARN suffix — IAM grant only. FROM_EMAIL/SES_SENDER env vars stay unset (dark), matching notify-unread-messages.js's existing pattern, so staging never actually sends customer email.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Dead-letter queue (shared by streams-handler's OnFailure destination and
+  # expire-pending-orders' async invoke config — same split as prod's
+  # kcmps-lambda-dlq in observability.cfn.yaml)
+  # ---------------------------------------------------------------------------
+  LambdaDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub kcmps-${EnvName}-lambda-dlq
+      MessageRetentionPeriod: 345600
+
+  # ---------------------------------------------------------------------------
+  # IAM roles — one per module, mirroring prod's kcmps-checkout-lambda-role /
+  # kcmps-staff-api-lambda-role / kcmps-jobs-lambda-role /
+  # kcmps-post-confirmation-lambda-role, scoped to this environment's table/bucket.
+  # ---------------------------------------------------------------------------
+  CheckoutLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-checkout-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: checkout-inline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TableAccess
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/index/*
+              - Sid: PaymentScreenshotUpload
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/payments/*
+              - Sid: DesignFileUpload
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/design-uploads/*
+              - Sid: SendCheckoutEmail
+                Effect: Allow
+                Action: ses:SendEmail
+                Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderIdentity}
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+
+  StaffApiLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-staff-api-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: staff-api-inline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TableReadWrite
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/index/*
+              - Sid: TableTransact
+                Effect: Allow
+                Action: dynamodb:TransactWriteItems
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+              - Sid: SendVerificationEmail
+                Effect: Allow
+                Action: [ses:SendEmail, ses:SendRawEmail]
+                Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderIdentity}
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: staff-api-s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PaymentProofRead
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/payments/*
+              - Sid: CorrespondenceAttachments
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/correspondence/*
+              - Sid: MessageAttachments
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/messages/*
+              - Sid: DesignFileRead
+                Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectTagging]
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/design-uploads/*
+
+  JobsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-jobs-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: jobs-inline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TableReadWrite
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/index/*
+              - Sid: TableTransact
+                Effect: Allow
+                Action: dynamodb:TransactWriteItems
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}
+              - Sid: StreamsRead
+                Effect: Allow
+                Action: [dynamodb:DescribeStream, dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:ListStreams]
+                Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TableName}/stream/*
+              - Sid: SesSend
+                Effect: Allow
+                Action: [ses:SendEmail, ses:SendRawEmail]
+                Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesSenderIdentity}
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+        - PolicyName: jobs-dlq-write
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt LambdaDlq.Arn
+        - PolicyName: jobs-s3-quarantine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: QuarantineInfectedUploads
+                Effect: Allow
+                Action: [s3:DeleteObject, s3:DeleteObjectVersion]
+                Resource:
+                  - !Sub arn:aws:s3:::${UploadsBucket}/design-uploads/*
+                  - !Sub arn:aws:s3:::${UploadsBucket}/payments/*
+                  - !Sub arn:aws:s3:::${UploadsBucket}/messages/*
+                  - !Sub arn:aws:s3:::${UploadsBucket}/correspondence/*
+              - Sid: ListVersionsForQuarantine
+                Effect: Allow
+                Action: s3:ListBucketVersions
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}
+
+  PostConfirmationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kcmps-${EnvName}-post-confirmation-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: post-confirmation-cognito-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: cognito-idp:AdminAddUserToGroup
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kcmps-${EnvName}-post-confirmation*
+
+  # ---------------------------------------------------------------------------
+  # Log groups — 14-day retention for staging (shorter than prod's 30-day
+  # convention in backend/CLAUDE.md; staging logs lose their debugging value
+  # faster since nothing here is a real customer incident).
+  # ---------------------------------------------------------------------------
+  CreateOrderLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-create-order", RetentionInDays: 14 } }
+  SubmitPaymentProofLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-submit-payment-proof", RetentionInDays: 14 } }
+  UploadDesignFileLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-upload-design-file", RetentionInDays: 14 } }
+  LookupOrderLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-lookup-order", RetentionInDays: 14 } }
+  CancelOrderLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-cancel-order", RetentionInDays: 14 } }
+  GetOrdersLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-orders", RetentionInDays: 14 } }
+  AdvanceLineItemLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-advance-line-item", RetentionInDays: 14 } }
+  VerifyPaymentLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-verify-payment", RetentionInDays: 14 } }
+  GetMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-messages", RetentionInDays: 14 } }
+  SendMessageLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-send-message", RetentionInDays: 14 } }
+  GetUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-unread-messages", RetentionInDays: 14 } }
+  AddCorrespondenceLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-add-correspondence", RetentionInDays: 14 } }
+  StreamsHandlerLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-streams-handler", RetentionInDays: 14 } }
+  ExpirePendingOrdersLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-expire-pending-orders", RetentionInDays: 14 } }
+  NotifyUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-notify-unread-messages", RetentionInDays: 14 } }
+  HandleScanResultLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-handle-scan-result", RetentionInDays: 14 } }
+  PostConfirmationLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-post-confirmation", RetentionInDays: 14 } }
+
+  # ---------------------------------------------------------------------------
+  # Lambda functions — 17, all arm64/index.handler, code from the shared
+  # artifact snapshot. Env vars mirror prod's configs/*.json snapshot exactly,
+  # except FROM_EMAIL/SES_SENDER are omitted (SES stays dark on staging) and
+  # UPLOADS_BUCKET/TABLE_NAME/Cognito point at this environment's resources.
+  # ---------------------------------------------------------------------------
+  CreateOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateOrderLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-create-order
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-create-order.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET: !Ref UploadsBucket
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+
+  SubmitPaymentProofFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SubmitPaymentProofLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-submit-payment-proof
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-submit-payment-proof.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET: !Ref UploadsBucket
+          VERIFICATION_SLA_HOURS: "48"
+
+  UploadDesignFileFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: UploadDesignFileLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-upload-design-file
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-upload-design-file.zip" }
+      Environment:
+        Variables:
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  LookupOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LookupOrderLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-lookup-order
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-lookup-order.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  CancelOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CancelOrderLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-cancel-order
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt CheckoutLambdaRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-cancel-order.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+
+  GetOrdersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetOrdersLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-orders
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-orders.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  AdvanceLineItemFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AdvanceLineItemLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-advance-line-item
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-advance-line-item.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  VerifyPaymentFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: VerifyPaymentLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-verify-payment
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-verify-payment.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  GetMessagesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetMessagesLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-messages
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-messages.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  SendMessageFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SendMessageLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-send-message
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-send-message.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  GetUnreadMessagesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetUnreadMessagesLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-unread-messages
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-unread-messages.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  AddCorrespondenceFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: AddCorrespondenceLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-add-correspondence
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-add-correspondence.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  StreamsHandlerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: StreamsHandlerLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-streams-handler
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt JobsLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-streams-handler.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  ExpirePendingOrdersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ExpirePendingOrdersLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-expire-pending-orders
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt JobsLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-expire-pending-orders.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  NotifyUnreadMessagesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: NotifyUnreadMessagesLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-notify-unread-messages
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt JobsLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-notify-unread-messages.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  HandleScanResultFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: HandleScanResultLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-handle-scan-result
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt JobsLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 60
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-handle-scan-result.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  PostConfirmationFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PostConfirmationLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-post-confirmation
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt PostConfirmationLambdaRole.Arn
+      MemorySize: 128
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-post-confirmation.zip" }
+
+  # ---------------------------------------------------------------------------
+  # HTTP API — same 13 routes/shape as prod's kcmps-checkout-api, same Cognito
+  # JWT authorizer config (literally the same pool/client, since staging reuses
+  # kcmps-user-pool-v2). CORS scoped to staging origins only.
+  # ---------------------------------------------------------------------------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub kcmps-checkout-api-${EnvName}
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: [https://dev.kcmps.com, http://localhost:5500, http://localhost:5501]
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [content-type, authorization]
+        MaxAge: 300
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  JwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      Name: !Sub kcmps-cognito-jwt-${EnvName}
+      AuthorizerType: JWT
+      IdentitySource: ["$request.header.Authorization"]
+      JwtConfiguration:
+        Audience: [!Ref CognitoClientId]
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
+
+  # -- Integrations (Lambda proxy, one per function that's API-invoked) --
+  CreateOrderIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt CreateOrderFunction.Arn, PayloadFormatVersion: "2.0" } }
+  SubmitPaymentProofIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SubmitPaymentProofFunction.Arn, PayloadFormatVersion: "2.0" } }
+  UploadDesignFileIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt UploadDesignFileFunction.Arn, PayloadFormatVersion: "2.0" } }
+  LookupOrderIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt LookupOrderFunction.Arn, PayloadFormatVersion: "2.0" } }
+  CancelOrderIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt CancelOrderFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetOrdersIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetOrdersFunction.Arn, PayloadFormatVersion: "2.0" } }
+  AdvanceLineItemIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt AdvanceLineItemFunction.Arn, PayloadFormatVersion: "2.0" } }
+  VerifyPaymentIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt VerifyPaymentFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
+  SendMessageIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SendMessageFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetUnreadMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetUnreadMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
+  AddCorrespondenceIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt AddCorrespondenceFunction.Arn, PayloadFormatVersion: "2.0" } }
+
+  # -- Routes (13, matching prod's route table exactly) --
+  RouteCreateOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders", Target: !Sub "integrations/${CreateOrderIntegration}" } }
+  RouteSubmitPaymentProof: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/payment-proof", Target: !Sub "integrations/${SubmitPaymentProofIntegration}" } }
+  RouteUploadDesignFile: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /design-uploads", Target: !Sub "integrations/${UploadDesignFileIntegration}" } }
+  RouteLookupOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/lookup", Target: !Sub "integrations/${LookupOrderIntegration}" } }
+  RouteCancelOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/cancel", Target: !Sub "integrations/${CancelOrderIntegration}" } }
+  RouteGetOrders: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /orders", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetOrdersIntegration}" } }
+  RouteAdvanceLineItem: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /line-items/{lineItemId}/advance", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AdvanceLineItemIntegration}" } }
+  RouteVerifyPayment: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/verify-payment", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${VerifyPaymentIntegration}" } }
+  RouteSetOnHold: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/set-on-hold", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${VerifyPaymentIntegration}" } }
+  RouteGetMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /orders/{orderId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMessagesIntegration}" } }
+  RouteSendMessage: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SendMessageIntegration}" } }
+  RouteGetUnreadMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /messages/unread", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetUnreadMessagesIntegration}" } }
+  RouteAddCorrespondence: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/correspondence", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AddCorrespondenceIntegration}" } }
+
+  # -- Lambda invoke permissions (API Gateway -> each function, wildcard stage/method) --
+  PermCreateOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
+  PermSubmitPaymentProof: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SubmitPaymentProofFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/payment-proof" } }
+  PermUploadDesignFile: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref UploadDesignFileFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/design-uploads" } }
+  PermLookupOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref LookupOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/lookup" } }
+  PermCancelOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CancelOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/cancel" } }
+  PermGetOrders: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetOrdersFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders" } }
+  PermAdvanceLineItem: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AdvanceLineItemFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/line-items/*/advance" } }
+  PermVerifyPayment: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref VerifyPaymentFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/verify-payment" } }
+  PermSetOnHold: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref VerifyPaymentFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/set-on-hold" } }
+  PermGetMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
+  PermSendMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SendMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
+  PermGetUnreadMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetUnreadMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/messages/unread" } }
+  PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
+
+  # ---------------------------------------------------------------------------
+  # EventBridge schedules — same cadence as prod.
+  # ---------------------------------------------------------------------------
+  ExpirePendingOrdersRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub kcmps-${EnvName}-expire-pending-orders-schedule
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: ExpirePendingOrdersTarget
+          Arn: !GetAtt ExpirePendingOrdersFunction.Arn
+  PermExpirePendingOrdersEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ExpirePendingOrdersFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ExpirePendingOrdersRule.Arn
+  ExpirePendingOrdersAsyncConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExpirePendingOrdersFunction
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 2
+      DestinationConfig:
+        OnFailure: { Destination: !GetAtt LambdaDlq.Arn }
+
+  NotifyUnreadMessagesRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub kcmps-${EnvName}-notify-unread-messages-schedule
+      ScheduleExpression: rate(30 minutes)
+      State: ENABLED
+      Targets:
+        - Id: NotifyUnreadMessagesTarget
+          Arn: !GetAtt NotifyUnreadMessagesFunction.Arn
+  PermNotifyUnreadMessagesEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref NotifyUnreadMessagesFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NotifyUnreadMessagesRule.Arn
+
+  GuardDutyScanResultRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub kcmps-${EnvName}-guardduty-scan-result
+      Description: >
+        Filtered to UploadsBucket by detail.s3ObjectDetails.bucketName — without
+        this, this rule (and production's identically-shaped one) both match
+        EVERY GuardDuty malware-scan event account-wide regardless of which
+        bucket/environment it came from, since the account only has one
+        EventBridge bus. Found live 2026-08-05: a production upload's scan
+        event was ALSO processed by this rule before the filter was added,
+        writing a duplicate SCAN# record into this environment's table.
+      EventPattern:
+        source: ["aws.guardduty"]
+        detail-type: ["GuardDuty Malware Protection Object Scan Result"]
+        detail:
+          s3ObjectDetails:
+            bucketName: [!Ref UploadsBucket]
+      State: ENABLED
+      Targets:
+        - Id: HandleScanResultTarget
+          Arn: !GetAtt HandleScanResultFunction.Arn
+  PermHandleScanResultEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HandleScanResultFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GuardDutyScanResultRule.Arn
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB Streams -> streams-handler, filtered to LINEITEM# writes, mirroring
+  # prod's ESM (batch 10, 3 retries, bisect-on-error, DLQ on failure).
+  # ---------------------------------------------------------------------------
+  StreamsEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref StreamsHandlerFunction
+      EventSourceArn: !Ref TableStreamArn
+      StartingPosition: LATEST
+      BatchSize: 10
+      MaximumRetryAttempts: 3
+      BisectBatchOnFunctionError: true
+      FilterCriteria:
+        Filters:
+          - Pattern: '{"dynamodb":{"Keys":{"SK":{"S":[{"prefix":"LINEITEM#"}]}}}}'
+      DestinationConfig:
+        OnFailure: { Destination: !GetAtt LambdaDlq.Arn }
+
+Outputs:
+  ApiEndpoint:
+    Description: Base URL for this environment's checkout/staff HTTP API.
+    Value: !GetAtt HttpApi.ApiEndpoint
+
+  ApiId:
+    Value: !Ref HttpApi
+
+  LambdaDlqArn:
+    Value: !GetAtt LambdaDlq.Arn

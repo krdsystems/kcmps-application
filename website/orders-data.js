@@ -16,8 +16,8 @@
   var DATA = window.KCMPS_STORE_DATA || { products: [], leaves: {}, currency: "₱" };
 
   var COGNITO_CONFIG = {
-    domain: "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
-    clientId: "95rrk0mflffentqdiomg1fipc",
+    domain: "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
+    clientId: "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
   };
   var TOKEN_STORAGE_KEY = "kcmps_tokens";
@@ -25,7 +25,10 @@
   // 6msg2uho6c, ap-southeast-1) — same API store.js's CHECKOUT_API_BASE
   // points at. Keep all three copies (here, store.js, orders.html/
   // order-detail.html's CSP connect-src) in sync if this API is recreated.
-  var API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  // Same dev.kcmps.com -> staging-API branch as store.js's CHECKOUT_API_BASE.
+  var API_BASE = (typeof location !== "undefined" && location.hostname === "dev.kcmps.com")
+    ? "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com"
+    : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
   var ORDER_EMAIL = "order@kcmps.com";
 
   function escapeHtml(s) {

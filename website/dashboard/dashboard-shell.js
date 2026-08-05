@@ -33,6 +33,20 @@
   };
   const TOKEN_STORAGE_KEY = "kcmps_tokens";
 
+  /* ---- idle privacy screen / session-staleness overlay config ----
+     Both values are recommended defaults, not settled requirements — retune
+     freely here, nothing else in this file needs to change. LOCK_MS (stage
+     1, privacy screen) is the one most likely to need adjusting against
+     real staff workflow: too short reads as annoying, too long leaves
+     customer data on an unattended screen for anyone walking past. */
+  const SESSION_GUARD = {
+    LOCK_MS: 15 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
+    SESSION_MS: 60 * 60 * 1000, // stage 2: session/staleness — token has likely expired
+    ACTIVITY_DEBOUNCE_MS: 1000, // coalesce bursts of pointer/key events into one timestamp write
+    CHECK_INTERVAL_MS: 15 * 1000, // how often the idle clock is polled
+    EXP_SKEW_MS: 0, // no grace period — an expired token is treated as expired immediately
+  };
+
   function decodeJwt(token) {
     const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const json = decodeURIComponent(
@@ -117,6 +131,14 @@
     }
     let claims;
     try { claims = decodeJwt(tokens.id_token); } catch { clearTokens(); window.location.replace("../index.html?login=required"); return null; }
+    // The local test-bypass token (seedLocalStaffSession) has no `exp` claim
+    // at all — only real Cognito-issued tokens do — so a missing `exp` is
+    // treated as valid rather than expired, which keeps that bypass working.
+    if (typeof claims.exp === "number" && claims.exp * 1000 + SESSION_GUARD.EXP_SKEW_MS <= Date.now()) {
+      clearTokens();
+      window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
+      return null;
+    }
     const groups = claims["cognito:groups"] || [];
     if (!COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) {
       window.location.replace("../index.html?dashboard=forbidden");
@@ -134,10 +156,148 @@
     window.location.href = logoutUrl;
   }
 
+  /* ---- idle privacy screen / session-staleness overlay ----
+     One overlay, two stages, driven off a single timestamp (lastActivityAt)
+     rather than a countdown — so it survives laptop sleep / a backgrounded
+     tab correctly (a running setTimeout would not). Stage 1 fires at
+     SESSION_GUARD.LOCK_MS idle (privacy — obscure the screen). Stage 2
+     fires at SESSION_GUARD.SESSION_MS idle OR immediately when
+     escalateSessionGuard() is called from a 401 (see dashboard-data.js's
+     apiFetch) — whichever happens first. If stage 1 is already showing when
+     stage 2's condition is met, the SAME element is upgraded in place
+     (data-stage swapped, content rewritten) rather than stacking a second
+     overlay. Dismissal is explicit-button-only by design — no outside-click,
+     no Escape — so a stray click/keypress from a passer-by can't reopen the
+     obscured content; the keydown handler below only traps Tab. */
+  let lastActivityAt = Date.now();
+  let activityListenersAttached = false;
+  let guardStage = 0; // 0 = closed, 1 = privacy lock, 2 = session/staleness
+  let guardEl = null;
+  let guardFocusReturnEl = null;
+
+  function debounceLeading(fn, ms) {
+    let last = 0;
+    return function (...args) {
+      const now = Date.now();
+      if (now - last < ms) return;
+      last = now;
+      fn.apply(this, args);
+    };
+  }
+
+  function attachActivityListeners() {
+    if (activityListenersAttached) return;
+    activityListenersAttached = true;
+    const bump = debounceLeading(() => { lastActivityAt = Date.now(); }, SESSION_GUARD.ACTIVITY_DEBOUNCE_MS);
+    // One listener set per page load (not per-component), passive so it
+    // never competes with scroll/touch performance.
+    ["pointerdown", "keydown", "touchstart"].forEach((evt) => document.addEventListener(evt, bump, { passive: true }));
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) bump(); });
+    setInterval(checkIdle, SESSION_GUARD.CHECK_INTERVAL_MS);
+  }
+
+  function checkIdle() {
+    if (guardStage === 2) return; // already at the max stage — nothing further to raise
+    const idleMs = Date.now() - lastActivityAt;
+    if (idleMs >= SESSION_GUARD.SESSION_MS) openSessionGuard(2);
+    else if (idleMs >= SESSION_GUARD.LOCK_MS && guardStage !== 1) openSessionGuard(1);
+  }
+
+  function ensureGuardEl() {
+    if (guardEl) return guardEl;
+    const backdrop = document.createElement("div");
+    backdrop.className = "session-guard-backdrop";
+    backdrop.setAttribute("role", "dialog");
+    backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("aria-labelledby", "session-guard-title");
+    backdrop.setAttribute("aria-describedby", "session-guard-desc");
+    backdrop.innerHTML =
+      '<div class="session-guard-box" id="session-guard-box">' +
+      '<div class="session-guard-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M208,80H184V56a56,56,0,0,0-112,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM88,56a40,40,0,0,1,80,0V80H88Z"/></svg></div>' +
+      '<h3 id="session-guard-title"></h3>' +
+      '<p id="session-guard-desc"></p>' +
+      '<div class="session-guard-actions" id="session-guard-actions"></div>' +
+      "</div>";
+    // Tab-trap: the only keyboard behavior this overlay allows. No Escape
+    // handler on purpose (dismissal is explicit-button-only, see above).
+    backdrop.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+      const focusables = backdrop.querySelectorAll("button");
+      if (!focusables.length) return;
+      const first = focusables[0], last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    document.body.appendChild(backdrop);
+    guardEl = backdrop;
+    return backdrop;
+  }
+
+  function openSessionGuard(stage) {
+    const wasOpen = guardStage !== 0;
+    guardStage = stage;
+    const el = ensureGuardEl();
+    const box = el.querySelector("#session-guard-box");
+    const actions = el.querySelector("#session-guard-actions");
+    box.dataset.stage = String(stage);
+
+    if (stage === 1) {
+      el.querySelector("#session-guard-title").textContent = "Screen locked while you were away";
+      el.querySelector("#session-guard-desc").textContent =
+        "For privacy, this stayed open longer than usual, so it's been hidden. Nothing was lost.";
+      actions.innerHTML = '<button type="button" class="btn btn-primary" id="session-guard-resume">Resume</button>';
+      el.querySelector("#session-guard-resume").addEventListener("click", () => {
+        lastActivityAt = Date.now();
+        closeSessionGuard();
+      });
+    } else {
+      el.querySelector("#session-guard-title").textContent = "Your session may have expired";
+      el.querySelector("#session-guard-desc").textContent =
+        "The data on this screen may be out of date. Refresh to continue, or log out.";
+      actions.innerHTML =
+        '<button type="button" class="btn btn-secondary" id="session-guard-logout">Log out</button>' +
+        '<button type="button" class="btn btn-primary" id="session-guard-refresh">Refresh</button>';
+      el.querySelector("#session-guard-logout").addEventListener("click", logout);
+      el.querySelector("#session-guard-refresh").addEventListener("click", () => {
+        // Re-run the current page's data load. requireStaffAuth() (called
+        // again on load, via mount()) falls through to the login gate if
+        // the session is genuinely expired — this button doesn't need to
+        // know which case it is.
+        window.location.reload();
+      });
+    }
+
+    if (!wasOpen) {
+      guardFocusReturnEl = document.activeElement;
+      el.style.display = "flex";
+    }
+    const primaryBtn = actions.querySelector(".btn-primary");
+    if (primaryBtn) primaryBtn.focus();
+  }
+
+  function closeSessionGuard() {
+    if (!guardEl) return;
+    guardStage = 0;
+    guardEl.style.display = "none";
+    if (guardFocusReturnEl && typeof guardFocusReturnEl.focus === "function") {
+      guardFocusReturnEl.focus();
+    }
+    guardFocusReturnEl = null;
+  }
+
+  // Called from dashboard-data.js's apiFetch on a 401 — jumps straight to
+  // stage 2 regardless of idle time, since a 401 is direct evidence the
+  // session is no longer valid (vs. stage 1's idle-time guess).
+  function escalateSessionGuard() {
+    openSessionGuard(2);
+  }
+
   function mount(activeKey) {
     const claims = requireStaffAuth();
     if (!claims) return null; // redirecting away
 
+    lastActivityAt = Date.now();
+    attachActivityListeners();
     document.documentElement.classList.add("dash-ready");
 
     const navMount = document.getElementById("dash-nav");
@@ -267,5 +427,5 @@
     return (Math.round(h * 10) / 10) + "h";
   }
 
-  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge };
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge, escalateSessionGuard };
 })(window);

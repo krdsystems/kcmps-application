@@ -228,22 +228,22 @@ exports.handler = async (event) => {
     });
   }
 
-  try {
-    await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems }));
-  } catch (err) {
-    if (err.name === "TransactionCanceledException") {
-      // A concurrent duplicate of this exact retry won the race and
-      // already committed — the idempotency Put is the one that failed
-      // its condition, not the order Put. Return its cached response
-      // instead of a spurious conflict.
-      const reasons = err.CancellationReasons || [];
-      if (idempotencyItemIndex >= 0 && reasons[idempotencyItemIndex]?.Code === "ConditionalCheckFailed") {
-        const existing = await dynamo.send(new GetCommand({ TableName: TABLE, Key: { PK: idempotencyPk(idempotencyKey), SK: metaSk() } }));
-        if (existing.Item) return response(200, existing.Item.response);
-      }
-      throw Object.assign(new Error("Could not create the order — please retry."), { statusCode: 409 });
-    }
+  let conflict = false;
+  let conflictReasons = [];
+  await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
+    if (err.name === "TransactionCanceledException") { conflict = true; conflictReasons = err.CancellationReasons || []; return; }
     throw err;
+  });
+  if (conflict) {
+    // A concurrent duplicate of this exact retry won the race and
+    // already committed — the idempotency Put is the one that failed
+    // its condition, not the order Put. Return its cached response
+    // instead of a spurious conflict.
+    if (idempotencyItemIndex >= 0 && conflictReasons[idempotencyItemIndex]?.Code === "ConditionalCheckFailed") {
+      const existing = await dynamo.send(new GetCommand({ TableName: TABLE, Key: { PK: idempotencyPk(idempotencyKey), SK: metaSk() } }));
+      if (existing.Item) return response(200, existing.Item.response);
+    }
+    return response(409, { error: "Could not create the order — please retry." });
   }
 
   // First of the 4 happy-path customer notifications (Order Placed ->

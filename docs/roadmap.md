@@ -354,15 +354,6 @@ shipped with zero backend changes; Phases 2–3 below closed the rest.
   not a button on an already-authenticated page, so it's left for a follow-up request rather than
   folded into this pass.
 
-**Known pre-existing issue found, not fixed (out of scope for this pass):**
-`create-order.js` and `verify-payment.js`'s `TransactionCanceledException` handling throws an
-`Error` with a `.statusCode` property attached, but nothing in either handler catches it — it
-propagates as an unhandled Lambda error instead of the intended JSON 409, so a real concurrent
-edit on either route surfaces as a raw 500-class error rather than the documented conflict
-message. `cancel-order.js` (new in this pass) does not repeat the pattern — it catches the
-conflict inline and returns the proper 409. Worth a small fix in a future pass; not touched here
-since it's unrelated to what this pass set out to change.
-
 ---
 
 ## Parallel track — Design Asset Library (no dependency on Milestone 1)

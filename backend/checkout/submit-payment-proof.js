@@ -180,12 +180,12 @@ exports.handler = async (event) => {
     }),
   ];
 
+  let conflict = false;
   await dynamo.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
-    if (err.name === "TransactionCanceledException") {
-      throw Object.assign(new Error("This order's payment changed concurrently — reload and try again."), { statusCode: 409 });
-    }
+    if (err.name === "TransactionCanceledException") { conflict = true; return; }
     throw err;
   });
+  if (conflict) return response(409, { error: "This order's payment changed concurrently — reload and try again." });
 
   if (FROM_EMAIL && order.email) {
     await sendReceivedEmail(order, orderId).catch((err) => {

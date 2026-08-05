@@ -117,13 +117,12 @@ exports.handler = async (event) => {
     });
   });
 
-  // Deliberately NOT the "throw an Error with .statusCode attached, let it
-  // propagate" pattern verify-payment.js/create-order.js use for this same
-  // conflict — a thrown exception is never caught by anything in those
-  // handlers either, so it surfaces to the caller as a raw Lambda/API
-  // Gateway error, not the intended 409 JSON. Handled inline here instead
-  // so a real concurrent edit (e.g. staff verifying payment the same
-  // moment a customer cancels) gets the clean response documented above.
+  // Same conflict-flag pattern as create-order.js/submit-payment-proof.js/
+  // verify-payment.js/advance-line-item.js: set a flag inside the .catch
+  // (re-throwing anything that isn't TransactionCanceledException), then
+  // return the 409 JSON inline in the handler — a thrown Error with
+  // .statusCode attached would never be caught by anything and would
+  // surface to the caller as a raw Lambda/API Gateway error instead.
   let conflict = false;
   await client.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
     if (err.name === "TransactionCanceledException") { conflict = true; return; }

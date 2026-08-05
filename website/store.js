@@ -764,6 +764,12 @@
 
     var img = document.createElement("img");
     img.loading = "lazy";
+    // Was mouse-only (no tabindex, click listener only) — a keyboard user
+    // couldn't reach the thumb at all to open the lightbox. tabindex="0" +
+    // role="button" + Enter/Space below make it keyboard-operable without
+    // changing what activating it does.
+    img.tabIndex = 0;
+    img.setAttribute("role", "button");
     thumb.appendChild(img);
 
     var counter = document.createElement("span");
@@ -773,6 +779,7 @@
     function render() {
       img.src = images[idx];
       img.alt = p.name + " — " + designTitle(images[idx]);
+      img.setAttribute("aria-label", "View full-size: " + p.name + " — " + designTitle(images[idx]));
       counter.textContent = (idx + 1) + " / " + images.length;
     }
     render();
@@ -782,9 +789,13 @@
       render();
     }
 
-    img.addEventListener("click", function () {
+    function activate() {
       if (onImageClick) { onImageClick(idx); return; }
       openLightbox(images.map(function (src) { return { src: src, alt: p.name + " — " + designTitle(src) }; }), idx);
+    }
+    img.addEventListener("click", activate);
+    img.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); activate(); }
     });
 
     if (images.length > 1) {

@@ -721,21 +721,26 @@ invoke config) stay CLI, matching how the rest of `backend/infra/` is split.
 **Stack**: `kcmps-observability`, template
 [`observability.cfn.yaml`](observability.cfn.yaml), `ap-southeast-1`. Creates:
 - `kcmps-ops-alerts` — SNS topic, one email subscription (`admin@kcmps.com` by default,
-  override with `--parameter-overrides AlertEmail=...`). **The subscription sits in
-  `PendingConfirmation` until someone clicks the link in the confirmation email AWS sends on
-  creation — alarms fire silently into nothing until then.** Check with:
+  override with `--parameter-overrides AlertEmail=...`). **Subscription status is `Confirmed`
+  (as of 2026-08-05).** Historical note: subscriptions initially sit in `PendingConfirmation`
+  until someone clicks the link in the confirmation email AWS sends on creation — alarms fire
+  silently until confirmed. Check status:
   ```bash
   aws sns list-subscriptions-by-topic --topic-arn arn:aws:sns:ap-southeast-1:600929977538:kcmps-ops-alerts --profile kcmps-claude-priv
   ```
 - `kcmps-lambda-dlq` — a shared SQS standard queue, the `OnFailure` destination for both
   async-invoked backend Lambdas (see below).
-- 17 CloudWatch alarms, all with `AlarmActions` pointed at the SNS topic: `Errors >= 1`/5min and
-  `Throttles >= 1`/5min on each of the 7 deployed Lambdas (`kcmps-create-order`,
-  `kcmps-submit-payment-proof`, `kcmps-get-orders`, `kcmps-advance-line-item`,
-  `kcmps-verify-payment`, `kcmps-streams-handler`, `kcmps-expire-pending-orders`), plus
-  `kcmps-streams-handler`'s `IteratorAge > 5min` (it's the only place `orderStatus` is
-  recomputed — a stall here goes stale silently otherwise), the DLQ's
-  `ApproximateNumberOfMessagesVisible > 0`, and `kcmps-checkout-api`'s `5XXError >= 1`/5min.
+- **37 CloudWatch alarms**, all with `AlarmActions` pointed at the SNS topic:
+  - `Errors >= 1`/5min and `Throttles >= 1`/5min on each of the **17 deployed Lambdas**
+    (`kcmps-create-order`, `kcmps-submit-payment-proof`, `kcmps-lookup-order`,
+    `kcmps-cancel-order`, `kcmps-get-orders`, `kcmps-add-correspondence`, `kcmps-send-message`,
+    `kcmps-get-messages`, `kcmps-get-unread-messages`, `kcmps-advance-line-item`,
+    `kcmps-verify-payment`, `kcmps-streams-handler`, `kcmps-expire-pending-orders`,
+    `kcmps-notify-unread-messages`, plus 3 auth Lambdas `kcmps-post-confirmation` and others) = 34 alarms
+  - `kcmps-streams-handler`'s `IteratorAge > 5min` (it's the only place `orderStatus` is
+    recomputed — a stall here goes stale silently otherwise) = 1 alarm
+  - DLQ's `ApproximateNumberOfMessagesVisible > 0` = 1 alarm
+  - `kcmps-checkout-api`'s `5XXError >= 1`/5min = 1 alarm
 
 Deploy/redeploy (idempotent):
 ```bash

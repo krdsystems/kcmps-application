@@ -906,6 +906,189 @@ specifically not receiving these currently: not a bug on this side — a brand-n
 with no history gets filtered/discarded by Gmail's reputation heuristics regardless of correct
 SPF/DKIM/DMARC, and should resolve as the domain sends more real mail and builds reputation.
 
+## User pool v2 — minimal required attributes (cut over 2026-08-05)
+
+`user-pool-v2.cfn.yaml`, stack **`kcmps-user-pool-v2`**. Replaces the original pool
+(`ap-southeast-1_iDvAEumNp`) — which is now unused but deliberately left standing.
+
+| | Old pool | New pool |
+|---|---|---|
+| Pool ID | `ap-southeast-1_iDvAEumNp` | `ap-southeast-1_LHJsFdCgo` |
+| Client ID | `95rrk0mflffentqdiomg1fipc` | `2rsbhkjooja4h5e0ijpl4siuug` |
+| Hosted UI domain | `ap-southeast-1idvaeumnp.auth…` | `kcmps-auth.auth…` |
+| Required attrs | email, given_name, family_name, **middle_name**, **name**, **preferred_username** | email, given_name, family_name |
+
+### Why a whole new pool
+
+A pool's schema `Required` flags are **immutable after creation** — no `update-user-pool`
+field, no console toggle (the console's "Required attributes" screen is read-only and says so:
+*"When you **create** a user pool, you can choose…"*). The original pool demanded three
+attributes this app never reads, which is the entire reason entry 63's custom sign-up form
+exists — it filled `middle_name`/`preferred_username` with `"-"` placeholders so a shopper
+would never be asked to type them.
+
+Entry 63 chose the custom form over a migration because a migration "needs migrating the 5
+existing users including a federated Google identity." By 2026-08-05 the pool held 6 users,
+**all of them staff or test accounts and zero real customers**, so that cost had evaporated.
+
+### The trap that made this urgent to get right: `sub` is your customer foreign key
+
+`sub` is pool-scoped. A new pool mints new ones and **no** migration technique preserves them
+(a `UserMigration` trigger does not — common misconception). The backend keys customer data on
+it: `get-orders.js`'s `getOrdersForSub(claims.sub)`, `send-message.js`/`get-messages.js`'s
+`claims.sub !== order.customerSub` ownership check, `get-unread-messages.js`'s
+`customerThreads(claims.sub)`. Post-cutover the same human gets a new `sub`, so their order
+history returns empty and their own message threads 403.
+
+This was resolved by **clearing the table** (291 items — 29 orders, 176 events, 32 line items,
+17 messages, 29 idempotency records, 8 scan verdicts; no `CONFIG#` items existed) rather than
+writing a `customerSub` remap, because every order was test data. **If this ever needs doing
+again with real orders, the remap is mandatory** — rewrite `customerSub` on each
+`ORDER#…/META` matched by `customerEmail`. Staff `sub`s need no remap: they appear only in
+`actorSub` audit fields, which are historical records, not lookups.
+
+### Deliberate differences from the old pool
+
+- **`AliasAttributes: [email]`** — kept, not changed. A real Username *plus* email as a
+  sign-in alias, so users log in with **either**. This was briefly built as
+  `UsernameAttributes: [email]` (email *is* the username, no username sign-in at all); since
+  it is create-only, fixing it cost a full pool rebuild. Don't repeat that.
+- **Customers now choose their own username.** `generateUsername()` is gone from
+  `index.html`; the form has a Username field validated by `USERNAME_RE`. The "@" rejection is
+  client-side because Cognito rejects an email-shaped Username with an opaque
+  `InvalidParameterException` when aliases are on.
+- **`AWS::Cognito::ManagedLoginBranding` is REQUIRED, not cosmetic.** A managed-login (v2)
+  domain serves *"Login pages unavailable — please contact an administrator"* for any app
+  client with no branding style. The first deploy omitted it and the entire Hosted UI was dead.
+- Dropped the `phone` OAuth scope and the `verified_phone_number` recovery mechanism (no phone
+  attribute to consent to or recover against).
+- Added `http://localhost:5501` callback/logout URLs — this repo's `.claude/launch.json` uses
+  5501, which the old client never allowed, so local OAuth had always been broken.
+
+### Why the Hosted UI sign-up link is no longer a problem
+
+The original task here was to *hide* Cognito's "New user? Create an account" link, so shoppers
+couldn't reach the 6-attribute Hosted UI signup page. **That is not achievable on this pool
+and never was:**
+
+- The domain is **Managed Login v2** (`ManagedLoginVersion: 2`), whose branding is a fixed
+  schema of 168 style tokens — colors, radii, logos. Its only visibility toggles are page
+  header, page footer, form instructions, language selector, background images and IdP button
+  icons. There is **no** sign-up-link control, and no arbitrary CSS. `categories.signUp` holds
+  only `acceptanceElements` (terms checkboxes). `componentClasses.link` sets colour globally,
+  so dimming it would also hide "Forgot your password?".
+- Classic branding's `.redirect-customizable` (which *can* hide it) only renders when the
+  domain's branding version is **Hosted UI (classic)** — AWS docs: *"a user pool domain serves
+  either managed login or the hosted UI."* Downgrading would swap sign-in/MFA/password-reset to
+  the old UI for everyone.
+- Disabling self-registration would also remove the link **and break the custom form**, whose
+  public secretless `SignUp` call Cognito rejects when `AllowAdminCreateUserOnly: true`.
+
+It is moot now: with a 3-attribute schema the Hosted UI signup page asks for exactly Username,
+Email, Given name, Family name, Password — the same list as the custom form. The link is a
+fine second front door. **Don't spend time trying to hide it again.**
+
+### The API authorizer is NOT the only place the pool ID lives
+
+Flipping `kcmps-cognito-jwt` covers the 8 authorizer-gated routes, but **two Lambdas verify
+JWTs themselves** and read their own env vars — they are unauthenticated routes (guest checkout
+must work without a token), so the authorizer never sees those requests:
+
+| Lambda | Env vars | Symptom if left on the old pool |
+|---|---|---|
+| `kcmps-create-order` | `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` | **Silent.** A logged-in customer's token fails verification, the Lambda falls back to guest checkout, `customerSub` is never set — the order never appears in their order history. No error, nothing in the logs. |
+| `kcmps-cancel-order` | same | Sub-match always fails; falls back to `contactsMatch()` |
+
+This was missed on the first pass of the 2026-08-05 cutover and produced two orphaned guest
+orders before it was caught. Update them alongside the authorizer:
+
+```bash
+# get-function-configuration first — --environment REPLACES the whole Variables
+# map, so TABLE_NAME/FROM_EMAIL/UPLOADS_BUCKET must be carried forward.
+aws lambda update-function-configuration --function-name kcmps-create-order \
+  --environment file://env.json --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+Verify with a real order from a logged-in account and confirm `customerSub` is populated on the
+`ORDER#…/META` item — a smoke test that only checks "the order was created" passes either way.
+
+### Manual steps CloudFormation can't do
+
+The PostConfirmation Lambda lives outside this stack, so both of these are CLI-only:
+
+```bash
+aws lambda add-permission --function-name kcmps-post-confirmation \
+  --statement-id kcmps-cognito-post-confirmation-v2 --action lambda:InvokeFunction \
+  --principal cognito-idp.amazonaws.com \
+  --source-arn arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_LHJsFdCgo \
+  --profile kcmps-claude-priv
+```
+
+…plus `kcmps-post-confirmation-lambda-role`'s inline policy, whose
+`cognito-idp:AdminAddUserToGroup` Resource list now carries **both** pool ARNs.
+
+### Google IdP — still outstanding
+
+The new pool has **no Google IdP**, so "Sign in with Google" is currently unavailable. Cognito
+never returns a client secret, so it can't be copied from the old pool — fetch it from the
+Google Cloud console and re-run:
+
+```bash
+aws cloudformation deploy --template-file backend/infra/user-pool-v2.cfn.yaml \
+  --stack-name kcmps-user-pool-v2 --profile kcmps-claude-priv --region ap-southeast-1 \
+  --parameter-overrides GoogleClientId=<id> GoogleClientSecret=<secret>
+```
+
+Google's own OAuth client also needs `https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com/oauth2/idpresponse`
+added to its authorized redirect URIs.
+
+### Accounts (recreated, not migrated — passwords are never exportable)
+
+| Username | Email | Groups |
+|---|---|---|
+| `admin.kcmps.cognito` | `admin+admin.kcmps.cognito@kcmps.com` | Admin, Staff |
+| `admin.kcmps.uat` | `admin+admin.kcmps.uat@kcmps.com` | Staff |
+| `testcustomer.kcmps.uat` | `admin+testcustomer.kcmps.uat@kcmps.com` | Customer |
+
+Created with `admin-create-user` (no `--temporary-password`), so Cognito generated and emailed
+the temp password and each lands in `FORCE_CHANGE_PASSWORD`. `admin-create-user` does **not**
+fire the PostConfirmation trigger, so groups were added manually.
+
+### Old pool — deleted (2026-08-05, once cutover was confirmed working end-to-end)
+
+`ap-southeast-1_iDvAEumNp` and its Hosted UI domain (`ap-southeast-1idvaeumnp`) were kept
+standing through the cutover specifically as a rollback path, then deleted once dev.kcmps.com
+was smoke-tested (sign-up, sign-in by username AND email, dashboard access, a real order with
+`customerSub` populated, and Google federation) and both the API authorizer's JWT config and
+`create-order`/`cancel-order`'s own env vars were confirmed pointed at the new pool. The
+rollback section below is now **historical** — it describes what was true during the cutover
+window, not a live option. `DeletionProtection` on the new pool was flipped to `ACTIVE` in the
+same pass, now that it's the only pool in use.
+
+The **already-deployed** `kcmps-foundation` CloudFormation stack still carries
+`UserPoolId=ap-southeast-1_iDvAEumNp` as a stack parameter — its 5 `UserPoolGroup` resources
+are now dangling references to a deleted pool. See `foundation.cfn.yaml`'s header: do **not**
+try to "fix" this by redeploying it against the new pool ID — `user-pool-v2.cfn.yaml` already
+owns identically-named groups on that pool, and CloudFormation would hit a same-name conflict
+and fail. The table resource in that stack is unaffected and remains authoritative.
+
+### Rollback (historical — describes the cutover window; the old pool no longer exists)
+
+The API authorizer was the switch — flipping it back would have restored the old pool
+instantly, while it still existed:
+
+```bash
+aws apigatewayv2 update-authorizer --api-id 6msg2uho6c --authorizer-id sboj1n \
+  --jwt-configuration 'Audience=95rrk0mflffentqdiomg1fipc,Issuer=https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_iDvAEumNp' \
+  --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+…then revert the pool/client/domain constants in the 6 frontend files, revert
+`create-order`/`cancel-order`'s `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` env vars (see "The
+API authorizer is NOT the only place the pool ID lives" above), and re-sync. This command is
+kept only as a record of the mechanism — the pool it points at is gone, so running it now would
+just break auth entirely rather than roll anything back.
+
 ## Re-running / updates
 
 `aws cloudformation deploy` is idempotent — re-running it with the same

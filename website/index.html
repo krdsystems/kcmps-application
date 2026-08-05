@@ -1935,6 +1935,30 @@ const COGNITO_CONFIG = {
   scopes:      "email openid profile",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
+  // Public storefront auth entry points — ON for dev/staging and local dev,
+  // OFF on production while the shop is pre-launch. Keyed on hostname rather
+  // than a build flag because `website/` is synced verbatim to both the
+  // production bucket root and the dev-site/ prefix with no build step, so
+  // one file has to behave differently in the two places.
+  //
+  // When false this hides BOTH entry points: the nav "Login / Sign-up" button
+  // and the ?login=required "Sign in" banner that dashboard-shell.js and
+  // orders-data.js redirect into. Hiding only the first would leave a live
+  // login path reachable from any stale orders.html link.
+  //
+  // Deliberately narrow: entry points only. An existing session still
+  // restores and still renders the user's name, My Orders and (for
+  // Staff/Admin) the Dashboard link, and the OAuth popup callback still
+  // completes. Nothing server-side is disabled — the pool still permits
+  // self-registration, which the custom sign-up form depends on — so this is
+  // a UI gate, NOT a security control.
+  //
+  // Consequence to know about: on production a staff member hitting
+  // /dashboard/ without a session is redirected to index.html?login=required
+  // and lands on the homepage with no visible way in. That's intended
+  // pre-launch (staff test on dev.kcmps.com); revisit at launch by adding
+  // the production hostnames below.
+  authUiEnabled: ["dev.kcmps.com", "localhost", "127.0.0.1"].includes(window.location.hostname),
   // Any of these groups unlocks the dashboard — Staff (dashboard-only)
   // and Admin (founders — dashboard plus whatever admin-only surface
   // gets built later). Keep in sync with dashboard/dashboard-shell.js's copy.
@@ -2154,9 +2178,13 @@ async function exchangeCodeForTokens(code) {
 /* ---- UI updates (site design system) ---- */
 function renderLoggedOut() {
   const area = document.getElementById("auth-area");
-  area.innerHTML =
-    '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>';
-  document.getElementById("auth-btn").addEventListener("click", openAuthModal);
+  // authUiEnabled: false leaves the auth area empty rather than rendering a
+  // disabled-looking button — a greyed-out control invites "is it broken?",
+  // whereas an absent one reads as "not offered yet".
+  area.innerHTML = COGNITO_CONFIG.authUiEnabled
+    ? '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>'
+    : "";
+  document.getElementById("auth-btn")?.addEventListener("click", openAuthModal);
   document.getElementById("dashboard-link").classList.add("is-hidden");
   document.getElementById("orders-link").classList.add("is-hidden");
 }
@@ -2188,19 +2216,19 @@ function renderLoggedIn(claims) {
 }
 
 /* ---- Custom sign-up (Cognito IdP API, separate from the Hosted UI flow) ----
-   The pool's schema requires several standard attributes on top of email —
-   given_name/family_name/middle_name/name/preferred_username — baked in at
-   pool creation and immutable now (Cognito has no API to change Required
-   after the fact). None of it is ever read anywhere in this app (checkout
-   collects its own contact/delivery details separately), so routing
-   customers through Cognito's own Hosted UI signup page means asking a
-   shopper for a full name and a separate username before they can buy a
-   print job. This calls the same public, secretless SPA client as the
-   Hosted UI flow above — only the network endpoint differs (regional IdP
-   JSON API vs the Hosted UI domain) — to build a minimal custom "Create
-   account" form that asks for just email + password, with placeholder
-   values supplied for the rest. Login stays exactly as it was: the
-   existing Hosted UI popup. See docs/history.md entry 63. ---- */
+   Every field this form asks for is a field the pool actually requires:
+   username, email, first name, last name, password. That wasn't true before
+   — the original pool (ap-southeast-1_LHJsFdCgo) also required middle_name,
+   `name` and preferred_username, and since Required flags are immutable
+   after pool creation, the only fix was a new pool. See backend/infra/
+   user-pool-v2.cfn.yaml and docs/history.md entry 64.
+
+   This form is kept (rather than handing sign-up to the Hosted UI, which
+   would now ask for the same short list) because it stays on-brand, inside
+   the page, and shares the auth-choice modal with login. It calls the same
+   public, secretless SPA client as the Hosted UI flow above — only the
+   network endpoint differs (regional IdP JSON API vs the Hosted UI domain).
+   Login stays exactly as it was: the existing Hosted UI popup. ---- */
 const IDP_ENDPOINT = `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/`;
 
 async function idpRequest(target, body) {
@@ -2220,7 +2248,10 @@ async function idpRequest(target, body) {
 function idpErrorMessage(data) {
   const type = (data.__type || "").split("#").pop();
   const known = {
-    UsernameExistsException: "An account with this email already exists — try logging in instead.",
+    // Cognito raises this for a taken username OR an already-registered email
+    // alias, and PreventUserExistenceErrors means we can't tell which — so the
+    // copy has to cover both without confirming either exists.
+    UsernameExistsException: "That username or email is already taken — try another, or log in instead.",
     InvalidPasswordException: "Password must be at least 8 characters and include upper/lowercase letters, a number, and a symbol.",
     InvalidParameterException: "Please check your email and password and try again.",
     CodeMismatchException: "That code doesn't match. Please check it and try again.",
@@ -2232,38 +2263,40 @@ function idpErrorMessage(data) {
   return known[type] || data.message || "Something went wrong. Please try again.";
 }
 
-// A non-email placeholder Username — the pool aliases sign-in by email
-// (AliasAttributes), so this string is never seen or typed by the
-// customer again; it only exists because this pool's Usernames can't be
-// email-formatted (email is the alias, not the username itself).
-function generateUsername() {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return "u" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+// The customer picks their own username, and can sign in afterwards with
+// EITHER it or their email (the pool sets AliasAttributes: [email], so both
+// are valid sign-in identifiers).
+//
+// The one hard rule: a Username can never be email-SHAPED. Because email is
+// an alias, Cognito rejects an email-formatted Username outright with
+// InvalidParameterException — so an "@" here is a client-side error, not
+// something to pass through and let the API reject with a cryptic message.
+const USERNAME_RE = /^[a-zA-Z0-9._-]{3,30}$/;
+
+function usernameError(username) {
+  if (!username) return "Please choose a username.";
+  if (username.includes("@")) return "Usernames can't contain “@”. You'll be able to sign in with your email address as well.";
+  if (!USERNAME_RE.test(username)) return "Usernames are 3–30 characters, using letters, numbers, dots, dashes or underscores.";
+  return null;
 }
 
 function escapeAuthHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-async function signUpCustomer(email, password) {
-  const username = generateUsername();
-  // given_name/family_name/middle_name/preferred_username: required by the
-  // pool, never read anywhere in this app — placeholders so the customer
-  // is never asked to type them. `name` is set to the email so
-  // renderLoggedIn()'s `claims.name || claims.email` shows the same thing
-  // it would have shown anyway.
+async function signUpCustomer(username, email, password, firstName, lastName) {
+  // email/given_name/family_name are the pool's three required attributes.
+  // `name` is optional but set anyway so renderLoggedIn()'s
+  // `claims.name || claims.email` greets a person by name, not an address.
   await idpRequest("SignUp", {
     ClientId: COGNITO_CONFIG.clientId,
     Username: username,
     Password: password,
     UserAttributes: [
       { Name: "email", Value: email },
-      { Name: "name", Value: email },
-      { Name: "given_name", Value: "-" },
-      { Name: "family_name", Value: "-" },
-      { Name: "middle_name", Value: "-" },
-      { Name: "preferred_username", Value: username },
+      { Name: "name", Value: `${firstName} ${lastName}`.trim() },
+      { Name: "given_name", Value: firstName },
+      { Name: "family_name", Value: lastName },
     ],
   });
   return username;
@@ -2296,7 +2329,24 @@ function ensureAuthModalShell() {
       '<div class="dialog-actions" id="auth-modal-actions"></div>' +
     "</div>";
   document.body.appendChild(backdrop);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeAuthModal(); });
+
+  // Click-outside-to-close, guarded on the press STARTING on the backdrop too.
+  //
+  // A `click` fires on the nearest common ancestor of its mousedown and mouseup
+  // targets — so a press that begins inside the dialog (dragging to select text
+  // in a field, releasing over a browser autofill suggestion, a touch that
+  // drifts) and ends outside it retargets the click to the backdrop. Testing
+  // `e.target === backdrop` alone therefore closed the dialog *while the user
+  // was typing*, wiping a half-filled sign-up form. Requiring the press to have
+  // started on the backdrop makes "outside click" mean an actual outside click.
+  let pressStartedOnBackdrop = false;
+  backdrop.addEventListener("pointerdown", (e) => {
+    pressStartedOnBackdrop = e.target === backdrop;
+  });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop && pressStartedOnBackdrop) closeAuthModal();
+    pressStartedOnBackdrop = false;
+  });
   authModal = backdrop;
   authModalTitle = backdrop.querySelector("#auth-modal-title");
   authModalBody = backdrop.querySelector("#auth-modal-body");
@@ -2312,6 +2362,11 @@ function openAuthModal() {
 
 function closeAuthModal() {
   if (!authModal) return;
+  // Move focus out BEFORE hiding: aria-hidden on an ancestor of the focused
+  // element hides a focused control from assistive tech, which browsers now
+  // warn about and refuse to apply. Closing while a field had focus (the
+  // common case) triggered exactly that.
+  if (authModal.contains(document.activeElement)) document.activeElement.blur();
   authModal.classList.remove("is-open");
   authModal.setAttribute("aria-hidden", "true");
 }
@@ -2337,6 +2392,10 @@ function renderAuthChoiceStep() {
 function renderSignUpStep() {
   authModalTitle.textContent = "Create your account";
   authModalBody.innerHTML =
+    '<div class="field"><label for="su-first-name">First Name</label><input class="input" id="su-first-name" type="text" autocomplete="given-name" /></div>' +
+    '<div class="field"><label for="su-last-name">Last Name</label><input class="input" id="su-last-name" type="text" autocomplete="family-name" /></div>' +
+    '<div class="field"><label for="su-username">Username</label><input class="input" id="su-username" type="text" autocomplete="username" /></div>' +
+    '<p style="font-size:12px;opacity:0.7;margin-top:-4px">You can sign in with either your username or your email.</p>' +
     '<div class="field"><label for="su-email">Email</label><input class="input" id="su-email" type="email" autocomplete="email" /></div>' +
     '<div class="field"><label for="su-password">Password</label><input class="input" id="su-password" type="password" autocomplete="new-password" /></div>' +
     '<p style="font-size:12px;opacity:0.7;margin-top:-4px">At least 8 characters, with upper and lowercase letters, a number, and a symbol.</p>' +
@@ -2349,14 +2408,24 @@ function renderSignUpStep() {
 }
 
 async function submitSignUp() {
+  const firstNameEl = document.getElementById("su-first-name");
+  const lastNameEl = document.getElementById("su-last-name");
+  const usernameEl = document.getElementById("su-username");
   const emailEl = document.getElementById("su-email");
   const passwordEl = document.getElementById("su-password");
   const errorEl = document.getElementById("su-error");
+  const firstName = firstNameEl.value.trim();
+  const lastName = lastNameEl.value.trim();
+  const username = usernameEl.value.trim();
   const email = emailEl.value.trim();
   const password = passwordEl.value;
   function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
   errorEl.style.display = "none";
 
+  if (!firstName) { showError("Please enter your first name."); return; }
+  if (!lastName) { showError("Please enter your last name."); return; }
+  const unErr = usernameError(username);
+  if (unErr) { showError(unErr); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError("Please enter a valid email address."); return; }
   if (!password) { showError("Please enter a password."); return; }
 
@@ -2364,7 +2433,7 @@ async function submitSignUp() {
   const origText = btn.textContent;
   btn.disabled = true; btn.textContent = "Creating account…";
   try {
-    const username = await signUpCustomer(email, password);
+    await signUpCustomer(username, email, password, firstName, lastName);
     renderConfirmStep(username, email);
   } catch (err) {
     showError(err.message);
@@ -2441,9 +2510,14 @@ function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
 
 /* ---- Login orchestration ---- */
 async function startLogin() {
+  // Optional-chained: with authUiEnabled false there is no #auth-btn to put
+  // into a pending state, and startLogin() is still reachable from the auth
+  // modal if something re-enables it mid-session.
   const btn = document.getElementById("auth-btn");
-  btn.disabled = true;
-  btn.textContent = "Signing in…";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+  }
   try {
     const tokens = await openLoginPopup(); // resolves with tokens (popup does the exchange)
     log("Token exchange succeeded.");
@@ -2515,7 +2589,10 @@ function logout() {
     try { history.replaceState(null, "", window.location.pathname); } catch {}
     if (tokens) {
       window.location.href = "orders.html";
-    } else {
+    } else if (COGNITO_CONFIG.authUiEnabled) {
+      // Suppressed when authUiEnabled is false — this banner is the second
+      // storefront login entry point, and leaving it would let a stale
+      // orders.html link reopen the flow the nav button no longer offers.
       const banner = document.getElementById("login-required-banner");
       banner.classList.remove("is-hidden");
       document.getElementById("login-required-btn").addEventListener("click", async () => {

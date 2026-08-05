@@ -53,12 +53,17 @@ variable "cognito_user_pool_name" {
 
 variable "cognito_domain_prefix" {
   description = <<-EOT
-    Cognito Hosted UI domain prefix. If the original pool
-    (ap-southeast-1_iDvAEumNp, prefix "ap-southeast-1idvaeumnp") still
-    exists, this variable doesn't matter. If recreating from scratch, pick a
-    NEW globally-unique prefix and update website/index.html +
-    website/login-test.html's COGNITO_CONFIG afterward — the pool ID,
-    client ID, and domain will all be new.
+    Cognito Hosted UI domain prefix. Real deployment (since the 2026-08-05
+    pool v2 cutover, see backend/infra/README.md "User pool v2") uses the
+    custom prefix "kcmps-auth" on pool ap-southeast-1_LHJsFdCgo — if that
+    pool still exists, this variable doesn't matter. If recreating from
+    scratch, pick a NEW globally-unique prefix and update
+    website/index.html + website/login-test.html's COGNITO_CONFIG
+    afterward — the pool ID, client ID, and domain will all be new. Also
+    recreate with backend/infra/user-pool-v2.cfn.yaml's schema (email/
+    given_name/family_name only, AliasAttributes: [email]), not a bare
+    pool with only this variable's name — that template documents why the
+    schema and alias settings are load-bearing.
   EOT
   type        = string
   default     = "kcmps-storefront-auth"

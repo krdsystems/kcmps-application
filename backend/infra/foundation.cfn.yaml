@@ -1,19 +1,17 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  KCMPS Milestone 1.0 foundation — single-table DynamoDB (with GSI1, Streams,
-  PITR, deletion protection) plus the 5 Cognito staff/customer groups in the
-  EXISTING User Pool. Does not create a User Pool. Safe to run against the
-  existing account: it only adds resources, it does not modify or replace
-  anything that already exists. See backend/infra/README.md for apply and
-  rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md
-  §2.1/§2.3 for the schema this template must stay in sync with.
+  KCMPS single-table DynamoDB (GSI1, Streams, PITR, deletion protection) plus
+  5 Cognito staff/customer groups in an EXISTING User Pool. Does not create a
+  User Pool. See backend/infra/README.md for apply/rollback and
+  ../../ops-dashboard/infra/backend-infra-to-deploy.md §2.1/§2.3 for schema.
 
-  Reused for the staging environment (stack kcmps-foundation-staging,
-  TableName=kcmps-staging, CreateCognitoGroups=false, EnablePitr=false) — see
-  the Node.js 20.x EOL migration's staging build in README.md. Staging reuses
-  the existing kcmps-user-pool-v2 groups rather than creating a second set, so
-  CreateCognitoGroups defaults true (unchanged behavior for the original
-  kcmps-foundation stack) but can be turned off.
+  The DEPLOYED `kcmps-foundation` stack is STALE as of 2026-08-05: its
+  UserPoolId points at a now-deleted pool, its UserPoolGroup resources are
+  dangling. Do NOT redeploy it against the new pool — see UserPoolId below
+  and README.md's "User pool v2" section first.
+
+  Also reused, as a SEPARATE stack, for staging (`kcmps-foundation-staging`)
+  — see README.md's "Staging" section. Not a redeploy of the stale one above.
 
 Parameters:
   TableName:
@@ -27,9 +25,16 @@ Parameters:
     Type: String
     Default: ap-southeast-1_iDvAEumNp
     Description: >
-      ID of the EXISTING Cognito User Pool the storefront/dashboard already
-      authenticate against. This template adds groups to this pool — it does
-      NOT create a new pool. Ignored when CreateCognitoGroups is false.
+      STALE default as far as the `kcmps-foundation` stack goes — see the
+      template Description above. This ID no longer exists; left as the
+      historical default rather than repointed at the live pool specifically
+      so a routine `deploy` of THAT stack (e.g. to change TableName) doesn't
+      silently attempt to recreate the 5 groups on the new pool and fail.
+      Callers that pass a real pool ID (e.g. `kcmps-foundation-staging`
+      passing kcmps-user-pool-v2's ID) must also pass
+      CreateCognitoGroups=false, since this template adds groups to
+      whatever pool it's given — it does NOT create a new pool, and doesn't
+      know whether the pool it's pointed at already has them.
 
   CreateCognitoGroups:
     Type: String

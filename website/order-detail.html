@@ -49,7 +49,7 @@
 
   function renderItem(li) {
     var thumb = li.image
-      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="" loading="lazy" />'
+      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="' + O.escapeHtml(li.name || "") + '" loading="lazy" />'
       : '<span class="line-thumb-fallback">' + O.escapeHtml((li.name || "?").charAt(0).toUpperCase()) + '</span>';
     var meta = [li.variantLabel, li.shirtColor ? "Shirt: " + li.shirtColor : null, li.designName]
       .filter(Boolean).map(O.escapeHtml).join(" · ");

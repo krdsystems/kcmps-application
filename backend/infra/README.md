@@ -211,6 +211,115 @@ aws s3api get-public-access-block --bucket kcmps-payment-uploads-est-2026 --prof
 aws s3api get-bucket-cors --bucket kcmps-payment-uploads-est-2026 --profile kcmps-claude-priv
 ```
 
+## Design originals bucket (Design Asset Library, not part of this CloudFormation stack)
+
+`kcmps-design-originals-est-2026` / staging's `kcmps-design-originals-staging` — the private
+S3 bucket for Design Asset Library source files (PSD/AI/PDF), per `docs/roadmap.md`'s
+"Parallel track — Design Asset Library" architecture. **Deliberately a separate bucket from
+`kcmps-payment-uploads-est-2026`**: different access pattern (staff-only, low-frequency, no
+public derivative), different lifecycle (long-lived originals with a recycle-bin style
+version-retention policy, vs. the payment bucket's 90-day noncurrent-version expiry), and
+keeping the two apart means an IAM grant scoped to one can never accidentally reach the
+other. Provisioned manually via CLI, same as the payment uploads bucket — see that section's
+reasoning for why this isn't a template resource.
+
+**Staging bucket — created 2026-08-05:**
+- Region `ap-southeast-1`.
+- Versioning enabled, SSE-S3 default encryption, all public access blocked
+  (`BlockPublicAcls`/`IgnorePublicAcls`/`BlockPublicPolicy`/`RestrictPublicBuckets`, all
+  `true`) — this bucket never serves anything publicly; the web-ready derivative goes to the
+  existing `kcmps-online-bucket-est-2026` instead (no new public bucket, no CloudFront in
+  front of this one — see the roadmap architecture for why).
+- Lifecycle rule `noncurrent-version-glacier-then-expire`: `NoncurrentVersionTransitions` to
+  `GLACIER` at 30 days, `NoncurrentVersionExpiration` with `NewerNoncurrentVersions: 5` (S3
+  requires a `NoncurrentDays` value alongside `NewerNoncurrentVersions` even though the intent
+  here is "keep the 5 most recent regardless of age" — set to 30 to match the transition, it
+  has no independent effect while `NewerNoncurrentVersions` is the binding constraint). This
+  is the S3-level half of the recycle bin's two independent layers (app-level soft-delete is
+  a future `publishDesign`/dashboard concern, not built yet).
+- CORS: `AllowedMethods: ["PUT"]`, `AllowedOrigins` scoped to staff-facing origins only
+  (`dev.kcmps.com`/`localhost:5500`/`localhost:5501` — no production apex/www, since only the
+  staff dashboard ever uploads here, unlike the payment bucket which also serves customer
+  checkout uploads).
+  ```bash
+  aws s3api create-bucket --bucket kcmps-design-originals-staging --region ap-southeast-1 \
+    --create-bucket-configuration LocationConstraint=ap-southeast-1 --profile kcmps-claude-priv
+  aws s3api put-bucket-versioning --bucket kcmps-design-originals-staging \
+    --versioning-configuration Status=Enabled --profile kcmps-claude-priv
+  aws s3api put-public-access-block --bucket kcmps-design-originals-staging \
+    --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+    --profile kcmps-claude-priv
+  aws s3api put-bucket-encryption --bucket kcmps-design-originals-staging \
+    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+    --profile kcmps-claude-priv
+  aws s3api put-bucket-lifecycle-configuration --bucket kcmps-design-originals-staging \
+    --lifecycle-configuration '{"Rules":[{"ID":"noncurrent-version-glacier-then-expire","Filter":{"Prefix":""},"Status":"Enabled","NoncurrentVersionTransitions":[{"NoncurrentDays":30,"StorageClass":"GLACIER"}],"NoncurrentVersionExpiration":{"NoncurrentDays":30,"NewerNoncurrentVersions":5}}]}' \
+    --profile kcmps-claude-priv
+  aws s3api put-bucket-cors --bucket kcmps-design-originals-staging --cors-configuration '{"CORSRules":[{"AllowedOrigins":["https://dev.kcmps.com","http://localhost:5500","http://localhost:5501"],"AllowedMethods":["PUT"],"AllowedHeaders":["content-type"],"MaxAgeSeconds":300}]}' --profile kcmps-claude-priv
+  ```
+
+**Production bucket — equivalent commands, NOT run yet (owner-gated, per this repo's staging-
+first rule; production S3 resource creation is also explicitly owner-gated).** When approved,
+run the same commands against `kcmps-design-originals-est-2026`, with `AllowedOrigins` widened
+to match the payment bucket's production CORS set (`kcmps.com`/`www.kcmps.com`/
+`site.kcmps.com`/`dev.kcmps.com`/`localhost:5500`/`localhost:5501` — the dashboard is served
+from the apex domain in production, not a `dev.` subdomain):
+```bash
+aws s3api create-bucket --bucket kcmps-design-originals-est-2026 --region ap-southeast-1 \
+  --create-bucket-configuration LocationConstraint=ap-southeast-1 --profile kcmps-claude-priv
+aws s3api put-bucket-versioning --bucket kcmps-design-originals-est-2026 \
+  --versioning-configuration Status=Enabled --profile kcmps-claude-priv
+aws s3api put-public-access-block --bucket kcmps-design-originals-est-2026 \
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+  --profile kcmps-claude-priv
+aws s3api put-bucket-encryption --bucket kcmps-design-originals-est-2026 \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+  --profile kcmps-claude-priv
+aws s3api put-bucket-lifecycle-configuration --bucket kcmps-design-originals-est-2026 \
+  --lifecycle-configuration '{"Rules":[{"ID":"noncurrent-version-glacier-then-expire","Filter":{"Prefix":""},"Status":"Enabled","NoncurrentVersionTransitions":[{"NoncurrentDays":30,"StorageClass":"GLACIER"}],"NoncurrentVersionExpiration":{"NoncurrentDays":30,"NewerNoncurrentVersions":5}}]}' \
+  --profile kcmps-claude-priv
+aws s3api put-bucket-cors --bucket kcmps-design-originals-est-2026 --cors-configuration '{"CORSRules":[{"AllowedOrigins":["https://kcmps.com","https://www.kcmps.com","https://site.kcmps.com","https://dev.kcmps.com","http://localhost:5500","http://localhost:5501"],"AllowedMethods":["PUT"],"AllowedHeaders":["content-type"],"MaxAgeSeconds":300}]}' --profile kcmps-claude-priv
+```
+Production also needs the equivalent GuardDuty Malware Protection plan (below) and the
+`kcmps-guardduty-malware-s3` role's third bucket-scoped inline policy — same commands as
+staging's, target bucket swapped. Neither has been run.
+
+**GuardDuty Malware Protection — staging plan created 2026-08-05**, plan id
+`32cfe94851fa0764a465`, `ACTIVE`, `ObjectPrefixes: ["designs/"]` (the only prefix this bucket
+will ever hold — unlike the payment-uploads bucket's four). Reuses the same
+`kcmps-guardduty-malware-s3` IAM role as the payment-uploads plans, via a **third**
+bucket-scoped inline policy (`kcmps-guardduty-malware-s3-design-originals-staging-inline`) —
+identical shape to the existing `-inline` and `-staging-inline` policies on that role (S3
+tagging, EventBridge notification enablement, get/list, and a validation-object put/delete),
+just re-pointed at `kcmps-design-originals-staging`. Verify:
+```bash
+aws guardduty get-malware-protection-plan --malware-protection-plan-id 32cfe94851fa0764a465 --region ap-southeast-1 --profile kcmps-claude-priv
+aws iam get-role-policy --role-name kcmps-guardduty-malware-s3 --policy-name kcmps-guardduty-malware-s3-design-originals-staging-inline --profile kcmps-claude-priv
+```
+
+**EventBridge wiring — a *separate* rule, not a bucket added to the existing
+`kcmps-staging-guardduty-scan-result` rule's filter array**, so each GuardDuty plan's rule can
+be retired independently and the Description on each stays specific to one bucket:
+`GuardDutyDesignOriginalsScanResultRule` in `backend/infra/backend-lambdas.cfn.yaml`, deployed
+2026-08-05 as part of `kcmps-backend-staging`, name
+`kcmps-staging-guardduty-design-originals-scan-result`, filtered on
+`detail.s3ObjectDetails.bucketName: ["kcmps-design-originals-staging"]` — **do not remove that
+filter**, same cross-contamination risk as the existing rule (one EventBridge bus for the
+whole account, see the "Staging" section below). Targets the same
+`kcmps-staging-handle-scan-result` function as every other upload prefix; that function's
+`JobsLambdaRole` inline policy (`jobs-s3-quarantine`) was extended with quarantine
+(`DeleteObject`/`DeleteObjectVersion`/`ListBucketVersions`) permissions scoped to
+`kcmps-design-originals-staging/designs/*` in the same CloudFormation deploy.
+`backend/jobs/handle-scan-result.js` routes `designs/` keys to a `markDesignLibraryFile()`
+stub — the standalone `SCAN#<ref>` verdict item (already bucket-agnostic) is written
+unconditionally regardless, so fail-closed reads are correct today even before the
+`publishDesign` Lambda and `DESIGN#<id>` item shape exist to annotate directly; see that file's
+header and the stub's own comment for what a future pass needs to fill in.
+
+Production needs the CloudFormation equivalent applied to the production Lambda stack (still
+CLI-managed, not this template) once a production `kcmps-design-originals-est-2026` bucket and
+GuardDuty plan exist — not done here.
+
 ## Checkout Lambdas — deployed (2026-07-31)
 
 `kcmps-create-order` and `kcmps-submit-payment-proof`, both `nodejs24.x`/`arm64` in
@@ -333,6 +442,11 @@ backend change:
   one EventBridge bus and an unfiltered rule matches scan events from *either* bucket,
   as entry 69 found the hard way (a production upload's scan verdict got duplicated
   into the staging table before the filter existed).
+- **A separate design-originals bucket + GuardDuty plan exists for the (not-yet-built)
+  Design Asset Library** — `kcmps-design-originals-staging`, plan `32cfe94851fa0764a465`,
+  its own EventBridge rule (`kcmps-staging-guardduty-design-originals-scan-result`),
+  added 2026-08-05. See the "Design originals bucket" section above for the full
+  picture — same fail-closed / single-EventBridge-bus reasoning applies.
 - **What staging deliberately doesn't have**: PITR, Cognito `PostConfirmation` wiring
   (would displace production's — that Lambda's trigger is tested via direct/synthetic
   invoke instead), and SES sending (`FROM_EMAIL`/`SES_SENDER` env vars are omitted, so

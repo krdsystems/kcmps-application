@@ -19,10 +19,17 @@
     clientId: "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
     staffGroupName: "Staff",
-    // Any of these groups unlocks the dashboard — Staff (dashboard-only)
-    // and Admin (founders — dashboard plus whatever admin-only surface
-    // gets built later). Keep in sync with ../index.html's copy.
-    dashboardGroupNames: ["Staff", "Admin"],
+    // Any of these groups unlocks the dashboard. This list must mirror
+    // backend/lib/auth.js's STAFF_ROLES exactly — a hire placed only in
+    // Production/Sales/Finance passes every backend API, so a shorter list
+    // here bounces them from the UI while the data layer says yes.
+    // Tiers: Staff (dashboard-only), Admin (founders — dashboard plus any
+    // admin-only surface built later), and the three department roles held
+    // in reserve for the first non-founder hire.
+    // Keep in sync with ../index.html's copy.
+    // NOTE: these claims are client-decoded and UI-only — every backend
+    // route re-verifies the JWT against Cognito. Don't add verification here.
+    dashboardGroupNames: ["Staff", "Admin", "Production", "Sales", "Finance"],
   };
   const TOKEN_STORAGE_KEY = "kcmps_tokens";
 

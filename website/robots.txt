@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+Disallow: /dashboard/
+Disallow: /orders.html
+Disallow: /order-detail.html
+Disallow: /track-order.html
+
+Sitemap: https://kcmps.com/sitemap.xml

@@ -1245,19 +1245,59 @@
     return { sent, list: getMessages(mailboxId) };
   }
 
-  /* ---- Design Asset Library (skeleton only — Milestone: Design Asset Library) ----
-     Placeholder behind the same KCMPS_DASH seam so design-library.html has a real
-     function to call. Returns an empty list — no backend exists yet (no S3 bucket,
-     no Lambdas, no DynamoDB DESIGN# items). Swap the body for a real fetch() to
-     GET /designs once backend/design-library/ is built; the .html should not need
-     to change. See docs/roadmap.md "Parallel track — Design Asset Library". */
+  /* ---- Design Asset Library (live — Milestone: Design Asset Library) ----
+     Behind the same KCMPS_DASH seam as getAllOrders/verifyPayment/etc — live-only,
+     no localStorage fallback, matching how those functions work. Backend is
+     backend/design-library/*.js (get-upload-url.js/publish-design.js/list-designs.js/
+     patch-design.js), deployed on kcmps-backend-staging. See root CLAUDE.md's
+     "Design asset library" row. */
   async function getDesigns() {
-    return [];
+    const { designs } = await apiFetch("/designs", { method: "GET" });
+    return designs || [];
+  }
+
+  // Step 1 of 2 — presigned PUT URLs for the original + web-ready files.
+  // meta: { category, original: {filename, contentType, size}, web: {filename, contentType, size} }
+  async function getDesignUploadUrls(meta) {
+    return apiFetch("/designs/upload-url", { method: "POST", body: JSON.stringify(meta) });
+  }
+
+  // Step 2 of 2 — called after both presigned PUTs succeed. meta: { name,
+  // description, category, tags, status, s3KeyOriginal, s3KeyWeb }. May
+  // 409 with { stillScanning: true } if GuardDuty hasn't verdicted either
+  // file yet — callers should treat that as a retry-able state, not an error.
+  async function publishDesign(meta) {
+    return apiFetch("/designs", { method: "POST", body: JSON.stringify(meta) });
+  }
+
+  async function updateDesign(id, patch) {
+    return apiFetch("/designs/" + encodeURIComponent(id), {
+      method: "PATCH", body: JSON.stringify({ action: "update", ...patch }),
+    });
+  }
+
+  async function archiveDesign(id) {
+    return apiFetch("/designs/" + encodeURIComponent(id), {
+      method: "PATCH", body: JSON.stringify({ action: "archive" }),
+    });
+  }
+
+  async function restoreDesign(id) {
+    return apiFetch("/designs/" + encodeURIComponent(id), {
+      method: "PATCH", body: JSON.stringify({ action: "restore" }),
+    });
+  }
+
+  // draft -> published promotion, same fail-closed scan gate as publishDesign().
+  async function promoteDesign(id) {
+    return apiFetch("/designs/" + encodeURIComponent(id), {
+      method: "PATCH", body: JSON.stringify({ action: "publish" }),
+    });
   }
 
   global.KCMPS_DASH = {
     STORAGE_KEY, STATIONS, STATION_LABELS,
-    getDesigns,
+    getDesigns, getDesignUploadUrls, publishDesign, updateDesign, archiveDesign, restoreDesign, promoteDesign,
     getMailboxes, getMessages, getMessage, getThread, markMessageRead, sendReply,
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
     advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, setOnHold,

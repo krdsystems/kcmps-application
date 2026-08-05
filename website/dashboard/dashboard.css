@@ -341,6 +341,20 @@ select.input { appearance: auto; }
 .mail-notice { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--color-accent-100); color: var(--color-accent-800); margin-bottom: var(--space-3); }
 .mail-back { display: none; }
 
+/* On-page banner for pages still running on the localStorage mock. The nav's
+   "Soon" badge only warns someone who hasn't clicked yet; these pages look
+   fully functional once you're on them (inventory adjustments even persist),
+   so the warning has to live on the page too — the risk is a staff member
+   entering a week of real stock counts into browser-local fiction. Deliberately
+   NOT .mail-notice: that one is scoped to the mail reader's semantics. */
+.demo-notice {
+  font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--color-accent-100); color: var(--color-accent-800);
+  border: 1px solid color-mix(in srgb, var(--color-accent-800) 22%, transparent);
+  margin-bottom: var(--space-4);
+}
+.demo-notice strong { font-weight: 800; }
+
 /* .badge-soon in ../styles.css is neutral-on-neutral — near-invisible on the
    dark sidebar. Overridden HERE rather than in styles.css so the storefront is
    untouched and no design-system mirror update is required. */

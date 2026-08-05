@@ -90,17 +90,17 @@
 
   const NAV_ITEMS = [
     { key: "today", href: "today.html", label: "Today", hint: "Daily control" },
-    { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling" },
-    { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin" },
+    { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling", soon: true },
+    { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin", soon: true },
     { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
-    { key: "clients", href: "clients.html", label: "Clients", hint: "CRM" },
-    { key: "email", href: "email.html", label: "Email", hint: "Shop + personal mailboxes" },
-    { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels" },
+    { key: "clients", href: "clients.html", label: "Clients", hint: "CRM", soon: true },
+    { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
+    { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
     // `soon: true` renders a "Soon" badge and dims the link, but still points at
     // a real placeholder page — a dead/disabled nav item reads as a bug, and the
     // placeholder becomes the real page's shell later (only <main> changes).
     { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library" },
-    { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs" },
+    { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs", soon: true },
   ];
 
   function svgIcon(key) {

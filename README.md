@@ -21,8 +21,6 @@ website/                        ← DEPLOYED — synced directly to S3, nothing 
 ├── styles.css                  Design-system stylesheet (tokens + components) used by index.html
 ├── products.js                 Catalog data — single source of truth, shaped like a future API response
 ├── store.js                    Cart logic, drawer rendering, and checkout
-├── login-test.html             Standalone Cognito Hosted UI login proof-of-concept (kept as a reference —
-│                                see docs/history.md step 5 for why the auth logic was validated here first)
 ├── assets/                     Production images referenced by index.html (incl. hero carousel, bg texture)
 │   └── leaves/                 One AI-generated representative photo per catalog leaf, used as the
 │                                product-thumb fallback (see products.js `leaves.*.image` and store.js `thumbImage()`)
@@ -73,19 +71,6 @@ Then open `http://localhost:5500/` — this is the full storefront, including th
 "Login / Sign-up" flow. `http://localhost:5500/` must be registered as an allowed callback
 URL and sign-out URL on the Cognito app client (see below).
 
-## Running the login proof-of-concept locally
-
-`website/login-test.html` still works standalone, for debugging the auth flow in isolation
-without touching the full storefront:
-
-```bash
-cd website
-python3 -m http.server 5500
-```
-
-Then open `http://localhost:5500/login-test.html`. That exact URL must *also* be registered
-as an allowed callback URL and sign-out URL on the Cognito app client, alongside the root URL
-above.
 
 ### Cognito app client requirements
 

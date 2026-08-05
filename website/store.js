@@ -55,7 +55,13 @@
   // kcmps-checkout-api (HTTP API id 6msg2uho6c, ap-southeast-1) — see
   // backend/infra/README.md. Also present in index.html's CSP connect-src;
   // keep both in sync if this API is ever recreated under a different id.
-  var CHECKOUT_API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  // dev.kcmps.com routes to its own staging backend (kcmps-backend-staging,
+  // API id 162ufc121j) instead of production's — website/ has no build step,
+  // so this is a runtime hostname check, not a build-time substitution. Both
+  // hosts must stay listed in every page's CSP connect-src.
+  var CHECKOUT_API_BASE = (typeof location !== "undefined" && location.hostname === "dev.kcmps.com")
+    ? "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com"
+    : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
 
   /* ---- design-file upload allowlist (checkout drag-and-drop) ----
      MIRROR of backend/lib/upload-types.js — this copy exists purely so a

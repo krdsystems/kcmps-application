@@ -49,9 +49,9 @@ formula, current spend baseline, and a decision log of past cost calls →
 | Shirt color choice (Black/White/Custom) | `store.js` `skuCard()`'s `.shirt-row` block, next to the `p.shirtAddon` checkbox — the three picks are `disabled`/dimmed until that checkbox is checked; "Custom" is a two-step pick (opens a panel with a native color input + live hex readout, only "Use this color" commits — don't apply on the swatch's own click, see the gotcha below) and the result travels as `shirtColor` on the cart line into the drawer meta and `buildOrderEmail()` |
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
 | Hero→shop card-deck reveal    | `index.html` — `.hero-deck`/`.hero-stage` CSS + the `--deck-out`/`--deck-in` `:root` rules in the inline `<style>`, driven by the deck-scroll IIFE (grep `--deck-progress`). See the "Card-deck reveal" gotcha below before touching any of it |
-| Auth — login (Cognito Hosted UI) | `website/index.html` `<script>` block, `startLogin()`/`openLoginPopup()`; isolated reference/debug copy at `website/login-test.html` |
-| Auth — sign-up (custom form, not Hosted UI) | `website/index.html`'s `openAuthModal()` — a "Log in or create an account" choice modal fronts the nav button; "Log in" hands off unchanged to `startLogin()`, "Create account" runs a custom first/last-name + username + email + password + code flow calling Cognito's public IdP API (`SignUp`/`ConfirmSignUp`/`ResendConfirmationCode`) directly. Every field it asks for is one the pool actually requires — it originally existed to *avoid* the old pool's junk attributes, and is now kept because it's on-brand and in-page. See `docs/history.md` entry 67 |
-| Cognito user pool (v2) — the deployed pool | `backend/infra/user-pool-v2.cfn.yaml`, stack `kcmps-user-pool-v2` → pool `ap-southeast-1_LHJsFdCgo`, client `2rsbhkjooja4h5e0ijpl4siuug`, domain `kcmps-auth.auth.ap-southeast-1.amazoncognito.com`. Replaced the original pool (deleted 2026-08-05, cutover confirmed working end-to-end first — see `backend/infra/README.md` "User pool v2") to drop 3 required attributes that can never be removed in place. **Read that README section before changing anything here** — several of its choices are create-only and cost a full rebuild to undo. Google federation is live and verified. `backend/infra/foundation.cfn.yaml`'s deployed stack still references the deleted pool ID as a stale parameter — do not redeploy it against the new pool, see its header |
+| Auth — login (Cognito Hosted UI) | `website/index.html` `<script>` block, `startLogin()`/`openLoginPopup()`. `login-test.html` (the original standalone proof-of-concept) was removed 2026-08-05 — no longer needed once the flow was ported into `index.html`, and it had drifted onto the retired Cognito pool's dead Hosted UI domain, same as the rest of the site (see `docs/history.md` entry 68) |
+| Auth — sign-up (custom form, not Hosted UI) | `website/index.html`'s `openAuthModal()` — a "Log in or create an account" choice modal fronts the nav button; "Log in" hands off unchanged to `startLogin()`, "Create account" runs a custom first/last-name + username + email + password + code flow calling Cognito's public IdP API (`SignUp`/`ConfirmSignUp`/`ResendConfirmationCode`) directly. Every field it asks for is one the pool actually requires — it originally existed to *avoid* the old pool's junk attributes, and is now kept because it's on-brand and in-page. See `docs/history.md` entry 70 |
+| Cognito user pool (v2) — the deployed pool | `backend/infra/user-pool-v2.cfn.yaml`, stack `kcmps-user-pool-v2` → pool `ap-southeast-1_LHJsFdCgo`, client `2rsbhkjooja4h5e0ijpl4siuug`, domain `kcmps-auth.auth.ap-southeast-1.amazoncognito.com`. Replaced the original pool (deleted 2026-08-05, cutover confirmed working end-to-end first — see `backend/infra/README.md` "User pool v2") to drop 3 required attributes that can never be removed in place. **Read that README section before changing anything here** — several of its choices are create-only and cost a full rebuild to undo. Google federation is live and verified. `backend/infra/foundation.cfn.yaml`'s deployed stack still references the deleted pool ID as a stale parameter — do not redeploy it against the new pool, see its header. The same pool backs `kcmps-backend-staging` (staging reuses it rather than creating a second pool) |
 | New-signup group assignment   | `backend/auth/post-confirmation.js` — Cognito `PostConfirmation` Lambda trigger (`kcmps-post-confirmation`), wired via the user pool's `LambdaConfig`, not an API route. Auto-adds every self-signup (both the Hosted UI and the custom form above route through the same trigger) to the `Customer` group. Nothing today actually requires that membership (`backend/lib/auth.js`'s `isStaff()` check means "not staff" already reads as customer everywhere) — this exists so the group isn't permanently empty. See `docs/history.md` entry 62 |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
 | Logo / favicon / social preview image | `website/assets/logo-mark.png` (nav + footer, graphic-only — no baked-in wordmark, it sits next to its own text span), `favicon.ico`/`favicon.png`/`apple-touch-icon.png`, and `og-image.jpg` (1200x630, referenced by the `og:image`/`twitter:image` tags in `index.html`'s `<head>`) — all four generated from the graphics-only crop at `design-system/assets/kcmps-icon-only.png` (not deployed; regenerate icons from this file, don't re-crop the raw source). See `docs/history.md` step 42 before touching any of these — covers the icon/wordmark mixup, the `favicon.ico` multi-size gotcha, and Facebook's OG cache behavior |
@@ -73,6 +73,7 @@ formula, current spend baseline, and a decision log of past cost calls →
 | Operating-hours-aware verification SLA | `backend/lib/business-hours.js` — pure `businessMinutesBetween()`/`isWithinOperatingHours()`/`nextOperatingStart()` clock math (fixed +8h Asia/Manila, no DST/timezone-lib needed), unit-tested in `business-hours.test.js`. `backend/staff-api/verify-payment.js` uses it to anchor the *next* stage's SLA clock (`enteredStatusAt`) to the next operating-hours opening when a payment is verified off-hours — the Confirmed transition and customer email still fire immediately regardless of hours. Reads an optional `CONFIG#OPERATING_HOURS` item (falls back to a hardcoded default until a future Settings API writes one). `website/dashboard/dashboard-data.js`'s `decorateLineItem()` mirrors the same clock math client-side for the dashboard's red/warn aging display. See `docs/roadmap.md`'s "Operating-hours-aware verification SLA" entry |
 | Customer chat via order threads | `backend/staff-api/send-message.js`/`get-messages.js` (deployed, `kcmps-checkout-api`) — `PK: ORDER#<id>`/`SK: MSG#<ISO>#<msgId>` items, staff-vs-customer branch mirroring `get-orders.js`. Polling-based (~8s) frontend: `website/orders-data.js`'s `getMessages`/`sendMessage` + `order-detail.html`'s thread card (customer-facing); `website/dashboard/dashboard-data.js`'s `getOrderMessages`/`sendOrderMessage` (named to avoid colliding with that file's existing IMAP-mock `getMessages()`) + `dashboard/job-detail.html`'s thread card (staff-facing). `backend/jobs/notify-unread-messages.js` (new cron) sends one SES reminder per order with staff replies unread >2h — "digest, don't spam", currently dark (`SES_SENDER` unset). `backend/staff-api/get-unread-messages.js` (staff-vs-customer branched) + `dashboard-shell.js`'s `refreshUnreadBadge()` add a sidebar unread-count badge on the Jobs nav link (staff side) and `orders.html`'s `.new-message-banner`/"Unread messages" section (customer side, `orders-data.js`'s `getUnreadMessageSummary()`) — the cheap first step toward a real Messages tab/inbox, see `docs/roadmap.md`'s follow-up entries. `get-messages.js`'s mark-read side effect is opt-in (`?markRead=true`, fired only when the reply box gains focus — `markMessagesRead()` in `dashboard-data.js`/`orders-data.js`), not automatic on every fetch — see the 2026-08-04 fix entry in `docs/roadmap.md`, since it used to mean opening a ticket to check for a reply silently cleared its own badge first. Messages carry `attachments: [{filename, contentType, ref}]` (up to 5, `image/jpeg\|png\|webp\|gif`/`application/pdf`, built 2026-08-04 — was deferred, `attachmentRef` retired) via the same presigned-upload flow as `submit-payment-proof.js`; both message threads (here) and the correspondence log (`add-correspondence.js` row above) share it. See `docs/roadmap.md`'s "Customer chat via order threads" entry for what's still deliberately deferred (account-level/global view — blocked on a GSI2 that isn't provisioned yet) |
 | Milestone 1.0 foundation (CloudFormation, owner-applied) | `backend/infra/foundation.cfn.yaml` — single DynamoDB table + GSI1 + Streams/PITR/deletion-protection, and the 5 Cognito groups added to the *existing* user pool; apply/rollback steps in `backend/infra/README.md` |
+| Staging backend (`dev.kcmps.com`'s own Lambdas/API/table) | `backend/infra/backend-lambdas.cfn.yaml` (new 2026-08-05, Node.js 20.x EOL migration) — all 17 Lambdas + HTTP API + JWT authorizer + routes + EventBridge + DynamoDB Streams trigger as CloudFormation, deployed as `kcmps-backend-staging` on top of `kcmps-foundation-staging` (same `foundation.cfn.yaml`, `TableName=kcmps-staging`). First CloudFormation-managed Lambdas in this repo — production's 17 are still CLI-managed. Full picture, rehearsal workflow, and the runtime-bump procedure it exists to make routine → `backend/infra/README.md`'s "Staging" section |
 | Design asset library plan (not built) | `docs/roadmap.md` "Parallel track — Design Asset Library" — private S3 + foundation table, category reuses catalog leaves, access reuses Production/Sales/Admin groups |
 | Staff email panel plan (not built) | `docs/roadmap.md` "Parallel track — Staff email panel" — IMAP/SMTP bridge to Spacemail, not an embedded webmail iframe (see that section for why) |
 | Product-image bucket plan (not deployed) | `storefront-infra/assets-bucket-structure.md` + `storefront-infra/logic-inputs/generate-asset-manifest.js` |
@@ -291,8 +292,19 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
 
 ## Standard deploy workflow: dev.kcmps.com first, then production
 
-Default flow for any `website/` change, every session — **stage it, look at it, then
-promote it**:
+**Hard rule, every session, no exceptions: staging first, production only on the owner's
+explicit go-ahead.** Default to syncing/deploying to `dev.kcmps.com` (frontend) or
+`kcmps-backend-staging` (backend) and stop there. Never run the production sync/deploy
+command in the same turn as the staging one, and never infer approval from "looks good" or
+silence — the owner has to actually say to promote it (e.g. "looks good, push it to prod" /
+"promote it" / "deploy to production"). This applies whether the change came from a
+one-off fix, a full feature build, or a new session picking up prior work — the gate is on
+the *action* (a prod deploy), not on how the session started. See
+`docs/claude-code-workflow.md`'s "Deploying" sections for the full frontend/backend
+procedures this summarizes.
+
+Default flow for any `website/` change, every session — **stage it, look at it, then wait
+for the go-ahead to promote it**:
 
 1. Sync to the dev/staging bucket prefix and check `https://dev.kcmps.com` (Basic Auth —
    credentials aren't in this repo, ask whoever set up the stack or check the password
@@ -300,15 +312,21 @@ promote it**:
    ```bash
    aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
    ```
-2. Once it looks right on `dev.kcmps.com`, sync the same content to production:
+2. **Stop and report back what changed and how it was verified on dev.kcmps.com.** Only
+   after the owner explicitly says to promote, sync the same content to production:
    ```bash
    aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
    ```
 
 Both use `CachingDisabled`, so either sync shows up immediately — no invalidation step,
-no wait. Skipping straight to step 2 is still possible (nothing enforces the order) but
-defeats the point of having a staging domain — treat step 1 as the default, not an optional
-extra.
+no wait. Skipping straight to step 2 is still technically possible (nothing *enforces* the
+order) but is exactly the shortcut this rule exists to prevent — treat step 1 as the
+default and step 2 as gated, never automatic.
+
+Backend/Lambda changes follow the same gate against `kcmps-backend-staging` before
+`kcmps-*` production functions/infra — see `backend/infra/README.md`'s "Staging" section
+for the exact commands and `docs/claude-code-workflow.md`'s "Deploying — backend" for when
+staging is required vs safely skippable.
 
 Deliberately **no `--delete`** on either command — this only uploads new/changed files, it
 never removes anything from the bucket that isn't in `website/` locally (the bucket has
@@ -320,8 +338,12 @@ sync will touch.
 `storefront-infra/dev-domain.cfn.yaml`) sitting in front of the **same** S3 bucket as
 production, reading from a `dev-site/` prefix instead of the root — so a dev sync never
 overlaps with or overwrites the live site. It's gated behind CloudFront-Function basic auth
-so work-in-progress isn't publicly browsable. See `storefront-infra/CLAUDE.md` for the
-stack's architecture, IAM policy requirements, password rotation, and rollback notes before
+so work-in-progress isn't publicly browsable. **As of 2026-08-05 it also has its own
+backend** — `kcmps-backend-staging` (17 Lambdas + its own HTTP API + `kcmps-staging`
+DynamoDB table, all as CloudFormation), not production's. `website/store.js`/
+`orders-data.js`/`dashboard-data.js` route to it automatically by hostname; see
+`backend/infra/README.md`'s "Staging" section for the full picture and rehearsal
+workflow. See `storefront-infra/CLAUDE.md` for the
 touching the infra itself (not needed for routine content syncs above).
 
 **Domain/CDN routing lives in two separate AWS accounts, on purpose.** The CloudFront

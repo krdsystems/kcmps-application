@@ -105,17 +105,80 @@ git branch -d claude/<slug>
 If a session ever finds a worktree it didn't expect, `git worktree list` shows what's
 checked out where, and `git branch --merged main` shows which branches are safe to remove.
 
-## Deploying
+## Deploying — frontend (`website/`)
 
-`website/` is the only folder that goes live, synced verbatim to S3 — no build step. Standard
-command, once a change is on `main` (see `CLAUDE.md`'s "Deploying to production"):
+`website/` is the only folder that goes live, synced verbatim to S3 — no build step.
+**Always stage on `dev.kcmps.com` first**, per `CLAUDE.md`'s "Standard deploy workflow":
 
 ```bash
+# 1. Stage — check it on https://dev.kcmps.com (Basic Auth; ask Claude or check your
+#    password manager for credentials) before anyone else sees it
+aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
+
+# 2. Promote — once it looks right on dev.kcmps.com
 aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
 ```
 
-No `--delete` — it only uploads new/changed files, never removes bucket content the sync
-didn't put there (the bucket has some pre-existing content outside `website/`'s scope).
+No `--delete` on either — they only upload new/changed files, never remove bucket content
+the sync didn't put there (the bucket has some pre-existing content outside `website/`'s
+scope). Both are `CachingDisabled`, so either sync is live within seconds — no invalidation
+step, no wait. Skipping straight to step 2 still works technically, but defeats the point of
+having a staging domain.
+
+## Deploying — backend (Lambdas, `backend/`)
+
+As of 2026-08-05, `dev.kcmps.com` has its **own real backend** — its own 17 Lambdas, its own
+HTTP API, its own DynamoDB table (`kcmps-staging`), its own S3 uploads bucket, its own
+GuardDuty malware scanning. It is not a toy: it is wired identically to production and
+reuses the same Cognito pool, so a real login/JWT works against it unmodified. This exists
+because prior to that date, `dev.kcmps.com` was frontend-only and every backend change went
+straight to production with zero rehearsal — which is exactly how a routine Node.js runtime
+bump on Lambda would otherwise have been done blind. Full architecture and the exact deploy
+commands are in `backend/infra/README.md`'s "Staging" section; this is the *when and why*.
+
+**Use staging for:** any change to a Lambda's code, its IAM permissions, its environment
+variables, a new API route, a new EventBridge rule, or infrastructure changes to
+`backend/infra/*.cfn.yaml`. In practice: anything where "it worked when I tested it
+manually" isn't good enough evidence, because the failure mode is silent (a presigned URL
+that 403s, an IAM permission gap, a EventBridge rule that fires on the wrong bucket — none
+of these throw an error a customer sees immediately; they show up later as "why didn't this
+work").
+
+**Skip staging for:** pure documentation edits, comment changes, or anything that doesn't
+touch a deployed Lambda's actual behavior.
+
+**The workflow:**
+1. Make the code change in `backend/<module>/`.
+2. Rebuild that function's zip and upload it to
+   `s3://kcmps-lambda-artifacts-staging/<a-new-prefix>/`.
+3. `aws cloudformation deploy` `backend/infra/backend-lambdas.cfn.yaml` against
+   `kcmps-backend-staging` with the new `ArtifactsPrefix` — see `backend/infra/README.md`
+   for the exact parameters.
+4. Sync `website/` to `dev-site/` (frontend routing to staging is automatic by hostname —
+   nothing to configure) and exercise the change for real on `dev.kcmps.com`: click through
+   it, don't just read the code.
+5. **Stop and report what was tested on `dev.kcmps.com` and how.** Only repeat the change
+   against production once you've explicitly said to — same gate as the frontend workflow
+   above, no exceptions for "it's a small change" or "I already tested it once before." For
+   a Lambda **code** change that's the existing `aws lambda update-function-code` pattern
+   (`backend/infra/README.md`'s "Redeploy after a code change"); for a **runtime** bump it's
+   `aws lambda update-function-configuration --runtime`, never `update-function-code`.
+
+**Why this is worth the extra step as a solo dev, not just process for its own sake:**
+staging isn't there to slow you down — it's there because you're the only line of defense
+between a bug and a real customer, and it turns "found by a customer, hours later, with no
+context" into "found by you, in the same minute, with full logs open." That's not
+hypothetical: this exact backend build caught two real, silent regressions within hours of
+shipping — a GuardDuty scanning gap that would have permanently broken every future
+attachment upload with no error message anywhere, and an unfiltered EventBridge rule
+quietly writing production scan data into the wrong table. Neither would have thrown until
+someone tried to open a "stuck" attachment days later and had no idea why. Staging turned
+both into same-session fixes instead of a future debugging session starting from "a customer
+says their file won't load."
+
+**Cost is not a reason to skip this** — the whole staging environment runs at ~₱3/mo, well
+under the ₱500/mo soft cap (see `docs/cost-governance.md`). The reason to skip it is only
+ever "this change doesn't touch a deployed Lambda," never "it's probably fine."
 
 ## Getting good results from a session
 

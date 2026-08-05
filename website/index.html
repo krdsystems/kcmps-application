@@ -22,7 +22,7 @@
      tag — set them as real response headers at CloudFront for full
      clickjacking protection.
      ============================================================ -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 <title>KCMPS — Kaalyados Creatives</title>
@@ -1912,10 +1912,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 
 <!-- ============================================================
      COGNITO AUTH — Hosted UI popup login (Authorization Code + PKCE)
-     Ported from the standalone login-test.html proof-of-concept. The
-     OAuth logic is unchanged; only the UI-rendering functions were
-     restyled to the site's design system. See README for the full
-     write-up of the flow, config requirements, and security notes.
+     Originally ported from a standalone login-test.html proof-of-concept
+     (removed 2026-08-05 once no longer needed). See docs/history.md for
+     the full write-up of the flow, config requirements, and security notes.
      ============================================================ -->
 <script>
 /* ---- Cognito config (specific to this User Pool / App Client) ---- */
@@ -1929,7 +1928,10 @@ const COGNITO_CONFIG = {
   // registered root URL — https://site.kcmps.com/ in prod, http://localhost:5500/
   // locally — regardless of whether the page was opened as "/" or "/index.html".
   redirectUri: window.location.origin + "/",
-  // No `phone` scope — the pool has no phone attribute to consent to.
+  // kcmps-web-client's AllowedOAuthScopes on kcmps-user-pool-v2 is
+  // email/openid/profile only — no "phone" (this client never collects a
+  // phone attribute). Requesting an unsupported scope fails the whole
+  // Hosted UI redirect with invalid_scope.
   scopes:      "email openid profile",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
@@ -2097,7 +2099,7 @@ async function handleAuthRedirect() {
    We learn the outcome from the `storage` event (fires here when the popup
    writes its result), NOT from popup.closed — Cognito's Cross-Origin-Opener-
    Policy header severs the opener link and can make popup.closed spuriously
-   report `true` mid-login. See README / login-test.html comments. ---- */
+   report `true` mid-login. See docs/history.md's auth implementation notes. ---- */
 function openLoginPopup() {
   return new Promise(async (resolve, reject) => {
     // Open synchronously (before any await) so the browser treats it as a

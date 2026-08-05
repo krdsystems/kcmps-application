@@ -1,25 +1,17 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  KCMPS Milestone 1.0 foundation — single-table DynamoDB (with GSI1, Streams,
-  PITR, deletion protection) plus the 5 Cognito staff/customer groups in the
-  EXISTING User Pool. Does not create a User Pool. Safe to run against the
-  existing account: it only adds resources, it does not modify or replace
-  anything that already exists. See backend/infra/README.md for apply and
-  rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md
-  §2.1/§2.3 for the schema this template must stay in sync with.
+  KCMPS single-table DynamoDB (GSI1, Streams, PITR, deletion protection) plus
+  5 Cognito staff/customer groups in an EXISTING User Pool. Does not create a
+  User Pool. See backend/infra/README.md for apply/rollback and
+  ../../ops-dashboard/infra/backend-infra-to-deploy.md §2.1/§2.3 for schema.
 
-  STALE as of the 2026-08-05 pool v2 cutover (backend/infra/README.md "User
-  pool v2"): the deployed stack's UserPoolId parameter points at
-  ap-southeast-1_iDvAEumNp, which has been deleted. Its 5 UserPoolGroup
-  resources are now dangling — do NOT `aws cloudformation deploy` this
-  template pointed at the new pool (ap-southeast-1_LHJsFdCgo) to "fix" it.
-  user-pool-v2.cfn.yaml already created identically-named groups
-  (Customer/Staff/Admin/Production/Sales/Finance) on that pool directly, and
-  CloudFormation would try to create them again under this stack's
-  ownership — a same-name conflict that fails the deploy. Group management
-  for the live pool belongs to user-pool-v2.cfn.yaml now; this template's
-  KcmpsTable resource (the actual DynamoDB table, unaffected by any of the
-  above) is still the real, current source of truth for that table.
+  The DEPLOYED `kcmps-foundation` stack is STALE as of 2026-08-05: its
+  UserPoolId points at a now-deleted pool, its UserPoolGroup resources are
+  dangling. Do NOT redeploy it against the new pool — see UserPoolId below
+  and README.md's "User pool v2" section first.
+
+  Also reused, as a SEPARATE stack, for staging (`kcmps-foundation-staging`)
+  — see README.md's "Staging" section. Not a redeploy of the stale one above.
 
 Parameters:
   TableName:
@@ -33,14 +25,37 @@ Parameters:
     Type: String
     Default: ap-southeast-1_iDvAEumNp
     Description: >
-      STALE — see the template Description above. This ID no longer exists;
-      left as the historical default rather than repointed at the live pool
-      specifically so a routine `deploy` (e.g. to change TableName) doesn't
+      STALE default as far as the `kcmps-foundation` stack goes — see the
+      template Description above. This ID no longer exists; left as the
+      historical default rather than repointed at the live pool specifically
+      so a routine `deploy` of THAT stack (e.g. to change TableName) doesn't
       silently attempt to recreate the 5 groups on the new pool and fail.
-      ID of the EXISTING Cognito User Pool the storefront/dashboard
-      authenticated against at the time this template was first applied.
-      This template adds groups to this pool — it does NOT create a new
-      pool.
+      Callers that pass a real pool ID (e.g. `kcmps-foundation-staging`
+      passing kcmps-user-pool-v2's ID) must also pass
+      CreateCognitoGroups=false, since this template adds groups to
+      whatever pool it's given — it does NOT create a new pool, and doesn't
+      know whether the pool it's pointed at already has them.
+
+  CreateCognitoGroups:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Whether to create the 5 Cognito groups on UserPoolId. Set false when
+      reusing a pool that already has them (e.g. the staging stack reusing
+      kcmps-user-pool-v2's existing groups).
+
+  EnablePitr:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Point-in-time recovery on the table. Off for staging — PITR exists to
+      protect real customer/order data, and staging holds neither.
+
+Conditions:
+  ShouldCreateCognitoGroups: !Equals [!Ref CreateCognitoGroups, "true"]
+  ShouldEnablePitr: !Equals [!Ref EnablePitr, "true"]
 
 Resources:
   KcmpsTable:
@@ -74,13 +89,14 @@ Resources:
           Projection:
             ProjectionType: ALL
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [ShouldEnablePitr, true, false]
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       DeletionProtectionEnabled: true
 
   CustomerGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Customer
@@ -89,6 +105,7 @@ Resources:
 
   ProductionGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Production
@@ -97,6 +114,7 @@ Resources:
 
   SalesGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Sales
@@ -105,6 +123,7 @@ Resources:
 
   FinanceGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Finance
@@ -113,6 +132,7 @@ Resources:
 
   AdminGroup:
     Type: AWS::Cognito::UserPoolGroup
+    Condition: ShouldCreateCognitoGroups
     Properties:
       UserPoolId: !Ref UserPoolId
       GroupName: Admin

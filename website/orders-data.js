@@ -25,7 +25,10 @@
   // 6msg2uho6c, ap-southeast-1) — same API store.js's CHECKOUT_API_BASE
   // points at. Keep all three copies (here, store.js, orders.html/
   // order-detail.html's CSP connect-src) in sync if this API is recreated.
-  var API_BASE = "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
+  // Same dev.kcmps.com -> staging-API branch as store.js's CHECKOUT_API_BASE.
+  var API_BASE = (typeof location !== "undefined" && location.hostname === "dev.kcmps.com")
+    ? "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com"
+    : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
   var ORDER_EMAIL = "order@kcmps.com";
 
   function escapeHtml(s) {

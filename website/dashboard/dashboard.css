@@ -332,6 +332,41 @@ select.input { appearance: auto; }
 /* Reload sits at the far right of the toolbar, after the search box's
    `margin-left: auto` has already pushed the group over. flex-shrink: 0 keeps
    the label from collapsing onto two lines when the mailbox <select> is wide. */
+/* --- inline delivery checks (email.html renderChecks()) ---
+   Four marks sit in the message header next to From/Address/Received; the
+   detail panel opens on hover (mouse) or tap/click (touch + keyboard, via
+   .is-open). A NON-PASS is never hidden in here — renderProvenanceAlert()
+   puts anything suspicious on screen as a banner, because a warning that
+   requires a hover to discover is not a warning. */
+.mail-checks { position: relative; }
+.ck-trigger {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  background: none; border: 0; padding: 2px 0; font: inherit; line-height: 1;
+}
+.ck { font-size: 13px; font-weight: 800; line-height: 1; }
+/* Same pass/fail colours the status pills above already use (#2c6a39 / #a5271b) —
+   there is no --color-success/--color-danger token in styles.css, so matching
+   the established local values beats inventing tokens that resolve to nothing. */
+.ck-good { color: #2c6a39; }
+.ck-bad { color: #a5271b; }
+.ck-unknown { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.ck-pop {
+  display: none; position: absolute; z-index: 30; left: 0; top: calc(100% + 6px);
+  width: max-content; max-width: min(320px, 78vw); padding: 10px 12px;
+  background: var(--color-neutral-100, #fff); color: var(--color-text);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-sm);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
+}
+.mail-checks.is-open .ck-pop { display: block; }
+@media (hover: hover) and (pointer: fine) { .mail-checks:hover .ck-pop { display: block; } }
+.ck-trigger:focus-visible + .ck-pop { display: block; }
+.ck-pop ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.ck-pop li { font-size: 12px; line-height: 1.45; }
+.ck-pop li b { display: block; }
+.ck-pop li span { color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+.ck-foot { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+.mail-notice-warn { background: #fbe6e4; color: #a5271b; font-weight: 600; }
+
 .mail-refresh { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
 .mail-refresh svg { width: 15px; height: 15px; }
 .mail-updated { font-size: 12px; white-space: nowrap; opacity: 0.75; }

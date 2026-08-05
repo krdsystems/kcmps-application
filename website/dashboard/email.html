@@ -184,45 +184,82 @@
      C4 NOTE: reads m.provenance, which the real backend attaches to every
      message item. Absent on the current mock data, in which case this
      renders a single "not recorded" line rather than breaking. ---- */
-  function renderProvenance(m) {
+  const CHECK_LABELS = [
+    ["virus", "Virus", "SES scanned the message and found no malware."],
+    ["spam", "Spam", "SES's spam scoring did not flag this message."],
+    ["dkim", "DKIM", "The sending domain's cryptographic signature verified — this is the strongest proof the sender is who they claim."],
+    ["spf", "SPF", "Recorded but never enforced: forwarding breaks SPF by design, so a failure here is expected and is not treated as suspicious."],
+  ];
+
+  /* Four inline check marks in the message header, details on hover/tap.
+     The verdicts are REAL — SES computes them at receipt time and
+     ingest-inbound.js persists all four verbatim; nothing here is decorative.
+
+     Collapsed by default because the healthy case (four passes) is the boring
+     case and does not deserve a whole block above the message body. BUT a
+     non-pass must never be hidden behind a hover: anything a staff member needs
+     in order to distrust a message stays visible as a banner via
+     renderProvenanceAlert() below. Hover is an affordance for detail, never the
+     only route to a warning — hover does not exist on touch, and this page's
+     whole job is to be un-phishable. */
+  function renderChecks(m) {
     const p = m && m.provenance;
-    if (!p) {
-      return '<p class="mail-notice">Delivery checks are not recorded for this message.</p>';
-    }
+    if (!p) return '<div class="m-block"><h4>Checks</h4><p class="q-empty">Not recorded</p></div>';
     const v = p.verdicts || {};
-    const chip = (label, value, note) => {
-      const val = String(value || "UNKNOWN").toUpperCase();
-      const cls = val === "PASS" ? "st-good" : (val === "UNKNOWN" ? "st-neutral" : "st-warn");
-      return '<span class="status-pill ' + cls + '">' + escapeHtml(label) + ": " + escapeHtml(val) + "</span> " +
-        (note ? '<span class="q-empty" style="display:inline">' + escapeHtml(note) + "</span> " : "");
-    };
 
-    const rows = [
-      chip("Virus", v.virus),
-      chip("Spam", v.spam),
-      chip("DKIM", v.dkim, v.dkim === "PASS" ? "sender verified" : "sender not cryptographically verified"),
-      chip("SPF", v.spf, "not enforced — forwarding breaks SPF"),
-    ].join("");
+    const mark = (val) => (val === "PASS" ? "✓" : (!val || val === "UNKNOWN" ? "?" : "✕"));
+    const cls = (val) => (val === "PASS" ? "ck-good" : (!val || val === "UNKNOWN" ? "ck-unknown" : "ck-bad"));
 
-    const notes = [];
+    const icons = CHECK_LABELS.map(([key, label]) => {
+      const val = String(v[key] || "UNKNOWN").toUpperCase();
+      return '<span class="ck ' + cls(val) + '" aria-hidden="true">' + mark(val) + "</span>";
+    }).join("");
+
+    const rows = CHECK_LABELS.map(([key, label, why]) => {
+      const val = String(v[key] || "UNKNOWN").toUpperCase();
+      return '<li class="' + cls(val) + '"><b>' + escapeHtml(label) + ": " + escapeHtml(val) + "</b>" +
+        '<span>' + escapeHtml(why) + "</span></li>";
+    }).join("");
+
+    // Screen readers and keyboard users get the full result without hovering.
+    const summary = CHECK_LABELS
+      .map(([key, label]) => label + " " + String(v[key] || "unknown").toLowerCase())
+      .join(", ");
+
+    // Routing context lives in the popover too — useful, but not a warning.
+    const foot = [];
+    if (p.viaExpectedForwarder === true) {
+      foot.push("Arrived via the expected forwarder" + (p.expectedForwarder ? " (" + p.expectedForwarder + ")" : "") + ".");
+    }
+    if (p.routedBy === "infra-notice") foot.push("Automated AWS notification, kept out of the customer mailboxes.");
+    if (p.deliveredTo && p.deliveredTo.length) foot.push("Originally addressed to: " + p.deliveredTo.join(", "));
+
+    return '<div class="m-block mail-checks"><h4>Checks</h4>' +
+      '<button type="button" class="ck-trigger" aria-expanded="false" aria-label="Delivery checks: ' + escapeHtml(summary) + '">' +
+      icons + "</button>" +
+      '<div class="ck-pop" role="tooltip"><ul>' + rows + "</ul>" +
+      foot.map((f) => '<p class="ck-foot">' + escapeHtml(f) + "</p>").join("") + "</div></div>";
+  }
+
+  /* Anything that should make a staff member suspicious stays on screen. */
+  function renderProvenanceAlert(m) {
+    const p = m && m.provenance;
+    if (!p) return "";
+    const v = p.verdicts || {};
+    const bad = [];
+
+    if (v.virus && v.virus !== "PASS") bad.push("SES did not clear this message for malware (virus: " + v.virus + ").");
+    if (v.spam && v.spam !== "PASS") bad.push("SES flagged this message as spam (spam: " + v.spam + ").");
     if (p.viaExpectedForwarder === false) {
-      notes.push("This message does NOT show the expected forwarder in its Received chain — it reached the relay by some other path. Treat it with suspicion.");
-    } else if (p.viaExpectedForwarder === true) {
-      notes.push("Arrived via the expected forwarder" + (p.expectedForwarder ? " (" + p.expectedForwarder + ")" : "") + ".");
+      bad.push("This message does NOT show the expected forwarder in its Received chain — it reached the relay by some other path. Treat it with suspicion.");
     }
     if (p.routedBy === "to-cc") {
-      notes.push("Filed using the To/Cc header — no forwarder envelope header was present, so the mailbox is a best guess.");
+      bad.push("Filed using the To/Cc header — no forwarder envelope header was present, so the mailbox is a best guess.");
     } else if (p.routedBy === "unrouted") {
-      notes.push("No known KCMPS address was found on this message.");
-    } else if (p.routedBy === "infra-notice") {
-      notes.push("Automated AWS notification, kept out of the customer mailboxes.");
+      bad.push("No known KCMPS address was found on this message.");
     }
-    if (p.deliveredTo && p.deliveredTo.length) {
-      notes.push("Originally addressed to: " + p.deliveredTo.join(", "));
-    }
-
-    return '<div class="m-block" style="margin-top:var(--space-3)"><h4>Delivery checks</h4><p>' + rows + "</p>" +
-      notes.map((n) => '<p class="q-empty">' + escapeHtml(n) + "</p>").join("") + "</div>";
+    if (!bad.length) return "";
+    return bad.map((n) => '<p class="mail-notice mail-notice-warn">' + escapeHtml(n) + "</p>").join("");
   }
 
   async function renderRead(flash) {
@@ -255,13 +292,14 @@
       '<div class="m-block"><h4>From</h4><p>' + escapeHtml(senderOf(m)) + "</p></div>" +
       '<div class="m-block"><h4>Address</h4><p>' + escapeHtml(m.from.address) + "</p></div>" +
       '<div class="m-block"><h4>Received</h4><p>' + fmtDateTime(m.date) + "</p></div>" +
+      renderChecks(m) +
       (m.relatedOrderId
         ? '<div class="m-block"><h4>Related order</h4><p><a href="job-detail.html?order=' +
           encodeURIComponent(m.relatedOrderId) + '">' + escapeHtml(m.relatedOrderId) + "</a></p></div>"
         : "");
     parts.push('<div class="ticket-meta">' + meta + "</div>");
 
-    parts.push(renderProvenance(m));
+    parts.push(renderProvenanceAlert(m));
 
     if (m.hasHtmlPart) {
       parts.push('<p class="mail-notice">This message has an HTML version. KCMPS Ops shows the plain-text version only, and never loads remote images.</p>');
@@ -366,6 +404,35 @@
     renderAll();
   });
   searchEl.addEventListener("input", () => { search = searchEl.value; renderList(); });
+
+  /* Tap-to-toggle for the checks popover. Delegated on the read pane because
+     the message body is re-rendered on every open/reload, so a listener bound
+     to the button itself would be lost. Hover is handled in CSS for mouse
+     users; this is what makes it reachable on touch, where :hover never fires
+     (and where a hover-only affordance would silently hide the detail). */
+  readEl.addEventListener("click", (e) => {
+    const trigger = e.target.closest && e.target.closest(".ck-trigger");
+    const openOne = readEl.querySelector(".mail-checks.is-open");
+    if (openOne && openOne !== (trigger && trigger.parentElement)) {
+      openOne.classList.remove("is-open");
+      const b = openOne.querySelector(".ck-trigger");
+      if (b) b.setAttribute("aria-expanded", "false");
+    }
+    if (!trigger) return;
+    const host = trigger.parentElement;
+    const nowOpen = !host.classList.contains("is-open");
+    host.classList.toggle("is-open", nowOpen);
+    trigger.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const openOne = readEl.querySelector(".mail-checks.is-open");
+    if (!openOne) return;
+    openOne.classList.remove("is-open");
+    const b = openOne.querySelector(".ck-trigger");
+    if (b) { b.setAttribute("aria-expanded", "false"); b.focus(); }
+  });
 
   if (refreshEl) {
     refreshEl.addEventListener("click", () => {

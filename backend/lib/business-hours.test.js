@@ -26,11 +26,15 @@ test("businessMinutesBetween: overnight-spanning case skips the closed hours", (
   assert.equal(businessMinutesBetween(start, end, DEFAULT_OPERATING_HOURS), 240);
 });
 
-test("businessMinutesBetween: weekend-spanning case skips all of Sunday", () => {
-  // Friday 17:00 -> Monday 10:00 local: 1h (Fri 17-18) + 5h (Sat 09-14) + 0h (Sun closed) + 1h (Mon 09-10) = 7h.
+test("businessMinutesBetween: weekend-spanning case skips the whole weekend", () => {
+  // Friday 17:00 -> Monday 10:00 local: 1h (Fri 17-18) + 0h (Sat closed)
+  // + 0h (Sun closed) + 1h (Mon 09-10) = 2h.
+  // Was 7h until 2026-08-06, when Saturday's 09:00-14:00 window was removed —
+  // the studio runs Monday-Friday only, so the old figure credited five hours
+  // the shop was never open.
   const start = "2026-07-31T09:00:00Z"; // Fri 17:00 Manila
   const end = "2026-08-03T02:00:00Z"; // Mon 10:00 Manila
-  assert.equal(businessMinutesBetween(start, end, DEFAULT_OPERATING_HOURS), 420);
+  assert.equal(businessMinutesBetween(start, end, DEFAULT_OPERATING_HOURS), 120);
 });
 
 test("businessMinutesBetween: returns 0 when end is not after start", () => {

@@ -32,8 +32,12 @@ const DEFAULT_OPERATING_HOURS = {
     wed: { open: "09:00", close: "18:00" },
     thu: { open: "09:00", close: "18:00" },
     fri: { open: "09:00", close: "18:00" },
-    sat: { open: "09:00", close: "14:00" },
-    // sun: null (closed) — see above.
+    // sat/sun: null (closed). Saturday was 09:00–14:00 until 2026-08-06, when
+    // the owner confirmed the studio runs Monday–Friday only. It had been
+    // contradicting the storefront, which always advertised weekdays only —
+    // the SLA clock was crediting five business hours every Saturday that the
+    // shop was not actually open, so verification deadlines landed early.
+    sat: null,
   },
 };
 

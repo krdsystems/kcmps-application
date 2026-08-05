@@ -275,7 +275,10 @@
       wed: { open: "09:00", close: "18:00" },
       thu: { open: "09:00", close: "18:00" },
       fri: { open: "09:00", close: "18:00" },
-      sat: { open: "09:00", close: "14:00" },
+      // sat: null — closed. Was 09:00–14:00 until 2026-08-06; the studio runs
+      // Monday–Friday only. Must match backend/lib/business-hours.js exactly or
+      // the dashboard's aging display disagrees with the server's SLA clock.
+      sat: null,
     },
   };
   const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];

@@ -903,6 +903,30 @@ It is moot now: with a 3-attribute schema the Hosted UI signup page asks for exa
 Email, Given name, Family name, Password — the same list as the custom form. The link is a
 fine second front door. **Don't spend time trying to hide it again.**
 
+### The API authorizer is NOT the only place the pool ID lives
+
+Flipping `kcmps-cognito-jwt` covers the 8 authorizer-gated routes, but **two Lambdas verify
+JWTs themselves** and read their own env vars — they are unauthenticated routes (guest checkout
+must work without a token), so the authorizer never sees those requests:
+
+| Lambda | Env vars | Symptom if left on the old pool |
+|---|---|---|
+| `kcmps-create-order` | `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` | **Silent.** A logged-in customer's token fails verification, the Lambda falls back to guest checkout, `customerSub` is never set — the order never appears in their order history. No error, nothing in the logs. |
+| `kcmps-cancel-order` | same | Sub-match always fails; falls back to `contactsMatch()` |
+
+This was missed on the first pass of the 2026-08-05 cutover and produced two orphaned guest
+orders before it was caught. Update them alongside the authorizer:
+
+```bash
+# get-function-configuration first — --environment REPLACES the whole Variables
+# map, so TABLE_NAME/FROM_EMAIL/UPLOADS_BUCKET must be carried forward.
+aws lambda update-function-configuration --function-name kcmps-create-order \
+  --environment file://env.json --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+Verify with a real order from a logged-in account and confirm `customerSub` is populated on the
+`ORDER#…/META` item — a smoke test that only checks "the order was created" passes either way.
+
 ### Manual steps CloudFormation can't do
 
 The PostConfirmation Lambda lives outside this stack, so both of these are CLI-only:

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Track an order — KCMPS</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <a href="index.html" class="nav-brand" style="text-decoration:none">
+    <img src="assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
+  <div class="nav-links" style="display:flex;gap:var(--space-4);align-items:center;margin-left:auto">
+    <a href="index.html">Back to shop</a>
+  </div>
+</nav>
+
+<main class="orders-wrap">
+  <div class="orders-head">
+    <h1 style="margin:0">Track an order</h1>
+    <p class="card-body">No account needed — enter your order ID and the email or phone number you used at checkout.</p>
+  </div>
+
+  <div class="card" id="track-form-card" style="max-width:440px">
+    <div class="field">
+      <label for="track-order-id">Order ID</label>
+      <input class="input" id="track-order-id" placeholder="e.g. 7QK3M2" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="track-contact">Email or phone used at checkout</label>
+      <input class="input" id="track-contact" placeholder="e.g. juan@email.com" autocomplete="off" />
+    </div>
+    <p class="order-popup-error" id="track-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>
+    <button type="button" class="btn btn-primary btn-block" id="track-submit" style="margin-top:var(--space-3)">Find my order</button>
+  </div>
+
+  <div id="track-result" style="margin-top:var(--space-4)"></div>
+</main>
+
+<script src="products.js"></script>
+<script src="orders-data.js"></script>
+<script>
+(function () {
+  var O = window.KCMPS_ORDERS;
+  var orderIdInput = document.getElementById("track-order-id");
+  var contactInput = document.getElementById("track-contact");
+  var errorEl = document.getElementById("track-error");
+  var submitBtn = document.getElementById("track-submit");
+  var resultEl = document.getElementById("track-result");
+
+  function renderItem(li) {
+    var thumb = li.image
+      ? '<img class="line-thumb" src="' + O.escapeHtml(li.image) + '" alt="" loading="lazy" />'
+      : '<span class="line-thumb-fallback">' + O.escapeHtml((li.name || "?").charAt(0).toUpperCase()) + '</span>';
+    var meta = [li.variantLabel, li.shirtColor ? "Shirt: " + li.shirtColor : null, li.designName]
+      .filter(Boolean).map(O.escapeHtml).join(" · ");
+    return (
+      '<div class="line-row">' + thumb +
+      '<div class="line-info"><div class="line-name">' + O.escapeHtml(li.name) + '</div>' +
+      '<div class="line-meta">Qty ' + (li.qty || 1) + (li.priceEach ? " · " + O.fmtPeso(li.priceEach) + " each" : "") + (meta ? " · " + meta : "") + '</div></div>' +
+      '<span class="tone-pill tone-' + li.status.tone + '">' + O.escapeHtml(li.status.label || li.status.raw) + '</span></div>'
+    );
+  }
+
+  function renderTimeline(order) {
+    var items = O.timelineFor(order);
+    if (!items.length) return "";
+    var html = items.map(function (ev) {
+      return (
+        '<div class="timeline-item"><div class="timeline-dot tone-' + ev.tone + '"></div>' +
+        '<div class="timeline-body"><div class="timeline-label">' + O.escapeHtml(ev.label) + '</div>' +
+        '<div class="timeline-at">' + O.fmtDateTime(ev.at) + '</div>' +
+        (ev.detail ? '<div class="timeline-detail">' + O.escapeHtml(ev.detail) + '</div>' : '') +
+        '</div></div>'
+      );
+    }).join("");
+    return '<div class="card"><p class="detail-card-title">Timeline</p><div class="timeline">' + html + '</div></div>';
+  }
+
+  function renderProgress(order) {
+    if (order.bucket === "cancelled") return "";
+    var stageIdx = order.status.stageIndex != null ? order.status.stageIndex : 0;
+    var steps = O.STAGES.map(function (_, i) {
+      var cls = i <= stageIdx ? "is-done" : "";
+      if (order.status.tone === "bad" && i === stageIdx) cls = "is-bad";
+      return '<div class="progress-step ' + cls + '"></div>';
+    }).join("");
+    return '<div class="order-progress">' + steps + '</div>';
+  }
+
+  function renderOrder(order) {
+    resultEl.innerHTML =
+      '<div class="order-detail-head">' +
+        '<div><h1 style="margin:0">Order ' + O.escapeHtml(order.orderId) + '</h1>' +
+        '<p class="card-body">Placed ' + O.fmtDate(order.createdAt) + (order.promisedDate ? ' · Expected by ' + O.fmtDate(order.promisedDate) : '') + '</p></div>' +
+        '<span class="tone-pill tone-' + order.status.tone + '">' + O.escapeHtml(order.status.label || order.status.raw) + '</span>' +
+      '</div>' +
+      renderProgress(order) +
+      (order.status.next ? '<p class="card-body" style="margin-top:var(--space-2)">' + O.escapeHtml(order.status.next) + '</p>' : '') +
+      '<div class="card" style="margin-top:var(--space-4)"><p class="detail-card-title">Items</p><div class="line-list">' +
+        order.lineItems.map(renderItem).join("") + '</div></div>' +
+      '<div class="order-detail-grid">' + renderTimeline(order) + '</div>' +
+      '<p class="card-body" style="margin-top:var(--space-4)">Questions about this order? <a href="mailto:' + O.ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + order.orderId) + '">Contact us</a>.</p>';
+  }
+
+  function submit() {
+    var orderId = orderIdInput.value.trim();
+    var contact = contactInput.value.trim();
+    errorEl.style.display = "none";
+    resultEl.innerHTML = "";
+    if (!orderId || !contact) {
+      errorEl.textContent = "Enter both your order ID and the email or phone you used at checkout.";
+      errorEl.style.display = "";
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Looking up…";
+    O.lookupOrder(orderId, contact).then(function (order) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Find my order";
+      renderOrder(order);
+    }).catch(function (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Find my order";
+      // Server message is deliberately generic (anti-enumeration) — render
+      // it verbatim, never try to distinguish wrong-ID from wrong-contact.
+      errorEl.textContent = err.message || "Couldn't look up that order right now.";
+      errorEl.style.display = "";
+    });
+  }
+
+  submitBtn.addEventListener("click", submit);
+  [orderIdInput, contactInput].forEach(function (el) {
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+  });
+})();
+</script>
+</body>
+</html>

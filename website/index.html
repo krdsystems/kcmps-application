@@ -2243,22 +2243,20 @@ function escapeAuthHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-async function signUpCustomer(email, password) {
+async function signUpCustomer(email, password, firstName, lastName) {
   const username = generateUsername();
-  // given_name/family_name/middle_name/preferred_username: required by the
-  // pool, never read anywhere in this app — placeholders so the customer
-  // is never asked to type them. `name` is set to the email so
-  // renderLoggedIn()'s `claims.name || claims.email` shows the same thing
-  // it would have shown anyway.
+  // middle_name/preferred_username: required by the pool, never read
+  // anywhere in this app — placeholders so the customer is never asked to
+  // type them.
   await idpRequest("SignUp", {
     ClientId: COGNITO_CONFIG.clientId,
     Username: username,
     Password: password,
     UserAttributes: [
       { Name: "email", Value: email },
-      { Name: "name", Value: email },
-      { Name: "given_name", Value: "-" },
-      { Name: "family_name", Value: "-" },
+      { Name: "name", Value: `${firstName} ${lastName}`.trim() },
+      { Name: "given_name", Value: firstName },
+      { Name: "family_name", Value: lastName },
       { Name: "middle_name", Value: "-" },
       { Name: "preferred_username", Value: username },
     ],
@@ -2334,6 +2332,8 @@ function renderAuthChoiceStep() {
 function renderSignUpStep() {
   authModalTitle.textContent = "Create your account";
   authModalBody.innerHTML =
+    '<div class="field"><label for="su-first-name">First Name</label><input class="input" id="su-first-name" type="text" autocomplete="given-name" /></div>' +
+    '<div class="field"><label for="su-last-name">Last Name</label><input class="input" id="su-last-name" type="text" autocomplete="family-name" /></div>' +
     '<div class="field"><label for="su-email">Email</label><input class="input" id="su-email" type="email" autocomplete="email" /></div>' +
     '<div class="field"><label for="su-password">Password</label><input class="input" id="su-password" type="password" autocomplete="new-password" /></div>' +
     '<p style="font-size:12px;opacity:0.7;margin-top:-4px">At least 8 characters, with upper and lowercase letters, a number, and a symbol.</p>' +
@@ -2346,14 +2346,20 @@ function renderSignUpStep() {
 }
 
 async function submitSignUp() {
+  const firstNameEl = document.getElementById("su-first-name");
+  const lastNameEl = document.getElementById("su-last-name");
   const emailEl = document.getElementById("su-email");
   const passwordEl = document.getElementById("su-password");
   const errorEl = document.getElementById("su-error");
+  const firstName = firstNameEl.value.trim();
+  const lastName = lastNameEl.value.trim();
   const email = emailEl.value.trim();
   const password = passwordEl.value;
   function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
   errorEl.style.display = "none";
 
+  if (!firstName) { showError("Please enter your first name."); return; }
+  if (!lastName) { showError("Please enter your last name."); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError("Please enter a valid email address."); return; }
   if (!password) { showError("Please enter a password."); return; }
 
@@ -2361,7 +2367,7 @@ async function submitSignUp() {
   const origText = btn.textContent;
   btn.disabled = true; btn.textContent = "Creating account…";
   try {
-    const username = await signUpCustomer(email, password);
+    const username = await signUpCustomer(email, password, firstName, lastName);
     renderConfirmStep(username, email);
   } catch (err) {
     showError(err.message);

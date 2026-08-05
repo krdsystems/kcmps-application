@@ -144,3 +144,35 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
   Found via the owner's own real use of the new staging environment within hours of it shipping.
   See `docs/history.md` entry 69 for the full story, including a second bug (an unfiltered
   EventBridge rule pattern) this surfaced along the way.
+- **Design Asset Library infra, staging only** (`kcmps-design-originals-staging` bucket +
+  GuardDuty Malware Protection plan `32cfe94851fa0764a465` + a second, bucket-filtered
+  EventBridge rule, applied 2026-08-05, first infra step of `docs/roadmap.md`'s "Parallel
+  track — Design Asset Library") — **~₱0/mo at current (zero) volume**:
+  - **S3 storage/requests**: the bucket is empty today — no `publishDesign` Lambda exists yet
+    to write to it (that's a later pass). Even once designer uploads start, this is a
+    low-frequency, staff-only path (originals only, not the public-facing derivative), so
+    volume is expected to stay well under the storage costs already tracked for the payment
+    uploads bucket above.
+  - **GuardDuty Malware Protection scanning**: same free-tier math as the entry above this one
+    — first 1 GB/mo scanned and first 1,000 scan requests/mo are free in `ap-southeast-1`
+    (verified against the AWS Pricing API 2026-08-05, cited in the "GuardDuty Malware
+    Protection for S3 on customer uploads" entry above). A handful of PSD/AI test uploads
+    during a future pass's live verification is nowhere near either threshold, so this rides
+    the same free tier the payment-uploads bucket's GuardDuty plan already does.
+  - **No new Lambda invocation cost**: scan-result events route to the *existing*
+    `handle-scan-result` function (shared `JobsLambdaRole`, no new function deployed) — one
+    more EventBridge rule targeting a function that's already within its free-tier invocation
+    volume, per the "Auto-quarantine of infected uploads" entry above.
+  - **Lifecycle (Glacier transition + capped noncurrent-version retention)** costs nothing
+    extra until real originals are uploaded and superseded — it exists to bound *future* growth
+    from repeated re-uploads, not to generate charges today. Same reasoning as the "S3
+    versioning + lifecycle for design-library originals" planning entry above, now actually
+    applied to the staging bucket.
+  - **Revisit trigger**: once the `publishDesign` Lambda exists and real designer uploads
+    start landing, re-measure against the same free-tier thresholds the payment-uploads plan
+    uses (1 GB / 1,000 requests scanned per month) — expected to stay within them at the
+    catalog's current size, but re-check once uploads are actually flowing rather than assume.
+  - **Production bucket + GuardDuty plan are NOT created** — owner-gated per this repo's
+    staging-first rule; the equivalent CLI commands are documented in
+    `backend/infra/README.md`'s "Design originals bucket" section for when the owner approves
+    promotion, but nothing was run against `kcmps-design-originals-est-2026`.

@@ -36,6 +36,16 @@ Parameters:
     Default: kcmps-payment-uploads-staging
     Description: S3 bucket for payment proofs / design uploads / message & correspondence attachments.
 
+  DesignOriginalsBucket:
+    Type: String
+    Default: kcmps-design-originals-staging
+    Description: >
+      Private S3 bucket for Design Asset Library source files (PSD/AI/PDF originals),
+      created by hand (same convention as UploadsBucket — see backend/infra/README.md's
+      "Staging" section) since this stack doesn't own bucket creation. Referenced here
+      only for the GuardDuty EventBridge rule filter and the jobs Lambda's quarantine
+      IAM permissions.
+
   ArtifactsBucket:
     Type: String
     Default: kcmps-lambda-artifacts-staging
@@ -231,6 +241,14 @@ Resources:
                 Effect: Allow
                 Action: s3:ListBucketVersions
                 Resource: !Sub arn:aws:s3:::${UploadsBucket}
+              - Sid: QuarantineInfectedDesignOriginals
+                Effect: Allow
+                Action: [s3:DeleteObject, s3:DeleteObjectVersion]
+                Resource: !Sub arn:aws:s3:::${DesignOriginalsBucket}/designs/*
+              - Sid: ListVersionsForDesignOriginalsQuarantine
+                Effect: Allow
+                Action: s3:ListBucketVersions
+                Resource: !Sub arn:aws:s3:::${DesignOriginalsBucket}
 
   PostConfirmationLambdaRole:
     Type: AWS::IAM::Role
@@ -713,6 +731,41 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt GuardDutyScanResultRule.Arn
+
+  # Separate rule (not a second bucket added to GuardDutyScanResultRule's
+  # array) because DesignOriginalsBucket is a distinct GuardDuty Malware
+  # Protection plan with its own bucket ARN — keeping one rule per plan
+  # mirrors how the plans themselves are provisioned (one per bucket) and
+  # means either bucket's rule can be disabled/retired independently.
+  # Same cross-contamination guard as GuardDutyScanResultRule above: the
+  # account has one EventBridge bus, so the bucketName filter is required,
+  # not optional — see that rule's Description and docs/history.md entry 69.
+  GuardDutyDesignOriginalsScanResultRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub kcmps-${EnvName}-guardduty-design-originals-scan-result
+      Description: >
+        Filtered to DesignOriginalsBucket by detail.s3ObjectDetails.bucketName
+        — same reasoning as GuardDutyScanResultRule (this account has one
+        EventBridge bus; an unfiltered rule would also match scan events
+        from UploadsBucket and production's buckets).
+      EventPattern:
+        source: ["aws.guardduty"]
+        detail-type: ["GuardDuty Malware Protection Object Scan Result"]
+        detail:
+          s3ObjectDetails:
+            bucketName: [!Ref DesignOriginalsBucket]
+      State: ENABLED
+      Targets:
+        - Id: HandleScanResultTarget
+          Arn: !GetAtt HandleScanResultFunction.Arn
+  PermHandleScanResultDesignOriginalsEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HandleScanResultFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GuardDutyDesignOriginalsScanResultRule.Arn
 
   # ---------------------------------------------------------------------------
   # DynamoDB Streams -> streams-handler, filtered to LINEITEM# writes, mirroring

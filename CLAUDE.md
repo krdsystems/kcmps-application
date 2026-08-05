@@ -50,7 +50,8 @@ formula, current spend baseline, and a decision log of past cost calls →
 | Page structure / copy         | `website/index.html` — value-stack amounts & guarantee wording marked inline as owner-editable |
 | Hero→shop card-deck reveal    | `index.html` — `.hero-deck`/`.hero-stage` CSS + the `--deck-out`/`--deck-in` `:root` rules in the inline `<style>`, driven by the deck-scroll IIFE (grep `--deck-progress`). See the "Card-deck reveal" gotcha below before touching any of it |
 | Auth — login (Cognito Hosted UI) | `website/index.html` `<script>` block, `startLogin()`/`openLoginPopup()`; isolated reference/debug copy at `website/login-test.html` |
-| Auth — sign-up (custom form, not Hosted UI) | `website/index.html`'s `openAuthModal()` — a "Log in or create an account" choice modal fronts the nav button; "Log in" hands off unchanged to `startLogin()`, "Create account" runs a custom email+password+code flow calling Cognito's public IdP API (`SignUp`/`ConfirmSignUp`/`ResendConfirmationCode`) directly, bypassing Cognito's own Hosted UI signup page. Exists because the pool's schema requires several standard attributes (full name, a separate username) this app never uses — schema `Required` flags are immutable post-creation, so this was cheaper than migrating pools. See `docs/history.md` entry 63 |
+| Auth — sign-up (custom form, not Hosted UI) | `website/index.html`'s `openAuthModal()` — a "Log in or create an account" choice modal fronts the nav button; "Log in" hands off unchanged to `startLogin()`, "Create account" runs a custom first/last-name + username + email + password + code flow calling Cognito's public IdP API (`SignUp`/`ConfirmSignUp`/`ResendConfirmationCode`) directly. Every field it asks for is one the pool actually requires — it originally existed to *avoid* the old pool's junk attributes, and is now kept because it's on-brand and in-page. See `docs/history.md` entry 67 |
+| Cognito user pool (v2) — the deployed pool | `backend/infra/user-pool-v2.cfn.yaml`, stack `kcmps-user-pool-v2` → pool `ap-southeast-1_LHJsFdCgo`, client `2rsbhkjooja4h5e0ijpl4siuug`, domain `kcmps-auth.auth.ap-southeast-1.amazoncognito.com`. Replaced the original pool on 2026-08-05 to drop 3 required attributes that can never be removed in place. **Read `backend/infra/README.md`'s "User pool v2" section before changing anything here** — several of its choices are create-only and cost a full rebuild to undo. Google IdP is not yet configured on it (needs the owner's OAuth client secret) |
 | New-signup group assignment   | `backend/auth/post-confirmation.js` — Cognito `PostConfirmation` Lambda trigger (`kcmps-post-confirmation`), wired via the user pool's `LambdaConfig`, not an API route. Auto-adds every self-signup (both the Hosted UI and the custom form above route through the same trigger) to the `Customer` group. Nothing today actually requires that membership (`backend/lib/auth.js`'s `isStaff()` check means "not staff" already reads as customer everywhere) — this exists so the group isn't permanently empty. See `docs/history.md` entry 62 |
 | Design tokens / components    | `website/styles.css` (deployed copy) — mirror any change into `design-system/KCMPS Redesign/styles.css` |
 | Logo / favicon / social preview image | `website/assets/logo-mark.png` (nav + footer, graphic-only — no baked-in wordmark, it sits next to its own text span), `favicon.ico`/`favicon.png`/`apple-touch-icon.png`, and `og-image.jpg` (1200x630, referenced by the `og:image`/`twitter:image` tags in `index.html`'s `<head>`) — all four generated from the graphics-only crop at `design-system/assets/kcmps-icon-only.png` (not deployed; regenerate icons from this file, don't re-crop the raw source). See `docs/history.md` step 42 before touching any of these — covers the icon/wordmark mixup, the `favicon.ico` multi-size gotcha, and Facebook's OG cache behavior |
@@ -173,9 +174,18 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   exists — any future Lambda must re-verify against Cognito's JWKS.
 - **Custom sign-up's Cognito `Username` can never be email-shaped.** The pool aliases sign-in
   by email (`AliasAttributes`), and Cognito rejects an email-*formatted* Username outright with
-  `InvalidParameterException` — it's a separate, opaque identifier from the email itself.
-  `index.html`'s `generateUsername()` produces a random non-email string for exactly this
-  reason; don't "simplify" it to reuse the email. See `docs/history.md` entry 63.
+  `InvalidParameterException` — it's a separate identifier from the email itself. Customers
+  pick their own username, so this is enforced client-side in `index.html`'s `usernameError()`/
+  `USERNAME_RE` (an "@" is rejected before the API ever sees it, since the raw exception text
+  is useless to a shopper). `generateUsername()` is **gone** — don't reintroduce an
+  auto-generated username, and don't "simplify" the Username to reuse the email.
+- **The user pool's required attributes are `email`/`given_name`/`family_name` and that list is
+  frozen.** Schema `Required` flags are immutable after pool creation — changing them means
+  building a *new* pool, which is exactly what `backend/infra/user-pool-v2.cfn.yaml` is. Before
+  touching anything pool-shaped, read that README section: it covers why the Hosted UI sign-up
+  link can't be hidden (and no longer needs to be), why `AliasAttributes` must not become
+  `UsernameAttributes`, why `ManagedLoginBranding` is load-bearing rather than cosmetic, and
+  the `sub`-is-a-foreign-key trap that orphans order history on any future pool move.
 - **Mobile**: `overflow-x: hidden` on `html` only (not `body` — see
   `docs/history.md` step 12, promoting both axes to a scroll container breaks `position:
   sticky`) and the `@media (max-width: 760px)` / `(max-width: 480px)` rules in `styles.css` fix

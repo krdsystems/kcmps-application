@@ -2890,3 +2890,64 @@ The ID token is decoded in the browser to read `name` and `cognito:groups` for U
 constraint to carry forward: any backend that later receives a token from this app must
 independently verify its signature against Cognito's JWKS. Client-decoded claims must never
 be trusted server-side just because the UI already displayed them.
+
+### 67. User pool v2 — a new Cognito pool to drop 3 immutable required attributes (2026-08-05)
+
+**Trigger:** a request to hide Cognito's "New user? Create an account" link on the Hosted UI
+sign-in page, so shoppers couldn't reach the full-attribute Hosted UI signup page that entry
+63's custom form exists to bypass. Investigation killed the premise twice over.
+
+**First dead end — the link can't be hidden.** The pool's domain runs **Managed Login v2**
+(`ManagedLoginVersion: 2`), whose branding is a fixed schema of 168 style tokens. Enumerating
+every settable key found visibility toggles for the page header, page footer, form
+instructions, language selector, background images and IdP button icons — and nothing for the
+sign-up link. `categories.signUp` carries only `acceptanceElements` (terms checkboxes);
+`componentClasses.link` sets link colour globally, so dimming it would also take out "Forgot
+your password?". AWS docs state Cognito ignores any `Settings` key absent from the schema its
+own API returns, so that enumeration *is* the complete surface — console included, since the
+branding editor is just a GUI over the same document. Classic branding's `.redirect-customizable`
+(which can hide it) only renders when the domain's branding version is Hosted UI (classic), and
+"a user pool domain serves either managed login or the hosted UI" — downgrading would swap
+sign-in/MFA/password-reset to the old UI for everyone. Disabling self-registration would remove
+the link and break the custom form's public `SignUp` call.
+
+**Second dead end — the required attributes can't be edited.** The obvious alternative, making
+the Hosted UI signup page harmless by trimming the schema, hits the same immutability entry 63
+documented: no `update-user-pool` field, no console toggle.
+
+**What changed the calculus:** entry 63 rejected a pool migration partly because it "needs
+migrating the 5 existing users including a federated Google identity." A census found 6 users,
+**all staff or test accounts, zero real customers** — so that cost had evaporated, and a new
+pool became the cheap option rather than the expensive one.
+
+**Built:** `backend/infra/user-pool-v2.cfn.yaml` (stack `kcmps-user-pool-v2`) →
+`ap-southeast-1_LHJsFdCgo` / client `2rsbhkjooja4h5e0ijpl4siuug` / domain `kcmps-auth`.
+Required attributes are now exactly `email`, `given_name`, `family_name`. Cognito's own signup
+page consequently asks for Username, Email, Given name, Family name, Password — the same list
+as the custom form — so the original task dissolved rather than being solved: **the link no
+longer needs hiding.**
+
+**Three things this cost, all worth recording:**
+
+1. **`sub` is a customer foreign key.** It's pool-scoped, and no migration technique preserves
+   it (a `UserMigration` trigger doesn't either). `get-orders.js`, `send-message.js`,
+   `get-messages.js` and `get-unread-messages.js` all key customer data on `claims.sub`, so a
+   new pool orphans order history and 403s customers out of their own message threads.
+   Resolved by clearing the table's 291 test items; with real orders a `customerSub` remap
+   keyed on `customerEmail` would be mandatory.
+2. **Built the pool wrong once.** It shipped first with `UsernameAttributes: [email]`, which
+   makes the email *be* the username and removes username sign-in entirely. Create-only
+   property, so the fix was a full teardown and rebuild with `AliasAttributes: [email]`.
+3. **`ManagedLoginBranding` is load-bearing.** Omitted on the first deploy, and the entire
+   Hosted UI served *"Login pages unavailable — please contact an administrator."* A
+   managed-login v2 domain renders nothing for an app client with no branding style.
+
+Also in this pass: customers now choose their own username (`generateUsername()` deleted,
+replaced by a `USERNAME_RE`-validated field that rejects "@" client-side); the `phone` scope and
+`verified_phone_number` recovery dropped; `localhost:5501` added to the callback URLs, fixing
+local OAuth that had never worked against this repo's own `launch.json` port. Google federation
+is **not yet configured** on the new pool — Cognito never returns a client secret, so it can't
+be copied and needs a re-run with the value from the Google Cloud console.
+
+Full apply/rollback, the manual `lambda:add-permission` + IAM steps CloudFormation can't cover,
+and the recreated-accounts table are in `backend/infra/README.md` → "User pool v2".

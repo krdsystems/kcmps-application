@@ -16,8 +16,8 @@
   var DATA = window.KCMPS_STORE_DATA || { products: [], leaves: {}, currency: "₱" };
 
   var COGNITO_CONFIG = {
-    domain: "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
-    clientId: "95rrk0mflffentqdiomg1fipc",
+    domain: "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
+    clientId: "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
   };
   var TOKEN_STORAGE_KEY = "kcmps_tokens";

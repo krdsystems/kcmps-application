@@ -15,8 +15,8 @@
 
 (function (global) {
   const COGNITO_CONFIG = {
-    domain: "https://ap-southeast-1idvaeumnp.auth.ap-southeast-1.amazoncognito.com",
-    clientId: "95rrk0mflffentqdiomg1fipc",
+    domain: "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
+    clientId: "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
     staffGroupName: "Staff",
     // Any of these groups unlocks the dashboard — Staff (dashboard-only)

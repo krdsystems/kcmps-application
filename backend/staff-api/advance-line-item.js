@@ -145,6 +145,7 @@ exports.handler = async (event) => {
   let updateExpression = `SET ${updateParts.join(", ")}`;
   if (removeAttrs.length) updateExpression += ` REMOVE ${removeAttrs.join(", ")}`;
 
+  let conflict = false;
   await client.send(new TransactWriteCommand({
     TransactItems: [
       {
@@ -170,11 +171,10 @@ exports.handler = async (event) => {
       },
     ],
   })).catch((err) => {
-    if (err.name === "TransactionCanceledException") {
-      throw Object.assign(new Error("Line item changed concurrently — reload and retry."), { statusCode: 409 });
-    }
+    if (err.name === "TransactionCanceledException") { conflict = true; return; }
     throw err;
   });
+  if (conflict) return response(409, { error: "Line item changed concurrently — reload and retry." });
 
   // orderStatus is NOT recomputed here — the DynamoDB Streams handler
   // (backend/jobs/streams-handler.js) does that asynchronously off the

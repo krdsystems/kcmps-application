@@ -190,12 +190,12 @@ exports.handler = async (event) => {
     },
   });
 
+  let conflict = false;
   await client.send(new TransactWriteCommand({ TransactItems: transactItems })).catch((err) => {
-    if (err.name === "TransactionCanceledException") {
-      throw Object.assign(new Error("Order's payment or line items changed concurrently — reload and retry."), { statusCode: 409 });
-    }
+    if (err.name === "TransactionCanceledException") { conflict = true; return; }
     throw err;
   });
+  if (conflict) return response(409, { error: "Order's payment or line items changed concurrently — reload and retry." });
 
   // orderStatus recomputes asynchronously via backend/jobs/streams-handler.js
   // off the line-item writes above — same pattern as advance-line-item.js,

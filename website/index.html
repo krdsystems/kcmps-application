@@ -1959,10 +1959,11 @@ const COGNITO_CONFIG = {
   // pre-launch (staff test on dev.kcmps.com); revisit at launch by adding
   // the production hostnames below.
   authUiEnabled: ["dev.kcmps.com", "localhost", "127.0.0.1"].includes(window.location.hostname),
-  // Any of these groups unlocks the dashboard — Staff (dashboard-only)
-  // and Admin (founders — dashboard plus whatever admin-only surface
-  // gets built later). Keep in sync with dashboard/dashboard-shell.js's copy.
-  dashboardGroupNames: ["Staff", "Admin"],
+  // Any of these groups unlocks the dashboard — mirrors backend/lib/auth.js's
+  // STAFF_ROLES: Staff (dashboard-only), Admin (founders), plus the three
+  // department roles (Production/Sales/Finance) reserved for the first
+  // non-founder hire. Keep in sync with dashboard/dashboard-shell.js's copy.
+  dashboardGroupNames: ["Staff", "Admin", "Production", "Sales", "Finance"],
 };
 
 function log(...args) { console.log("[auth]", ...args); }
@@ -2203,7 +2204,7 @@ function renderLoggedIn(claims) {
   // My Orders is visible to every logged-in user, staff or not.
   document.getElementById("orders-link").classList.remove("is-hidden");
 
-  // Group-based UI branching: Staff or Admin group => show the Dashboard link.
+  // Group-based UI branching: any staff role (see dashboardGroupNames) => show the Dashboard link.
   const groups = claims["cognito:groups"] || [];
   const dashboardLink = document.getElementById("dashboard-link");
   if (COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) {

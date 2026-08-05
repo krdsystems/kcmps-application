@@ -151,6 +151,30 @@ function designPk(designId) {
   return `DESIGN#${designId}`;
 }
 
+// ---- Inbound mail (SES relay, docs/roadmap.md "Parallel track — Staff email
+// panel", "SES relay" track) ----
+// PK: MAILBOX#<mailboxId> (mailboxId is the lowercased recipient address,
+// e.g. "order@mirror.kcmps.com"), SK: MSG#<messageIdHash> — deliberately NOT
+// MSG#<internaldate>#<messageId> (the EVENT#/order-message convention): the
+// read path (get-mail-message.js) is only ever handed {mailboxId, messageId}
+// by the dashboard, with no date, so the SK must be derivable from those two
+// alone for a single GetItem. messageIdHash is a stable sha256 (see
+// ../mail/mail-parse.js's hashMessageId()) of the RFC822 Message-ID, which
+// can contain characters DynamoDB sort keys tolerate but which are awkward
+// to round-trip through URL paths — hashing sidesteps that AND makes
+// ingest-inbound.js's write idempotent on SES/S3-event retry (same message
+// -> same key -> harmless overwrite, never a duplicate item). Ordering for
+// list views is done in application code on the `date` attribute instead of
+// relying on SK sort — see get-mail-messages.js's header for why that's an
+// acceptable bounded-read tradeoff at this mailbox's expected volume.
+function mailboxPk(mailboxId) {
+  return `MAILBOX#${mailboxId}`;
+}
+
+function mailMessageSk(messageIdHash) {
+  return `MSG#${messageIdHash}`;
+}
+
 module.exports = {
   orderPk,
   metaSk,
@@ -175,4 +199,6 @@ module.exports = {
   messageSk,
   scanResultPk,
   designPk,
+  mailboxPk,
+  mailMessageSk,
 };

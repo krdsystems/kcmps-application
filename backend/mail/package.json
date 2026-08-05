@@ -1,0 +1,11 @@
+{
+  "name": "kcmps-mail-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/mail/*.js (SES relay inbound-mail ingest + staff mail read API, docs/roadmap.md 'Parallel track — Staff email panel', SES relay track). Deploy each handler .js as its own Lambda; mail-parse.js is a shared module zipped alongside, plus ../lib on the module path. ingest-inbound.js is the only handler that needs mailparser — the repo has no root package.json/build step, so this Lambda's zip must be built with `npm install` run in THIS directory first (see backend/infra/README.md's SES relay staging section), vendoring mailparser + its transitive deps into node_modules/. The read-path Lambdas (get-mailboxes/get-mail-messages/get-mail-message/mark-mail-read) don't use mailparser directly but share this package.json/zip build for simplicity — a leaner split can happen later if cold-start size becomes a problem.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "mailparser": "^3.7.1"
+  }
+}

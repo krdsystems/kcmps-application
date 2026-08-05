@@ -177,6 +177,36 @@ exact basename), so only a key this system would itself have issued is ever acce
 promoted to `published` — `publish-design.js` refuses a second write for the same designId.
 That transition belongs to the roadmap's `PATCH /designs/{id}` route, which isn't built.
 
+## `mail/` — what's in it (STAGING ONLY, 2026-08-06)
+
+SES relay inbound-mail ingest + staff mail read API (`docs/roadmap.md`'s "Parallel track —
+Staff email panel", "SES relay" track). **Deployed to `kcmps-backend-staging` only.** Built on
+top of C1's SES receiving infra (`backend/infra/ses-relay.cfn.yaml`: `mirror.kcmps.com`
+receiving identity, the domain-wide catchall receipt rule, and the private
+`kcmps-inbound-mail-est-2026` S3 bucket raw MIME lands in).
+
+| File | Purpose |
+|---|---|
+| `ingest-inbound.js` | S3-`ObjectCreated`-triggered — parses raw MIME (`mailparser`, vendored — see its own package.json) and writes one `MAILBOX#<address>`/`MSG#<hash>` item per matched recipient mailbox. Never crashes on malformed mail — falls back to a minimal record under `unparseable@mirror.kcmps.com` so the S3 ref is never lost |
+| `mail-parse.js` | Shared MIME→mock-contract field mapping (`toMailFields()`), `hashMessageId()`, thread-id derivation. The one place to look if a field doesn't match `dashboard-data.js`'s mock shape |
+| `get-mailboxes.js` / `get-mail-messages.js` / `get-mail-message.js` / `mark-mail-read.js` | JWT-authorized, `isStaff()`-gated read/mark-read API — mirrors `dashboard-data.js`'s `getMailboxes`/`getMessages`/`getMessage`/`markMessageRead()` mock contract field-for-field (verified in the 2026-08-06 session report) so C4's swap to real `fetch()` calls is a function-body change only |
+
+**Key shape**: `PK: MAILBOX#<mailboxId>` (lowercased recipient address, e.g.
+`order@mirror.kcmps.com`), `SK: MSG#<sha256(messageId)[0:32]>` — see `../lib/keys.js`'s
+`mailboxPk()`/`mailMessageSk()` header for why the SK has no date component (a single GetItem
+on `{mailboxId, messageId}` alone must work) and why the hash makes ingest naturally idempotent
+on S3-event retry.
+
+**TODO(C3)**: every read-path Lambda here uses a permissive `isStaff()` check with a `MAILBOX_ACCESS`
+TODO comment — `backend/lib/mail.js` (not built yet) is supposed to gate `order@`/`info@`/personal
+mailboxes by Cognito group per `docs/roadmap.md` ~608-617. Fix all 4 Lambdas together so the
+model can't drift between endpoints.
+
+**Single domain-wide catchall, not per-mailbox**: routing is by parsing the MIME To/Cc headers,
+never by S3 key (see `ses-relay.cfn.yaml`'s own note). A message with no `mirror.kcmps.com`
+address in To/Cc falls back to `catchall@mirror.kcmps.com` — inherent to a plain-S3 SES receipt
+action, which doesn't expose the true envelope recipient.
+
 ## Where this is going (not now)
 
 `ops-dashboard/infra/logic-inputs/*.js`'s originals are now superseded reference material only

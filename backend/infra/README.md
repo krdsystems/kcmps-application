@@ -1402,3 +1402,85 @@ test sends like the verification above will.
 **Explicitly not built this session (C2/C3 scope):** the MIME parser Lambda, the
 `sendReply`-equivalent Lambda over `SES.SendRawEmail`. No production Lambda was touched, and
 `notify-unread-messages`'s `SES_SENDER` was left unset as instructed.
+
+### C2 — ingest parser + staff mail read API (deployed to `kcmps-backend-staging`, 2026-08-06)
+
+Built the pieces C1 flagged as needed: `backend/mail/ingest-inbound.js` (S3-triggered MIME
+parser) and 4 JWT-authorized read Lambdas (`get-mailboxes.js`/`get-mail-messages.js`/
+`get-mail-message.js`/`mark-mail-read.js`). Full field-by-field contract, key shape, and vendoring
+notes are in `backend/CLAUDE.md`'s `mail/` row — this section only covers the infra/deploy
+mechanics.
+
+**Stack changes** (`backend/infra/backend-lambdas.cfn.yaml`): added `MailLambdaRole` (table
+`Get/Put/Update/Query` + read-only `s3:GetObject` on `${InboundMailBucket}/inbound/*`), 5 log
+groups, 5 `AWS::Lambda::Function` resources, 4 API integrations/routes/permissions under the
+existing `HttpApi` (`GET /mail/mailboxes`, `GET /mail/mailboxes/{mailboxId}/messages`,
+`GET /mail/mailboxes/{mailboxId}/messages/{messageId}`,
+`POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read`, all JWT-gated same as the rest of
+staff-api), and a new `InboundMailBucket` parameter (default `kcmps-inbound-mail-est-2026`) used
+only for the IAM grant — that bucket is CLI-managed (`ses-relay.cfn.yaml`), not owned by this
+stack.
+
+**S3 → Lambda trigger is CLI-managed, not in the CFN template**, for the same reason
+`InboundMailBucket` is a parameter rather than a resource: `backend-lambdas.cfn.yaml` doesn't own
+`kcmps-inbound-mail-est-2026`, and CloudFormation can't attach an `AWS::S3::Bucket`
+`NotificationConfiguration` to a bucket it doesn't manage without an import. Wired instead via:
+
+```bash
+aws lambda add-permission \  # (done automatically by the stack's PermIngestInboundS3 resource)
+  --function-name kcmps-staging-ingest-inbound ...
+
+aws s3api put-bucket-notification-configuration \
+  --bucket kcmps-inbound-mail-est-2026 \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+      "Id": "kcmps-staging-ingest-inbound-on-create",
+      "LambdaFunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-ingest-inbound",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": "inbound/"}]}}
+    }]
+  }' \
+  --profile kcmps-claude-priv --region ap-southeast-1
+```
+
+If `ingest-inbound.js` is ever rebuilt against a *production* inbound bucket, the equivalent
+`put-bucket-notification-configuration` call (and a prod `MailLambdaRole`-equivalent IAM grant)
+needs to be re-run by hand against that bucket — production promotion needs its own explicit
+go-ahead per the standing workflow rule, and no production Lambda/route/bucket was touched or
+even planned in this session.
+
+**Deploying a code change to any of the 5 Lambdas** (same packaging convention as every other
+staging function — `index.js` with `require("../lib")` rewritten to `require("./lib")`, a
+flattened copy of `backend/lib/`, and `node_modules` from `backend/mail/package.json`;
+`ingest-inbound.js` is the only one of the 5 that actually needs `mailparser` vendored in — the
+4 read-path Lambdas only import `@aws-sdk/*`, already provided by the Node.js Lambda runtime):
+
+```bash
+cd backend/mail && npm install --omit=dev   # vendors mailparser + deps into node_modules/
+# build each zip: index.js (with the require rewrite) + mail-parse.js + flattened lib/
+# (+ node_modules only for ingest-inbound.js), then:
+aws s3 cp kcmps-<fn>.zip s3://kcmps-lambda-artifacts-staging/<new-prefix>/kcmps-<fn>.zip \
+  --profile kcmps-claude-priv --region ap-southeast-1
+aws cloudformation deploy --stack-name kcmps-backend-staging \
+  --template-file ../infra/backend-lambdas.cfn.yaml \
+  --s3-bucket kcmps-lambda-artifacts-staging --s3-prefix cfn-templates \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides TableStreamArn=<unchanged> ArtifactsPrefix=<new-prefix> \
+  --region ap-southeast-1 --profile kcmps-claude-priv
+```
+
+Note the template is >51,200 bytes, so `--s3-bucket`/`--s3-prefix` are required on `deploy` (a
+plain `--template-file` upload fails with a size error) — this applies to every future update of
+this stack, not just this change.
+
+**Verified end-to-end (2026-08-06):** sent 3 real emails from
+`admin+admin.kcmps.uat@kcmps.com` to `order@`/`info@`/`admin@mirror.kcmps.com` (plain text, HTML
+multipart, and a `text/plain` attachment respectively) via `aws ses send-email`/`send-raw-email`.
+All 3 raw MIME objects landed in the inbound bucket, the S3 trigger fired
+`kcmps-staging-ingest-inbound` with no errors, and all 3 wrote correctly-shaped `MAILBOX#`/`MSG#`
+items — confirmed via a direct `dynamodb query` per mailbox, then re-confirmed through the actual
+read-path Lambdas via direct `aws lambda invoke` (synthetic JWT claims, since no browser session
+was available in this session): `get-mailboxes` → correct `total`/`unreadCount`; `get-mail-messages`
+→ correct envelope (no `bodyText`/`attachments`); `get-mail-message` → full body + attachment
+metadata; `mark-mail-read` → `flags.seen` flipped to `true` and persisted. `node --test
+backend/lib/lib.test.js backend/lib/business-hours.test.js` stayed green (45/45) throughout.

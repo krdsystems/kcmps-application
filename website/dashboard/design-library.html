@@ -3,10 +3,50 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-design-originals-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Design Library — KCMPS Ops</title>
 <link rel="stylesheet" href="../styles.css" />
 <link rel="stylesheet" href="dashboard.css" />
+<style>
+  .design-card { display: flex; flex-direction: column; gap: 6px; padding: var(--space-3); }
+  .design-card-thumb { width: 100%; aspect-ratio: 4/3; border-radius: var(--radius-2, 10px); overflow: hidden;
+    background: color-mix(in srgb, var(--color-text) 6%, transparent); display: flex; align-items: center; justify-content: center; }
+  .design-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .design-card-thumb .placeholder { font-size: 11px; text-align: center; padding: var(--space-2);
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  .design-card-name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .design-card-meta { font-size: 11px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+  .design-card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .design-chip { font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--color-divider);
+    color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .design-status { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; display: inline-block; width: fit-content; font-weight: 600; }
+  .design-status.is-published { background: color-mix(in srgb, #16a34a 16%, transparent); color: #15803d; }
+  .design-status.is-draft { background: color-mix(in srgb, var(--color-text) 10%, transparent); color: color-mix(in srgb, var(--color-text) 75%, transparent); }
+  .design-status.is-scanning { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+  .design-card-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+  .design-card-actions .btn { flex: 1; min-width: 72px; padding: 6px 8px; font-size: 12px; }
+  .design-lib-tabs { display: flex; gap: 6px; margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-divider); }
+  .design-lib-tab { border: none; background: transparent; padding: 8px 4px; font-size: 13.5px; cursor: pointer;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .design-lib-tab[aria-selected='true'] { color: var(--color-accent-2-800); border-bottom-color: var(--color-accent); font-weight: 600; }
+  .design-lib-panel { display: none; }
+  .design-lib-panel.is-active { display: block; }
+  .recycle-hint { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin-bottom: var(--space-3); }
+  .upload-progress-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .upload-progress-row .bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--color-text) 10%, transparent); overflow: hidden; }
+  .upload-progress-row .bar-fill { height: 100%; background: var(--color-accent); transition: width 0.15s ease; }
+  .design-form-status { font-size: 12.5px; padding: 8px 10px; border-radius: var(--radius-2, 8px); margin-top: var(--space-2); }
+  .design-form-status.is-info { background: color-mix(in srgb, var(--color-accent) 10%, transparent); color: var(--color-accent-700); }
+  .design-form-status.is-error { background: color-mix(in srgb, #dc2626 10%, transparent); color: #b91c1c; }
+  .design-form-status.is-success { background: color-mix(in srgb, #16a34a 12%, transparent); color: #15803d; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: var(--space-2) 0; }
+  .dialog-backdrop { position: fixed; inset: 0; background: rgba(20, 24, 32, 0.5); display: flex;
+    align-items: center; justify-content: center; z-index: 200; padding: var(--space-3); }
+  .dialog-box { background: var(--color-surface, #fff); border-radius: var(--radius-3, 14px); padding: var(--space-5);
+    max-width: 420px; width: 100%; max-height: 85vh; overflow-y: auto; }
+  .dialog-box h3 { margin-top: 0; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: var(--space-4); }
+</style>
 </head>
 <body class="dash-gate-hide">
 
@@ -23,35 +63,62 @@
     <main class="dash-content">
       <section class="dsec">
         <div class="dsec-head">
-          <h2>Design asset library <span class="badge-soon">Skeleton</span></h2>
-          <span class="hint">UI structure only — no backend yet. See docs/roadmap.md "Parallel track — Design Asset Library"</span>
+          <h2>Design asset library</h2>
+          <span class="hint">Upload source art, publish web-ready designs to the storefront picker, and manage what's live.</span>
         </div>
 
-        <!-- Upload form is a structural placeholder: fields match the planned
-             DESIGN# item shape (name/description/category/tags + original +
-             web-ready file) but submit has no backend to call yet — a future
-             session wires this to POST /designs/upload-url once
-             backend/design-library/ exists. Category options are sourced from
-             the same catalog leaves the storefront uses so they can't drift. -->
+        <!-- Fields match the DESIGN# item shape (name/description/category/tags +
+             original + web-ready file). Two-step presigned PUT (POST /designs/upload-url
+             then direct browser->S3 PUT for each file), mirroring store.js's
+             startDesignUpload() UX, then POST /designs to publish/save. -->
         <div class="card" style="padding: var(--space-5); margin-bottom: var(--space-4)">
           <h3 style="margin-top:0">Upload a design</h3>
           <form id="design-upload-form">
-            <div class="field"><label for="d-name">Name</label><input class="input" id="d-name" required /></div>
-            <div class="field"><label for="d-desc">Description</label><input class="input" id="d-desc" /></div>
+            <div class="field"><label for="d-name">Name</label><input class="input" id="d-name" required maxlength="120" /></div>
+            <div class="field"><label for="d-desc">Description</label><input class="input" id="d-desc" maxlength="2000" /></div>
             <div class="field"><label for="d-category">Category</label><select class="input" id="d-category" required></select></div>
-            <div class="field"><label for="d-tags">Tags (comma separated)</label><input class="input" id="d-tags" /></div>
-            <div class="field"><label for="d-original">Original file (private)</label><input class="input" id="d-original" type="file" required /></div>
-            <div class="field"><label for="d-web">Web-ready image (published)</label><input class="input" id="d-web" type="file" /></div>
-            <button type="submit" class="btn btn-primary" disabled title="Backend not built yet">Upload (not wired yet)</button>
+            <div class="field"><label for="d-tags">Tags (comma separated)</label><input class="input" id="d-tags" placeholder="retro, summer" /></div>
+            <div class="field"><label for="d-original">Original file (private) — PSD, AI, or PDF, up to 300MB</label><input class="input" id="d-original" type="file" accept=".psd,.ai,.pdf" required /></div>
+            <div class="field"><label for="d-web">Web-ready image (published to the storefront) — JPG, PNG, or WebP, up to 300MB</label><input class="input" id="d-web" type="file" accept=".jpg,.jpeg,.png,.webp" required /></div>
+            <label class="checkbox-row"><input type="checkbox" id="d-publish-now" checked /> Publish immediately (uncheck to save as a draft)</label>
+            <div id="upload-progress-list" style="display:flex;flex-direction:column;gap:6px;margin:var(--space-2) 0"></div>
+            <div id="design-form-status"></div>
+            <button type="submit" class="btn btn-primary" id="design-upload-submit">Upload design</button>
           </form>
         </div>
 
         <div class="card" style="padding: var(--space-5)">
-          <h3 style="margin-top:0">Library</h3>
-          <div class="design-grid" id="design-grid"><!-- design cards render here --></div>
+          <div class="design-lib-tabs" role="tablist">
+            <button type="button" class="design-lib-tab" id="tab-library" role="tab" aria-selected="true" data-panel="panel-library">Library</button>
+            <button type="button" class="design-lib-tab" id="tab-recycle" role="tab" aria-selected="false" data-panel="panel-recycle">Recycle bin</button>
+          </div>
+
+          <div class="design-lib-panel is-active" id="panel-library" role="tabpanel">
+            <div class="design-grid" id="design-grid"><p class="q-empty">Loading…</p></div>
+          </div>
+
+          <div class="design-lib-panel" id="panel-recycle" role="tabpanel">
+            <p class="recycle-hint">Archived designs stay here for 90 days before they're permanently purged. Restore any of them back to the library at any time before then.</p>
+            <div class="design-grid" id="recycle-grid"><p class="q-empty">Loading…</p></div>
+          </div>
         </div>
       </section>
     </main>
+  </div>
+</div>
+
+<!-- Edit dialog, single instance reused for whichever design is being edited -->
+<div class="dialog-backdrop" id="edit-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="edit-dialog-title">
+  <div class="dialog-box">
+    <h3 id="edit-dialog-title">Edit design</h3>
+    <div class="field"><label for="edit-name">Name</label><input class="input" id="edit-name" maxlength="120" /></div>
+    <div class="field"><label for="edit-desc">Description</label><input class="input" id="edit-desc" maxlength="2000" /></div>
+    <div class="field"><label for="edit-tags">Tags (comma separated)</label><input class="input" id="edit-tags" /></div>
+    <div id="edit-dialog-status"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="edit-save">Save</button>
+    </div>
   </div>
 </div>
 
@@ -63,27 +130,333 @@
   const claims = KCMPS_DASH_SHELL.mount("design");
   if (!claims) return;
 
+  const escapeHtml = KCMPS_DASH_SHELL.escapeHtml;
+  const fmtDateTime = KCMPS_DASH_SHELL.fmtDateTime;
+
   const categorySel = document.getElementById("d-category");
   const leaves = (window.KCMPS_STORE_DATA && window.KCMPS_STORE_DATA.leaves) || {};
   categorySel.innerHTML = Object.keys(leaves).map((key) => (
-    `<option value="${key}">${leaves[key].label || key}</option>`
+    `<option value="${escapeHtml(key)}">${escapeHtml(categoryLabel(key))}</option>`
   )).join("");
 
-  async function renderGrid() {
-    const designs = await KCMPS_DASH.getDesigns();
-    const grid = document.getElementById("design-grid");
-    grid.innerHTML = designs.length
-      ? designs.map((d) => `<div class="card">${d.name}</div>`).join("")
-      : '<p class="q-empty">No designs uploaded yet.</p>';
+  function categoryLabel(key) {
+    const leaf = leaves[key];
+    if (leaf && leaf.label) return leaf.label;
+    return String(key).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  // Structural only — actual upload needs backend/design-library/'s
-  // get-upload-url.js Lambda, which doesn't exist yet.
-  document.getElementById("design-upload-form").addEventListener("submit", (e) => {
-    e.preventDefault();
+  function formatBytes(n) {
+    if (!(n > 0)) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // ---- tabs (Library / Recycle bin) ----
+  const tabs = [document.getElementById("tab-library"), document.getElementById("tab-recycle")];
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabs.forEach((b) => {
+        const active = b === btn;
+        b.setAttribute("aria-selected", active ? "true" : "false");
+        document.getElementById(b.dataset.panel).classList.toggle("is-active", active);
+      });
+    });
   });
 
-  renderGrid();
+  // ---- data + render ----
+  let allDesigns = [];
+
+  async function loadDesigns() {
+    const grid = document.getElementById("design-grid");
+    const recycleGrid = document.getElementById("recycle-grid");
+    try {
+      allDesigns = await KCMPS_DASH.getDesigns();
+    } catch (err) {
+      grid.innerHTML = '<p class="q-empty">Could not load designs — ' + escapeHtml(err.message) + '</p>';
+      recycleGrid.innerHTML = "";
+      return;
+    }
+    renderGrids();
+  }
+
+  function renderGrids() {
+    const active = allDesigns.filter((d) => !d.archived);
+    const archived = allDesigns.filter((d) => d.archived);
+    renderGrid(document.getElementById("design-grid"), active, false);
+    renderGrid(document.getElementById("recycle-grid"), archived, true);
+  }
+
+  function renderGrid(host, designs, isRecycle) {
+    if (!designs.length) {
+      host.innerHTML = '<p class="q-empty">' + (isRecycle ? "Nothing in the recycle bin." : "No designs uploaded yet.") + "</p>";
+      return;
+    }
+    host.innerHTML = designs.map((d) => designCardHtml(d, isRecycle)).join("");
+    designs.forEach((d) => wireCardActions(host, d, isRecycle));
+  }
+
+  function thumbHtml(d) {
+    if (d.status === "published" && d.webExt) {
+      const src = "../assets/designs/" + encodeURIComponent(d.designId) + "." + encodeURIComponent(d.webExt);
+      return `<img src="${src}" alt="${escapeHtml(d.name)}" loading="lazy" />`;
+    }
+    if (d.scanStatus && d.scanStatus !== "NO_THREATS_FOUND" && d.scanStatus !== "THREATS_FOUND") {
+      return '<span class="placeholder">Scanning for malware&hellip;</span>';
+    }
+    return '<span class="placeholder">No preview yet — draft</span>';
+  }
+
+  function statusChipHtml(d) {
+    if (d.scanStatus && d.scanStatus !== "NO_THREATS_FOUND" && d.status !== "published") {
+      return '<span class="design-status is-scanning">Scanning…</span>';
+    }
+    if (d.status === "published") return '<span class="design-status is-published">Published</span>';
+    if (d.status === "archived") return '<span class="design-status is-draft">Archived</span>';
+    return '<span class="design-status is-draft">Draft</span>';
+  }
+
+  function designCardHtml(d, isRecycle) {
+    const tags = (d.tags || []).map((t) => `<span class="design-chip">${escapeHtml(t)}</span>`).join("");
+    let actions;
+    if (isRecycle) {
+      actions = `<button type="button" class="btn btn-secondary" data-action="restore" data-id="${escapeHtml(d.designId)}">Restore</button>`;
+    } else {
+      const publishBtn = d.status === "draft"
+        ? `<button type="button" class="btn btn-secondary" data-action="publish" data-id="${escapeHtml(d.designId)}">Publish</button>`
+        : "";
+      actions = `
+        <button type="button" class="btn btn-secondary" data-action="edit" data-id="${escapeHtml(d.designId)}">Edit</button>
+        ${publishBtn}
+        <button type="button" class="btn btn-secondary" data-action="archive" data-id="${escapeHtml(d.designId)}">Archive</button>
+        ${d.originalDownloadUrl ? `<a class="btn btn-secondary" href="${escapeHtml(d.originalDownloadUrl)}" target="_blank" rel="noopener">Download</a>` : ""}
+      `;
+    }
+    return `
+      <div class="card design-card" data-card-id="${escapeHtml(d.designId)}">
+        <div class="design-card-thumb">${thumbHtml(d)}</div>
+        ${statusChipHtml(d)}
+        <div class="design-card-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</div>
+        <div class="design-card-meta">${escapeHtml(categoryLabel(d.category))} &middot; ${escapeHtml(fmtDateTime(d.createdAt))}</div>
+        ${tags ? `<div class="design-card-tags">${tags}</div>` : ""}
+        <div id="card-status-${escapeHtml(d.designId)}"></div>
+        <div class="design-card-actions">${actions}</div>
+      </div>
+    `;
+  }
+
+  function wireCardActions(host, d, isRecycle) {
+    const card = host.querySelector(`[data-card-id="${cssEscape(d.designId)}"]`);
+    if (!card) return;
+    const statusHost = card.querySelector(`#card-status-${cssEscape(d.designId)}`);
+
+    card.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const action = btn.dataset.action;
+        try {
+          if (action === "edit") { openEditDialog(d); return; }
+          await KCMPS_DASH_SHELL.withBusy(btn, async () => {
+            if (action === "archive") await KCMPS_DASH.archiveDesign(d.designId);
+            else if (action === "restore") await KCMPS_DASH.restoreDesign(d.designId);
+            else if (action === "publish") {
+              try {
+                await KCMPS_DASH.promoteDesign(d.designId);
+              } catch (err) {
+                if (isStillScanningError(err)) {
+                  KCMPS_DASH_SHELL.showInlineError(statusHost, "Still scanning for malware — try publishing again shortly.");
+                  return;
+                }
+                throw err;
+              }
+            }
+            await loadDesigns();
+          });
+        } catch (err) {
+          KCMPS_DASH_SHELL.showInlineError(statusHost, err.message);
+        }
+      });
+    });
+  }
+
+  function cssEscape(s) {
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  }
+
+  // publish-design.js / patch-design.js's stillScanning 409 surfaces via
+  // apiFetch()'s thrown Error(body.error) — the error message itself is the
+  // friendly "still scanning" copy, but we key off apiFetch not exposing the
+  // 409 status directly, so match the wording it always returns.
+  function isStillScanningError(err) {
+    return /still scanning/i.test(err.message || "");
+  }
+
+  // ---- edit dialog ----
+  let editingId = null;
+  const editDialog = document.getElementById("edit-dialog");
+  document.getElementById("edit-cancel").addEventListener("click", closeEditDialog);
+  editDialog.addEventListener("click", (e) => { if (e.target === editDialog) closeEditDialog(); });
+
+  function openEditDialog(d) {
+    editingId = d.designId;
+    document.getElementById("edit-name").value = d.name || "";
+    document.getElementById("edit-desc").value = d.description || "";
+    document.getElementById("edit-tags").value = (d.tags || []).join(", ");
+    document.getElementById("edit-dialog-status").innerHTML = "";
+    editDialog.style.display = "flex";
+  }
+  function closeEditDialog() {
+    editDialog.style.display = "none";
+    editingId = null;
+  }
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    if (!editingId) return;
+    const btn = document.getElementById("edit-save");
+    const statusHost = document.getElementById("edit-dialog-status");
+    const name = document.getElementById("edit-name").value.trim();
+    const description = document.getElementById("edit-desc").value.trim();
+    const tags = document.getElementById("edit-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+    if (!name) { KCMPS_DASH_SHELL.showInlineError(statusHost, "Name cannot be empty."); return; }
+    try {
+      await KCMPS_DASH_SHELL.withBusy(btn, async () => {
+        await KCMPS_DASH.updateDesign(editingId, { name, description, tags });
+        await loadDesigns();
+      });
+      closeEditDialog();
+    } catch (err) {
+      KCMPS_DASH_SHELL.showInlineError(statusHost, err.message);
+    }
+  });
+
+  // ---- upload form: two-step presigned PUT, then publish/save-as-draft ----
+  const form = document.getElementById("design-upload-form");
+  const submitBtn = document.getElementById("design-upload-submit");
+  const formStatus = document.getElementById("design-form-status");
+  const progressList = document.getElementById("upload-progress-list");
+
+  function setFormStatus(kind, msg) {
+    if (!msg) { formStatus.innerHTML = ""; return; }
+    formStatus.innerHTML = `<div class="design-form-status is-${kind}">${escapeHtml(msg)}</div>`;
+  }
+
+  function progressRow(label) {
+    const row = document.createElement("div");
+    row.className = "upload-progress-row";
+    row.innerHTML = `<span>${escapeHtml(label)}</span><span class="bar"><span class="bar-fill" style="width:0%"></span></span><span class="pct">0%</span>`;
+    progressList.appendChild(row);
+    return {
+      set(pct) {
+        row.querySelector(".bar-fill").style.width = pct + "%";
+        row.querySelector(".pct").textContent = pct + "%";
+      },
+    };
+  }
+
+  function putWithProgress(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error("upload failed (" + xhr.status + "). Please try again."));
+      };
+      xhr.onerror = () => reject(new Error("upload failed — check your connection and try again."));
+      xhr.send(file);
+    });
+  }
+
+  // Kept so a stillScanning 409 on the initial publish can be retried
+  // without re-uploading either file.
+  let lastPublishMeta = null;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    progressList.innerHTML = "";
+    setFormStatus(null);
+
+    const name = document.getElementById("d-name").value.trim();
+    const description = document.getElementById("d-desc").value.trim();
+    const category = categorySel.value;
+    const tags = document.getElementById("d-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+    const originalFile = document.getElementById("d-original").files[0];
+    const webFile = document.getElementById("d-web").files[0];
+    const publishNow = document.getElementById("d-publish-now").checked;
+
+    if (!name) { setFormStatus("error", "Name is required."); return; }
+    if (!originalFile) { setFormStatus("error", "An original file is required."); return; }
+    if (!webFile) { setFormStatus("error", "A web-ready image is required."); return; }
+
+    submitBtn.disabled = true;
+    try {
+      const urls = await KCMPS_DASH.getDesignUploadUrls({
+        category,
+        original: { filename: originalFile.name, contentType: originalFile.type || "application/octet-stream", size: originalFile.size },
+        web: { filename: webFile.name, contentType: webFile.type || "application/octet-stream", size: webFile.size },
+      });
+
+      const origRow = progressRow(originalFile.name);
+      const webRow = progressRow(webFile.name);
+      await Promise.all([
+        putWithProgress(urls.original.uploadUrl, originalFile, (p) => origRow.set(p)),
+        putWithProgress(urls.web.uploadUrl, webFile, (p) => webRow.set(p)),
+      ]);
+
+      lastPublishMeta = {
+        name, description, category, tags,
+        status: publishNow ? "published" : "draft",
+        s3KeyOriginal: urls.original.s3Key,
+        s3KeyWeb: urls.web.s3Key,
+      };
+
+      setFormStatus("info", "Files uploaded — publishing…");
+      await KCMPS_DASH.publishDesign(lastPublishMeta);
+      setFormStatus("success", publishNow ? "Design published." : "Design saved as a draft.");
+      form.reset();
+      categorySel.selectedIndex = 0;
+      document.getElementById("d-publish-now").checked = true;
+      progressList.innerHTML = "";
+      lastPublishMeta = null;
+      await loadDesigns();
+    } catch (err) {
+      if (isStillScanningError(err) && lastPublishMeta) {
+        setFormStatus("info", "Both files uploaded, but they're still being scanned for malware. Click \"Upload design\" again in a moment to finish publishing — no need to re-pick the files.");
+        // Swap the submit to a direct retry of publishDesign() using the
+        // already-uploaded S3 keys, skipping the presign+PUT step entirely.
+        form.onsubmit = null;
+        submitBtn.textContent = "Retry publish";
+        submitBtn.onclick = async (ev) => {
+          ev.preventDefault();
+          try {
+            await KCMPS_DASH_SHELL.withBusy(submitBtn, async () => {
+              await KCMPS_DASH.publishDesign(lastPublishMeta);
+              setFormStatus("success", lastPublishMeta.status === "published" ? "Design published." : "Design saved as a draft.");
+              form.reset();
+              categorySel.selectedIndex = 0;
+              document.getElementById("d-publish-now").checked = true;
+              progressList.innerHTML = "";
+              lastPublishMeta = null;
+              submitBtn.onclick = null;
+              submitBtn.textContent = "Upload design";
+              await loadDesigns();
+            });
+          } catch (err2) {
+            if (isStillScanningError(err2)) {
+              setFormStatus("info", "Still scanning — try again shortly.");
+            } else {
+              setFormStatus("error", err2.message);
+            }
+          }
+        };
+      } else {
+        setFormStatus("error", err.message);
+      }
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  loadDesigns();
 })();
 </script>
 </body>

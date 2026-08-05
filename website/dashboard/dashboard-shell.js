@@ -85,7 +85,7 @@
     // `soon: true` renders a "Soon" badge and dims the link, but still points at
     // a real placeholder page — a dead/disabled nav item reads as a bug, and the
     // placeholder becomes the real page's shell later (only <main> changes).
-    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library", soon: true },
+    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library" },
     { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs" },
   ];
 

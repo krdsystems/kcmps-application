@@ -2123,14 +2123,20 @@
   // two-step upload.
   function submitPaymentProof(orderId, ref, amount, file, callback) {
     if (!ref) { callback(new Error("Please enter the GCash reference number.")); return; }
-    // A real GCash reference is always exactly 13 digits (grouped 4-3-6,
-    // e.g. "5043 449 646841") — validate the digit count, not the grouping,
-    // so incidental whitespace (extra/missing spaces, typed with none at
-    // all) is forgiven without ever silently rewriting what the shopper
-    // typed. Genuinely wrong input (too short/long, letters) is rejected
-    // with the expected format shown right in the error.
-    if (!/^\d{13}$/.test(ref.replace(/\s+/g, ""))) {
-      callback(new Error("That doesn't look like a GCash reference number — it should be 13 digits, e.g. 5043 449 646841."));
+    // The GCash references we see are 13 digits (grouped 4-3-6, e.g.
+    // "5043 449 646841"), but this deliberately accepts 10-20 digits rather
+    // than pinning exactly 13. Reason: this gate sits in front of a customer
+    // who has ALREADY SENT REAL MONEY. Blocking a legitimate reference —
+    // a different GCash transaction type, a business-account variant, a
+    // future format change — means they cannot submit proof of a payment we
+    // already received, and it surfaces to them as "the site is broken",
+    // not as a validation message. The range still rejects the failure this
+    // guard exists for (an empty/garbage entry like "12356"), so widening it
+    // costs nothing real and removes a whole class of false rejection.
+    // Validates the digit count only, never the grouping, so incidental
+    // whitespace is forgiven — and never silently rewrites what was typed.
+    if (!/^\d{10,20}$/.test(ref.replace(/\s+/g, ""))) {
+      callback(new Error("That doesn't look like a GCash reference number — it should be 10-20 digits, e.g. 5043 449 646841."));
       return;
     }
     if (!(amount > 0)) { callback(new Error("Please enter the amount you sent.")); return; }

@@ -69,6 +69,23 @@ const ACTIVE_STATUSES = new Set(
   Object.values(STATUS).filter((s) => !TERMINAL_STATUSES.has(s))
 );
 
+// The one GuardDuty verdict that means "safe to hand out a download/view
+// URL for". Every upload read path in this codebase (staff-api/get-
+// orders.js, staff-api/get-messages.js, checkout/lookup-order.js) must
+// gate a presign behind this — no persisted CLEAN verdict = no URL, ever,
+// fail closed. Shared here as ONE string + ONE predicate specifically so
+// a new read path can't reinvent (and mistype, or simply omit) the check:
+// that's exactly how checkout/lookup-order.js's guest-facing payment-
+// screenshot presign ended up bypassing the gate entirely (found in
+// review, 2026-08-07) while staff-api/get-orders.js's sibling function
+// got it right — two independent implementations of "is this clean"
+// drifted apart because there was no single thing to import.
+const SCAN_STATUS = Object.freeze({ CLEAN: "NO_THREATS_FOUND" });
+
+function isCleanScanVerdict(att) {
+  return !!att && att.scanStatus === SCAN_STATUS.CLEAN;
+}
+
 module.exports = {
   SITE_ID,
   CURRENCY,
@@ -76,4 +93,6 @@ module.exports = {
   STATUS,
   TERMINAL_STATUSES,
   ACTIVE_STATUSES,
+  SCAN_STATUS,
+  isCleanScanVerdict,
 };

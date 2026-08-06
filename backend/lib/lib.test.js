@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
 const { toCentavos, toPesos, formatPeso, assertCentavos } = require("./money");
 const keys = require("./keys");
 const { buildEvent } = require("./events");
-const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
+const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES, SCAN_STATUS, isCleanScanVerdict } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
 const { redactForCustomer } = require("./customer-view");
@@ -758,4 +758,30 @@ test("isValidQuotePrice rejects zero, negative, non-finite, and non-numeric valu
   assert.equal(isValidQuotePrice(undefined), false);
   assert.equal(isValidQuotePrice("free"), false);
   assert.equal(isValidQuotePrice({}), false);
+});
+
+/* ---- constants.js's isCleanScanVerdict / SCAN_STATUS ----
+   The ONE fail-closed predicate every upload read path (staff-api/get-
+   orders.js, staff-api/get-messages.js, checkout/lookup-order.js) must
+   gate a presigned URL behind. Added 2026-08-07 after review found
+   checkout/lookup-order.js's payment-screenshot presign had drifted from
+   its sibling in staff-api/get-orders.js and skipped this check entirely
+   — a pre-existing bug, not introduced by that day's SVG/UAT work. */
+test("isCleanScanVerdict is true ONLY for a persisted NO_THREATS_FOUND verdict", () => {
+  assert.equal(isCleanScanVerdict({ scanStatus: "NO_THREATS_FOUND" }), true);
+  assert.equal(isCleanScanVerdict({ scanStatus: SCAN_STATUS.CLEAN }), true);
+});
+
+test("isCleanScanVerdict fails closed: missing, pending, threatened, or absent verdicts are all NOT clean", () => {
+  assert.equal(isCleanScanVerdict({ scanStatus: "THREATS_FOUND" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: "UNSUPPORTED" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: "PENDING" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: undefined }), false);
+  assert.equal(isCleanScanVerdict({}), false); // no verdict persisted yet at all
+  assert.equal(isCleanScanVerdict(null), false);
+  assert.equal(isCleanScanVerdict(undefined), false);
+});
+
+test("SCAN_STATUS.CLEAN is the exact GuardDuty string every read path compares against", () => {
+  assert.equal(SCAN_STATUS.CLEAN, "NO_THREATS_FOUND");
 });

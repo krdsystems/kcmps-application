@@ -23,6 +23,7 @@ const { extractClaims, isStaff } = require("../lib/auth");
 const { scanResultPk, metaSk } = require("../lib/keys");
 const { redactForCustomer } = require("../lib/customer-view");
 const { contentDispositionFor, INLINE_VIEWABLE_TYPES } = require("../lib/upload-types");
+const { isCleanScanVerdict } = require("../lib/constants");
 
 const TABLE = process.env.TABLE_NAME;
 const SCREENSHOT_URL_EXPIRY_SECONDS = 15 * 60;
@@ -137,9 +138,11 @@ async function attachLineItems(order) {
 //     rather than kcmps.com, so nothing can reach the dashboard session.
 //     (The GCash screenshot already worked this way — staff must LOOK at
 //     it in an <img> to verify a payment. It is no longer the exception.)
-function isClean(att) {
-  return att && att.scanStatus === "NO_THREATS_FOUND";
-}
+// isCleanScanVerdict (backend/lib/constants.js) is THE fail-closed check —
+// shared, not reimplemented here, precisely because a second copy of this
+// one-liner is what let checkout/lookup-order.js's sibling function skip
+// it entirely (found in review, 2026-08-07; see that file's header).
+const isClean = isCleanScanVerdict;
 
 // An attachment normally carries its verdict inline, annotated by
 // jobs/handle-scan-result.js. When it doesn't, fall back to the standalone

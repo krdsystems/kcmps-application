@@ -105,6 +105,16 @@ async function scanAll(params) {
 // client-side is free compared to a second network call. Also kicks off the
 // payment-screenshot presign (its own I/O, independent of this query)
 // concurrently rather than after, since neither depends on the other.
+// One thing this relies on that is NOT obvious, so don't reorder SK prefixes
+// without re-reading it: a Query returns items in SK order, and the prefixes
+// happen to sort EVENT# < LINEITEM# < META < MSG#. This single Query is not
+// paginated (neither was the two-Query version it replaced), so if a
+// partition ever exceeds DynamoDB's 1MB page the tail is dropped — and the
+// tail is MSG#, i.e. chat, which this function discards anyway. LINEITEM#
+// and EVENT#, the two things it actually returns, sit at the front and are
+// safe. Renaming a prefix such that MSG# no longer sorts last would silently
+// start truncating line items off big orders instead, which would look like
+// "some items vanished from the job" rather than like a paging bug.
 async function attachLineItems(order) {
   const [itemsRes, payment] = await Promise.all([
     client.send(new QueryCommand({

@@ -290,11 +290,19 @@
     const actions = actionsFor(li.status, order);
 
     body.innerHTML =
-      `<div class="ticket-head"><div><h1 style="margin:0 0 4px">${escapeHtml(li.description)}</h1>` +
+      // Order ID first and large — it's the primary identifier staff
+      // cross-reference against GCash payments and email (Spacemail search,
+      // GCash transaction history), so it has to be the easiest thing on
+      // the page to spot and copy, not a small muted aside. Line ID stays
+      // secondary/small since it only matters once staff already have the
+      // right ticket open.
+      `<div class="ticket-head"><div>` +
+      `<div class="ticket-orderid" title="Order ID — cross-reference against GCash payments and Spacemail">${escapeHtml(order.orderId)}</div>` +
+      `<h1 style="margin:0 0 4px">${escapeHtml(li.description)}</h1>` +
       `<span class="status-pill ${statusTone(li.status)}${flash ? " dash-flash" : ""}">${li.status}</span>` +
       (order.source === "manual" ? ' <span class="tag tag-neutral">Manual entry</span>' : "") +
       `</div>` +
-      `<div class="text-muted" style="text-align:right;font-size:12px">Order ${order.orderId}<br/>Line ${li.lineItemId}</div></div>` +
+      `<div class="text-muted" style="text-align:right;font-size:12px">Line ${li.lineItemId}</div></div>` +
 
       `<div class="card ticket-meta">` +
       `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +

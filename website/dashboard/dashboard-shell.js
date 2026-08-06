@@ -198,6 +198,10 @@
   let guardStage = 0; // 0 = closed, 1 = privacy lock, 2 = session/staleness
   let guardEl = null;
   let guardFocusReturnEl = null;
+  // The signed-in staffer's Cognito `sub` (set from mount()'s claims) — the
+  // key setStaffPin()/verifyStaffPin() store/check the PIN under, so a
+  // shared browser can't let one staffer's PIN unlock another's session.
+  let guardUserKey = null;
 
   function debounceLeading(fn, ms) {
     let last = 0;
@@ -246,7 +250,10 @@
     // handler on purpose (dismissal is explicit-button-only, see above).
     backdrop.addEventListener("keydown", (e) => {
       if (e.key !== "Tab") return;
-      const focusables = backdrop.querySelectorAll("button");
+      // Includes text inputs now — the PIN-gated states below put a
+      // password-type <input> before the buttons, and it needs to be part
+      // of the trap's first/last boundary like everything else in here.
+      const focusables = backdrop.querySelectorAll("button, input");
       if (!focusables.length) return;
       const first = focusables[0], last = focusables[focusables.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -257,6 +264,64 @@
     return backdrop;
   }
 
+  // Renders the stage-2 (session/staleness) Refresh/Log out controls into
+  // `actions` — unchanged from before the PIN feature. Split out so the
+  // PIN gate below (renderPinGate) can reveal this same pair once the PIN
+  // checks out, instead of duplicating it.
+  function renderStage2Actions(actions) {
+    actions.innerHTML =
+      '<button type="button" class="btn btn-secondary" id="session-guard-logout">Log out</button>' +
+      '<button type="button" class="btn btn-primary" id="session-guard-refresh">Refresh</button>';
+    actions.querySelector("#session-guard-logout").addEventListener("click", logout);
+    actions.querySelector("#session-guard-refresh").addEventListener("click", () => {
+      // Re-run the current page's data load. requireStaffAuth() (called
+      // again on load, via mount()) falls through to the login gate if
+      // the session is genuinely expired — this button doesn't need to
+      // know which case it is. Entering the right PIN never skips this:
+      // the PIN only unlocked the CONTROLS, Refresh still does the real
+      // expiry check it always did.
+      window.location.reload();
+    });
+    const primary = actions.querySelector(".btn-primary");
+    if (primary) primary.focus();
+  }
+
+  // A 4-digit PIN entry step, used at both overlay stages when the signed-in
+  // staffer has one set (see dashboard-data.js's setStaffPin() header for
+  // the full "privacy deterrent, not a security boundary" rationale). There
+  // is no lockout/attempt counter — a wrong PIN just re-prompts — since that
+  // would turn a convenience feature into its own support burden for no real
+  // security gain. "Log out instead" never needs the PIN: logging out can't
+  // leak anything and is the documented recovery path for a forgotten PIN.
+  function renderPinGate(actions, opts) {
+    actions.innerHTML =
+      '<form id="session-guard-pin-form" style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%">' +
+      '<input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" ' +
+      'class="input" id="session-guard-pin-input" placeholder="4-digit PIN" ' +
+      'style="text-align:center;letter-spacing:8px;font-size:18px;max-width:150px" />' +
+      '<p id="session-guard-pin-error" role="alert" style="display:none;color:#b91c1c;font-size:12.5px;margin:0"></p>' +
+      '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
+      '<button type="button" class="btn btn-ghost" id="session-guard-pin-logout">Log out instead</button>' +
+      `<button type="submit" class="btn btn-primary" id="session-guard-pin-submit">${opts.continueLabel}</button>` +
+      '</div></form>';
+    const form = actions.querySelector("#session-guard-pin-form");
+    const input = actions.querySelector("#session-guard-pin-input");
+    const errorEl = actions.querySelector("#session-guard-pin-error");
+    actions.querySelector("#session-guard-pin-logout").addEventListener("click", logout);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pin = input.value.trim();
+      errorEl.style.display = "none";
+      const ok = pin && global.KCMPS_DASH && global.KCMPS_DASH.verifyStaffPin && await global.KCMPS_DASH.verifyStaffPin(guardUserKey, pin);
+      if (ok) { opts.onSuccess(); return; }
+      errorEl.textContent = "Incorrect PIN — try again, or log out.";
+      errorEl.style.display = "";
+      input.value = "";
+      input.focus();
+    });
+    input.focus();
+  }
+
   function openSessionGuard(stage) {
     const wasOpen = guardStage !== 0;
     guardStage = stage;
@@ -265,38 +330,60 @@
     const actions = el.querySelector("#session-guard-actions");
     box.dataset.stage = String(stage);
 
+    const pinSet = !!(global.KCMPS_DASH && global.KCMPS_DASH.hasStaffPin && global.KCMPS_DASH.hasStaffPin(guardUserKey));
+
     if (stage === 1) {
       el.querySelector("#session-guard-title").textContent = "Screen locked while you were away";
-      el.querySelector("#session-guard-desc").textContent =
-        "For privacy, this stayed open longer than usual, so it's been hidden. Nothing was lost.";
-      actions.innerHTML = '<button type="button" class="btn btn-primary" id="session-guard-resume">Resume</button>';
-      el.querySelector("#session-guard-resume").addEventListener("click", () => {
-        lastActivityAt = Date.now();
-        closeSessionGuard();
-      });
+      el.querySelector("#session-guard-desc").textContent = pinSet
+        ? "For privacy, this stayed open longer than usual, so it's been hidden. Enter your PIN to resume — nothing was lost."
+        : "For privacy, this stayed open longer than usual, so it's been hidden. Nothing was lost.";
+      if (pinSet) {
+        // A correct PIN at stage 1 is a real "resume" — the session itself
+        // is not in question here, only whether the right person is
+        // looking at the screen.
+        renderPinGate(actions, {
+          continueLabel: "Unlock",
+          onSuccess: () => { lastActivityAt = Date.now(); closeSessionGuard(); },
+        });
+      } else {
+        // No PIN on file for this staffer — sensible fallback so nobody is
+        // ever locked out of their own dashboard for not having opted in.
+        // Settings has the "set a PIN" UI; this plain Resume is the default
+        // until they do.
+        actions.innerHTML = '<button type="button" class="btn btn-primary" id="session-guard-resume">Resume</button>';
+        el.querySelector("#session-guard-resume").addEventListener("click", () => {
+          lastActivityAt = Date.now();
+          closeSessionGuard();
+        });
+        actions.querySelector(".btn-primary").focus();
+      }
     } else {
       el.querySelector("#session-guard-title").textContent = "Your session may have expired";
-      el.querySelector("#session-guard-desc").textContent =
-        "The data on this screen may be out of date. Refresh to continue, or log out.";
-      actions.innerHTML =
-        '<button type="button" class="btn btn-secondary" id="session-guard-logout">Log out</button>' +
-        '<button type="button" class="btn btn-primary" id="session-guard-refresh">Refresh</button>';
-      el.querySelector("#session-guard-logout").addEventListener("click", logout);
-      el.querySelector("#session-guard-refresh").addEventListener("click", () => {
-        // Re-run the current page's data load. requireStaffAuth() (called
-        // again on load, via mount()) falls through to the login gate if
-        // the session is genuinely expired — this button doesn't need to
-        // know which case it is.
-        window.location.reload();
-      });
+      el.querySelector("#session-guard-desc").textContent = pinSet
+        ? "Enter your PIN to see the Refresh/Log out options. The data on this screen may be out of date."
+        : "The data on this screen may be out of date. Refresh to continue, or log out.";
+      if (pinSet) {
+        // IMPORTANT: a correct PIN here does NOT dismiss the overlay or
+        // resume the page — it only reveals the Refresh/Log out controls
+        // (renderStage2Actions), which still run the real
+        // requireStaffAuth()/reload expiry check exactly as before this
+        // feature existed. Stage 2 means the token has likely actually
+        // expired; the PIN is not allowed to become a way to wave that
+        // away and "just carry on" with a stale session — see the task
+        // brief's explicit warning about this.
+        renderPinGate(actions, {
+          continueLabel: "Continue",
+          onSuccess: () => { renderStage2Actions(actions); },
+        });
+      } else {
+        renderStage2Actions(actions);
+      }
     }
 
     if (!wasOpen) {
       guardFocusReturnEl = document.activeElement;
       el.style.display = "flex";
     }
-    const primaryBtn = actions.querySelector(".btn-primary");
-    if (primaryBtn) primaryBtn.focus();
   }
 
   function closeSessionGuard() {
@@ -320,6 +407,7 @@
     const claims = requireStaffAuth();
     if (!claims) return null; // redirecting away
 
+    guardUserKey = claims.sub || null;
     lastActivityAt = Date.now();
     attachActivityListeners();
     document.documentElement.classList.add("dash-ready");

@@ -394,12 +394,18 @@
     return {
       dueToday: dueTodayList.length,
       dueTodayAtRisk: atRisk.length,
+      // Decorated (agingHours/dueDate/etc) and pre-sorted the same way
+      // getQueues() shapes its items, so today.html's stat-card drill-down
+      // can reuse the exact same row-rendering function as the queue cards
+      // above it — one render path, not a second one that could drift.
+      dueTodayItems: sortByAging(dueTodayList).map(decorateLineItem),
       outputYesterdayUnits: dayY.unitsOut, outputYesterdayJobs: dayY.jobsCompleted,
       spoilageYesterdayUnits: dayY.spoilageUnits, spoilageYesterdayValue: dayY.spoilageValue,
       reworkOpenedYesterday: dayY.reworkOpened,
       cashCollectedYesterday: dayY.cashCollected,
       spoilageTodayUnits: dayT.spoilageUnits, spoilageTodayValue: dayT.spoilageValue,
       wipCount: wip.length,
+      wipItems: sortByAging(wip).map(decorateLineItem),
     };
   }
 
@@ -1127,6 +1133,59 @@
     });
   }
 
+  /* ---- staff idle-screen PIN (privacy deterrent, NOT a security boundary) ----
+     Gates dashboard-shell.js's SESSION_GUARD idle overlay so a passer-by who
+     nudges the mouse/keyboard can't dismiss the privacy screen without
+     knowing a 4-digit code. This is explicitly NOT real authentication: the
+     actual security boundary is the Cognito JWT every backend route
+     re-verifies (see root CLAUDE.md's "Client-decoded JWT claims are
+     UI-only" gotcha). Anyone with devtools access to this origin's
+     localStorage can read the salt+hash below and brute-force a 4-digit PIN
+     in well under a second — that's fine, because the threat this defends
+     against is a colleague glancing at an unattended, still-logged-in
+     screen, not a determined attacker. Never represent this as more than
+     that in any UI copy.
+
+     Stored PER STAFFER, keyed by their Cognito `sub` (the JWT subject claim
+     dashboard-shell.js already decodes and passes in as `userKey`) under
+     kcmps_pin_v1:<sub> — so on a shared/kiosk browser one staffer's PIN can
+     never unlock another staffer's session, and it never "syncs" anywhere
+     (this is one browser's local storage, same as everything else in this
+     file). Never stored in plaintext: SHA-256(salt + pin) via SubtleCrypto,
+     with a fresh 16-byte random salt per staffer per set/change. */
+  function pinStorageKey(userKey) { return "kcmps_pin_v1:" + userKey; }
+  function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+  async function hashPin(pin, saltB64) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(saltB64 + ":" + pin));
+    return bufToB64(digest);
+  }
+  // Synchronous (no hashing needed, just "does a record exist") so
+  // dashboard-shell.js can check it inline while building the overlay's
+  // markup without an extra render pass.
+  function hasStaffPin(userKey) {
+    if (!userKey) return false;
+    try { return !!localStorage.getItem(pinStorageKey(userKey)); } catch { return false; }
+  }
+  async function setStaffPin(userKey, pin) {
+    if (!userKey) throw new Error("No staff identity to attach a PIN to — try logging out and back in.");
+    if (!/^\d{4}$/.test(pin || "")) throw new Error("PIN must be exactly 4 digits.");
+    const salt = bufToB64(crypto.getRandomValues(new Uint8Array(16)).buffer);
+    const hash = await hashPin(pin, salt);
+    localStorage.setItem(pinStorageKey(userKey), JSON.stringify({ salt, hash }));
+    return true;
+  }
+  async function verifyStaffPin(userKey, pin) {
+    if (!userKey || !pin) return false;
+    let rec;
+    try { rec = JSON.parse(localStorage.getItem(pinStorageKey(userKey))); } catch { return false; }
+    if (!rec || !rec.salt || !rec.hash) return false;
+    return (await hashPin(pin, rec.salt)) === rec.hash;
+  }
+  function clearStaffPin(userKey) {
+    if (!userKey) return;
+    try { localStorage.removeItem(pinStorageKey(userKey)); } catch { /* ignore */ }
+  }
+
   global.KCMPS_DASH = {
     STORAGE_KEY, STATIONS, STATION_LABELS,
     getDesigns, getDesignUploadUrls, publishDesign, updateDesign, archiveDesign, restoreDesign, promoteDesign,
@@ -1139,5 +1198,6 @@
     getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,
     resetSeed,
+    hasStaffPin, setStaffPin, verifyStaffPin, clearStaffPin,
   };
 })(window);

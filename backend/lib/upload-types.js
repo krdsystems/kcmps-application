@@ -11,19 +11,30 @@
    Deliberately an ALLOWLIST, not a denylist of dangerous extensions. A
    denylist only stops what it already knows about; anything novel,
    renamed, or polyglot walks straight through. The owner picked this
-   exact set (2026-08-04): what print customers actually send, minus two
-   categories that were considered and rejected on purpose —
+   exact set (2026-08-04, SVG rule revised 2026-08-07): what print
+   customers actually send, minus one category that was considered and
+   rejected on purpose —
 
-   - **No SVG.** Real vector artwork customers do send, but SVG is an
-     XML/script container: an `<svg>` with an inline `<script>` or an
-     `onload=` attribute is stored XSS the moment anything renders it
-     from a KCMPS-controlled origin. Nothing here renders uploads inline
-     (see upload-design-file.js's header on presigned-GET-only +
-     ResponseContentDisposition=attachment), but excluding the format
-     entirely means that containment is not the ONLY thing standing
-     between an uploaded file and a script execution. Customers with
-     vector art send PDF/AI/EPS instead, which every print workflow here
-     already handles.
+   - **SVG IS ALLOWED (owner decision, "option 1", 2026-08-07) — but is
+     ATTACHMENT-ONLY, NEVER INLINE, and that is load-bearing.** An `<svg>`
+     is an XML/script container: an inline `<script>` or an `onload=`
+     attribute is stored XSS the moment anything renders it from a
+     KCMPS-controlled origin. The designer legitimately needs to send
+     vector artwork this way, so rather than block the format outright,
+     the containment already built for every upload does the work:
+     GuardDuty scans it like anything else, and — this is the part that
+     actually prevents the XSS — `image/svg+xml` MUST NEVER be added to
+     `INLINE_VIEWABLE_TYPES` below. Every download path in this codebase
+     (`contentDispositionFor()` here, consumed by
+     staff-api/get-orders.js and staff-api/get-messages.js) falls through
+     to `attachment` + `ResponseContentType: application/octet-stream`
+     for anything not in that allowlist, so an SVG can only ever be
+     downloaded, never rendered in a browser tab. Two ways a future
+     session could reopen this hole: "helpfully" adding `image/svg+xml`
+     to `INLINE_VIEWABLE_TYPES` so staff can preview it like a JPEG
+     (don't — that IS the stored-XSS path), or "helpfully" re-blocking
+     SVG at the allowlist below on the assumption it's still excluded
+     (don't — the owner's call was to allow it, not to keep refusing it).
    - **No archives (zip/rar/7z).** An archive is opaque to Content-Type
      validation — the declared type describes the container, never what's
      inside it, which is exactly how an executable gets past a filter.
@@ -60,6 +71,9 @@ const ALLOWED_UPLOAD_TYPES = Object.freeze({
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/vnd.ms-powerpoint": "ppt",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  // Vector artwork — allowed 2026-08-07 (see header). Attachment-only:
+  // never add "image/svg+xml" to INLINE_VIEWABLE_TYPES below.
+  "image/svg+xml": "svg",
 });
 
 // Extensions the above set covers, for the octet-stream fallback below.
@@ -68,14 +82,14 @@ const ALLOWED_UPLOAD_TYPES = Object.freeze({
 // would block files the owner explicitly wants accepted.
 const ALLOWED_UPLOAD_EXTENSIONS = Object.freeze([
   "jpg", "jpeg", "png", "webp", "tif", "tiff",
-  "pdf", "ai", "eps", "psd",
+  "pdf", "ai", "eps", "psd", "svg",
   "doc", "docx", "xls", "xlsx", "ppt", "pptx",
 ]);
 
 // Normalized canonical extension per accepted extension (jpeg -> jpg etc.)
 const EXTENSION_CANONICAL = Object.freeze({
   jpeg: "jpg", jpg: "jpg", png: "png", webp: "webp", tiff: "tif", tif: "tif",
-  pdf: "pdf", ai: "ai", eps: "eps", psd: "psd",
+  pdf: "pdf", ai: "ai", eps: "eps", psd: "psd", svg: "svg",
   doc: "doc", docx: "docx", xls: "xls", xlsx: "xlsx", ppt: "ppt", pptx: "pptx",
 });
 
@@ -130,10 +144,15 @@ function extensionOf(filename) {
    The allowlist is deliberately narrow and closed:
    - Images and PDF only. These are exactly the types send-message.js accepts,
      so nothing else can reach a message thread anyway.
-   - SVG is NOT here and must never be added. An SVG is a script container —
-     rendering one inline executes its JavaScript. `backend/lib/upload-types.js`
-     already excludes it at upload time for the same reason; this is the
-     second layer.
+   - SVG (`image/svg+xml`) is NOT here and MUST NEVER be added, even though
+     it's now an accepted upload type above (2026-08-07 — the owner allowed
+     SVG uploads for design files, download-only). An SVG is a script
+     container — rendering one inline executes its JavaScript. This set is
+     the ONE layer standing between "SVG can be uploaded" and "SVG can be
+     stored XSS": everything not in it falls through to `attachment` +
+     `application/octet-stream` in `contentDispositionFor()` below, which is
+     what keeps an uploaded SVG download-only no matter which read path
+     serves it.
    - HTML, JS and anything unrecognised fall through to `attachment`, so an
      unexpected type can only ever be downloaded, never rendered.
 

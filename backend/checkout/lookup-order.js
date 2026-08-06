@@ -29,7 +29,7 @@ const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const { orderPk, metaSk, redactForCustomer, contactsMatch } = require("../lib");
+const { orderPk, normalizeOrderId, metaSk, redactForCustomer, contactsMatch } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 const SCREENSHOT_URL_EXPIRY_SECONDS = 15 * 60;
@@ -43,7 +43,11 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
 
-  const orderId = (body.orderId || "").trim();
+  // Accept both "ORD-3A94793FF8" and the bare "3A94793FF8" a customer
+  // often copies (case-insensitive, whitespace-tolerant) — see
+  // normalizeOrderId()'s header (backend/lib/keys.js) for why this is
+  // safe to do before the auth check below without weakening it.
+  const orderId = normalizeOrderId(body.orderId);
   const contact = (body.contact || "").trim();
   if (!orderId || !contact) return response(400, { error: "orderId and contact are required" });
 

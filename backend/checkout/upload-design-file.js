@@ -65,6 +65,21 @@
         the *client* influence the stored disposition. Setting it on the
         read side keeps it entirely server-controlled.)
 
+   ── SVG (revised 2026-08-07, owner decision "option 1") ────────────
+   SVG is on the allowlist now — the designer needs to send vector artwork
+   this way. It was excluded until 2026-08-07 because an SVG is a script
+   container (inline `<script>`/`onload=` = stored XSS the moment anything
+   renders it). The owner's call was to accept the format and lean on the
+   containment layer 5 already describes rather than block it outright:
+   an uploaded SVG is scanned by GuardDuty exactly like every other file,
+   and is served EXCLUSIVELY via presigned GET with
+   ResponseContentDisposition=attachment + ResponseContentType=
+   application/octet-stream — see backend/lib/upload-types.js's
+   `INLINE_VIEWABLE_TYPES`/`contentDispositionFor()`, which does not and
+   must never include `image/svg+xml`. That one allowlist is what makes
+   "SVG is accepted" and "SVG is never rendered inline" both true at once;
+   don't touch one without re-reading the other.
+
    ── Malware scanning: what exists (decision 2026-08-04) ───────────
    **GuardDuty Malware Protection for S3 is enabled on this bucket** —
    every uploaded object is scanned on write, and tagged with
@@ -124,7 +139,7 @@ exports.handler = async (event) => {
   const ext = resolveUploadType(contentType, filename);
   if (!ext) {
     return response(400, {
-      error: "That file type isn't accepted. Send images (JPG, PNG, WEBP, TIFF), print files (PDF, AI, EPS, PSD), or Office documents (DOC, DOCX, XLS, XLSX, PPT, PPTX) — or paste a link to the file instead.",
+      error: "That file type isn't accepted. Send images (JPG, PNG, WEBP, TIFF), print files (PDF, AI, EPS, PSD, SVG), or Office documents (DOC, DOCX, XLS, XLSX, PPT, PPTX) — or paste a link to the file instead.",
     });
   }
 

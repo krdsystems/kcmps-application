@@ -1,5 +1,5 @@
 /* ============================================================
-   KCMPS Design Asset Library — design-manifest.json regeneration
+   KCMPS Asset Library — design-manifest.json regeneration
    ============================================================
    Shared by every Lambda that can change which designs are published:
    publish-design.js today, archive/restore next. Factored out so the

@@ -1,15 +1,20 @@
 /* ============================================================
-   KCMPS Design Asset Library — POST /designs (publishDesign)
+   KCMPS Asset Library — POST /assets (publishDesign)
    ============================================================
-   Step 2 of 2, called by the dashboard's Design Library form after both
-   presigned PUTs from design-library/get-upload-url.js have succeeded.
-   Writes the DESIGN#<id> META record, appends an audit EVENT#, and — for
-   a `published` design only — copies the web-ready image into the public
-   storefront bucket and regenerates design-manifest.json there.
+   Step 2 of 2, called by the dashboard's Asset Library upload modal after
+   both presigned PUTs from get-upload-url.js have succeeded. Writes the
+   DESIGN#<id> META record and an audit EVENT#.
 
-   That manifest regeneration is the whole point of the feature: it is
-   what makes a newly published design appear in the storefront's design
-   picker with no code deploy and no S3 sync.
+   ── DRAFT-ONLY SINCE THE APPROVAL WORKFLOW (2026-08-07) ────────────
+   This endpoint now creates DRAFTS only. `status: "published"` is
+   rejected outright: publishing requires the all-Admin approval flow in
+   patch-design.js (submit -> approve...), and accepting "published" here
+   would hand any Production/Sales caller a one-request approval bypass.
+   The rename window (zero production routes, zero external consumers) is
+   also the window to close this — there is nothing to stay compatible
+   with. The publish machinery (public-bucket copy + manifest
+   regeneration) lives in patch-design.js's finalizePublish(); the
+   manifest contract below is unchanged.
 
    ── AUTH ───────────────────────────────────────────────────────────
    JWT route + requireRole(Production/Sales/Admin), identical gate to
@@ -25,7 +30,7 @@
    Publishing means making an object world-readable behind our CDN, so
    the scan gate here is stricter than the staff-download gate elsewhere.
    BOTH objects must carry a persisted NO_THREATS_FOUND verdict
-   (design-library/scan-verdict.js, reading the standalone SCAN# item
+   (scan-verdict.js, reading the standalone SCAN# item
    written by jobs/handle-scan-result.js). No verdict yet is NOT an
    error condition to swallow — it returns 409 `stillScanning` so the
    dashboard can say "still scanning, try again in a moment" and retry.
@@ -83,46 +88,32 @@
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } = require("@aws-sdk/lib-dynamodb");
-const { S3Client, CopyObjectCommand } = require("@aws-sdk/client-s3");
 const {
   designPk, metaSk, eventSk, baseItem, buildEvent,
   extractClaims, requireRole, ROLES,
 } = require("../lib");
 const { parseDesignKey, isValidCategory, DESIGN_CATEGORIES } = require("./design-types");
-const { checkVerdict } = require("./scan-verdict");
-const { regenerateManifest } = require("./manifest");
-
-// The image itself is immutable once published (its key contains the
-// designId, and a re-publish of the same id is refused), so unlike the
-// manifest it can be cached hard.
-const PUBLIC_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 const TABLE = process.env.TABLE_NAME;
 const DESIGN_ORIGINALS_BUCKET = process.env.DESIGN_ORIGINALS_BUCKET;
-const PUBLIC_ASSETS_BUCKET = process.env.PUBLIC_ASSETS_BUCKET;
-// Bucket key prefix the published images + manifest are written under.
-// Differs from PUBLIC_ASSETS_PATH on staging (dev-site/assets/designs/ vs
-// assets/designs/) because dev.kcmps.com's CloudFront serves the bucket's
-// dev-site/ prefix as the site root — see backend-lambdas.cfn.yaml.
-const PUBLIC_ASSETS_KEY_PREFIX = process.env.PUBLIC_ASSETS_KEY_PREFIX || "assets/designs/";
-// Site-relative path the manifest's `image` values are built from.
-const PUBLIC_ASSETS_PATH = process.env.PUBLIC_ASSETS_PATH || "assets/designs/";
 
 const MAX_NAME = 120;
 const MAX_DESCRIPTION = 2000;
 const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 40;
 const ALLOWED_ROLES = [ROLES.PRODUCTION, ROLES.SALES, ROLES.ADMIN];
-const ALLOWED_STATUS = new Set(["draft", "published"]);
+// Draft only — see the header. "published" was removed with the approval
+// workflow; the only publish paths are patch-design.js's approve-final,
+// single-admin submit, and Admin break-glass.
+const ALLOWED_STATUS = new Set(["draft"]);
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const claims = extractClaims(event);
   if (!claims) return response(401, { error: "Unauthorized" });
   const denied = requireRole(claims, ALLOWED_ROLES);
-  if (denied) return response(403, { error: "Forbidden — publishing designs requires the Production, Sales or Admin role.", requiredRoles: denied.requiredRoles });
+  if (denied) return response(403, { error: "Forbidden — creating assets requires the Production, Sales or Admin role.", requiredRoles: denied.requiredRoles });
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
@@ -138,7 +129,11 @@ exports.handler = async (event) => {
 
   const status = str(body.status) || "draft";
   if (!ALLOWED_STATUS.has(status)) {
-    return response(400, { error: 'status must be "draft" or "published"' });
+    return response(400, {
+      error: status === "published"
+        ? 'Direct publishing is no longer supported — save as "draft", then submit it for Admin approval (PATCH /assets/{id} action "submit").'
+        : 'status must be "draft"',
+    });
   }
 
   const tags = normalizeTags(body.tags);
@@ -167,32 +162,14 @@ exports.handler = async (event) => {
     // designId comes from a server-issued presign, so this means the same
     // upload was published twice — treat it as a duplicate rather than
     // silently overwriting an existing record's history.
-    return response(409, { error: "This design has already been published.", designId });
+    return response(409, { error: "An asset record already exists for this upload.", designId });
   }
 
   const originalRef = `s3://${DESIGN_ORIGINALS_BUCKET}/${body.s3KeyOriginal}`;
   const webRef = `s3://${DESIGN_ORIGINALS_BUCKET}/${body.s3KeyWeb}`;
-  const publishing = status === "published";
-
-  // ---- fail-closed malware gate (publish path only) ----
-  if (publishing) {
-    const [ov, wv] = await Promise.all([
-      checkVerdict(TABLE, originalRef),
-      checkVerdict(TABLE, webRef),
-    ]);
-    const bad = [ov, wv].filter((v) => !v.ok);
-    if (bad.length) {
-      const pending = bad.every((v) => v.pending);
-      return response(409, {
-        error: pending
-          ? "Still scanning for malware — save as a draft or try publishing again in a moment."
-          : "One or both files failed the malware scan and cannot be published.",
-        stillScanning: pending,
-        scan: bad.map((v) => ({ ref: v.ref, status: v.status, threats: v.threats || [], threatInfo: v.threatInfo || null })),
-        designId,
-      });
-    }
-  }
+  // No scan gate here: a draft copies nothing and touches no public
+  // bucket. The fail-closed verdict pair is enforced where publishing
+  // actually happens — patch-design.js's submit/approve/break-glass.
 
   const now = new Date().toISOString();
   const actorSub = claims.sub;
@@ -218,7 +195,7 @@ exports.handler = async (event) => {
     // Stored so manifest.js can build the public image path without
     // re-parsing the key on every regeneration.
     webExt: web.ext,
-    publishedAt: publishing ? now : null,
+    publishedAt: null,
     // Soft delete only. archive/restore flips these; nothing hard-deletes.
     deletedAt: undefined,
   };
@@ -228,38 +205,6 @@ exports.handler = async (event) => {
   // overridden to DESIGN#<id> so the EVENT# convention, field names and
   // tenant/schema stamping stay identical across item types rather than
   // inventing a second audit shape for this one feature.
-  // ---- copy to public BEFORE writing the record ----
-  // Order matters and this is the safe direction. If the copy fails, nothing
-  // is recorded and the designer sees a plain error they can retry. The
-  // reverse order (found the hard way on the first live run, when CopyObject
-  // 403'd on tagging permissions) leaves a `published` record pointing at a
-  // public image that was never created — a broken storefront tile that no
-  // retry path fixes, because publish-design.js refuses to write the same
-  // designId twice. The failure mode here is instead a harmless orphan object
-  // under the public prefix, which the next publish of that designId
-  // overwrites and the purge job collects.
-  let publicKey = null;
-  if (publishing) {
-    publicKey = `${PUBLIC_ASSETS_KEY_PREFIX}${designId}.${web.ext}`;
-    await s3.send(new CopyObjectCommand({
-      Bucket: PUBLIC_ASSETS_BUCKET,
-      Key: publicKey,
-      CopySource: `/${DESIGN_ORIGINALS_BUCKET}/${body.s3KeyWeb}`,
-      MetadataDirective: "REPLACE",
-      ContentType: contentTypeFor(web.ext),
-      CacheControl: PUBLIC_IMAGE_CACHE_CONTROL,
-      // Do NOT inherit the source object's tags. S3 copies them by default,
-      // which (a) requires s3:GetObjectTagging on the source and
-      // s3:PutObjectTagging on the destination — an easily-missed IAM
-      // dependency that surfaces only as a bare "Access Denied" — and (b)
-      // would republish GuardDuty's internal GuardDutyMalwareScanStatus tag
-      // onto a public object, where it means nothing and leaks how scanning
-      // is wired. The verdict lives in DynamoDB; the public copy carries none.
-      TaggingDirective: "REPLACE",
-      Tagging: "",
-    }));
-  }
-
   const auditEvent = {
     ...buildEvent({
       orderId: designId,
@@ -282,26 +227,8 @@ exports.handler = async (event) => {
     ],
   }));
 
-  let manifest = null;
-  if (publishing) {
-    manifest = await regenerateManifest({
-      tableName: TABLE,
-      bucket: PUBLIC_ASSETS_BUCKET,
-      keyPrefix: PUBLIC_ASSETS_KEY_PREFIX,
-      publicPrefix: PUBLIC_ASSETS_PATH,
-    });
-  }
-
-  return response(201, {
-    design: item,
-    published: publishing,
-    manifest: manifest ? { key: manifest.key, count: manifest.count } : null,
-  });
+  return response(201, { design: item, published: false, manifest: null });
 };
-
-function contentTypeFor(ext) {
-  return { jpg: "image/jpeg", png: "image/png", webp: "image/webp" }[ext] || "application/octet-stream";
-}
 
 function str(v) {
   return typeof v === "string" ? v.trim() : "";

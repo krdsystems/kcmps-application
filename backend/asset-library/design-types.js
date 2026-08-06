@@ -1,5 +1,5 @@
 /* ============================================================
-   KCMPS Design Asset Library — server-side allowlists & key shapes
+   KCMPS Asset Library — server-side allowlists & key shapes
    ============================================================
    The single server-side source of truth for what a STAFF member may
    upload into the Design Asset Library, and for how an object's S3 key
@@ -7,7 +7,7 @@
    facing checkout allowlist, deliberately a separate list — customers
    and staff upload for different reasons and the accepted sets differ):
 
-     the client is UNTRUSTED. website/dashboard/design-library.html may
+     the client is UNTRUSTED. website/dashboard/asset-library.html may
      mirror these lists for immediate UX feedback, but that copy is a
      convenience, never a security boundary. Everything here re-validates.
 
@@ -33,15 +33,23 @@
 
 // Source files. Deliberately narrower than the customer allowlist: no
 // office documents, no raster-only formats, and (same reasoning as
-// upload-types.js) no SVG and no archives.
+// upload-types.js) no archives.
+//
+// SVG (owner decision, 2026-08-07): allowed as a SOURCE file only. An SVG
+// can carry script, so it is ATTACHMENT-ONLY everywhere: list-designs.js
+// already forces Content-Disposition: attachment + application/octet-stream
+// on every original download, and SVG must NEVER be added to WEB_TYPES,
+// never reach an <img>/inline render, and never enter store.js's
+// SAFE_IMAGE_RE. The web-ready allowlist below stays raster-only.
 const ORIGINAL_TYPES = Object.freeze({
   "image/vnd.adobe.photoshop": "psd",
   "application/x-photoshop": "psd",
   "application/illustrator": "ai",
   "application/postscript": "ai", // what a browser usually reports for .ai
   "application/pdf": "pdf",
+  "image/svg+xml": "svg",
 });
-const ORIGINAL_EXTENSIONS = Object.freeze({ psd: "psd", ai: "ai", pdf: "pdf" });
+const ORIGINAL_EXTENSIONS = Object.freeze({ psd: "psd", ai: "ai", pdf: "pdf", svg: "svg" });
 
 // Derived, storefront-facing image. Only formats a browser renders
 // natively and that carry no scripting surface.

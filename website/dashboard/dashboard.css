@@ -127,6 +127,17 @@ body { margin: 0; background-attachment: fixed; }
 .tile.warn .t-value { color: var(--color-accent-700); }
 .tile.bad .t-value { color: #c0392b; }
 .tile.good .t-value { color: var(--color-green); }
+/* Today page's stat cards are real <button>s now (drill into the orders
+   behind the number) — reset the default button chrome back to plain .card
+   styling and add the hover/press affordance a queue card already has. */
+.tile-clickable {
+  border: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  width: 100%; transition: background-color 120ms ease;
+}
+.tile-clickable:hover { background: color-mix(in srgb, var(--color-text) 5%, rgba(236, 238, 242, 0.82)); }
+.tile-clickable:active { background: color-mix(in srgb, var(--color-text) 10%, rgba(236, 238, 242, 0.82)); }
+.tile-clickable[aria-expanded="true"] { outline: 2px solid var(--color-accent-2); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .tile-clickable { transition: none; } }
 
 /* — design library skeleton (Design Asset Library milestone, backend not built yet) — */
 .design-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
@@ -259,16 +270,44 @@ select.input { appearance: auto; }
 @media (prefers-reduced-motion: reduce) { .dash-collapsible { transition: opacity 200ms ease-out; } }
 
 /* — job list / detail — */
+/* Each .job-row (including the header row) is its OWN CSS Grid instance —
+   they're sibling divs, not rows of one shared table. With a trailing
+   `auto` track, that track's width was resolved per-row from that row's own
+   last-cell content (the order/line-id text, which varies in length row to
+   row), so the fr-tracks before it split a different remaining width on
+   every row and the whole grid visibly zig-zagged instead of lining up
+   under the header. Fixed: every track after the first is a concrete px
+   width (identical on every row, header included, since header/rows share
+   this exact selector) so column boundaries can never depend on content —
+   plus min-width:0 + ellipsis below stop a long description/status from
+   overflowing into the next column, which is what made status pills look
+   like they were bleeding across the Status/Due boundary. */
 .job-row {
-  display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: var(--space-2); align-items: center;
-  padding: 10px; border-radius: var(--radius-md); transition: background-color 120ms ease;
+  display: grid; grid-template-columns: 1.6fr 1fr 150px 90px 130px; column-gap: var(--space-3); align-items: center;
+  padding: 10px 12px; border-radius: var(--radius-md); transition: background-color 120ms ease;
+  border-bottom: 1px solid var(--color-divider);
 }
+.job-row:last-child { border-bottom: 0; }
+.job-row-head { border-bottom: 2px solid var(--color-divider); border-radius: 0; padding-bottom: 8px; }
 .job-row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 .job-row:active { background: color-mix(in srgb, var(--color-text) 9%, transparent); }
 @media (prefers-reduced-motion: reduce) { .job-row { transition: none; } }
 /* new-row highlight after "Create ticket" — see jobs.html's manual-order submit */
 .job-row.is-new { animation: dash-flash-settle 900ms ease; }
 @media (prefers-reduced-motion: reduce) { .job-row.is-new { animation: none; } }
+
+/* Desktop column boundaries: min-width:0 overrides the grid-item default of
+   min-width:auto (content's min-content size), which is what let a long
+   value force a track wider than its declared share and desync the row
+   underneath it. Job/Client truncate with an ellipsis rather than wrap or
+   overflow; Status keeps natural width (pills are short and shouldn't
+   clip); Due and the trailing order/line id right-align so numbers/dates
+   read like a spreadsheet column instead of ragging left. */
+.job-row > span { min-width: 0; }
+.job-row > span:nth-child(1),
+.job-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-row > span:nth-child(4) { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); white-space: nowrap; justify-self: end; }
+.job-row > span:nth-child(5) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-self: end; }
 
 /* Phone layout: the 5-column grid (description/client/status/due/id) has no
    room at 320-375px, so it restructures into a 2-row card — description +
@@ -304,6 +343,13 @@ select.input { appearance: auto; }
 .status-pill.st-info { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
 
 .ticket-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+/* Order ID — the primary identifier staff cross-reference against GCash
+   payments and email, so it needs to read before anything else on the
+   ticket, not as a small muted aside next to the line ID. */
+.ticket-orderid {
+  font-family: var(--font-heading); font-weight: 800; font-size: clamp(20px, 3vw, 26px);
+  letter-spacing: 0.02em; color: var(--color-accent-800); line-height: 1.1; margin-bottom: 4px;
+}
 .ticket-meta { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-4); }
 .ticket-meta .m-block h4 { margin: 0 0 2px; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 .ticket-meta .m-block p { margin: 0; font-size: 14px; font-weight: 600; }

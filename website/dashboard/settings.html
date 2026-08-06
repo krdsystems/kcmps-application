@@ -22,11 +22,44 @@
     </header>
 
     <main class="dash-content">
-      <p class="demo-notice"><strong>Preview — not connected to the backend yet.</strong>
-        These values are read-only defaults compiled into the page. Changing them here is not
-        possible yet and would not affect how orders are processed.</p>
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Idle-screen PIN</h2>
+          <span class="hint">A privacy deterrent, not a login — read the note below</span>
+        </div>
+        <div class="card">
+          <p style="font-size:13px;margin:0 0 var(--space-3)">
+            When this dashboard auto-hides itself after sitting idle, it normally reopens with a
+            plain "Resume" button. Setting a PIN here means <strong>your</strong> PIN has to be
+            typed to reopen it instead — so a colleague walking past an unattended, still-logged-in
+            screen can't casually see customer names, payment screenshots, or GCash references.
+            <strong>This is not a real login</strong> — it's stored only in this browser and can't
+            stop someone with technical access to this computer. The actual security boundary is
+            your Cognito sign-in, which every action on this dashboard re-checks regardless of this
+            PIN. If your session has genuinely expired, entering the right PIN will not "carry on"
+            for you — you'll still be asked to refresh or log back in.
+            <strong>Forgot your PIN?</strong> Log out and back in from the top bar — that always works
+            and clears the old PIN.
+          </p>
+          <div id="pin-status" class="hint" style="margin-bottom:var(--space-3)"></div>
+          <div class="dash-form-grid">
+            <div class="field"><label for="pin-new">New 4-digit PIN</label>
+              <input class="input" id="pin-new" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" /></div>
+            <div class="field"><label for="pin-confirm">Confirm PIN</label>
+              <input class="input" id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" /></div>
+          </div>
+          <div id="pin-error"></div>
+          <div style="display:flex;gap:8px;margin-top:var(--space-3);flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="pin-save-btn">Save PIN</button>
+            <button type="button" class="btn btn-secondary" id="pin-remove-btn">Remove PIN</button>
+          </div>
+        </div>
+      </section>
 
       <section class="dsec">
+        <p class="demo-notice"><strong>Preview — not connected to the backend yet.</strong>
+          These values are read-only defaults compiled into the page. Changing them here is not
+          possible yet and would not affect how orders are processed.</p>
         <div class="dsec-head">
           <h2>SLA windows &amp; thresholds</h2>
           <span class="hint">Read-only preview in this mock build — wire to a Settings API once the backend exists (see infra doc)</span>
@@ -71,12 +104,59 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("settings");
   if (!claims) return;
-  const { escapeHtml } = KCMPS_DASH_SHELL;
+  const { escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
   document.getElementById("reason-tags").innerHTML = KCMPS_DASH.getSpoilageReasons()
     .map((r) => `<span class="tag tag-accent-2">${escapeHtml(r.label)}</span>`).join("");
   document.getElementById("station-tags").innerHTML = KCMPS_DASH.getStations()
     .map((s) => `<span class="tag tag-neutral">${escapeHtml(s.label)} (${s.id})</span>`).join("");
+
+  /* ---- idle-screen PIN (dashboard-shell.js's SESSION_GUARD gate) ----
+     claims.sub is the same Cognito subject used to key the stored PIN — see
+     dashboard-data.js's setStaffPin() header for the full storage/threat
+     model. No "old PIN required to change" step: this page already sits
+     behind a live Cognito session, which is a stronger check than the PIN
+     itself, so re-asking for the PIN just to replace it would add friction
+     with no real benefit. */
+  const pinStatus = document.getElementById("pin-status");
+  const pinErrorHost = document.getElementById("pin-error");
+  const pinNewInput = document.getElementById("pin-new");
+  const pinConfirmInput = document.getElementById("pin-confirm");
+  const pinSaveBtn = document.getElementById("pin-save-btn");
+  const pinRemoveBtn = document.getElementById("pin-remove-btn");
+
+  function refreshPinStatus() {
+    const set = KCMPS_DASH.hasStaffPin(claims.sub);
+    pinStatus.textContent = set
+      ? "A PIN is set — the idle screen requires it before it will reopen."
+      : "No PIN set yet — the idle screen reopens with a plain Resume button.";
+    pinRemoveBtn.style.display = set ? "" : "none";
+  }
+  refreshPinStatus();
+
+  pinSaveBtn.addEventListener("click", async () => {
+    pinErrorHost.innerHTML = "";
+    const a = pinNewInput.value.trim();
+    const b = pinConfirmInput.value.trim();
+    if (!/^\d{4}$/.test(a)) { showInlineError(pinErrorHost, "PIN must be exactly 4 digits."); return; }
+    if (a !== b) { showInlineError(pinErrorHost, "The two PINs don't match."); return; }
+    await withBusy(pinSaveBtn, async () => {
+      try {
+        await KCMPS_DASH.setStaffPin(claims.sub, a);
+        pinNewInput.value = "";
+        pinConfirmInput.value = "";
+        refreshPinStatus();
+      } catch (err) { showInlineError(pinErrorHost, err.message); }
+    });
+  });
+
+  pinRemoveBtn.addEventListener("click", async () => {
+    pinErrorHost.innerHTML = "";
+    await withBusy(pinRemoveBtn, async () => {
+      KCMPS_DASH.clearStaffPin(claims.sub);
+      refreshPinStatus();
+    });
+  });
 })();
 </script>
 </body>

@@ -255,13 +255,23 @@
     const clients = KCMPS_DASH.getClients().sort((a, b) => a.name.localeCompare(b.name));
     moClient.innerHTML = clients.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") +
       '<option value="__new__">+ New client…</option>';
+    // Sync the new-client fields' visibility right after rebuilding the
+    // options, not only on a future `change` event — with an empty client
+    // list (the common case pre-any-manual-orders) "+ New client…" is the
+    // ONLY option, so it's selected by default and `change` never fires.
+    // Without this call the name/type fields stayed display:none forever,
+    // newClientName submitted empty, and createManualOrder() always threw
+    // "Select an existing client or enter a new client name." — see the
+    // root CLAUDE.md task brief for the full diagnosis.
+    syncNewClientFields();
   }
-  refreshClientOptions();
-  moClient.addEventListener("change", () => {
+  function syncNewClientFields() {
     const isNew = moClient.value === "__new__";
     moNewNameField.style.display = isNew ? "" : "none";
     moNewTypeField.style.display = isNew ? "" : "none";
-  });
+  }
+  refreshClientOptions();
+  moClient.addEventListener("change", syncNewClientFields);
 
   const moType = document.getElementById("mo-type");
   const moSkuField = document.getElementById("mo-sku-field");

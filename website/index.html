@@ -1770,8 +1770,20 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         });
       }
     }
-    const featured = all.filter((s) => s.featured);
-    return featured.length ? featured : all;
+    // Return EVERY image, not just the featured ones. This was previously
+    //     const featured = all.filter((s) => s.featured);
+    //     return featured.length ? featured : all;
+    // which quietly meant "if anyone has ever ticked featured, show ONLY
+    // those". Exactly 4 of the 38 manifest entries are featured, so the hero
+    // rotated through the same 4 shots forever and read as broken/static —
+    // the `featured` flag was acting as a hard filter, not a preference.
+    //
+    // Deliberately NOT re-adding a featured-leads-first rule here: init()
+    // below does `order = shuffle(basePool)` on every fresh load, so any
+    // ordering imposed at this point is immediately discarded. Ordering
+    // belongs in init(), not here. The flag is still parsed onto each slide
+    // above so a future "featured opens the carousel" tweak has it available.
+    return all;
   }
 
   async function init() {

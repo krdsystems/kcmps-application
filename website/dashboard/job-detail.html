@@ -74,7 +74,11 @@
       case "On Hold": return [
         { label: "Verify payment", to: "__verifypayment__", tone: "btn-primary" },
       ];
-      case "Quoted": return [{ label: "Send price to customer", to: "Priced", tone: "btn-primary" }];
+      // needsPrice is not cosmetic: advance-line-item.js REQUIRES a valid
+      // positive priceEach on this one transition and 400s without it. A
+      // quote with no price was the UAT bug — staff could "send" one and
+      // the customer got a priced-status order with nothing to pay.
+      case "Quoted": return [{ label: "Send price to customer", to: "Priced", tone: "btn-primary", needsPrice: true }];
       case "Priced": return [{ label: "Mark payment received", to: "Confirmed", tone: "btn-primary" }];
       case "Confirmed": return [{ label: "Schedule", to: "Scheduled", tone: "btn-primary", needsStation: true }];
       case "Scheduled": return [{ label: "Start production", to: "In Production", tone: "btn-primary", needsStation: true, needsSetup: true }];
@@ -498,18 +502,31 @@
           });
           return;
         }
-        if (action.needsStation || action.needsSetup) {
+        if (action.needsStation || action.needsSetup || action.needsPrice) {
+          const qty = li.qty || 1;
           formHost.innerHTML =
             `<div class="dash-form-grid" style="margin-bottom:var(--space-3)">` +
+            (action.needsPrice ? `<div class="field"><label for="adv-price">Price per unit (₱)</label><input class="input" id="adv-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 250.00" /><p class="muted" style="margin:4px 0 0;font-size:12px">Quantity is ${qty} — the customer is billed price × ${qty}.</p></div>` : "") +
             (action.needsStation ? `<div class="field"><label>Station</label><select class="input" id="adv-station">${stations.map((s) => `<option value="${s.id}"${li.station === s.id ? " selected" : ""}>${s.label}</option>`).join("")}</select></div>` : "") +
             (action.needsSetup ? `<div class="field"><label>Setup minutes (start-setup → start-run tap)</label><input class="input" id="adv-setup" type="number" min="0" placeholder="e.g. 15" /></div>` : "") +
             `</div><button type="button" class="btn btn-primary" id="adv-confirm">Confirm — ${action.label}</button>`;
           document.getElementById("adv-confirm").addEventListener("click", async (e) => {
             const station = action.needsStation ? document.getElementById("adv-station").value : undefined;
             const setupMinutes = action.needsSetup ? parseInt(document.getElementById("adv-setup").value, 10) || 0 : undefined;
+            let priceEach;
+            if (action.needsPrice) {
+              // Validate here as well as server-side: the backend's 400 is
+              // correct but arrives as a generic API error, and a staffer
+              // who mistyped a price deserves to be told which field.
+              priceEach = parseFloat(document.getElementById("adv-price").value);
+              if (!(priceEach > 0) || !isFinite(priceEach)) {
+                showInlineError(errorHost, "Enter a price per unit greater than 0 before sending the quote.");
+                return;
+              }
+            }
             await withBusy(e.currentTarget, async () => {
               try {
-                await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes });
+                await KCMPS_DASH.advanceLineItem(order.orderId, li.lineItemId, { to: action.to, station, setupMinutes, priceEach });
                 await render(true);
               } catch (err) { showInlineError(errorHost, err.message); }
             });

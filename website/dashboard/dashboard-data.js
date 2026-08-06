@@ -478,6 +478,12 @@
       body: JSON.stringify({
         orderId, lineItemId, to: opts.to,
         station: opts.station, setupMinutes: opts.setupMinutes, meta: opts.meta,
+        // Required by advance-line-item.js on Quoted -> Priced ONLY (it 400s
+        // without one) and ignored on every other transition. Forwarded
+        // unconditionally rather than branching on `to` here — the server
+        // owns which transitions need it, and duplicating that rule in the
+        // seam is how the two would drift apart.
+        priceEach: opts.priceEach,
       }),
     });
   }
@@ -490,6 +496,18 @@
     const from = li.status;
     const to = opts.to || NEXT_STATUS[from];
     if (!to) throw new Error("No default next status from '" + from + "' — pass opts.to explicitly.");
+    // Mirror advance-line-item.js's rule so a manual/mock order can't do
+    // what the UAT caught real orders doing: reach Priced with nothing to
+    // pay. Same transition, same requirement, same derived amount — if the
+    // two ever disagree, staff learn one behaviour and get the other.
+    if (from === "Quoted" && to === "Priced") {
+      const price = parseFloat(opts.priceEach);
+      if (!(price > 0) || !isFinite(price)) {
+        throw new Error("A price per unit is required before sending a quote to the customer.");
+      }
+      li.priceEach = price;
+      li.amount = Math.round(price * (li.qty || 1) * 100) / 100;
+    }
     li.status = to;
     li.enteredStatusAt = nowIso();
     if (opts.station) li.station = opts.station;

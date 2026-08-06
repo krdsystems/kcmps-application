@@ -101,12 +101,15 @@
      will issue a presigned URL. Keep the two lists in sync — and if they
      ever disagree, the server's list is the correct one.
 
-     Deliberately excludes SVG (script container) and archives (opaque to
-     Content-Type checks) — see the backend file's header for the full
-     reasoning. Customers with multi-file jobs paste a Drive/Dropbox link
-     into the notes textarea, which is why that textarea stays. */
+     SVG was re-added by owner decision (2026-08-07) once the backend's
+     upload-types.js allowlisted it again — this copy only mirrors that call,
+     it isn't where the SVG-as-script-container tradeoff gets decided.
+     Archives (zip/rar) stay excluded (opaque to Content-Type checks) — see
+     the backend file's header. Customers with multi-file jobs paste a
+     Drive/Dropbox link into the notes textarea, which is why that textarea
+     stays. */
   var UPLOAD_ACCEPT_EXTENSIONS = [
-    "jpg", "jpeg", "png", "webp", "tif", "tiff",
+    "jpg", "jpeg", "png", "webp", "tif", "tiff", "svg",
     "pdf", "ai", "eps", "psd",
     "doc", "docx", "xls", "xlsx", "ppt", "pptx",
   ];
@@ -2120,6 +2123,22 @@
   // two-step upload.
   function submitPaymentProof(orderId, ref, amount, file, callback) {
     if (!ref) { callback(new Error("Please enter the GCash reference number.")); return; }
+    // The GCash references we see are 13 digits (grouped 4-3-6, e.g.
+    // "5043 449 646841"), but this deliberately accepts 10-20 digits rather
+    // than pinning exactly 13. Reason: this gate sits in front of a customer
+    // who has ALREADY SENT REAL MONEY. Blocking a legitimate reference —
+    // a different GCash transaction type, a business-account variant, a
+    // future format change — means they cannot submit proof of a payment we
+    // already received, and it surfaces to them as "the site is broken",
+    // not as a validation message. The range still rejects the failure this
+    // guard exists for (an empty/garbage entry like "12356"), so widening it
+    // costs nothing real and removes a whole class of false rejection.
+    // Validates the digit count only, never the grouping, so incidental
+    // whitespace is forgiven — and never silently rewrites what was typed.
+    if (!/^\d{10,20}$/.test(ref.replace(/\s+/g, ""))) {
+      callback(new Error("That doesn't look like a GCash reference number — it should be 10-20 digits, e.g. 5043 449 646841."));
+      return;
+    }
     if (!(amount > 0)) { callback(new Error("Please enter the amount you sent.")); return; }
     if (!file) { callback(new Error("Please attach a screenshot of your payment.")); return; }
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { callback(new Error("Screenshot must be a JPG, PNG, or WEBP image.")); return; }
@@ -2231,6 +2250,13 @@
     var otherContact = (document.getElementById("co-other-contact").value || "").trim();
     if (!name) { showCheckoutError("Please add your name so we know whose order this is.", document.getElementById("co-name")); return; }
     if (!email && !phone && !messenger && !otherContact) { showCheckoutError("Add at least one way to reach you — email, phone, Messenger, or another method.", document.getElementById("co-email")); return; }
+    // #co-email is a dedicated email field (unlike #co-phone/#co-messenger/
+    // #co-other-contact, which stay free text on purpose — a phone number is
+    // a valid answer there). Only validate shape when something was typed;
+    // an empty email is fine as long as another contact method was given
+    // above. Same regex as the sign-up form's live email check, for one
+    // consistent "what counts as an email" rule across the site.
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showCheckoutError("That doesn't look like a valid email address — check for typos (e.g. you@example.com).", document.getElementById("co-email")); return; }
     var fulfillEl = document.querySelector('input[name="co-fulfill"]:checked');
     var fulfill = fulfillEl ? fulfillEl.value : "Pickup";
     var notes = (document.getElementById("co-notes").value || "").trim();

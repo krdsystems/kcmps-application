@@ -799,6 +799,15 @@ textarea.input { min-height: 90px; resize: vertical; }
      desktop, where a mouse pointer doesn't need the extra margin. */
   .qty-stepper button { width: 40px; height: 40px; }
   .qty-stepper .qval { width: 34px; min-width: 34px; height: 40px; font-size: 16px; }
+  /* `.product-buy`'s desktop `space-between` row put the stepper's `+`
+     button flush against the card's right edge — right under the
+     scroll-position rail, which docks on that same edge (see the rail's own
+     mobile tap-target notes above). A thumb aiming for `+` kept landing on
+     the rail instead. Stack the price on its own row above a centered
+     stepper so the stepper's tap targets sit mid-card, clear of any edge
+     chrome, on both sides. */
+  .product-buy { flex-direction: column; align-items: center; gap: 6px; }
+  .product-price { text-align: center; }
 }
 .product.product-custom { border: 1.5px dashed color-mix(in srgb, var(--color-accent-2) 40%, transparent); background: var(--color-bg); }
 .product-custom .product-thumb { background: repeating-linear-gradient(45deg, var(--color-accent-2-100), var(--color-accent-2-100) 10px, var(--color-surface) 10px, var(--color-surface) 20px); }

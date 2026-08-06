@@ -216,68 +216,9 @@ html { overflow-x: hidden; }
 @media (max-width: 900px) { .pillar-grid { grid-template-columns: 1fr; } }
 
 .catalog { padding: var(--space-8) 0; }
-/* Hero/Shop card-deck transition: the hero is the top card, pinned via
-   position:sticky inside .hero-stage while the user scrolls through
-   .hero-deck's extra height. --deck-progress (0→1, written on :root every
-   scroll frame) drives both halves directly off scroll position — no CSS
-   transition, so the motion is scroll-scrubbed rather than a one-shot
-   animation fired at a threshold. That's what makes it read as "pulling
-   the top card off the deck".
-   Three of the four numbers here are computed in JS (see the deck-scroll
-   script) and arrive as custom properties, because they're all derived
-   from the hero's MEASURED height H and must agree with each other:
-     --deck-top    sticky top T = min(navH, V - ctaH - H)
-     --deck-margin #storefront's lift M = -(H + T - navH)
-   Do not replace either with a hand-tuned constant. Hardcoding top:0 (an
-   earlier version) silently assumed the hero fits the viewport — true on
-   desktop, false on mobile where the hero is ~2x the viewport, and there
-   the math degenerated into either a multi-scroll dead gap or an
-   unreachable bottom half of the hero. See docs/history.md. */
-/* Sequential cross-fade, not a simultaneous one. Both halves used to be
-   partly visible through most of the pass (hero fading 1→0 across the whole
-   range while the shop sat at 0.55 from the start), which double-exposed the
-   hero headline over the shop headline — the shop must be at 0 while the
-   user is still looking at the hero. So the hero owns the first half of the
-   pass and the shop owns the second, with only a brief low-alpha crossover
-   around 0.4–0.5 to avoid a hard cut. */
-:root {
-  --deck-out: clamp(0, calc((0.5 - var(--deck-progress, 0)) / 0.5), 1);
-  --deck-in: clamp(0, calc((var(--deck-progress, 0) - 0.4) / 0.6), 1);
-}
-/* pointer-events:none on the deck, auto back on the stage. The deck is a
-   tall (hero height + runway) EMPTY box at z-index 4, and #storefront's
-   negative margin pulls the shop up INSIDE it — so the deck's own box sits
-   over the shop's z-index 1 and hit-tests first, swallowing clicks on the
-   shop's category tabs even though it paints nothing. Only .hero-stage (the
-   actual card, which restores auto below) should ever be clickable here. */
-.hero-deck { position: relative; z-index: 4; pointer-events: none; }
-.hero-stage {
-  pointer-events: auto;
-  position: sticky; top: var(--deck-top, 0px); z-index: 5; transform-origin: center top;
-  /* The card keeps lifting/shrinking across the WHOLE pass (that's the
-     motion), but it finishes fading out at the halfway point — see
-     --deck-out/--deck-in below. */
-  transform: translateY(calc(var(--deck-progress, 0) * -16vh)) scale(calc(1 - var(--deck-progress, 0) * 0.08));
-  opacity: var(--deck-out);
-}
-/* visibility:hidden also drops the passed hero out of the tab order and the
-   a11y tree, so keyboard users can't land on an invisible CTA */
-.hero-deck.is-passed .hero-stage { pointer-events: none; visibility: hidden; }
-.catalog.deck-reveal {
-  position: relative; z-index: 1; margin-top: var(--deck-margin, 0px);
-  transform-origin: center top;
-  transform: translateY(calc((1 - var(--deck-in)) * 6vh)) scale(calc(0.94 + var(--deck-in) * 0.06));
-  opacity: var(--deck-in);
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero-deck { height: auto !important; }
-  .hero-stage { position: static; top: auto; transform: none; opacity: 1; visibility: visible; }
-  .catalog.deck-reveal { margin-top: 0; transform: none; opacity: 1; }
-}
-/* #storefront carries a translateY, so getBoundingClientRect() on it returns
-   the TRANSFORMED box — manual anchor-scroll math lands short. Let the
-   browser handle the offset natively instead; this also keeps every other
-   in-page anchor from landing under the sticky nav. */
+/* Native scroll-margin instead of manual anchor-scroll math, so every
+   in-page anchor lands clear of the sticky nav without each caller
+   re-deriving the offset. */
 #storefront, #estimator, #value, #how, #faq, #contact {
   scroll-margin-top: calc(var(--nav-h, 64px) + 12px);
 }
@@ -539,8 +480,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 </script>
 
 <div class="wrap" id="top">
-  <div class="hero-deck" id="hero-deck">
-    <div class="hero-stage" id="hero-stage">
   <section class="hero" id="hero">
     <div>
       <div class="hero-copy">
@@ -587,10 +526,8 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       </div>
     </div>
   </section>
-    </div>
-  </div>
 
-  <section class="catalog deck-reveal" id="storefront">
+  <section class="catalog" id="storefront">
     <div class="section-head">
       <span class="kicker-pill"><span class="dot"></span>Shop</span>
       <h2>Pick a design — or start a custom order</h2>
@@ -673,11 +610,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
   </section>
 
-  <!-- Capabilities strip. Deliberately NOT inside .hero-stage (the pinned
-       card-deck hero): every pixel in that card is a pixel the user must
-       scroll through before #storefront can reach the viewport, and this
-       strip wraps to ~216px on a phone. Keeping it here — supporting proof
-       right after the shop grid — costs the reveal nothing. -->
   <section class="capstrip" aria-label="Capabilities">
     <span class="tag tag-accent-2">Silkscreen printing</span>
     <span class="tag tag-accent-2">3D prototyping — PLA/PETG</span>
@@ -982,14 +914,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       // Pick the entry closest to the top of the viewport among those
       // currently intersecting, so the "active" segment matches what the
       // user is actually reading rather than whichever fired last.
-      // #hero lives inside the sticky .hero-stage. Once the card-deck pass
-      // is done the hero is visually gone, but its box is still laid out
-      // overlapping #storefront (visibility:hidden does NOT stop
-      // IntersectionObserver reporting it) — so without this filter the
-      // rail would highlight "Hero" while the user is reading Shop.
-      const visible = entries.filter(
-        (e) => e.isIntersecting && !e.target.closest('.hero-deck.is-passed')
-      );
+      const visible = entries.filter((e) => e.isIntersecting);
       if (!visible.length) return;
       visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
       setActive(visible[0].target.id);
@@ -1012,16 +937,9 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
       item.classList.add('is-tapped');
       tapFlashTimer = setTimeout(() => item.classList.remove('is-tapped'), 900);
       item.blur(); // drop any lingering :focus-visible so the label doesn't stay stuck open
-      // #hero sits inside the pinned card-deck stage, so its rect is
-      // whatever the pin/transform put on screen, not its place in the
-      // document — scrolling "to" it is really scrolling to the top.
-      if (target.closest('.hero-deck')) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-      // Everything else uses native scrollIntoView so the sections'
-      // scroll-margin-top does the nav offset. Doing the math by hand here
-      // read the TRANSFORMED rect of #storefront and landed short.
+      // Native scrollIntoView so the sections' scroll-margin-top does the
+      // nav offset consistently for every target, #hero included now that
+      // it's back in normal document flow.
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
@@ -1037,146 +955,6 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   new MutationObserver(toggleForDrawer).observe(document.body, {
     childList: true, subtree: true, attributes: true, attributeFilter: ['class'],
   });
-})();
-</script>
-
-<script>
-/* Hero/Shop card-deck transition. .hero-deck is given extra height beyond
-   its own content (the "runway", E) so its child .hero-stage —
-   position:sticky — stays pinned for exactly E pixels of scroll; that's
-   the whole visible transition window. #storefront follows immediately
-   after in the DOM, pulled up under the pinned card by a negative margin,
-   so it's revealed as the hero card lifts/shrinks/fades away above it.
-
-   All the geometry derives from ONE measured input, H = the hero card's
-   own rendered height. With V = viewport height and the two fixed bars'
-   heights navH / ctaH:
-
-     E = round(V * 0.40 mobile / 0.45 desktop)   pin runway
-     T = min(navH, V - ctaH - H)                 sticky top   -> --deck-top
-     M = -(H + T - navH)                         #storefront lift -> --deck-margin
-     deck height = H + E
-     progress = clamp((T - deckTop) / E, 0, 1)
-     total scroll needed to reveal the shop = E - T
-
-   The T formula is the load-bearing part. When the hero FITS the viewport
-   (desktop) it reduces to T = navH: the card pins just under the nav.
-   When the hero is TALLER than the viewport (mobile — it runs ~2x) T goes
-   negative, i.e. the card is BOTTOM-anchored: it scrolls naturally until
-   its bottom edge reaches the sticky-CTA bar, and only then pins. That's
-   what keeps the hero's own CTA / checklist / trust chips reachable.
-   Pinning at a hardcoded top:0 instead (an earlier version) made the
-   bottom ~576px of the mobile hero permanently unscrollable-to.
-
-   M is derived from the SAME H and T, which is why the card releases and
-   the shop lands at exactly navH in the same frame. Any version of this
-   that tunes the lift independently of the pin will disagree with itself
-   on some viewport and leave either a dead-scroll gap or an overlap. */
-(() => {
-  const deck = document.getElementById('hero-deck');
-  const stage = document.getElementById('hero-stage');
-  if (!deck || !stage) return;
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  const root = document.documentElement;
-  const nav = document.querySelector('.nav');
-  const stickyCta = document.querySelector('.sticky-cta');
-  const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
-
-  let runwayPx = 0;
-  let stickyTop = 0;
-  let lastKey = '';
-  let lastWidth = window.innerWidth;
-  let ticking = false;
-
-  // .sticky-cta is display:none on desktop; offsetHeight is then 0 anyway,
-  // but read it defensively so a future layout change can't feed in a
-  // phantom height on wide screens.
-  function ctaHeight() {
-    if (!stickyCta || !isMobile()) return 0;
-    return stickyCta.offsetHeight || 0;
-  }
-
-  function measure() {
-    const H = stage.offsetHeight;
-    const V = window.innerHeight;
-    const navH = nav ? nav.offsetHeight : 0;
-    const ctaH = ctaHeight();
-
-    // measure() writes deck.style.height, and the ResizeObserver below
-    // watches a child of deck — without this guard a write can re-trigger
-    // the observer that caused it.
-    const key = H + '|' + V + '|' + navH + '|' + ctaH;
-    if (key === lastKey) return;
-    lastKey = key;
-
-    runwayPx = Math.round(V * (isMobile() ? 0.4 : 0.45));
-    stickyTop = Math.min(navH, V - ctaH - H);
-
-    deck.style.height = (H + runwayPx) + 'px';
-    root.style.setProperty('--deck-top', stickyTop + 'px');
-    root.style.setProperty('--deck-margin', -(H + stickyTop - navH) + 'px');
-  }
-
-  // measure() runs on every scroll frame, not just on resize/observer events.
-  // It's three offsetHeight reads in a frame that already forces layout for
-  // getBoundingClientRect() below, and the key guard means it only *writes*
-  // when something genuinely changed — so the cost is nil while the payoff
-  // is that a stale H can never strand the user. Observers alone were not
-  // enough: the hero grew ~68px after the last ResizeObserver callback, and
-  // T/M stayed pinned to the old height for the life of the page.
-  function applyFrame() {
-    ticking = false;
-    measure();
-    const deckTop = deck.getBoundingClientRect().top;
-    const progress = runwayPx > 0
-      ? Math.min(1, Math.max(0, (stickyTop - deckTop) / runwayPx))
-      : 1;
-    root.style.setProperty('--deck-progress', String(progress));
-    // Threshold is 0.5, not ~1: that's where --deck-out reaches 0, i.e. the
-    // hero is already fully transparent. Waiting for 0.999 left a window
-    // where an invisible hero card still covered — and swallowed clicks on —
-    // the shop section that had faded in underneath it.
-    deck.classList.toggle('is-passed', progress >= 0.5);
-  }
-
-  function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(applyFrame);
-  }
-
-  // Mobile browsers fire 'resize' when the URL bar shows/hides, which
-  // changes innerHeight mid-scroll. Re-deriving T and M under the user's
-  // finger visibly jitters the reveal, so only re-measure when the width
-  // actually changed (or on an explicit orientation change).
-  function onResize() {
-    if (window.innerWidth === lastWidth) return;
-    lastWidth = window.innerWidth;
-    applyFrame();
-  }
-
-  applyFrame();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onResize);
-  window.addEventListener('orientationchange', () => { lastWidth = window.innerWidth; applyFrame(); });
-  // The hero's Google-fonts @import (styles.css) swaps from a fallback font
-  // to the real one once downloaded, reflowing the hero's line-wrapping and
-  // growing H well after our first measure() — a plain 'resize' listener
-  // never catches that, since the viewport itself hasn't changed. Re-measure
-  // once the swap lands, and on any other rendered-size change
-  // (ResizeObserver — late-decoding images, etc.). A stale H here desyncs T
-  // from M, which is exactly the "extra scrolls before the shop appears" bug.
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyFrame);
-  if (window.ResizeObserver) new ResizeObserver(applyFrame).observe(stage);
-  // Settle passes: this script runs inline, mid-parse, so the first
-  // applyFrame() above sees a partly-laid-out hero. The observers above catch
-  // most of the growth, but not all of it — measured ~68px of hero growth
-  // landing after the last ResizeObserver callback, which left T and M
-  // describing a hero height that no longer existed. These two make the
-  // at-rest state correct even for a user who never scrolls.
-  requestAnimationFrame(applyFrame);
-  window.addEventListener('load', applyFrame);
 })();
 </script>
 

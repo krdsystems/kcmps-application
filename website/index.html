@@ -2011,11 +2011,13 @@ const COGNITO_CONFIG = {
   scopes:      "email openid profile",
   // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
   staffGroupName: "Staff",
-  // Public storefront auth entry points — ON for dev/staging and local dev,
-  // OFF on production while the shop is pre-launch. Keyed on hostname rather
-  // than a build flag because `website/` is synced verbatim to both the
-  // production bucket root and the dev-site/ prefix with no build step, so
-  // one file has to behave differently in the two places.
+  // Public storefront auth entry points — ON everywhere as of launch:
+  // production (kcmps.com / www / site), dev/staging, and local dev. Keyed
+  // on hostname rather than a build flag because `website/` is synced
+  // verbatim to both the production bucket root and the dev-site/ prefix
+  // with no build step — the hostname list below is the only switch, and any
+  // hostname not on it (e.g. a raw CloudFront/S3 URL) keeps the auth entry
+  // points hidden.
   //
   // When false this hides BOTH entry points: the nav "Login / Sign-up" button
   // and the ?login=required "Sign in" banner that dashboard-shell.js and
@@ -2028,13 +2030,7 @@ const COGNITO_CONFIG = {
   // completes. Nothing server-side is disabled — the pool still permits
   // self-registration, which the custom sign-up form depends on — so this is
   // a UI gate, NOT a security control.
-  //
-  // Consequence to know about: on production a staff member hitting
-  // /dashboard/ without a session is redirected to index.html?login=required
-  // and lands on the homepage with no visible way in. That's intended
-  // pre-launch (staff test on dev.kcmps.com); revisit at launch by adding
-  // the production hostnames below.
-  authUiEnabled: ["dev.kcmps.com", "localhost", "127.0.0.1"].includes(window.location.hostname),
+  authUiEnabled: ["kcmps.com", "www.kcmps.com", "site.kcmps.com", "dev.kcmps.com", "localhost", "127.0.0.1"].includes(window.location.hostname),
   // Any of these groups unlocks the dashboard — mirrors backend/lib/auth.js's
   // STAFF_ROLES: Staff (dashboard-only), Admin (founders), plus the three
   // department roles (Production/Sales/Finance) reserved for the first

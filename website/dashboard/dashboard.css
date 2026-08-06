@@ -282,8 +282,15 @@ select.input { appearance: auto; }
    plus min-width:0 + ellipsis below stop a long description/status from
    overflowing into the next column, which is what made status pills look
    like they were bleeding across the Status/Due boundary. */
+/* Status is 190px, not 150px, because the widest REAL status —
+   "Pending Payment Verification" — measures ~185px in the pill at this font
+   size. At 150px it could neither wrap (white-space: nowrap) nor clip (no
+   overflow rule, see below), so it simply painted over the right-aligned Due
+   column next to it. Sizing a fixed track by eye instead of by the longest
+   value it must hold is what caused that; if a longer status is ever added
+   to backend/lib/constants.js's STATUS vocabulary, re-measure this. */
 .job-row {
-  display: grid; grid-template-columns: 1.6fr 1fr 150px 90px 130px; column-gap: var(--space-3); align-items: center;
+  display: grid; grid-template-columns: 1.6fr 1fr 190px 90px 150px; column-gap: var(--space-3); align-items: center;
   padding: 10px 12px; border-radius: var(--radius-md); transition: background-color 120ms ease;
   border-bottom: 1px solid var(--color-divider);
 }
@@ -306,8 +313,24 @@ select.input { appearance: auto; }
 .job-row > span { min-width: 0; }
 .job-row > span:nth-child(1),
 .job-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.job-row > span:nth-child(4) { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); white-space: nowrap; justify-self: end; }
-.job-row > span:nth-child(5) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-self: end; }
+/* The status cell IS the pill (jobs.html puts .status-pill on the span
+   itself, it is not a child), so it has to clip on its own. Widening the
+   track above fixes today's longest status; this is the belt-and-braces so
+   ANY future status physically cannot paint over the Due column again —
+   a truncated status is a cosmetic annoyance, one overlapping two columns
+   is the bug that was reported. */
+.job-row > span:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+/* max-width: 100% is the load-bearing part of these two rules, not padding.
+   `justify-self: end` makes a grid item size to its CONTENT rather than
+   stretch to the track, and a content-sized item is free to grow WIDER than
+   its track — anchored at the right edge, it grows leftward, straight over
+   the column before it. `overflow: hidden` never fires because nothing is
+   overflowing the box; the box itself got bigger. `min-width: 0` doesn't
+   help either — that permits shrinking, it doesn't impose a ceiling.
+   Measured: the order/line-id cell rendered 166px inside its 130px track and
+   painted 20px into the Due column. That was the reported overlap. */
+.job-row > span:nth-child(4) { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); white-space: nowrap; justify-self: end; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.job-row > span:nth-child(5) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-self: end; max-width: 100%; }
 
 /* Phone layout: the 5-column grid (description/client/status/due/id) has no
    room at 320-375px, so it restructures into a 2-row card — description +

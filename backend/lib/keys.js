@@ -13,6 +13,24 @@ function orderPk(orderId) {
   return `ORDER#${orderId}`;
 }
 
+// Order IDs are always minted as "ORD-" + 10 uppercase base36 chars
+// (checkout/create-order.js). UAT finding (2026-08-07): a guest pasting
+// just the bare suffix they were shown ("3A94793FF8") got a 404, while
+// the full "ORD-3A94793FF8" worked — customers routinely copy just the
+// code. Normalizes both shapes to the canonical form: trims whitespace,
+// uppercases (tolerates a lowercased paste), and prepends "ORD-" only if
+// it isn't already there. Pure string transform, run BEFORE the lookup —
+// it does not touch contactsMatch() or the anti-enumeration behavior
+// (generic 404, artificial delay) in any way; a normalized-but-still-
+// wrong ID fails exactly the same as before.
+function normalizeOrderId(raw) {
+  let id = String(raw || "").trim();
+  if (!id) return "";
+  id = id.toUpperCase();
+  if (!id.startsWith("ORD-")) id = `ORD-${id}`;
+  return id;
+}
+
 function metaSk() {
   return "META";
 }
@@ -178,6 +196,7 @@ function mailMessageSk(messageIdHash) {
 
 module.exports = {
   orderPk,
+  normalizeOrderId,
   metaSk,
   lineItemSk,
   eventSk,

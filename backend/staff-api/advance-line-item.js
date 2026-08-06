@@ -14,17 +14,43 @@
      "to": "In Production",
      "station": "PRESS-01",      // optional
      "setupMinutes": 18,          // optional
+     "priceEach": 250,            // REQUIRED only for Quoted -> Priced, see below
      "meta": {}                   // optional, passed through to the event
    }
 
    Ported from ops-dashboard/infra/logic-inputs/api-advance-line-item.js
    against backend/lib conventions (see backend/CLAUDE.md).
+
+   ── Quote pricing gate (added 2026-08-07, UAT finding) ──────────────
+   A custom-quote line item is created by create-order.js with
+   `priceEach: null, amount: 0` — nobody has priced it yet. "Send price
+   to customer" (job-detail.html's button for the Quoted -> Priced
+   transition) used to call this same generic advance endpoint with no
+   price at all, so a quote could be "sent" while still carrying no
+   price — the customer would see a `Priced` order with nothing to pay.
+   This Lambda now requires a valid positive `priceEach` (peso float,
+   see money.js's isValidQuotePrice()) specifically on that one
+   transition and writes it onto the line item (`priceEach` + a derived
+   `amount = priceEach * qty`) in the SAME update as the status change,
+   so a priced quote and its price land atomically together. Every other
+   transition is unaffected — `priceEach` is simply not read for them.
+
+   FRONTEND TODO (not done here — backend/** only, see this task's file
+   ownership): job-detail.html's "Send price to customer" button
+   currently calls `KCMPS_DASH.advanceLineItem(orderId, lineItemId, {
+   to: "Priced" })` with no price field at all (website/dashboard/
+   job-detail.html, website/dashboard/dashboard-data.js's advanceLineItem
+   passthrough). It needs a price input (peso amount) before that call,
+   and dashboard-data.js's advanceLineItem needs to forward it as
+   `priceEach` in the POST body below. Until that ships, clicking "Send
+   price to customer" will get a 400 from this Lambda — which is the
+   intended, safer failure mode over silently sending a $0 quote.
    ============================================================ */
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, TransactWriteCommand, GetCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal } = require("../lib");
+const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal, isValidQuotePrice } = require("../lib");
 
 const TABLE = process.env.TABLE_NAME;
 // Same FROM_EMAIL gate as the other staff-api/checkout Lambdas — unset
@@ -114,7 +140,7 @@ exports.handler = async (event) => {
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { return response(400, { error: "Invalid JSON body" }); }
-  const { orderId, lineItemId, to, station, setupMinutes, meta } = body;
+  const { orderId, lineItemId, to, station, setupMinutes, priceEach, meta } = body;
   if (!orderId || !lineItemId || !to) return response(400, { error: "orderId, lineItemId, and to are required" });
 
   const pk = orderPk(orderId);
@@ -128,6 +154,13 @@ exports.handler = async (event) => {
     return response(409, { error: `Illegal transition: ${from} -> ${to}. Allowed: ${allowed.join(", ") || "(none — terminal state)"}` });
   }
 
+  // Quote pricing gate — see header. Only Quoted -> Priced requires a
+  // price; every other transition ignores `priceEach` entirely.
+  const requiresPrice = from === STATUS.QUOTED && to === STATUS.PRICED;
+  if (requiresPrice && !isValidQuotePrice(priceEach)) {
+    return response(400, { error: "priceEach is required to send a price to the customer, and must be a positive number." });
+  }
+
   const now = new Date().toISOString();
   const gsiAttrs = activeStatusAttrs(to, now);
   const removeAttrs = attrsToRemoveOnTerminal(to);
@@ -137,6 +170,14 @@ exports.handler = async (event) => {
   const values = { ":to": to, ":now": now, ":from": from };
   if (station) { updateParts.push("station = :station"); values[":station"] = station; }
   if (setupMinutes != null) { updateParts.push("setupMinutes = :setup"); values[":setup"] = setupMinutes; }
+  if (requiresPrice) {
+    const priceNum = typeof priceEach === "string" ? Number(priceEach) : priceEach;
+    const qty = Number(current.Item.qty) || 1;
+    const amount = Math.round(priceNum * qty * 100) / 100;
+    updateParts.push("priceEach = :priceEach", "amount = :amount");
+    values[":priceEach"] = priceNum;
+    values[":amount"] = amount;
+  }
   if (gsiAttrs) {
     updateParts.push("GSI1PK = :gsi1pk", "GSI1SK = :gsi1sk");
     values[":gsi1pk"] = gsiAttrs.GSI1PK;

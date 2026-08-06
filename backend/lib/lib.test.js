@@ -10,11 +10,14 @@ const assert = require("node:assert/strict");
 const { toCentavos, toPesos, formatPeso, assertCentavos } = require("./money");
 const keys = require("./keys");
 const { buildEvent } = require("./events");
-const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES } = require("./constants");
+const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES, SCAN_STATUS, isCleanScanVerdict } = require("./constants");
 const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
 const { redactForCustomer } = require("./customer-view");
-const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES, contentDispositionFor } = require("./upload-types");
+const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES, contentDispositionFor, INLINE_VIEWABLE_TYPES } = require("./upload-types");
+const { sniffFamily, isConfidentMismatch } = require("./magic-bytes");
+const { normalizeOrderId } = require("./keys");
+const { isValidQuotePrice } = require("./money");
 const { describeThreats } = require("./threat-descriptions");
 
 // ---- money.js ----
@@ -281,14 +284,33 @@ test("resolveUploadType rejects a spoofed Content-Type that disagrees with the e
   assert.equal(resolveUploadType("application/octet-stream", "a.jpg.exe"), null); // double extension
 });
 
-test("resolveUploadType rejects SVG and archives (deliberately off the allowlist)", () => {
-  // SVG is a script container; archives are opaque to Content-Type checks.
-  // See upload-types.js's header for why neither is accepted.
-  assert.equal(resolveUploadType("image/svg+xml", "logo.svg"), null);
-  assert.equal(resolveUploadType("application/octet-stream", "logo.svg"), null);
+test("resolveUploadType accepts SVG at the upload layer (allowed 2026-08-07 — see upload-types.js header)", () => {
+  assert.equal(resolveUploadType("image/svg+xml", "logo.svg"), "svg");
+  // Still requires the declared type and extension to agree, same as
+  // every other format — this isn't a looser check for SVG specifically.
+  assert.equal(resolveUploadType("image/svg+xml", "logo.png"), null);
+  assert.equal(resolveUploadType("image/png", "logo.svg"), null);
+});
+
+test("resolveUploadType still rejects archives (deliberately off the allowlist)", () => {
+  // Archives are opaque to Content-Type checks — see upload-types.js's
+  // header for why that category alone is still excluded.
   assert.equal(resolveUploadType("application/zip", "bundle.zip"), null);
   assert.equal(resolveUploadType("application/x-7z-compressed", "bundle.7z"), null);
   assert.equal(resolveUploadType("text/html", "index.html"), null);
+});
+
+test("SECURITY: an accepted SVG upload can NEVER be served inline — the two allowlists must stay in disagreement", () => {
+  // This is the load-bearing assertion for the whole "SVG allowed but
+  // attachment-only" decision: resolveUploadType() accepts image/svg+xml
+  // (upload-time gate) but INLINE_VIEWABLE_TYPES/contentDispositionFor()
+  // (download-time gate) must never include it. If a future change adds
+  // "image/svg+xml" to INLINE_VIEWABLE_TYPES, this test fails.
+  assert.equal(resolveUploadType("image/svg+xml", "logo.svg"), "svg");
+  assert.equal(INLINE_VIEWABLE_TYPES.has("image/svg+xml"), false);
+  const disposition = contentDispositionFor("image/svg+xml", "logo.svg");
+  assert.match(disposition.ResponseContentDisposition, /^attachment;/);
+  assert.equal(disposition.ResponseContentType, "application/octet-stream");
 });
 
 test("resolveUploadType rejects path-traversal-shaped and extension-less names", () => {
@@ -647,4 +669,119 @@ test("contentDispositionFor: filename cannot break out of the quoted header", ()
   const name = /filename="([^"]*)"/.exec(r2.ResponseContentDisposition)[1];
   assert.ok(name.length <= 120, "filename must be length-capped, got " + name.length);
   assert.equal(contentDispositionFor("image/png", "").ResponseContentDisposition, 'inline; filename="file"');
+});
+
+// ---- magic-bytes.js (disguised-file / content-vs-extension detection) ----
+
+test("sniffFamily recognizes real file signatures", () => {
+  assert.equal(sniffFamily(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), "jpg");
+  assert.equal(sniffFamily(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "png");
+  assert.equal(sniffFamily(Buffer.from("%PDF-1.4", "ascii")), "pdf");
+  assert.equal(sniffFamily(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])), "ole");
+  assert.equal(sniffFamily(Buffer.from([0x50, 0x4b, 0x03, 0x04])), "zip");
+  assert.equal(sniffFamily(Buffer.from("8BPS")), "psd");
+  assert.equal(sniffFamily(Buffer.from("<?xml version=\"1.0\"?>\n<svg xmlns=\"x\">")), "svg");
+  assert.equal(sniffFamily(Buffer.from("<svg width=\"1\">")), "svg");
+});
+
+test("sniffFamily returns null for unrecognized/empty content", () => {
+  assert.equal(sniffFamily(Buffer.from("just some plain text, not a known format")), null);
+  assert.equal(sniffFamily(Buffer.alloc(0)), null);
+  assert.equal(sniffFamily(null), null);
+});
+
+test("isConfidentMismatch: THE disguised-file UAT case — a JPEG renamed to .pdf", () => {
+  const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+  assert.equal(isConfidentMismatch("pdf", jpegBytes), true);
+  // The genuine article is not flagged.
+  assert.equal(isConfidentMismatch("jpg", jpegBytes), false);
+});
+
+test("isConfidentMismatch never flags an inconclusive/unrecognized sniff (avoid false positives on real files)", () => {
+  const unknown = Buffer.from("plain ASCII content that matches no signature");
+  assert.equal(isConfidentMismatch("pdf", unknown), false);
+  assert.equal(isConfidentMismatch("doc", unknown), false);
+});
+
+test("isConfidentMismatch accepts either legitimate signature family for .ai/.eps (modern=PDF-based, legacy=PostScript)", () => {
+  assert.equal(isConfidentMismatch("ai", Buffer.from("%PDF-1.6 fake-ai")), false);
+  assert.equal(isConfidentMismatch("ai", Buffer.from("%!PS-Adobe-3.0")), false);
+  assert.equal(isConfidentMismatch("eps", Buffer.from("%!PS-Adobe-3.0 EPSF-3.0")), false);
+});
+
+test("isConfidentMismatch: modern Office (docx/xlsx/pptx) must sniff as zip, legacy (doc/xls/ppt) as OLE", () => {
+  const zipBytes = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+  const oleBytes = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+  assert.equal(isConfidentMismatch("docx", zipBytes), false);
+  assert.equal(isConfidentMismatch("docx", oleBytes), true); // a real .doc renamed to .docx
+  assert.equal(isConfidentMismatch("doc", oleBytes), false);
+  assert.equal(isConfidentMismatch("doc", zipBytes), true); // a real .docx renamed to .doc
+});
+
+// ---- keys.js's normalizeOrderId (guest order lookup, bare-suffix UAT fix) ----
+
+test("normalizeOrderId accepts the bare suffix as well as the full ORD- id", () => {
+  assert.equal(normalizeOrderId("ORD-3A94793FF8"), "ORD-3A94793FF8");
+  assert.equal(normalizeOrderId("3A94793FF8"), "ORD-3A94793FF8");
+});
+
+test("normalizeOrderId is case-insensitive and whitespace-tolerant", () => {
+  assert.equal(normalizeOrderId("ord-3a94793ff8"), "ORD-3A94793FF8");
+  assert.equal(normalizeOrderId("3a94793ff8"), "ORD-3A94793FF8");
+  assert.equal(normalizeOrderId("  3A94793FF8  "), "ORD-3A94793FF8");
+  assert.equal(normalizeOrderId("  ord-3a94793ff8  "), "ORD-3A94793FF8");
+});
+
+test("normalizeOrderId does not double-prefix and handles empty input", () => {
+  assert.equal(normalizeOrderId("ORD-ORD-XXXX"), "ORD-ORD-XXXX"); // already has the prefix once, left alone
+  assert.equal(normalizeOrderId(""), "");
+  assert.equal(normalizeOrderId(null), "");
+  assert.equal(normalizeOrderId(undefined), "");
+});
+
+// ---- money.js's isValidQuotePrice (custom-quote pricing gate, UAT fix) ----
+
+test("isValidQuotePrice accepts positive finite numbers and numeric strings", () => {
+  assert.equal(isValidQuotePrice(250), true);
+  assert.equal(isValidQuotePrice(0.5), true);
+  assert.equal(isValidQuotePrice("250"), true);
+  assert.equal(isValidQuotePrice("250.75"), true);
+});
+
+test("isValidQuotePrice rejects zero, negative, non-finite, and non-numeric values", () => {
+  assert.equal(isValidQuotePrice(0), false);
+  assert.equal(isValidQuotePrice(-10), false);
+  assert.equal(isValidQuotePrice(NaN), false);
+  assert.equal(isValidQuotePrice(Infinity), false);
+  assert.equal(isValidQuotePrice(""), false);
+  assert.equal(isValidQuotePrice(null), false);
+  assert.equal(isValidQuotePrice(undefined), false);
+  assert.equal(isValidQuotePrice("free"), false);
+  assert.equal(isValidQuotePrice({}), false);
+});
+
+/* ---- constants.js's isCleanScanVerdict / SCAN_STATUS ----
+   The ONE fail-closed predicate every upload read path (staff-api/get-
+   orders.js, staff-api/get-messages.js, checkout/lookup-order.js) must
+   gate a presigned URL behind. Added 2026-08-07 after review found
+   checkout/lookup-order.js's payment-screenshot presign had drifted from
+   its sibling in staff-api/get-orders.js and skipped this check entirely
+   — a pre-existing bug, not introduced by that day's SVG/UAT work. */
+test("isCleanScanVerdict is true ONLY for a persisted NO_THREATS_FOUND verdict", () => {
+  assert.equal(isCleanScanVerdict({ scanStatus: "NO_THREATS_FOUND" }), true);
+  assert.equal(isCleanScanVerdict({ scanStatus: SCAN_STATUS.CLEAN }), true);
+});
+
+test("isCleanScanVerdict fails closed: missing, pending, threatened, or absent verdicts are all NOT clean", () => {
+  assert.equal(isCleanScanVerdict({ scanStatus: "THREATS_FOUND" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: "UNSUPPORTED" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: "PENDING" }), false);
+  assert.equal(isCleanScanVerdict({ scanStatus: undefined }), false);
+  assert.equal(isCleanScanVerdict({}), false); // no verdict persisted yet at all
+  assert.equal(isCleanScanVerdict(null), false);
+  assert.equal(isCleanScanVerdict(undefined), false);
+});
+
+test("SCAN_STATUS.CLEAN is the exact GuardDuty string every read path compares against", () => {
+  assert.equal(SCAN_STATUS.CLEAN, "NO_THREATS_FOUND");
 });

@@ -44,4 +44,16 @@ function formatPeso(centavos) {
   });
 }
 
-module.exports = { toCentavos, toPesos, formatPeso, assertCentavos };
+// True for a finite, strictly-positive peso amount a staffer could type
+// into a quote-price field (number or numeric string, e.g. "1500.07").
+// UAT finding (2026-08-07): staff could send a custom-quote order's
+// "Quoted -> Priced" transition with no price at all — advance-line-
+// item.js didn't require one. Zero and negative are both rejected: a
+// price of ₱0 is never a real quote, and would let a custom order
+// silently skip straight to "nothing to pay".
+function isValidQuotePrice(value) {
+  const n = typeof value === "string" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0;
+}
+
+module.exports = { toCentavos, toPesos, formatPeso, assertCentavos, isValidQuotePrice };

@@ -18,5 +18,6 @@ module.exports = {
   ...require("./customer-view"),
   ...require("./upload-types"),
   ...require("./threat-descriptions"),
+  ...require("./magic-bytes"),
   ...require("./mail"),
 };

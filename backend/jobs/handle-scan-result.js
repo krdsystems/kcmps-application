@@ -16,8 +16,8 @@
    Asset Library"; not to be confused with design-uploads/ above, which is
    a customer's pre-checkout upload on the payment-uploads bucket):
 
-     designs/<category>/<designId>/original.<ext>  design-library/get-upload-url.js
-     designs/<category>/<designId>/web.<ext>       design-library/get-upload-url.js
+     designs/<category>/<designId>/original.<ext>  asset-library/get-upload-url.js
+     designs/<category>/<designId>/web.<ext>       asset-library/get-upload-url.js
 
    That bucket has its own GuardDuty Malware Protection plan and its own
    EventBridge rule (GuardDutyDesignOriginalsScanResultRule in
@@ -25,10 +25,10 @@
    is bucket-agnostic — routing below is by key prefix, which doesn't
    collide across buckets today. A `designs/` verdict usually arrives
    BEFORE its DESIGN#<id> record exists (the files are uploaded in step 1,
-   the record is written in step 2 by design-library/publish-design.js),
+   the record is written in step 2 by asset-library/publish-design.js),
    so markDesignLibraryFile() annotates the record when there is one and
    otherwise leaves the standalone SCAN#<ref> item below to carry it. That
-   item is what design-library/scan-verdict.js reads to enforce the
+   item is what asset-library/scan-verdict.js reads to enforce the
    fail-closed publish gate, so the verdict is never lost either way.
 
    Two jobs, in this order:
@@ -329,12 +329,12 @@ async function markDesignFile(ref, verdict) {
 // IN the key, so this is a direct Get, never a Scan.
 //
 // The DESIGN# record usually does NOT exist yet when this fires: the two
-// files are PUT by design-library/get-upload-url.js's presigned URLs and
+// files are PUT by asset-library/get-upload-url.js's presigned URLs and
 // the record is only written when the designer submits the form
 // (publish-design.js), so the scan routinely completes first. That is
 // fine and is not a lost verdict — publish-design.js reads the standalone
 // SCAN# item (written unconditionally above, before this routing runs)
-// via design-library/scan-verdict.js and refuses to publish anything
+// via asset-library/scan-verdict.js and refuses to publish anything
 // without a NO_THREATS_FOUND on BOTH objects. This annotation is the
 // convenience copy for the dashboard's library/recycle-bin views, in the
 // same spirit as the other three prefixes; the SCAN# item stays the

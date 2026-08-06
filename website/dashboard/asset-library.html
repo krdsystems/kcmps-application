@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- img-src: blob: for the upload modal's local createObjectURL previews;
+     the originals bucket for presigned draft thumbnails (webThumbUrl).
+     Raster only ever reaches an <img> — SVG is attachment-only by backend
+     policy (see backend/asset-library/design-types.js). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://kcmps-design-originals-staging.s3.ap-southeast-1.amazonaws.com; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-design-originals-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Asset Library — KCMPS Ops</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+<style>
+  /* ---- Asset Library (rebuild 2026-08-07, docs/asset-library-rebuild-plan-2026-08-06.md §3) ----
+     Navy-dominant, tokens only. ONE orange CTA per screen: the "Upload
+     asset" button (and, inside the modal, its "Save draft"). Everything
+     else stays navy/neutral. */
+  .asset-topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
+  .asset-topbar h2 { margin: 0 0 2px; }
+  .asset-topbar .hint { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+
+  .asset-banner { display: flex; align-items: center; gap: 10px; background: var(--color-accent-2-800); color: #fff;
+    border-radius: var(--radius-2, 10px); padding: 10px 14px; margin-bottom: var(--space-3); font-size: 13px; }
+  .asset-banner .pill { background: var(--color-accent-2-500); border-radius: 999px; padding: 1px 9px; font-weight: 700; font-size: 12px; }
+  .asset-banner button { margin-left: auto; background: transparent; border: 1px solid color-mix(in srgb, #fff 45%, transparent);
+    color: #fff; border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+  .asset-banner button:hover { background: color-mix(in srgb, #fff 12%, transparent); }
+
+  .asset-env-notice { background: var(--color-accent-2-100); border: 1px solid var(--color-accent-2-300);
+    color: var(--color-accent-2-800); border-radius: var(--radius-2, 10px); padding: 12px 14px; font-size: 13px; margin-bottom: var(--space-3); }
+
+  .asset-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: var(--space-3); }
+  .asset-toolbar .input { font-size: 13px; }
+  .asset-search { flex: 1 1 200px; min-width: 160px; }
+  .asset-toolbar select.input { flex: 0 1 auto; width: auto; }
+
+  .asset-tabs { display: flex; gap: 6px; margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-divider); }
+  .asset-tab { border: none; background: transparent; padding: 8px 6px; font-size: 13.5px; cursor: pointer;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .asset-tab[aria-selected='true'] { color: var(--color-accent-2-800); border-bottom-color: var(--color-accent-2-700); font-weight: 600; }
+  .asset-tab .count { font-size: 11px; background: color-mix(in srgb, var(--color-accent-2-700) 12%, transparent);
+    color: var(--color-accent-2-800); border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+  .asset-panel { display: none; }
+  .asset-panel.is-active { display: block; }
+
+  .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-3); }
+  .asset-card { display: flex; flex-direction: column; gap: 7px; padding: var(--space-3); cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease; }
+  .asset-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px color-mix(in srgb, var(--color-accent-2-900) 14%, transparent); }
+  .asset-thumb { width: 100%; aspect-ratio: 4/3; border-radius: var(--radius-2, 10px); overflow: hidden; position: relative;
+    background: color-mix(in srgb, var(--color-accent-2-700) 7%, transparent); display: flex; align-items: center; justify-content: center; }
+  .asset-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .asset-thumb .filetile { display: flex; flex-direction: column; align-items: center; gap: 4px;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); font-size: 11px; }
+  .asset-thumb .filetile .ext { font-weight: 800; font-size: 15px; letter-spacing: 0.08em;
+    color: var(--color-accent-2-700); border: 1.5px solid var(--color-accent-2-300); border-radius: 8px; padding: 4px 10px; }
+  .asset-thumb.is-scanning::after { content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, #fff 55%, transparent) 50%, transparent 70%);
+    background-size: 220% 100%; animation: asset-shimmer 1.6s linear infinite; }
+  @keyframes asset-shimmer { from { background-position: 180% 0; } to { background-position: -60% 0; } }
+  .asset-thumb .scan-copy { position: absolute; inset: auto 0 0 0; background: color-mix(in srgb, var(--color-accent-2-900) 72%, transparent);
+    color: #fff; font-size: 10.5px; padding: 4px 8px; text-align: center; }
+
+  .asset-chip { font-size: 10.5px; padding: 2px 9px; border-radius: 999px; display: inline-block; width: fit-content; font-weight: 600; }
+  .asset-chip.is-published { background: color-mix(in srgb, var(--color-green) 16%, transparent); color: var(--color-green); }
+  .asset-chip.is-draft { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: color-mix(in srgb, var(--color-text) 72%, transparent); }
+  .asset-chip.is-scanning { background: color-mix(in srgb, var(--color-accent-2-500) 14%, transparent); color: var(--color-accent-2-700); }
+  .asset-chip.is-pending { background: color-mix(in srgb, var(--color-accent-2-700) 15%, transparent); color: var(--color-accent-2-800); }
+  .asset-chip.is-failed { background: color-mix(in srgb, var(--color-accent-700) 15%, transparent); color: var(--color-accent-800); }
+  .asset-card-name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-card-meta { font-size: 11px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .asset-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .asset-tag { font-size: 10.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--color-divider);
+    color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+
+  .asset-empty { text-align: center; padding: var(--space-6) var(--space-4); }
+  .asset-empty h3 { margin: 0 0 6px; }
+  .asset-empty p { font-size: 13px; color: color-mix(in srgb, var(--color-text) 62%, transparent); max-width: 460px; margin: 0 auto; }
+
+  /* approvals tab rows */
+  .approval-row { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3); flex-wrap: wrap; }
+  .approval-row .asset-thumb { width: 96px; flex: 0 0 96px; aspect-ratio: 4/3; cursor: pointer; }
+  .approval-row-main { flex: 1; min-width: 200px; }
+  .approval-row-main .nm { font-weight: 600; font-size: 13.5px; }
+  .approval-row-main .mt { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .approval-signoffs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+  .approval-signoff { font-size: 11px; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--color-divider); }
+  .approval-signoff.is-approved { background: color-mix(in srgb, var(--color-green) 14%, transparent);
+    border-color: transparent; color: var(--color-green); font-weight: 600; }
+  .approval-actions { display: flex; gap: 8px; }
+
+  /* detail drawer */
+  .asset-drawer-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-accent-2-900) 45%, transparent);
+    z-index: 150; display: none; }
+  .asset-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(430px, 94vw); background: var(--color-neutral-100);
+    z-index: 151; box-shadow: -12px 0 40px color-mix(in srgb, var(--color-accent-2-900) 25%, transparent);
+    transform: translateX(105%); transition: transform 0.22s ease; display: flex; flex-direction: column; }
+  .asset-drawer.is-open { transform: translateX(0); }
+  .asset-drawer-head { display: flex; align-items: center; gap: 10px; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-divider); }
+  .asset-drawer-head h3 { margin: 0; font-size: 16px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-drawer-body { flex: 1; overflow-y: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+  /* flex-shrink: 0 — as a column-flex item with overflow, the aspect-ratio
+     derived height otherwise shrinks to 0 */
+  .asset-drawer .asset-thumb { aspect-ratio: 4/3; cursor: default; flex: 0 0 auto; }
+  .asset-close { border: none; background: transparent; cursor: pointer; font-size: 18px; line-height: 1;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent); padding: 4px 8px; }
+  .asset-sect h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  .asset-filerow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 6px 0; border-bottom: 1px dashed var(--color-divider); }
+  .asset-filerow:last-child { border-bottom: none; }
+  .asset-filerow .lbl { flex: 1; }
+  .asset-filerow .scan { font-size: 11px; }
+  .asset-filerow .scan.ok { color: var(--color-green); }
+  .asset-filerow .scan.pending { color: var(--color-accent-2-600); }
+  .asset-filerow .scan.bad { color: var(--color-accent-800); font-weight: 600; }
+  .asset-history { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .asset-history li { padding: 5px 0 5px 14px; position: relative; border-left: 2px solid var(--color-accent-2-200); margin-left: 4px; }
+  .asset-history li::before { content: ""; position: absolute; left: -5px; top: 10px; width: 8px; height: 8px;
+    border-radius: 999px; background: var(--color-accent-2-400); }
+  .asset-history .when { color: color-mix(in srgb, var(--color-text) 52%, transparent); }
+  .asset-note { font-size: 12px; border-radius: var(--radius-2, 8px); padding: 8px 10px; }
+  .asset-note.info { background: color-mix(in srgb, var(--color-accent-2-500) 10%, transparent); color: var(--color-accent-2-800); }
+  .asset-note.warn { background: color-mix(in srgb, var(--color-accent-500) 14%, transparent); color: var(--color-accent-800); }
+  .asset-drawer-actions { display: flex; flex-direction: column; gap: 8px; }
+  .asset-drawer-actions .row { display: flex; gap: 8px; }
+  .asset-drawer-actions .row .btn { flex: 1; }
+  .btn-breakglass { font-size: 11.5px; background: none; border: none; cursor: pointer; text-decoration: underline;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); padding: 2px; align-self: flex-start; }
+
+  /* dialogs (upload modal, reject, edit, break-glass) */
+  .adialog-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-accent-2-900) 50%, transparent);
+    display: none; align-items: center; justify-content: center; z-index: 200; padding: var(--space-3); }
+  .adialog-backdrop.is-open { display: flex; }
+  .adialog { background: var(--color-neutral-100); border-radius: var(--radius-3, 14px); padding: var(--space-5);
+    max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .adialog h3 { margin: 0 0 4px; }
+  .adialog .sub { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin: 0 0 var(--space-3); }
+  .adialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: var(--space-4); }
+  .adialog .field { margin-bottom: var(--space-2); }
+
+  .upload-steps { display: flex; gap: 6px; margin-bottom: var(--space-3); font-size: 11.5px; }
+  .upload-step-dot { border-radius: 999px; padding: 2px 10px; background: color-mix(in srgb, var(--color-text) 7%, transparent);
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  .upload-step-dot.is-on { background: var(--color-accent-2-700); color: #fff; font-weight: 600; }
+  .dropzones { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  @media (max-width: 480px) { .dropzones { grid-template-columns: 1fr; } }
+  .dropzone { border: 2px dashed var(--color-accent-2-300); border-radius: var(--radius-2, 10px); padding: var(--space-3);
+    text-align: center; cursor: pointer; font-size: 12px; color: color-mix(in srgb, var(--color-text) 62%, transparent);
+    transition: border-color 0.12s ease, background 0.12s ease; min-height: 108px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; }
+  .dropzone:hover, .dropzone.is-drag { border-color: var(--color-accent-2-600);
+    background: color-mix(in srgb, var(--color-accent-2-500) 6%, transparent); }
+  .dropzone.is-filled { border-style: solid; border-color: var(--color-accent-2-400); }
+  .dropzone .zl { font-weight: 700; color: var(--color-accent-2-800); font-size: 12.5px; }
+  .dropzone .zt { font-size: 10.5px; }
+  .dropzone img.zpreview { max-width: 100%; max-height: 74px; border-radius: 6px; object-fit: contain; }
+  .upload-progress-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; }
+  .upload-progress-row .bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--color-text) 10%, transparent); overflow: hidden; }
+  .upload-progress-row .bar-fill { height: 100%; background: var(--color-accent-2-600); transition: width 0.15s ease; }
+  .reach-note { font-size: 11.5px; margin-top: 4px; }
+  .reach-note.on { color: var(--color-green); }
+  .reach-note.off { color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .step2-preview { display: flex; gap: var(--space-3); align-items: flex-start; }
+  .step2-preview .asset-thumb { width: 120px; flex: 0 0 120px; aspect-ratio: 1/1; }
+  .step2-fields { flex: 1; min-width: 0; }
+</style>
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content">
+      <div id="env-notice"></div>
+      <div id="approval-banner"></div>
+
+      <section class="dsec">
+        <div class="asset-topbar">
+          <div>
+            <h2>Asset Library</h2>
+            <span class="hint">Source files and storefront designs, in one safe place.</span>
+          </div>
+          <!-- The ONE orange CTA on this screen -->
+          <button type="button" class="btn btn-primary" id="upload-open-btn">Upload asset</button>
+        </div>
+
+        <div class="card" style="padding: var(--space-4)">
+          <div class="asset-toolbar">
+            <input class="input asset-search" id="f-search" type="search" placeholder="Search name, tags, description…" />
+            <select class="input" id="f-category"><option value="">All categories</option></select>
+            <select class="input" id="f-status">
+              <option value="">All statuses</option>
+              <option value="scanning">Scanning</option>
+              <option value="draft">Draft</option>
+              <option value="pending">Awaiting approval</option>
+              <option value="published">Published</option>
+              <option value="scan-failed">Scan failed</option>
+            </select>
+          </div>
+
+          <div class="asset-tabs" role="tablist">
+            <button type="button" class="asset-tab" id="tab-library" role="tab" aria-selected="true">Library</button>
+            <button type="button" class="asset-tab" id="tab-approvals" role="tab" aria-selected="false">Approvals<span class="count" id="approvals-count" style="display:none"></span></button>
+            <button type="button" class="asset-tab" id="tab-recycle" role="tab" aria-selected="false">Recycle bin</button>
+          </div>
+
+          <div class="asset-panel is-active" id="panel-library" role="tabpanel">
+            <div class="asset-grid" id="asset-grid"><p class="q-empty">Loading…</p></div>
+          </div>
+          <div class="asset-panel" id="panel-approvals" role="tabpanel">
+            <div id="approvals-list"><p class="q-empty">Loading…</p></div>
+          </div>
+          <div class="asset-panel" id="panel-recycle" role="tabpanel">
+            <p class="q-empty" style="margin-bottom:var(--space-2)">Archived assets stay here for 90 days, then they're permanently purged. Restore any of them before then.</p>
+            <div class="asset-grid" id="recycle-grid"><p class="q-empty">Loading…</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- detail drawer -->
+<div class="asset-drawer-backdrop" id="drawer-backdrop"></div>
+<aside class="asset-drawer" id="asset-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <div class="asset-drawer-head">
+    <h3 id="drawer-title"></h3>
+    <span id="drawer-chip"></span>
+    <button type="button" class="asset-close" id="drawer-close" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="asset-drawer-body" id="drawer-body"></div>
+</aside>
+
+<!-- upload modal (2 steps, drafts only) -->
+<div class="adialog-backdrop" id="upload-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-title">
+  <div class="adialog">
+    <h3 id="upload-title">Upload asset</h3>
+    <p class="sub">Stored privately, scanned for malware, and only goes live once it's approved.</p>
+    <div class="upload-steps">
+      <span class="upload-step-dot is-on" id="step-dot-1">1 · Files</span>
+      <span class="upload-step-dot" id="step-dot-2">2 · Details</span>
+    </div>
+
+    <div id="upload-step-1">
+      <div class="field">
+        <label for="u-category">Category</label>
+        <select class="input" id="u-category"></select>
+        <div id="u-reach" class="reach-note"></div>
+      </div>
+      <div class="dropzones">
+        <div class="dropzone" id="zone-original" tabindex="0">
+          <span class="zl">Source file</span>
+          <span class="zt">PSD · AI · PDF · SVG — up to 300MB</span>
+          <span class="zt">Drag here or click to browse</span>
+        </div>
+        <div class="dropzone" id="zone-web" tabindex="0">
+          <span class="zl">Web-ready image</span>
+          <span class="zt">JPG · PNG · WebP — up to 300MB</span>
+          <span class="zt">Drag here or click to browse</span>
+        </div>
+      </div>
+      <input type="file" id="file-original" accept=".psd,.ai,.pdf,.svg" style="display:none" />
+      <input type="file" id="file-web" accept=".jpg,.jpeg,.png,.webp" style="display:none" />
+      <div id="upload-progress"></div>
+      <div id="upload-status-1"></div>
+      <div class="adialog-actions">
+        <button type="button" class="btn btn-ghost" id="upload-reset-btn" style="display:none">Start over</button>
+        <button type="button" class="btn btn-secondary" id="upload-cancel-1">Cancel</button>
+        <button type="button" class="btn btn-secondary" id="upload-next" disabled>Next &rarr;</button>
+      </div>
+    </div>
+
+    <div id="upload-step-2" style="display:none">
+      <div class="step2-preview">
+        <div class="asset-thumb" id="u-preview"></div>
+        <div class="step2-fields">
+          <div class="field"><label for="u-name">Name</label><input class="input" id="u-name" maxlength="120" /></div>
+          <div class="field"><label for="u-desc">Description</label><input class="input" id="u-desc" maxlength="2000" /></div>
+          <div class="field"><label for="u-tags">Tags (comma separated)</label><input class="input" id="u-tags" placeholder="retro, summer" /></div>
+        </div>
+      </div>
+      <div id="upload-status-2"></div>
+      <div class="adialog-actions">
+        <button type="button" class="btn btn-secondary" id="upload-back">&larr; Back</button>
+        <!-- inside the modal this is the screen's single orange CTA -->
+        <button type="button" class="btn btn-primary" id="upload-save">Save draft</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- small dialogs: edit, reject, break-glass -->
+<div class="adialog-backdrop" id="edit-dialog" role="dialog" aria-modal="true">
+  <div class="adialog">
+    <h3>Edit details</h3>
+    <div class="field"><label for="e-name">Name</label><input class="input" id="e-name" maxlength="120" /></div>
+    <div class="field"><label for="e-desc">Description</label><input class="input" id="e-desc" maxlength="2000" /></div>
+    <div class="field"><label for="e-tags">Tags (comma separated)</label><input class="input" id="e-tags" /></div>
+    <div id="edit-status"></div>
+    <div class="adialog-actions">
+      <button type="button" class="btn btn-secondary" id="edit-cancel">Cancel</button>
+      <button type="button" class="btn btn-secondary" id="edit-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="adialog-backdrop" id="reject-dialog" role="dialog" aria-modal="true">
+  <div class="adialog">
+    <h3>Reject this asset</h3>
+    <p class="sub">The asset returns to draft, all collected approvals are cleared, and the uploader sees your reason.</p>
+    <div class="field"><label for="r-reason">Reason (required)</label><textarea class="input" id="r-reason" rows="3" maxlength="1000"></textarea></div>
+    <div id="reject-status"></div>
+    <div class="adialog-actions">
+      <button type="button" class="btn btn-secondary" id="reject-cancel">Cancel</button>
+      <button type="button" class="btn btn-secondary" id="reject-confirm">Reject</button>
+    </div>
+  </div>
+</div>
+
+<div class="adialog-backdrop" id="breakglass-dialog" role="dialog" aria-modal="true">
+  <div class="adialog">
+    <h3>Publish without full approval</h3>
+    <p class="sub">Break-glass path for when another Admin is unreachable. Recorded in the audit trail with your reason. The malware-scan gate still applies.</p>
+    <div class="field"><label for="b-reason">Reason (required)</label><textarea class="input" id="b-reason" rows="3" maxlength="1000"></textarea></div>
+    <div id="breakglass-status"></div>
+    <div class="adialog-actions">
+      <button type="button" class="btn btn-secondary" id="breakglass-cancel">Cancel</button>
+      <button type="button" class="btn btn-secondary" id="breakglass-confirm">Publish now</button>
+    </div>
+  </div>
+</div>
+
+<script src="../products.js"></script>
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("design");
+  if (!claims) return;
+
+  const escapeHtml = KCMPS_DASH_SHELL.escapeHtml;
+  const fmtDateTime = KCMPS_DASH_SHELL.fmtDateTime;
+  const withBusy = KCMPS_DASH_SHELL.withBusy;
+  const showInlineError = KCMPS_DASH_SHELL.showInlineError;
+
+  const isAdmin = ((claims["cognito:groups"]) || []).includes("Admin");
+  const apiAvailable = KCMPS_DASH.assetApiAvailable();
+
+  /* ---- catalog metadata: which categories can actually surface on the
+     storefront. The merge in store.js only grows designs onto products
+     that already opt into a picker (Array.isArray(p.images)) — computed
+     here from the SAME data so the category picker can never promise
+     reach it doesn't have (the "category black hole" UAT failure). ---- */
+  const leaves = (window.KCMPS_STORE_DATA && window.KCMPS_STORE_DATA.leaves) || {};
+  const products = (window.KCMPS_STORE_DATA && window.KCMPS_STORE_DATA.products) || [];
+  const pickerCounts = {};
+  products.forEach((p) => { if (Array.isArray(p.images)) pickerCounts[p.leaf] = (pickerCounts[p.leaf] || 0) + 1; });
+
+  // Display names matching the storefront's own tab labels (index.html) so
+  // staff and shoppers call a category the same thing.
+  const CATEGORY_LABELS = {
+    "print-office": "Printing & Office Supplies", dtf: "DTF", subli: "Subli", hotmelt: "Hotmelt",
+    "3dprint": "3D Print", souvenir: "Souvenir", network: "Network", storage: "Storage",
+  };
+  function categoryLabel(key) {
+    const leaf = leaves[key];
+    if (leaf && leaf.label) return leaf.label;
+    if (CATEGORY_LABELS[key]) return CATEGORY_LABELS[key];
+    return String(key).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  // Filter dropdown: flat, all categories.
+  const fCategory = document.getElementById("f-category");
+  fCategory.innerHTML += Object.keys(leaves).map((k) =>
+    `<option value="${escapeHtml(k)}">${escapeHtml(categoryLabel(k))}</option>`).join("");
+
+  // Upload modal select: grouped by storefront reach, storefront-capable
+  // first and preselected, so nobody publishes into the void unaware.
+  const uCategory = document.getElementById("u-category");
+  const reachKeys = Object.keys(leaves).filter((k) => pickerCounts[k]);
+  const libOnlyKeys = Object.keys(leaves).filter((k) => !pickerCounts[k]);
+  uCategory.innerHTML =
+    '<optgroup label="Shown on the storefront">' +
+    reachKeys.map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(categoryLabel(k))}</option>`).join("") +
+    '</optgroup><optgroup label="Library only (not on the storefront yet)">' +
+    libOnlyKeys.map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(categoryLabel(k))}</option>`).join("") +
+    "</optgroup>";
+
+  const uReach = document.getElementById("u-reach");
+  function syncReachNote() {
+    const n = pickerCounts[uCategory.value] || 0;
+    if (n) {
+      uReach.className = "reach-note on";
+      uReach.textContent = "Once approved, appears in the design picker of " + n + " storefront product" + (n === 1 ? "" : "s") + ".";
+    } else {
+      uReach.className = "reach-note off";
+      uReach.textContent = "Library only — this category isn't linked to any storefront design picker yet. The asset is safely stored and searchable, but shoppers won't see it.";
+    }
+  }
+  uCategory.addEventListener("change", syncReachNote);
+  syncReachNote();
+
+  /* ---- environment guard: this backend exists on staging only. On any
+     other hostname the page says so instead of pretending 404s might
+     resolve (the "silent production failure" UAT trap). ---- */
+  if (!apiAvailable) {
+    document.getElementById("env-notice").innerHTML =
+      '<div class="asset-env-notice"><strong>Staging only for now.</strong> The Asset Library backend runs on ' +
+      '<strong>dev.kcmps.com</strong> — open this page there to browse and upload assets. ' +
+      (KCMPS_DASH_SHELL.isLocalHost()
+        ? "(On localhost the layout renders, but API calls can't reach the staging backend.)"
+        : "Nothing is broken; this environment simply has no Asset Library API yet.") +
+      "</div>";
+    document.getElementById("upload-open-btn").disabled = true;
+  }
+
+  /* ---- state ---- */
+  let assets = [];
+  let filters = { q: "", category: "", status: "" };
+  let activeTab = "library";
+  let openAssetId = null;
+  let pollTimer = null;
+
+  /* ---- derived state: one visible pipeline per asset ---- */
+  function assetState(a) {
+    if (a.archived) return "archived";
+    if (a.status === "published") return "published";
+    if (a.scanFailed) return "scan-failed";
+    if (a.status === "pending_approval") return "pending";
+    if (a.scanPending) return "scanning";
+    return "draft";
+  }
+  const CHIP = {
+    published: ["is-published", "Published"],
+    draft: ["is-draft", "Draft"],
+    scanning: ["is-scanning", "Scanning…"],
+    pending: ["is-pending", "Awaiting approval"],
+    "scan-failed": ["is-failed", "Scan failed"],
+    archived: ["is-draft", "Archived"],
+  };
+  function chipHtml(a) {
+    const [cls, label] = CHIP[assetState(a)] || CHIP.draft;
+    let text = label;
+    if (assetState(a) === "pending" && a.approvalSnapshot) {
+      text += " (" + a.approvalSnapshot.approvedCount + " of " + a.approvalSnapshot.requiredCount + ")";
+    }
+    return '<span class="asset-chip ' + cls + '">' + escapeHtml(text) + "</span>";
+  }
+
+  function extOf(key) { const m = /\.([a-z0-9]+)$/i.exec(String(key || "")); return m ? m[1].toUpperCase() : "?"; }
+
+  function thumbHtml(a, opts) {
+    const scanning = assetState(a) === "scanning";
+    let inner;
+    if (a.webThumbUrl) {
+      inner = `<img src="${escapeHtml(a.webThumbUrl)}" alt="${escapeHtml(a.name)}" loading="lazy" />`;
+    } else if (a.status === "published" && a.webExt) {
+      inner = `<img src="../assets/designs/${encodeURIComponent(a.designId)}.${encodeURIComponent(a.webExt)}" alt="${escapeHtml(a.name)}" loading="lazy" />`;
+    } else {
+      // File-type tile — never a bare grey box.
+      inner = `<span class="filetile"><span class="ext">${escapeHtml(extOf(a.s3KeyWeb || a.s3KeyOriginal))}</span><span>${scanning ? "preview after scan" : "no preview"}</span></span>`;
+    }
+    const copy = scanning && !(opts && opts.noCopy)
+      ? '<span class="scan-copy">Scanning for malware — unlocks automatically</span>' : "";
+    return `<div class="asset-thumb${scanning ? " is-scanning" : ""}">${inner}${copy}</div>`;
+  }
+
+  /* ---- filtering + render ---- */
+  function matchesFilters(a) {
+    if (filters.category && a.category !== filters.category) return false;
+    if (filters.status && assetState(a) !== filters.status) return false;
+    if (filters.q) {
+      const hay = [a.name, a.description, a.category, ...(a.tags || [])].join(" ").toLowerCase();
+      if (!hay.includes(filters.q)) return false;
+    }
+    return true;
+  }
+
+  function render() {
+    const active = assets.filter((a) => !a.archived);
+    const archived = assets.filter((a) => a.archived);
+    const pending = active.filter((a) => a.status === "pending_approval");
+
+    renderGrid(document.getElementById("asset-grid"), active.filter(matchesFilters), false);
+    renderGrid(document.getElementById("recycle-grid"), archived.filter(matchesFilters), true);
+    renderApprovals(pending);
+    renderBanner(pending);
+
+    const countEl = document.getElementById("approvals-count");
+    countEl.style.display = pending.length ? "" : "none";
+    countEl.textContent = pending.length;
+
+    if (openAssetId) {
+      const a = assets.find((x) => x.designId === openAssetId);
+      if (a) renderDrawer(a); else closeDrawer();
+    }
+    syncPolling();
+  }
+
+  function renderGrid(host, list, isRecycle) {
+    if (!list.length) {
+      if (!isRecycle && !assets.length && apiAvailable) {
+        host.innerHTML =
+          '<div class="asset-empty" style="grid-column:1/-1"><h3>Your creative work, safe and findable</h3>' +
+          "<p>This is the shop's home for source art and storefront designs. Upload your first asset — it's stored privately, scanned for malware, and only goes live once it's approved.</p></div>";
+      } else {
+        host.innerHTML = '<p class="q-empty" style="grid-column:1/-1">' +
+          (isRecycle ? "Nothing in the recycle bin." : "No assets match.") + "</p>";
+      }
+      return;
+    }
+    host.innerHTML = list.map((a) => {
+      const tags = (a.tags || []).slice(0, 4).map((t) => `<span class="asset-tag">${escapeHtml(t)}</span>`).join("");
+      const extra = isRecycle && a.deletedAt ? `<div class="asset-card-meta">Purges in ${purgeDays(a.deletedAt)} days</div>` : "";
+      return `<div class="card asset-card" data-id="${escapeHtml(a.designId)}" role="button" tabindex="0">` +
+        thumbHtml(a) + chipHtml(a) +
+        `<div class="asset-card-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>` +
+        `<div class="asset-card-meta">${escapeHtml(categoryLabel(a.category))} &middot; ${escapeHtml(fmtDateTime(a.createdAt))}</div>` +
+        (tags ? `<div class="asset-tags">${tags}</div>` : "") + extra + "</div>";
+    }).join("");
+    host.querySelectorAll(".asset-card").forEach((card) => {
+      const open = () => openDrawer(card.dataset.id);
+      card.addEventListener("click", open);
+      card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+  }
+
+  function purgeDays(deletedAt) {
+    const elapsed = (Date.now() - new Date(deletedAt).getTime()) / 86400000;
+    return Math.max(0, Math.ceil(90 - elapsed));
+  }
+
+  /* ---- approvals tab ---- */
+  function signoffsHtml(a) {
+    const snap = a.approvalSnapshot;
+    if (!snap || !snap.approvers) return "";
+    return '<div class="approval-signoffs">' + snap.approvers.map((p) => {
+      const me = p.sub === claims.sub;
+      const label = (p.approved ? "✓ " : "○ ") + (p.name || "Admin") +
+        (p.approved ? (a.approvals && a.approvals[p.sub] && a.approvals[p.sub].via === "submit" ? " (submitted)" : "") : (me ? " — waiting on you" : " — waiting"));
+      return `<span class="approval-signoff${p.approved ? " is-approved" : ""}">${escapeHtml(label)}</span>`;
+    }).join("") + "</div>";
+  }
+
+  function renderApprovals(pending) {
+    const host = document.getElementById("approvals-list");
+    if (!pending.length) {
+      host.innerHTML = '<p class="q-empty">Nothing awaiting approval.</p>';
+      return;
+    }
+    host.innerHTML = pending.map((a) => {
+      const mine = isAdmin && !(a.approvals && a.approvals[claims.sub]);
+      const actions = isAdmin
+        ? `<div class="approval-actions">` +
+          (mine ? `<button type="button" class="btn btn-secondary" data-approve="${escapeHtml(a.designId)}">Approve</button>` : "") +
+          `<button type="button" class="btn btn-ghost" data-reject="${escapeHtml(a.designId)}">Reject…</button></div>`
+        : "";
+      return `<div class="card approval-row">` +
+        `<div data-open="${escapeHtml(a.designId)}">${thumbHtml(a, { noCopy: true })}</div>` +
+        `<div class="approval-row-main"><div class="nm">${escapeHtml(a.name)}</div>` +
+        `<div class="mt">${escapeHtml(categoryLabel(a.category))} &middot; by ${escapeHtml(a.submittedByName || a.uploadedByName || "staff")} &middot; ${escapeHtml(fmtDateTime(a.submittedAt || a.createdAt))}</div>` +
+        signoffsHtml(a) + "</div>" + actions + "</div>";
+    }).join("");
+    host.querySelectorAll("[data-open]").forEach((el) => el.addEventListener("click", () => openDrawer(el.dataset.open)));
+    host.querySelectorAll("[data-approve]").forEach((btn) => btn.addEventListener("click", () => doApprove(btn, btn.dataset.approve)));
+    host.querySelectorAll("[data-reject]").forEach((btn) => btn.addEventListener("click", () => openRejectDialog(btn.dataset.reject)));
+  }
+
+  function renderBanner(pending) {
+    const host = document.getElementById("approval-banner");
+    const waitingOnMe = isAdmin ? pending.filter((a) => !(a.approvals && a.approvals[claims.sub])) : [];
+    if (!waitingOnMe.length) { host.innerHTML = ""; return; }
+    host.innerHTML = '<div class="asset-banner"><span class="pill">' + waitingOnMe.length + "</span>" +
+      "<span>asset" + (waitingOnMe.length === 1 ? "" : "s") + " awaiting your approval</span>" +
+      '<button type="button" id="banner-review">Review</button></div>';
+    document.getElementById("banner-review").addEventListener("click", () => selectTab("approvals"));
+  }
+
+  /* ---- tabs ---- */
+  const TABS = ["library", "approvals", "recycle"];
+  function selectTab(key) {
+    activeTab = key;
+    TABS.forEach((k) => {
+      document.getElementById("tab-" + k).setAttribute("aria-selected", k === key ? "true" : "false");
+      document.getElementById("panel-" + k).classList.toggle("is-active", k === key);
+    });
+  }
+  TABS.forEach((k) => document.getElementById("tab-" + k).addEventListener("click", () => selectTab(k)));
+
+  /* ---- filters ---- */
+  document.getElementById("f-search").addEventListener("input", (e) => { filters.q = e.target.value.trim().toLowerCase(); render(); });
+  fCategory.addEventListener("change", (e) => { filters.category = e.target.value; render(); });
+  document.getElementById("f-status").addEventListener("change", (e) => { filters.status = e.target.value; render(); });
+
+  /* ---- data load + self-resolving scan polling ----
+     While anything is still scanning, refetch every 10s and stop the
+     moment nothing is pending — the wait resolves itself, never blamed
+     on the user, and the fail-closed server gate is polled toward,
+     never bypassed. ---- */
+  async function load() {
+    if (!apiAvailable) {
+      document.getElementById("asset-grid").innerHTML = '<p class="q-empty" style="grid-column:1/-1">Open this page on dev.kcmps.com to load the library.</p>';
+      document.getElementById("recycle-grid").innerHTML = "";
+      document.getElementById("approvals-list").innerHTML = '<p class="q-empty">Open this page on dev.kcmps.com to load the approval queue.</p>';
+      return;
+    }
+    try {
+      assets = await KCMPS_DASH.getAssets();
+    } catch (err) {
+      document.getElementById("asset-grid").innerHTML = '<p class="q-empty" style="grid-column:1/-1">Could not load assets — ' + escapeHtml(err.message) + "</p>";
+      return;
+    }
+    render();
+  }
+
+  function syncPolling() {
+    const anyScanning = assets.some((a) => !a.archived && a.scanPending);
+    if (anyScanning && !pollTimer) pollTimer = setInterval(load, 10000);
+    if (!anyScanning && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  /* ---- detail drawer ---- */
+  const drawer = document.getElementById("asset-drawer");
+  const drawerBackdrop = document.getElementById("drawer-backdrop");
+  function openDrawer(id) {
+    const a = assets.find((x) => x.designId === id);
+    if (!a) return;
+    openAssetId = id;
+    renderDrawer(a);
+    drawerBackdrop.style.display = "block";
+    drawer.classList.add("is-open");
+  }
+  function closeDrawer() {
+    openAssetId = null;
+    drawer.classList.remove("is-open");
+    drawerBackdrop.style.display = "none";
+  }
+  document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+  drawerBackdrop.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openAssetId) closeDrawer(); });
+
+  function scanLine(status) {
+    if (status === "NO_THREATS_FOUND") return '<span class="scan ok">&#10003; clean</span>';
+    if (!status || status === "PENDING") return '<span class="scan pending">scanning&hellip;</span>';
+    return '<span class="scan bad">' + escapeHtml(status) + "</span>";
+  }
+
+  function eventLine(e) {
+    const meta = e.meta || {};
+    let what;
+    if (meta.action === "approve" && e.to === "published") what = "Approved & published";
+    else if (meta.action === "approve") what = "Approved (" + meta.approvedCount + " of " + meta.requiredCount + ")" + (meta.via === "submit" ? " via submit" : "");
+    else if (meta.action === "reject") what = "Rejected — " + (meta.reason || "");
+    else if (meta.action === "publish" && meta.breakGlass) what = "Force-published (break-glass) — " + (meta.reason || "");
+    else if (e.to === "pending_approval" && e.from === "draft") what = "Submitted for approval";
+    else if (e.to === "draft" && !e.from) what = "Uploaded";
+    else if (e.to === "archived") what = "Archived";
+    else if (e.from === "archived") what = "Restored";
+    else if (e.to === "published") what = "Published";
+    else what = (e.from ? e.from + " → " : "") + e.to;
+    return "<li><span class=\"when\">" + escapeHtml(fmtDateTime(e.at)) + "</span> &middot; " +
+      escapeHtml(what) + (e.actorName ? " — " + escapeHtml(e.actorName) : "") + "</li>";
+  }
+
+  function renderDrawer(a) {
+    document.getElementById("drawer-title").textContent = a.name;
+    document.getElementById("drawer-chip").innerHTML = chipHtml(a);
+    const st = assetState(a);
+    const reachN = pickerCounts[a.category] || 0;
+
+    let notes = "";
+    if (a.rejection) {
+      notes += '<div class="asset-note warn"><strong>Rejected' + (a.rejection.byName ? " by " + escapeHtml(a.rejection.byName) : "") +
+        ":</strong> " + escapeHtml(a.rejection.reason) + "<br/>Edit and submit again when it's ready.</div>";
+    }
+    if (st === "scanning") {
+      notes += '<div class="asset-note info">Scanning for malware — usually seconds, occasionally a few minutes. Actions unlock automatically; nothing for you to do.</div>';
+    }
+    if (st === "scan-failed") {
+      notes += '<div class="asset-note warn">A file failed the malware scan and can never be published. ' + escapeHtml((a.scanThreats || []).join(", ")) + "</div>";
+    }
+    if (!reachN && st !== "archived") {
+      notes += '<div class="asset-note info">Library-only category: "' + escapeHtml(categoryLabel(a.category)) + '" isn\'t linked to any storefront design picker yet, so publishing won\'t show it to shoppers.</div>';
+    }
+
+    let actions = "";
+    if (apiAvailable) {
+      if (st === "archived") {
+        actions = '<button type="button" class="btn btn-secondary" data-act="restore">Restore</button>';
+      } else {
+        const rows = [];
+        if (st === "draft") rows.push('<button type="button" class="btn btn-secondary" data-act="submit">Submit for approval</button>');
+        if (st === "scanning") rows.push('<button type="button" class="btn btn-secondary" disabled title="Unlocks when scanning finishes">Submit for approval — unlocks after scan</button>');
+        if (st === "pending" && isAdmin) {
+          if (!(a.approvals && a.approvals[claims.sub])) rows.push('<button type="button" class="btn btn-secondary" data-act="approve">Approve</button>');
+          rows.push('<button type="button" class="btn btn-ghost" data-act="reject">Reject&hellip;</button>');
+        }
+        if (st === "published") rows.push('<a class="btn btn-secondary" href="../index.html#storefront" target="_blank" rel="noopener">View storefront</a>');
+        rows.push('<button type="button" class="btn btn-ghost" data-act="edit">Edit details</button>');
+        rows.push('<button type="button" class="btn btn-ghost" data-act="archive">Archive</button>');
+        actions = '<div class="row">' + rows.slice(0, 2).join("") + '</div><div class="row">' + rows.slice(2).join("") + "</div>";
+        if (isAdmin && (st === "draft" || st === "pending")) {
+          actions += '<button type="button" class="btn-breakglass" data-act="breakglass">Publish without full approval (break-glass)&hellip;</button>';
+        }
+      }
+    }
+
+    document.getElementById("drawer-body").innerHTML =
+      thumbHtml(a) +
+      '<div class="asset-card-meta">' + escapeHtml(categoryLabel(a.category)) + " &middot; uploaded " + escapeHtml(fmtDateTime(a.createdAt)) +
+      (a.uploadedByName ? " by " + escapeHtml(a.uploadedByName) : "") + "</div>" +
+      ((a.tags || []).length ? '<div class="asset-tags">' + a.tags.map((t) => '<span class="asset-tag">' + escapeHtml(t) + "</span>").join("") + "</div>" : "") +
+      (a.description ? '<div style="font-size:13px">' + escapeHtml(a.description) + "</div>" : "") +
+      notes +
+      (st === "pending" ? '<div class="asset-sect"><h4>Sign-offs</h4>' + signoffsHtml(a) + "</div>" : "") +
+      '<div class="asset-sect"><h4>Files</h4>' +
+      '<div class="asset-filerow"><span class="lbl">Source &middot; ' + escapeHtml(extOf(a.s3KeyOriginal)) + "</span>" + scanLine(a.scanStatusOriginal) +
+      (a.originalDownloadUrl ? ' <a class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px" href="' + escapeHtml(a.originalDownloadUrl) + '">Download</a>' : "") + "</div>" +
+      '<div class="asset-filerow"><span class="lbl">Web-ready &middot; ' + escapeHtml(extOf(a.s3KeyWeb)) + "</span>" + scanLine(a.scanStatusWeb) +
+      (a.webThumbUrl ? ' <a class="btn btn-ghost" style="padding:3px 10px;font-size:11.5px" href="' + escapeHtml(a.webThumbUrl) + '" target="_blank" rel="noopener">Open</a>' : "") + "</div></div>" +
+      '<div class="asset-drawer-actions">' + actions + '<div id="drawer-status"></div></div>' +
+      ((a.events || []).length ? '<div class="asset-sect"><h4>History</h4><ul class="asset-history">' + a.events.map(eventLine).join("") + "</ul></div>" : "");
+
+    wireDrawerActions(a);
+  }
+
+  function wireDrawerActions(a) {
+    const body = document.getElementById("drawer-body");
+    const statusHost = () => document.getElementById("drawer-status");
+    body.querySelectorAll("[data-act]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const act = btn.dataset.act;
+        if (act === "edit") { openEditDialog(a); return; }
+        if (act === "reject") { openRejectDialog(a.designId); return; }
+        if (act === "breakglass") { openBreakglassDialog(a.designId); return; }
+        try {
+          await withBusy(btn, async () => {
+            if (act === "archive") await KCMPS_DASH.archiveAsset(a.designId);
+            else if (act === "restore") await KCMPS_DASH.restoreAsset(a.designId);
+            else if (act === "submit") {
+              const res = await KCMPS_DASH.submitAssetForApproval(a.designId);
+              if (res && res.published) showNote(statusHost(), "You're the only Admin — approved and published in one step.");
+            }
+            else if (act === "approve") await doApproveInner(a.designId, statusHost());
+            await load();
+          });
+        } catch (err) {
+          if (isStillScanning(err)) {
+            showNote(statusHost(), "Still scanning for malware — this unlocks automatically when the scan finishes.");
+            load();
+          } else {
+            showInlineError(statusHost(), err.message);
+          }
+        }
+      });
+    });
+  }
+
+  function showNote(host, msg) {
+    if (host) host.innerHTML = '<div class="asset-note info">' + escapeHtml(msg) + "</div>";
+  }
+  function isStillScanning(err) { return /still scanning/i.test((err && err.message) || ""); }
+
+  async function doApproveInner(id, statusHost) {
+    const res = await KCMPS_DASH.approveAsset(id);
+    if (res && res.published) showNote(statusHost, "That was the final sign-off — published to the storefront.");
+  }
+  async function doApprove(btn, id) {
+    try {
+      await withBusy(btn, async () => { await doApproveInner(id, null); await load(); });
+    } catch (err) { alertRow(btn, err.message); }
+  }
+  function alertRow(btn, msg) {
+    const row = btn.closest(".approval-row");
+    let host = row && row.querySelector(".row-status");
+    if (!host && row) { host = document.createElement("div"); host.className = "row-status"; host.style.flexBasis = "100%"; row.appendChild(host); }
+    showInlineError(host, msg);
+  }
+
+  /* ---- edit dialog ---- */
+  let editingId = null;
+  const editDialog = document.getElementById("edit-dialog");
+  function openEditDialog(a) {
+    editingId = a.designId;
+    document.getElementById("e-name").value = a.name || "";
+    document.getElementById("e-desc").value = a.description || "";
+    document.getElementById("e-tags").value = (a.tags || []).join(", ");
+    document.getElementById("edit-status").innerHTML = "";
+    editDialog.classList.add("is-open");
+  }
+  document.getElementById("edit-cancel").addEventListener("click", () => editDialog.classList.remove("is-open"));
+  editDialog.addEventListener("click", (e) => { if (e.target === editDialog) editDialog.classList.remove("is-open"); });
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    if (!editingId) return;
+    const name = document.getElementById("e-name").value.trim();
+    if (!name) { showInlineError(document.getElementById("edit-status"), "Name cannot be empty."); return; }
+    const tags = document.getElementById("e-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+    try {
+      await withBusy(document.getElementById("edit-save"), async () => {
+        await KCMPS_DASH.updateAsset(editingId, { name, description: document.getElementById("e-desc").value.trim(), tags });
+        await load();
+      });
+      editDialog.classList.remove("is-open");
+    } catch (err) { showInlineError(document.getElementById("edit-status"), err.message); }
+  });
+
+  /* ---- reject dialog ---- */
+  let rejectingId = null;
+  const rejectDialog = document.getElementById("reject-dialog");
+  function openRejectDialog(id) {
+    rejectingId = id;
+    document.getElementById("r-reason").value = "";
+    document.getElementById("reject-status").innerHTML = "";
+    rejectDialog.classList.add("is-open");
+  }
+  document.getElementById("reject-cancel").addEventListener("click", () => rejectDialog.classList.remove("is-open"));
+  document.getElementById("reject-confirm").addEventListener("click", async () => {
+    const reason = document.getElementById("r-reason").value.trim();
+    if (!reason) { showInlineError(document.getElementById("reject-status"), "A reason is required."); return; }
+    try {
+      await withBusy(document.getElementById("reject-confirm"), async () => {
+        await KCMPS_DASH.rejectAsset(rejectingId, reason);
+        await load();
+      });
+      rejectDialog.classList.remove("is-open");
+    } catch (err) { showInlineError(document.getElementById("reject-status"), err.message); }
+  });
+
+  /* ---- break-glass dialog ---- */
+  let breakglassId = null;
+  const bgDialog = document.getElementById("breakglass-dialog");
+  function openBreakglassDialog(id) {
+    breakglassId = id;
+    document.getElementById("b-reason").value = "";
+    document.getElementById("breakglass-status").innerHTML = "";
+    bgDialog.classList.add("is-open");
+  }
+  document.getElementById("breakglass-cancel").addEventListener("click", () => bgDialog.classList.remove("is-open"));
+  document.getElementById("breakglass-confirm").addEventListener("click", async () => {
+    const reason = document.getElementById("b-reason").value.trim();
+    if (!reason) { showInlineError(document.getElementById("breakglass-status"), "A reason is required."); return; }
+    try {
+      await withBusy(document.getElementById("breakglass-confirm"), async () => {
+        await KCMPS_DASH.publishAssetDirect(breakglassId, reason);
+        await load();
+      });
+      bgDialog.classList.remove("is-open");
+    } catch (err) {
+      if (isStillScanning(err)) showInlineError(document.getElementById("breakglass-status"), "Still scanning for malware — even break-glass waits for a clean scan.");
+      else showInlineError(document.getElementById("breakglass-status"), err.message);
+    }
+  });
+
+  /* ---- upload modal: 2 steps, DRAFTS ONLY ----
+     Uploads start the moment both files are picked, so GuardDuty's scan
+     clock starts while the user is still typing metadata — by Save time,
+     short scans are already done. There is no publish here and therefore
+     no retry hack: the old form.onsubmit=null re-upload bug (4 orphan
+     upload pairs in staging) is structurally gone. ---- */
+  const uploadDialog = document.getElementById("upload-dialog");
+  const zoneOriginal = document.getElementById("zone-original");
+  const zoneWeb = document.getElementById("zone-web");
+  const fileOriginal = document.getElementById("file-original");
+  const fileWeb = document.getElementById("file-web");
+  const nextBtn = document.getElementById("upload-next");
+  const progressHost = document.getElementById("upload-progress");
+
+  let up = null; // upload session state
+  function resetUpload() {
+    if (up && up.previewUrl) URL.revokeObjectURL(up.previewUrl);
+    up = { originalFile: null, webFile: null, urls: null, started: false, done: false, failed: false, previewUrl: null };
+    fileOriginal.value = ""; fileWeb.value = "";
+    zoneOriginal.classList.remove("is-filled"); zoneWeb.classList.remove("is-filled");
+    zoneOriginal.querySelector(".zl").textContent = "Source file";
+    resetZoneBody(zoneOriginal, "PSD · AI · PDF · SVG — up to 300MB");
+    resetZoneBody(zoneWeb, "JPG · PNG · WebP — up to 300MB");
+    zoneWeb.querySelector(".zl").textContent = "Web-ready image";
+    progressHost.innerHTML = "";
+    document.getElementById("upload-status-1").innerHTML = "";
+    document.getElementById("upload-status-2").innerHTML = "";
+    document.getElementById("u-name").value = ""; document.getElementById("u-desc").value = ""; document.getElementById("u-tags").value = "";
+    document.getElementById("u-preview").innerHTML = "";
+    uCategory.disabled = false;
+    nextBtn.disabled = true;
+    document.getElementById("upload-reset-btn").style.display = "none";
+    showUploadStep(1);
+  }
+  function resetZoneBody(zone, typesLine) {
+    [...zone.querySelectorAll(".zt, .zpreview")].forEach((n) => n.remove());
+    zone.insertAdjacentHTML("beforeend", '<span class="zt">' + escapeHtml(typesLine) + '</span><span class="zt">Drag here or click to browse</span>');
+  }
+  function showUploadStep(n) {
+    document.getElementById("upload-step-1").style.display = n === 1 ? "" : "none";
+    document.getElementById("upload-step-2").style.display = n === 2 ? "" : "none";
+    document.getElementById("step-dot-1").classList.toggle("is-on", n === 1);
+    document.getElementById("step-dot-2").classList.toggle("is-on", n === 2);
+  }
+
+  document.getElementById("upload-open-btn").addEventListener("click", () => {
+    if (!apiAvailable) return;
+    resetUpload();
+    uploadDialog.classList.add("is-open");
+  });
+  document.getElementById("upload-cancel-1").addEventListener("click", closeUpload);
+  document.getElementById("upload-reset-btn").addEventListener("click", resetUpload);
+  document.getElementById("upload-back").addEventListener("click", () => showUploadStep(1));
+  function closeUpload() {
+    uploadDialog.classList.remove("is-open");
+    if (up && up.previewUrl) URL.revokeObjectURL(up.previewUrl);
+    up = null;
+  }
+
+  function wireZone(zone, input, onFile) {
+    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+    ["dragover", "dragenter"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("is-drag"); }));
+    ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove("is-drag"); }));
+    zone.addEventListener("drop", (e) => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) onFile(f); });
+    input.addEventListener("change", () => { const f = input.files && input.files[0]; if (f) onFile(f); });
+  }
+
+  const ORIGINAL_EXT_RE = /\.(psd|ai|pdf|svg)$/i;
+  const WEB_EXT_RE = /\.(jpe?g|png|webp)$/i;
+  const MAX_BYTES = 300 * 1024 * 1024;
+
+  wireZone(zoneOriginal, fileOriginal, (f) => {
+    if (up.started) return;
+    if (!ORIGINAL_EXT_RE.test(f.name)) { showInlineError(document.getElementById("upload-status-1"), "Source file must be PSD, AI, PDF or SVG."); return; }
+    if (f.size > MAX_BYTES) { showInlineError(document.getElementById("upload-status-1"), "Source file is over the 300MB limit."); return; }
+    up.originalFile = f;
+    zoneOriginal.classList.add("is-filled");
+    resetZoneBody(zoneOriginal, f.name + " · " + fmtBytes(f.size));
+    maybeStartUploads();
+  });
+  wireZone(zoneWeb, fileWeb, (f) => {
+    if (up.started) return;
+    if (!WEB_EXT_RE.test(f.name)) { showInlineError(document.getElementById("upload-status-1"), "Web-ready image must be JPG, PNG or WebP."); return; }
+    if (f.size > MAX_BYTES) { showInlineError(document.getElementById("upload-status-1"), "Web-ready image is over the 300MB limit."); return; }
+    up.webFile = f;
+    // Instant local preview — zero backend, this is what the shopper-facing
+    // tile will look like.
+    if (up.previewUrl) URL.revokeObjectURL(up.previewUrl);
+    up.previewUrl = URL.createObjectURL(f);
+    zoneWeb.classList.add("is-filled");
+    [...zoneWeb.querySelectorAll(".zt, .zpreview")].forEach((n) => n.remove());
+    zoneWeb.insertAdjacentHTML("beforeend", '<img class="zpreview" alt="" /><span class="zt">' + escapeHtml(f.name + " · " + fmtBytes(f.size)) + "</span>");
+    zoneWeb.querySelector(".zpreview").src = up.previewUrl;
+    maybeStartUploads();
+  });
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return Math.round(n / 1024) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  function progressRow(label) {
+    const row = document.createElement("div");
+    row.className = "upload-progress-row";
+    row.innerHTML = '<span style="max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(label) +
+      '</span><span class="bar"><span class="bar-fill" style="width:0%"></span></span><span class="pct">0%</span>';
+    progressHost.appendChild(row);
+    return { set(p) { row.querySelector(".bar-fill").style.width = p + "%"; row.querySelector(".pct").textContent = p + "%"; } };
+  }
+
+  function putWithProgress(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error("upload failed (" + xhr.status + ")"));
+      xhr.onerror = () => reject(new Error("upload failed — check your connection"));
+      xhr.send(file);
+    });
+  }
+
+  async function maybeStartUploads() {
+    if (!up.originalFile || !up.webFile || up.started) return;
+    up.started = true;
+    // The S3 keys embed the category, so it's locked once uploads begin —
+    // "Start over" is the way to change it.
+    uCategory.disabled = true;
+    document.getElementById("upload-reset-btn").style.display = "";
+    document.getElementById("upload-status-1").innerHTML = "";
+    try {
+      up.urls = await KCMPS_DASH.getAssetUploadUrls({
+        category: uCategory.value,
+        original: { filename: up.originalFile.name, contentType: up.originalFile.type || "application/octet-stream", size: up.originalFile.size },
+        web: { filename: up.webFile.name, contentType: up.webFile.type || "application/octet-stream", size: up.webFile.size },
+      });
+      const r1 = progressRow(up.originalFile.name);
+      const r2 = progressRow(up.webFile.name);
+      await Promise.all([
+        putWithProgress(up.urls.original.uploadUrl, up.originalFile, (p) => r1.set(p)),
+        putWithProgress(up.urls.web.uploadUrl, up.webFile, (p) => r2.set(p)),
+      ]);
+      up.done = true;
+      nextBtn.disabled = false;
+      document.getElementById("upload-status-1").innerHTML = '<div class="asset-note info">Files uploaded — malware scanning has started in the background.</div>';
+    } catch (err) {
+      up.failed = true;
+      showInlineError(document.getElementById("upload-status-1"), err.message + " — click “Start over” to retry.");
+    }
+  }
+
+  nextBtn.addEventListener("click", () => {
+    if (!up || !up.done) return;
+    const pv = document.getElementById("u-preview");
+    pv.innerHTML = up.previewUrl ? '<img alt="" />' : "";
+    if (up.previewUrl) pv.querySelector("img").src = up.previewUrl;
+    if (!document.getElementById("u-name").value) {
+      document.getElementById("u-name").value = up.webFile.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+    }
+    showUploadStep(2);
+    document.getElementById("u-name").focus();
+  });
+
+  document.getElementById("upload-save").addEventListener("click", async () => {
+    if (!up || !up.done) return;
+    const name = document.getElementById("u-name").value.trim();
+    if (!name) { showInlineError(document.getElementById("upload-status-2"), "Name is required."); return; }
+    const tags = document.getElementById("u-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+    try {
+      await withBusy(document.getElementById("upload-save"), async () => {
+        await KCMPS_DASH.createAsset({
+          name,
+          description: document.getElementById("u-desc").value.trim(),
+          category: uCategory.value,
+          tags,
+          s3KeyOriginal: up.urls.original.s3Key,
+          s3KeyWeb: up.urls.web.s3Key,
+        });
+        await load();
+      });
+      closeUpload();
+      selectTab("library");
+    } catch (err) {
+      showInlineError(document.getElementById("upload-status-2"), err.message);
+    }
+  });
+
+  /* ---- go ---- */
+  load();
+})();
+</script>
+</body>
+</html>

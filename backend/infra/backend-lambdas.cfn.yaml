@@ -380,6 +380,14 @@ Resources:
                 Effect: Allow
                 Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+              # patch-design.js's approval workflow resolves "all current
+              # Admin-group members" live on every submit/approve — never a
+              # stale snapshot (asset-library rebuild plan §4). Read-only,
+              # one group, free API.
+              - Sid: ListAdminGroupForApprovals
+                Effect: Allow
+                Action: cognito-idp:ListUsersInGroup
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
         - PolicyName: design-library-s3
           PolicyDocument:
             Version: "2012-10-17"
@@ -885,6 +893,8 @@ Resources:
           PUBLIC_ASSETS_BUCKET: !Ref PublicAssetsBucket
           PUBLIC_ASSETS_KEY_PREFIX: !Ref PublicAssetsKeyPrefix
           PUBLIC_ASSETS_PATH: !Ref PublicAssetsPath
+          # Approval workflow: ListUsersInGroup(Admin) per submit/approve.
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
 
   PurgeArchivedDesignsFunction:
     Type: AWS::Lambda::Function
@@ -1102,10 +1112,14 @@ Resources:
   RouteGetUnreadMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /messages/unread", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetUnreadMessagesIntegration}" } }
   RouteAddCorrespondence: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/correspondence", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AddCorrespondenceIntegration}" } }
 
-  RouteDesignUploadUrl: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs/upload-url", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DesignUploadUrlIntegration}" } }
-  RoutePublishDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PublishDesignIntegration}" } }
-  RouteListDesigns: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /designs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${ListDesignsIntegration}" } }
-  RoutePatchDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /designs/{id}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PatchDesignIntegration}" } }
+# Asset Library routes (renamed from /designs* 2026-08-07 while production
+  # still has zero /designs routes and zero external consumers — the one-time
+  # window docs/asset-library-rebuild-plan-2026-08-06.md §5 calls out. Lambda
+  # function names / zip keys keep their design-* names deliberately.)
+  RouteDesignUploadUrl: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /assets/upload-url", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DesignUploadUrlIntegration}" } }
+  RoutePublishDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /assets", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PublishDesignIntegration}" } }
+  RouteListDesigns: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /assets", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${ListDesignsIntegration}" } }
+  RoutePatchDesign: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /assets/{id}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${PatchDesignIntegration}" } }
 
   RouteGetMailboxes: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailboxesIntegration}" } }
   RouteGetMailMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /mail/mailboxes/{mailboxId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetMailMessagesIntegration}" } }
@@ -1126,10 +1140,10 @@ Resources:
   PermGetMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
   PermSendMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SendMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/messages" } }
   PermGetUnreadMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetUnreadMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/messages/unread" } }
-  PermDesignUploadUrl: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref DesignUploadUrlFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/upload-url" } }
-  PermPublishDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PublishDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
-  PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs" } }
-  PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/designs/*" } }
+  PermDesignUploadUrl: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref DesignUploadUrlFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets/upload-url" } }
+  PermPublishDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PublishDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets" } }
+  PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets" } }
+  PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets/*" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
   PermGetMailboxes: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailboxesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes" } }
   PermGetMailMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages" } }

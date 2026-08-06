@@ -1,5 +1,5 @@
 /* ============================================================
-   KCMPS Design Asset Library — POST /designs/upload-url (getUploadUrl)
+   KCMPS Asset Library — POST /assets/upload-url (getUploadUrl)
    ============================================================
    Step 1 of 2. Hands the dashboard's Design Library upload form a pair
    of pre-signed S3 PUT URLs — one for the source file (PSD/AI/PDF), one
@@ -9,7 +9,7 @@
    payload/timeout problem. Same presign→direct-PUT shape as
    backend/checkout/upload-design-file.js and submit-payment-proof.js.
 
-   Step 2 is design-library/publish-design.js (POST /designs), which the
+   Step 2 is publish-design.js (POST /assets), which the
    browser calls after both PUTs succeed. Nothing is recorded in DynamoDB
    here — an upload that is never published is just an orphan object pair
    (same tradeoff as the pre-checkout customer upload path).
@@ -29,7 +29,7 @@
    body. Nothing in the body can name a user, a bucket, or a key.
 
    ── What is validated, and where ───────────────────────────────────
-     1. design-library.html (client): type/size, before a presign is
+     1. asset-library.html (client): type/size, before a presign is
         requested. UX only, trivially bypassed, never trusted.
      2. HERE: category must be a known catalog leaf; contentType AND
         filename extension must both land in design-types.js's allowlist
@@ -124,7 +124,7 @@ function validateFile(file, resolver) {
   }
   const ext = resolver(file.contentType, filename);
   if (!ext) {
-    return { error: "that file type isn't accepted. Source files: PSD, AI, PDF. Web-ready image: JPG, PNG, WebP." };
+    return { error: "that file type isn't accepted. Source files: PSD, AI, PDF, SVG. Web-ready image: JPG, PNG, WebP." };
   }
   return { ext };
 }

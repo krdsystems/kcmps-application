@@ -1,5 +1,5 @@
 /* ============================================================
-   KCMPS Design Asset Library — fail-closed malware verdict lookup
+   KCMPS Asset Library — fail-closed malware verdict lookup
    ============================================================
    GuardDuty Malware Protection watches the `designs/` prefix on the
    private originals bucket, and backend/jobs/handle-scan-result.js

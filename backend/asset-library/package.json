@@ -1,0 +1,12 @@
+{
+  "name": "kcmps-asset-library-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/asset-library/*.js (Asset Library, formerly Design Library \u2014 docs/asset-library-rebuild-plan-2026-08-06.md). Deploy each handler .js as its own Lambda; design-types.js/manifest.js/scan-verdict.js/approval.js are shared modules zipped alongside, plus ../lib on the module path. Same reference-only role as backend/checkout/package.json.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0"
+  }
+}

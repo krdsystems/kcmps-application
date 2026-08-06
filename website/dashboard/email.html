@@ -26,7 +26,14 @@
         <label for="mb-select" class="hint" style="font-size:12.5px">Mailbox</label>
         <select class="input" id="mb-select"></select>
         <span class="queue-count" id="mb-unread">0</span>
-        <input type="search" class="input mail-search" id="mail-search" placeholder="Search subject or sender" />
+        <div class="mail-folder-toggle" id="mail-folder-toggle" role="group" aria-label="Folder">
+          <button type="button" class="is-active" data-folder="INBOX">Inbox</button>
+          <button type="button" data-folder="SENT">Sent</button>
+        </div>
+        <div class="mail-search-wrap">
+          <input type="search" class="input mail-search" id="mail-search" placeholder="Search" />
+          <span class="mail-search-scope" id="mail-search-scope"></span>
+        </div>
         <!-- Mail arrives by relay (Spacemail -> SES -> ingest), so there is no push
              signal to the page and no polling here. A visible manual reload is the
              honest answer: staff decide when to check, and the timestamp next to it
@@ -37,6 +44,8 @@
           Reload
         </button>
       </div>
+
+      <p class="hint mail-kbd-hint">Shortcuts: <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>Enter</kbd> open, <kbd>/</kbd> search, <kbd>r</kbd> reply</p>
 
       <div class="mail-3pane" id="mail-3pane">
         <aside class="card mail-list"><div class="q-list" id="mail-list"></div></aside>
@@ -59,8 +68,29 @@
   // list/read panes can distinguish "no access" from "no mail" (see there).
   let noMailboxAccess = false;
   let currentMessageId = null;
+  let currentFolder = "INBOX";
   let search = "";
   let replyDraft = "";
+  let replyCc = "";
+  let showCcField = false;
+
+  // List state — accumulated across "Load more" clicks, reset whenever the
+  // mailbox, folder, or search term changes (resetListState()). Grouped into
+  // threads for display (groupThreads()) so a back-and-forth with several
+  // messages shows as one row, Gmail-style, rather than N separate ones.
+  let listMessages = [];
+  let listCursor = null;
+  let mailboxesCache = [];
+
+  // messageId -> full message (bodyText/attachments/provenance/etc), used so
+  // expanding a collapsed thread card twice in the same read-pane render
+  // doesn't refetch. Cleared on every renderRead() — see there for why that's
+  // fine (a rare click, not a hot path).
+  let expandedCache = new Map();
+  let currentThreadMb = null;
+
+  // j/k list navigation — index into the currently-rendered grouped rows.
+  let activeListIndex = -1;
 
   const pane = document.getElementById("mail-3pane");
   const listEl = document.getElementById("mail-list");
@@ -68,6 +98,8 @@
   const selectEl = document.getElementById("mb-select");
   const unreadEl = document.getElementById("mb-unread");
   const searchEl = document.getElementById("mail-search");
+  const scopeEl = document.getElementById("mail-search-scope");
+  const folderToggleEl = document.getElementById("mail-folder-toggle");
   const refreshEl = document.getElementById("mail-refresh");
   const updatedEl = document.getElementById("mail-updated");
 
@@ -83,10 +115,32 @@
     if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
     return (Math.round(bytes / 104857.6) / 10) + " MB";
   }
+  function currentMailbox() { return mailboxesCache.find((x) => x.id === currentMailboxId); }
+
+  function resetListState() {
+    listMessages = [];
+    listCursor = null;
+    activeListIndex = -1;
+  }
+
+  function mailSkeleton(rows) {
+    let out = "";
+    for (let i = 0; i < rows; i++) out += '<div class="mail-skel-row" aria-hidden="true"><span></span><span></span></div>';
+    return out;
+  }
+
+  function updateSearchScope() {
+    const mb = currentMailbox();
+    const label = mb ? mb.address : "mailbox";
+    const folderLabel = currentFolder === "SENT" ? "Sent" : "Inbox";
+    searchEl.placeholder = "Search " + label + " · " + folderLabel;
+    scopeEl.textContent = search ? ("Searching " + label + " · " + folderLabel) : "";
+  }
 
   /* ---- mailbox selector ---- */
   async function renderMailboxSelector() {
     const boxes = await KCMPS_DASH.getMailboxes();
+    mailboxesCache = boxes;
     if (!boxes.length) {
       // An empty list is NOT the same as "no mail has arrived" — mailbox
       // capability is group-based (backend/lib/mail.js's canAccessMailbox:
@@ -112,48 +166,121 @@
     const active = boxes.find((mb) => mb.id === currentMailboxId);
     unreadEl.textContent = active ? active.unreadCount + " unread" : "0 unread";
     unreadEl.classList.toggle("has-red", !!(active && active.unreadCount));
+    updateSearchScope();
     return boxes;
   }
 
-  /* ---- message list ---- */
-  async function renderList() {
+  /* ---- message list ----
+     Thread-collapse grouping: multiple envelopes sharing a threadId (a
+     back-and-forth on one order) collapse into a single row showing the
+     latest message plus a "(N)" count — pure client-side grouping over
+     data already fetched, no backend change (docs/email-tab-redesign-
+     2026-08-06.md §3.2). The count reflects only what's been paged in so
+     far, not the mailbox's true total for that thread — honest about what
+     the client actually knows without an extra fetch. */
+  function groupThreads(messages) {
+    const byThread = new Map();
+    for (const m of messages) {
+      const key = m.threadId || m.messageId;
+      const g = byThread.get(key);
+      if (!g) {
+        byThread.set(key, { threadId: key, latest: m, count: 1 });
+      } else {
+        g.count += 1;
+        if (new Date(m.date) > new Date(g.latest.date)) g.latest = m;
+      }
+    }
+    return Array.from(byThread.values()).sort((a, b) => new Date(b.latest.date) - new Date(a.latest.date));
+  }
+
+  function renderListRow(g, idx) {
+    const m = g.latest;
+    const unread = !m.flags.seen;
+    const cls = "q-item" +
+      (unread ? " sla-warn is-unread" : "") +
+      (m.messageId === currentMessageId ? " is-open" : "") +
+      (idx === activeListIndex ? " is-keyfocus" : "");
+    const marks = m.flags.answered ? "replied" : "";
+    const countBadge = g.count > 1 ? ' <span class="thread-count">(' + g.count + ")</span>" : "";
+    return (
+      `<div class="${cls}" data-msg="${escapeHtml(m.messageId)}" data-idx="${idx}" role="button" tabindex="0">` +
+      `<div class="q-line1"><span>${unread ? '<span class="unread-dot" aria-hidden="true"></span>' : ""}${escapeHtml(senderOf(m))}</span><span class="q-age">${relAge(m.date)}</span></div>` +
+      `<div class="q-line2"><span>${escapeHtml(m.subject)}${countBadge} — ${escapeHtml(m.snippet)}</span><span>${marks}</span></div>` +
+      "</div>"
+    );
+  }
+
+  async function renderList(opts) {
+    const append = !!(opts && opts.append);
     if (!currentMailboxId) {
       listEl.innerHTML = noMailboxAccess
         ? '<p class="q-empty">No mailboxes are assigned to your account.</p>'
         : '<p class="q-empty">No mailboxes available.</p>';
       return;
     }
-    const res = await KCMPS_DASH.getMessages(currentMailboxId, { search });
-    if (!res.messages.length) {
-      listEl.innerHTML = '<p class="q-empty">' + (search ? "No messages match that search." : "Inbox is empty.") + "</p>";
+    if (!append) listEl.innerHTML = mailSkeleton(4);
+
+    let res;
+    try {
+      const fetchOpts = { search, folder: currentFolder };
+      if (append && listCursor) fetchOpts.cursor = listCursor;
+      res = await KCMPS_DASH.getMessages(currentMailboxId, fetchOpts);
+    } catch (err) {
+      listEl.innerHTML = '<p class="q-empty">Could not load messages. ' + escapeHtml(err && err.message ? err.message : "") + "</p>";
       return;
     }
-    listEl.innerHTML = res.messages.map((m) => {
-      const cls = "q-item" + (m.flags.seen ? "" : " sla-warn") + (m.messageId === currentMessageId ? " is-open" : "");
-      const marks = m.flags.answered ? "replied" : "";
-      return (
-        `<div class="${cls}" data-msg="${escapeHtml(m.messageId)}" role="button" tabindex="0">` +
-        `<div class="q-line1"><span>${escapeHtml(senderOf(m))}</span><span class="q-age">${relAge(m.date)}</span></div>` +
-        `<div class="q-line2"><span>${escapeHtml(m.subject)} — ${escapeHtml(m.snippet)}</span><span>${marks}</span></div>` +
-        "</div>"
-      );
-    }).join("");
+
+    if (append) {
+      const seen = new Set(listMessages.map((m) => m.messageId));
+      listMessages = listMessages.concat((res.messages || []).filter((m) => !seen.has(m.messageId)));
+    } else {
+      listMessages = res.messages || [];
+    }
+    listCursor = res.nextCursor || null;
+
+    if (!listMessages.length) {
+      listEl.innerHTML = '<p class="q-empty">' +
+        (search ? "No messages match that search." : (currentFolder === "SENT" ? "Nothing sent yet." : "Inbox is empty.")) +
+        "</p>";
+      return;
+    }
+
+    const groups = groupThreads(listMessages);
+    listEl.innerHTML = groups.map(renderListRow).join("") +
+      (listCursor ? '<button type="button" class="btn btn-secondary list-load-more" id="list-load-more">Load 50 more</button>' : "");
 
     listEl.querySelectorAll("[data-msg]").forEach((row) => {
       const open = () => openMessage(row.dataset.msg);
       row.addEventListener("click", open);
       row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     });
+    const loadMoreBtn = document.getElementById("list-load-more");
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener("click", () => {
+        withBusy(loadMoreBtn, () => renderList({ append: true }));
+      });
+    }
   }
 
   async function openMessage(messageId) {
     currentMessageId = messageId;
     replyDraft = "";
-    await KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
+    replyCc = "";
+    showCcField = false;
+    readEl.innerHTML = mailReadSkeleton();
     pane.classList.add("show-read");
+    await KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
     await renderMailboxSelector();
     await renderList();
     await renderRead();
+  }
+
+  function mailReadSkeleton() {
+    return '<div class="mail-skel-read" aria-hidden="true">' +
+      '<div class="mail-skel-line" style="width:60%"></div>' +
+      '<div class="mail-skel-line" style="width:35%"></div>' +
+      '<div class="mail-skel-block"></div>' +
+      "</div>";
   }
 
   /* ---- read pane ----
@@ -277,6 +404,122 @@
     return bad.map((n) => '<p class="mail-notice mail-notice-warn">' + escapeHtml(n) + "</p>").join("");
   }
 
+  /* Folds quoted reply chains ("> ..." / "On ... wrote:") behind a
+     "Show quoted text" toggle, Gmail-style — the quoted block is still
+     rendered (escaped, same as the rest of the body), just hidden by
+     default so the actual new content of a reply isn't buried under a
+     re-quoted history the staffer has usually already read. Heuristic
+     only: first line that looks like the start of a quote wins: everything
+     from there to the end of the message is treated as "quoted". */
+  function splitQuoted(bodyText) {
+    const text = bodyText || "";
+    const lines = text.split("\n");
+    let idx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line.startsWith(">")) { idx = i; break; }
+      if (/^on .{3,140} wrote:$/i.test(line)) { idx = i; break; }
+      if (/^-{2,}\s*original message\s*-{2,}$/i.test(line)) { idx = i; break; }
+    }
+    if (idx === -1) return { main: text, quoted: "" };
+    return { main: lines.slice(0, idx).join("\n").replace(/\s+$/, ""), quoted: lines.slice(idx).join("\n") };
+  }
+
+  /* ---- conversation view (thread-stack) ----
+     Replaces the old flat ".timeline" snippet table with stacked message
+     cards: the target message (the one the pane was opened to) expanded,
+     every other thread member collapsed to sender/date/snippet with a
+     click-to-expand. This is the direct fix for "hard to see the
+     conversation" (docs/email-tab-redesign-2026-08-06.md §3.3). Collapsed
+     cards only carry envelope fields (from getThread()); expanding one
+     lazily fetches the full message via getMessage() and caches it in
+     expandedCache for the rest of this read-pane's lifetime. */
+  function renderThreadCard(t, mb, isTarget) {
+    const mine = !!(mb && t.from && t.from.address && t.from.address.toLowerCase() === mb.address.toLowerCase());
+    const whoBadge = mine ? '<span class="you-badge">You</span>' : "";
+    const initial = escapeHtml((senderOf(t) || "?").trim().slice(0, 1).toUpperCase() || "?");
+    const head =
+      '<div class="thread-card-head" data-thread-toggle="' + escapeHtml(t.messageId) + '" role="button" tabindex="0" aria-expanded="' + (isTarget ? "true" : "false") + '">' +
+      '<span class="thread-avatar" aria-hidden="true">' + initial + "</span>" +
+      '<span class="thread-who">' + escapeHtml(senderOf(t)) + whoBadge + "</span>" +
+      '<span class="thread-date">' + fmtDateTime(t.date) + "</span>" +
+      (!isTarget ? '<span class="thread-snippet">' + escapeHtml(t.snippet || "") + "</span>" : "") +
+      '<span class="thread-chevron" aria-hidden="true">' + (isTarget ? "▾" : "▸") + "</span>" +
+      "</div>";
+    const body = isTarget ? renderThreadCardBody(t, mb) : '<div class="thread-card-body-slot"></div>';
+    return '<article class="thread-card' + (isTarget ? " is-target is-expanded" : "") + (mine ? " is-mine" : "") +
+      '" data-thread-msg="' + escapeHtml(t.messageId) + '">' + head + body + "</article>";
+  }
+
+  function renderThreadCardBody(full, mb) {
+    const { main, quoted } = splitQuoted(full.bodyText || "");
+    const meta =
+      '<div class="m-block"><h4>From</h4><p>' + escapeHtml(senderOf(full)) + "</p></div>" +
+      '<div class="m-block"><h4>Address</h4><p>' + escapeHtml(full.from.address) + "</p></div>" +
+      '<div class="m-block"><h4>Received</h4><p>' + fmtDateTime(full.date) + "</p></div>" +
+      renderChecks(full) +
+      (full.relatedOrderId
+        ? '<div class="m-block"><h4>Related order</h4><p><a href="job-detail.html?order=' +
+          encodeURIComponent(full.relatedOrderId) + '">' + escapeHtml(full.relatedOrderId) + "</a></p></div>"
+        : "");
+
+    const htmlNotice = full.hasHtmlPart
+      ? '<p class="mail-notice">This message has an HTML version. KCMPS Ops shows the plain-text version only, and never loads remote images.</p>'
+      : "";
+
+    const quotedHtml = quoted
+      ? '<button type="button" class="quoted-toggle" data-quoted-toggle>Show quoted text</button>' +
+        '<pre class="mail-body quoted-block" hidden>' + escapeHtml(quoted) + "</pre>"
+      : "";
+
+    const attach = (full.attachments && full.attachments.length)
+      ? '<div class="thread-attachments">' +
+        full.attachments.map((a) => '<span class="tag tag-outline">' + escapeHtml(a.filename) + " · " + fmtSize(a.sizeBytes) + "</span>").join(" ") +
+        '<p class="q-empty">Attachments are listed for reference only — open them in your mail client for now.</p></div>'
+      : "";
+
+    return '<div class="thread-card-body">' +
+      '<div class="ticket-meta">' + meta + "</div>" +
+      renderProvenanceAlert(full) +
+      htmlNotice +
+      '<pre class="mail-body">' + escapeHtml(main) + "</pre>" +
+      quotedHtml +
+      attach +
+      "</div>";
+  }
+
+  async function toggleThreadCard(messageId) {
+    const card = Array.from(readEl.querySelectorAll(".thread-card")).find((c) => c.dataset.threadMsg === messageId);
+    if (!card) return;
+    const head = card.querySelector(".thread-card-head");
+    const chevron = head.querySelector(".thread-chevron");
+    if (card.classList.contains("is-expanded")) {
+      card.classList.remove("is-expanded");
+      const bodySlot = card.querySelector(".thread-card-body");
+      if (bodySlot) bodySlot.outerHTML = '<div class="thread-card-body-slot"></div>';
+      head.setAttribute("aria-expanded", "false");
+      if (chevron) chevron.textContent = "▸";
+      return;
+    }
+    if (chevron) chevron.textContent = "⋯";
+    let full = expandedCache.get(messageId);
+    if (!full) {
+      try {
+        full = await KCMPS_DASH.getMessage(currentMailboxId, messageId);
+        expandedCache.set(messageId, full);
+      } catch (err) {
+        if (chevron) chevron.textContent = "▸";
+        return;
+      }
+    }
+    const slot = card.querySelector(".thread-card-body-slot");
+    if (slot) slot.outerHTML = renderThreadCardBody(full, currentThreadMb);
+    card.classList.add("is-expanded");
+    head.setAttribute("aria-expanded", "true");
+    if (chevron) chevron.textContent = "▾";
+  }
+
   async function renderRead(flash) {
     if (!currentMailboxId) {
       readEl.innerHTML = noMailboxAccess
@@ -291,13 +534,25 @@
       KCMPS_DASH.getMailboxes(),
       currentMessageId ? KCMPS_DASH.getMessage(currentMailboxId, currentMessageId) : Promise.resolve(null),
     ]);
+    mailboxesCache = boxes;
     const mb = boxes.find((x) => x.id === currentMailboxId);
+    currentThreadMb = mb;
     if (!m) {
       readEl.innerHTML = '<div class="empty-state">Select a message to read it.</div>';
       return;
     }
 
-    const thread = (await KCMPS_DASH.getThread(currentMailboxId, m.threadId)).filter((t) => t.messageId !== m.messageId);
+    expandedCache = new Map([[m.messageId, m]]);
+
+    let thread = [];
+    try {
+      thread = await KCMPS_DASH.getThread(currentMailboxId, m.threadId);
+    } catch (err) {
+      thread = [];
+    }
+    const others = thread.filter((t) => t.messageId !== m.messageId);
+    const allThread = others.concat([m]).sort((a, b) => new Date(a.date) - new Date(b.date));
+
     const parts = [];
 
     parts.push('<button type="button" class="btn btn-ghost mail-back" id="mail-back">&larr; Back to list</button>');
@@ -308,50 +563,17 @@
       (m.flags.answered ? "Replied" : "Read") + "</span></div>"
     );
 
-    const meta =
-      '<div class="m-block"><h4>From</h4><p>' + escapeHtml(senderOf(m)) + "</p></div>" +
-      '<div class="m-block"><h4>Address</h4><p>' + escapeHtml(m.from.address) + "</p></div>" +
-      '<div class="m-block"><h4>Received</h4><p>' + fmtDateTime(m.date) + "</p></div>" +
-      renderChecks(m) +
-      (m.relatedOrderId
-        ? '<div class="m-block"><h4>Related order</h4><p><a href="job-detail.html?order=' +
-          encodeURIComponent(m.relatedOrderId) + '">' + escapeHtml(m.relatedOrderId) + "</a></p></div>"
-        : "");
-    parts.push('<div class="ticket-meta">' + meta + "</div>");
-
-    parts.push(renderProvenanceAlert(m));
-
-    if (m.hasHtmlPart) {
-      parts.push('<p class="mail-notice">This message has an HTML version. KCMPS Ops shows the plain-text version only, and never loads remote images.</p>');
-    }
-
-    parts.push('<pre class="mail-body">' + escapeHtml(m.bodyText) + "</pre>");
-
-    if (m.attachments && m.attachments.length) {
-      parts.push(
-        '<div style="margin-top:var(--space-3)">' +
-        m.attachments.map((a) =>
-          '<span class="tag tag-outline">' + escapeHtml(a.filename) + " · " + fmtSize(a.sizeBytes) + "</span> "
-        ).join("") +
-        '<p class="q-empty">Attachments are listed for reference only — open them in your mail client for now.</p></div>'
-      );
-    }
-
-    if (thread.length) {
-      parts.push(
-        '<h3 style="margin:var(--space-5) 0 var(--space-2);font-size:14px">Earlier in this thread</h3><div class="timeline">' +
-        thread.map((t) =>
-          '<div class="timeline-row"><span class="tl-time">' + fmtDateTime(t.date) + "</span>" +
-          '<span class="tl-transition">' + escapeHtml(senderOf(t)) + "</span>" +
-          "<span>" + escapeHtml(t.snippet) + "</span></div>"
-        ).join("") + "</div>"
-      );
-    }
+    parts.push('<div class="thread-stack">' +
+      allThread.map((t) => renderThreadCard(t, mb, t.messageId === m.messageId)).join("") +
+      "</div>");
 
     if (mb && mb.canSend) {
       parts.push(
-        '<div class="mail-reply"><label class="hint" for="reply-body" style="font-size:12.5px">Reply to ' +
-        escapeHtml(senderOf(m)) + "</label>" +
+        '<div class="mail-reply">' +
+        '<div class="reply-head"><label class="hint" for="reply-body" style="font-size:12.5px">Reply to ' +
+        escapeHtml(senderOf(m)) + '</label>' +
+        '<button type="button" class="reply-cc-toggle" id="reply-cc-toggle">' + (showCcField ? "Hide Cc" : "+ Cc") + '</button></div>' +
+        (showCcField ? '<input type="text" class="input" id="reply-cc" placeholder="Cc — comma-separated addresses" value="' + escapeHtml(replyCc) + '" />' : "") +
         '<textarea class="input" id="reply-body" rows="5" placeholder="Type your reply…">' + escapeHtml(replyDraft) + "</textarea>" +
         '<div id="reply-error"></div>' +
         '<div class="action-bar"><button type="button" class="btn btn-primary" id="reply-send">Send reply</button>' +
@@ -368,6 +590,11 @@
       pane.classList.remove("show-read");
     });
 
+    const ccToggle = document.getElementById("reply-cc-toggle");
+    if (ccToggle) ccToggle.addEventListener("click", () => { showCcField = !showCcField; renderRead(); });
+    const ccInput = document.getElementById("reply-cc");
+    if (ccInput) ccInput.addEventListener("input", () => { replyCc = ccInput.value; });
+
     const bodyInput = document.getElementById("reply-body");
     if (bodyInput) {
       bodyInput.addEventListener("input", () => { replyDraft = bodyInput.value; });
@@ -377,12 +604,15 @@
         await withBusy(e.currentTarget, async () => {
           let result;
           try {
-            result = await KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value });
+            const cc = replyCc.split(",").map((s) => s.trim()).filter(Boolean);
+            result = await KCMPS_DASH.sendReply(currentMailboxId, currentMessageId, { bodyText: bodyInput.value, cc });
           } catch (err) {
             showInlineError(replyErrorHost, err.message);
             return;
           }
           replyDraft = "";
+          replyCc = "";
+          showCcField = false;
           await renderAll(true);
           // "Sent but local record couldn't be updated" is not a failure —
           // the email already went out and there is no un-send — so this
@@ -419,30 +649,79 @@
   selectEl.addEventListener("change", () => {
     currentMailboxId = selectEl.value;
     currentMessageId = null;
-    replyDraft = "";
+    replyDraft = ""; replyCc = ""; showCcField = false;
+    currentFolder = "INBOX";
+    folderToggleEl.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b.dataset.folder === "INBOX"));
     pane.classList.remove("show-read");
+    resetListState();
     renderAll();
   });
-  searchEl.addEventListener("input", () => { search = searchEl.value; renderList(); });
 
-  /* Tap-to-toggle for the checks popover. Delegated on the read pane because
-     the message body is re-rendered on every open/reload, so a listener bound
-     to the button itself would be lost. Hover is handled in CSS for mouse
-     users; this is what makes it reachable on touch, where :hover never fires
-     (and where a hover-only affordance would silently hide the detail). */
+  folderToggleEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-folder]");
+    if (!btn || btn.classList.contains("is-active")) return;
+    currentFolder = btn.dataset.folder;
+    folderToggleEl.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b === btn));
+    currentMessageId = null;
+    pane.classList.remove("show-read");
+    resetListState();
+    updateSearchScope();
+    renderList();
+    renderRead();
+  });
+
+  let searchDebounce = null;
+  searchEl.addEventListener("input", () => {
+    search = searchEl.value;
+    updateSearchScope();
+    resetListState();
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => renderList(), 220);
+  });
+
+  /* Single delegated click handler on the read pane for everything that
+     lives inside re-rendered markup: the delivery-checks popover trigger,
+     the "show quoted text" toggle, and a thread card's expand/collapse
+     header — all three are re-created on every renderRead()/toggle, so
+     listeners must be delegated rather than bound per-element. */
   readEl.addEventListener("click", (e) => {
     const trigger = e.target.closest && e.target.closest(".ck-trigger");
-    const openOne = readEl.querySelector(".mail-checks.is-open");
-    if (openOne && openOne !== (trigger && trigger.parentElement)) {
-      openOne.classList.remove("is-open");
-      const b = openOne.querySelector(".ck-trigger");
-      if (b) b.setAttribute("aria-expanded", "false");
+    if (trigger) {
+      const openOne = readEl.querySelector(".mail-checks.is-open");
+      if (openOne && openOne !== trigger.parentElement) {
+        openOne.classList.remove("is-open");
+        const b = openOne.querySelector(".ck-trigger");
+        if (b) b.setAttribute("aria-expanded", "false");
+      }
+      const host = trigger.parentElement;
+      const nowOpen = !host.classList.contains("is-open");
+      host.classList.toggle("is-open", nowOpen);
+      trigger.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+      return;
     }
-    if (!trigger) return;
-    const host = trigger.parentElement;
-    const nowOpen = !host.classList.contains("is-open");
-    host.classList.toggle("is-open", nowOpen);
-    trigger.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+
+    const quotedBtn = e.target.closest && e.target.closest("[data-quoted-toggle]");
+    if (quotedBtn) {
+      const block = quotedBtn.nextElementSibling;
+      if (!block) return;
+      const showing = !block.hidden;
+      block.hidden = showing;
+      quotedBtn.textContent = showing ? "Show quoted text" : "Hide quoted text";
+      return;
+    }
+
+    const threadHead = e.target.closest && e.target.closest("[data-thread-toggle]");
+    if (threadHead) {
+      toggleThreadCard(threadHead.dataset.threadToggle);
+    }
+  });
+
+  readEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const threadHead = e.target.closest && e.target.closest("[data-thread-toggle]");
+    if (!threadHead) return;
+    e.preventDefault();
+    toggleThreadCard(threadHead.dataset.threadToggle);
   });
 
   document.addEventListener("keydown", (e) => {
@@ -454,12 +733,59 @@
     if (b) { b.setAttribute("aria-expanded", "false"); b.focus(); }
   });
 
+  /* ---- keyboard shortcuts ----
+     j/k move the list "cursor" without opening a message (Enter opens the
+     highlighted row); / focuses search; r focuses the reply box if one is
+     open. All skipped while focus is inside any input/textarea/select so
+     typing "reply" doesn't get eaten by the r shortcut. */
+  function isTypingTarget(el) {
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (isTypingTarget(e.target)) return;
+    if (e.key === "/") {
+      e.preventDefault();
+      searchEl.focus();
+      return;
+    }
+    if (e.key === "j" || e.key === "k") {
+      const rows = Array.from(listEl.querySelectorAll("[data-msg]"));
+      if (!rows.length) return;
+      e.preventDefault();
+      if (activeListIndex < 0) activeListIndex = 0;
+      else activeListIndex = e.key === "j"
+        ? Math.min(rows.length - 1, activeListIndex + 1)
+        : Math.max(0, activeListIndex - 1);
+      rows.forEach((r) => r.classList.remove("is-keyfocus"));
+      const row = rows[activeListIndex];
+      if (row) { row.classList.add("is-keyfocus"); row.scrollIntoView({ block: "nearest" }); row.focus(); }
+      return;
+    }
+    if (e.key === "Enter") {
+      const row = listEl.querySelector("[data-msg].is-keyfocus");
+      if (row) { row.click(); }
+      return;
+    }
+    if (e.key === "r") {
+      const bodyInput = document.getElementById("reply-body");
+      if (bodyInput) { e.preventDefault(); bodyInput.focus(); }
+    }
+  });
+
   if (refreshEl) {
     refreshEl.addEventListener("click", () => {
       // withBusy disables the button and swaps in a spinner for the duration,
       // so a staff member cannot stack a queue of reloads on a slow connection.
       withBusy(refreshEl, async () => {
         try {
+          resetListState();
+          // Explicit reload = fetch fresh, not the cached thread snapshot —
+          // the whole point of clicking Reload is "show me what actually
+          // changed since I last looked."
+          if (currentMessageId) {
+            const m = await KCMPS_DASH.getMessage(currentMailboxId, currentMessageId).catch(() => null);
+            if (m) await KCMPS_DASH.getThread(currentMailboxId, m.threadId, { forceRefresh: true }).catch(() => {});
+          }
           await renderAll();
         } catch (err) {
           showInlineError(listEl, "Could not reload messages. " + (err && err.message ? err.message : ""));

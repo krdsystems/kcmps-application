@@ -374,9 +374,10 @@ select.input { appearance: auto; }
 .mail-wide { max-width: none; display: flex; flex-direction: column; padding-bottom: var(--space-4); }
 .mail-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .mail-toolbar select.input { max-width: 260px; }
-.mail-toolbar .mail-search { max-width: 280px; margin-left: auto; }
-/* Reload sits at the far right of the toolbar, after the search box's
-   `margin-left: auto` has already pushed the group over. flex-shrink: 0 keeps
+/* Search's `margin-left: auto` now lives on its wrapper (.mail-search-wrap,
+   below, added for the search-scope hint line) rather than the input
+   itself. Reload sits at the far right of the toolbar, after that auto
+   margin has already pushed the group over. flex-shrink: 0 keeps
    the label from collapsing onto two lines when the mailbox <select> is wide. */
 /* --- inline delivery checks (email.html renderChecks()) ---
    Four marks sit in the message header next to From/Address/Received; the
@@ -428,6 +429,103 @@ select.input { appearance: auto; }
 .mail-notice { font-size: 12px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--color-accent-100); color: var(--color-accent-800); margin-bottom: var(--space-3); }
 .mail-back { display: none; }
 
+/* — Gmail-like redesign additions (docs/email-tab-redesign-2026-08-06.md) —
+   Everything below is scoped to mail-* / thread-* / q-item.is-unread /
+   q-item.is-keyfocus classes only, same discipline as the block above:
+   .q-list/.dash-content overrides stay confined to the mail page, nothing
+   here should leak onto today.html/jobs.html's queue cards. */
+
+/* toolbar: folder toggle + search-scope hint */
+.mail-folder-toggle { display: inline-flex; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
+.mail-folder-toggle button {
+  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+.mail-folder-toggle button + button { border-left: 1px solid var(--color-divider); }
+.mail-folder-toggle button.is-active { background: var(--color-accent-2, var(--color-accent)); color: #fff; }
+.mail-folder-toggle button:hover:not(.is-active) { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.mail-search-wrap { display: flex; flex-direction: column; gap: 2px; margin-left: auto; max-width: 300px; }
+.mail-search-wrap .mail-search { max-width: none; margin-left: 0; }
+.mail-search-scope { font-size: 11px; color: color-mix(in srgb, var(--color-text) 55%, transparent); padding-left: 2px; min-height: 14px; }
+.mail-kbd-hint { margin: 0 0 var(--space-2); font-size: 11.5px; }
+.mail-kbd-hint kbd {
+  font-family: var(--font-heading); font-size: 10.5px; padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--color-divider); background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
+}
+@media (max-width: 900px) { .mail-kbd-hint { display: none; } }
+
+/* list rows: unread weight + dot marker + thread-count badge */
+.mail-list .q-item.is-unread .q-line1 > span:first-child { font-weight: 800; }
+.mail-list .q-item:not(.is-unread) .q-line1 > span:first-child { font-weight: 500; }
+.unread-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: var(--color-accent);
+  margin-right: 6px; vertical-align: middle; flex-shrink: 0;
+}
+.thread-count { font-weight: 600; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.mail-list .q-item.is-keyfocus { outline: 2px solid var(--color-accent-2, var(--color-accent)); outline-offset: -2px; }
+.list-load-more { display: block; width: 100%; margin-top: var(--space-2); font-size: 12.5px; }
+
+/* loading skeletons — list rows + read pane */
+.mail-skel-row {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 4px; border-left: 3px solid transparent;
+}
+.mail-skel-row span { height: 10px; border-radius: 4px; background: color-mix(in srgb, var(--color-text) 8%, var(--color-bg)); }
+.mail-skel-row span:first-child { width: 55%; }
+.mail-skel-row span:last-child { width: 85%; }
+.mail-skel-read { display: flex; flex-direction: column; gap: 10px; padding: var(--space-2) 0; }
+.mail-skel-line, .mail-skel-block { border-radius: 4px; background: color-mix(in srgb, var(--color-text) 8%, var(--color-bg)); }
+.mail-skel-line { height: 14px; }
+.mail-skel-block { height: 160px; margin-top: var(--space-2); }
+.mail-skel-row span, .mail-skel-line, .mail-skel-block { animation: mail-skel-pulse 1.3s ease-in-out infinite; }
+@keyframes mail-skel-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mail-skel-row span, .mail-skel-line, .mail-skel-block { animation: none; opacity: 0.7; } }
+
+/* conversation view — stacked thread cards replacing the old .timeline table */
+.thread-stack { display: flex; flex-direction: column; gap: 8px; margin-top: var(--space-3); }
+.thread-card { border: 1px solid var(--color-divider); border-radius: var(--radius-sm); overflow: hidden; }
+.thread-card.is-target { border-color: color-mix(in srgb, var(--color-accent-2, var(--color-accent)) 45%, var(--color-divider)); }
+.thread-card-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+  background: color-mix(in srgb, var(--color-text) 3%, var(--color-bg));
+  min-height: 44px;
+}
+.thread-card.is-expanded .thread-card-head { border-bottom: 1px solid var(--color-divider); }
+.thread-card-head:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg)); }
+.thread-avatar {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--color-accent-2, var(--color-accent)) 20%, transparent); color: var(--color-accent-800, var(--color-text));
+  font-size: 12px; font-weight: 800;
+}
+.thread-card.is-mine .thread-avatar { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.thread-who { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; min-width: 0; }
+.you-badge {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; padding: 1px 6px; border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent); color: var(--color-text); flex-shrink: 0;
+}
+.thread-date { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); white-space: nowrap; flex-shrink: 0; }
+.thread-snippet {
+  font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; flex: 1 1 auto; min-width: 0;
+}
+.thread-chevron { flex-shrink: 0; font-size: 11px; color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.thread-card-body { padding: var(--space-3); }
+.thread-card-body .ticket-meta { margin-bottom: var(--space-2); }
+.thread-attachments { margin-top: var(--space-3); }
+.quoted-toggle {
+  display: inline-block; margin: 6px 0; font-size: 12px; font-weight: 600; color: var(--color-accent-700, var(--color-accent));
+  background: none; border: 0; cursor: pointer; padding: 2px 0;
+}
+.quoted-toggle:hover { text-decoration: underline; }
+.quoted-block { opacity: 0.75; }
+
+/* reply composer — Cc toggle */
+.reply-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.reply-cc-toggle {
+  font-size: 12px; font-weight: 600; color: var(--color-accent-700, var(--color-accent)); background: none; border: 0;
+  cursor: pointer; padding: 2px 4px;
+}
+.reply-cc-toggle:hover { text-decoration: underline; }
+
 /* On-page banner for pages still running on the localStorage mock. The nav's
    "Soon" badge only warns someone who hasn't clicked yet; these pages look
    fully functional once you're on them (inventory adjustments even persist),
@@ -469,12 +567,19 @@ select.input { appearance: auto; }
   .mail-3pane .mail-read { display: none; }
   .mail-3pane.show-read .mail-list { display: none; }
   .mail-3pane.show-read .mail-read { display: block; }
-  .mail-toolbar .mail-search { margin-left: 0; max-width: none; flex: 1 1 100%; }
+  .mail-search-wrap { margin-left: 0; max-width: none; flex: 1 1 100%; }
   /* The full-width search bumps Reload onto its own row; pin it to the right
      edge so it reads as a deliberate action rather than a stray orphan, and
      lands under the thumb on a phone. */
   .mail-refresh { margin-left: auto; }
   .mail-back { display: inline-flex; margin-bottom: var(--space-2); }
+  /* Touch has no hover-revealed expand affordance, so collapsed thread
+     cards and the star/reply-Cc controls all need a real, deliberate tap
+     target — mirrors the same rule already applied to the scroll-indicator
+     and design-picker patterns elsewhere in this codebase. */
+  .thread-card-head { min-height: 48px; padding: 12px; }
+  .thread-snippet { display: none; }
+  .reply-cc-toggle, .quoted-toggle { min-height: 32px; }
 }
 
 /* Phone-width layout pass, part 2: card grids drop to one column (auto-fit's

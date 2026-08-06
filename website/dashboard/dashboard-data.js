@@ -1063,21 +1063,41 @@
     return message;
   }
 
-  // No dedicated thread endpoint on the real API — get-mail-messages.js's
-  // envelopes already carry threadId, so this pages through INBOX + SENT
-  // (a thread can span both) and filters/sorts client-side, same shape the
-  // mock returned (ascending by date, envelope fields only — email.html's
-  // thread rows only ever read t.date/t.snippet/t.messageId, never
-  // t.bodyText, so envelopes are sufficient here).
-  async function getThread(mailboxId, threadId) {
-    if (!threadId) return [];
-    const [inbox, sent] = await Promise.all([
+  /* No dedicated thread endpoint on the real API — get-mail-messages.js's
+     envelopes already carry threadId, so threading stays client-side (see
+     docs/email-tab-redesign-2026-08-06.md §4 — a GSI-backed thread endpoint
+     is deferred, not justified at this mailbox volume). What changed
+     2026-08-06: this used to re-page INBOX+SENT (up to 2x200 envelopes)
+     on EVERY getThread() call, i.e. every single message open — wasteful,
+     and the actual root cause was never the fetch shape, it was doing it
+     on every open instead of once per mailbox visit. Now it fetches once
+     per mailbox switch and serves every getThread() call in that mailbox
+     from the cached snapshot, dropping N-opens-in-a-row from N fetches to
+     1. Callers force a refresh (`{forceRefresh: true}`) after an action
+     that changes the mailbox's own messages — sendReply() below does this
+     automatically; email.html also does it after an explicit Reload. */
+  let _threadCacheMailboxId = null;
+  let _threadCachePromise = null;
+
+  function _loadThreadCache(mailboxId) {
+    if (_threadCacheMailboxId === mailboxId && _threadCachePromise) return _threadCachePromise;
+    _threadCacheMailboxId = mailboxId;
+    _threadCachePromise = Promise.all([
       getMessages(mailboxId, { folder: "INBOX", limit: 200 }),
       getMessages(mailboxId, { folder: "SENT", limit: 200 }),
-    ]);
-    return [...(inbox.messages || []), ...(sent.messages || [])]
-      .filter((m) => m.threadId === threadId)
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    ]).then(([inbox, sent]) => [...(inbox.messages || []), ...(sent.messages || [])]);
+    return _threadCachePromise;
+  }
+
+  // Envelope fields only — email.html's thread cards read t.date/t.snippet/
+  // t.messageId/t.from/t.flags for the collapsed rows, then lazily fetch
+  // getMessage() for the one a staffer actually expands. Never t.bodyText
+  // straight off this, same as before.
+  async function getThread(mailboxId, threadId, opts) {
+    if (!threadId) return [];
+    if (opts && opts.forceRefresh) { _threadCacheMailboxId = null; _threadCachePromise = null; }
+    const all = await _loadThreadCache(mailboxId);
+    return all.filter((m) => m.threadId === threadId).sort((a, b) => new Date(a.date) - new Date(b.date));
   }
 
   async function markMessageRead(mailboxId, messageId, seen) {
@@ -1095,10 +1115,16 @@
   // renders the warning.
   async function sendReply(mailboxId, messageId, payload) {
     const p = payload || {};
-    return apiFetch(mailPath(mailboxId, "/messages/" + encodeURIComponent(messageId) + "/reply"), {
+    const result = await apiFetch(mailPath(mailboxId, "/messages/" + encodeURIComponent(messageId) + "/reply"), {
       method: "POST",
       body: JSON.stringify({ bodyText: p.bodyText, cc: p.cc }),
     });
+    // A reply adds a new message to this mailbox's INBOX/SENT — drop the
+    // thread cache so the conversation view email.html re-renders right
+    // after a successful send picks it up instead of serving a stale
+    // pre-reply snapshot.
+    if (_threadCacheMailboxId === mailboxId) { _threadCacheMailboxId = null; _threadCachePromise = null; }
+    return result;
   }
 
   /* ---- Design Asset Library (live — Milestone: Design Asset Library) ----

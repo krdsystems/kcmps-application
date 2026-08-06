@@ -54,6 +54,10 @@
   --space-2: 12px;
   --space-3: 16px;
   --space-4: 24px;
+  /* See website/styles.css for why this step must not go missing again —
+     an unresolvable var() silently computes the whole declaration to its
+     initial value, which read as a dashboard layout bug for weeks. */
+  --space-5: 28px;
   --space-6: 32px;
   --space-8: 48px;
 

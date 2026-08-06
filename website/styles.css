@@ -50,10 +50,19 @@
   --font-heading-weight: 700;
   --font-body: "Inter", system-ui, sans-serif;
 
+  /* The scale skips no steps on purpose — --space-5 was MISSING here until
+     2026-08-06 while eight rules across the dashboard already referenced it.
+     An unresolvable var() makes the whole declaration invalid at
+     computed-value time, so `padding: var(--space-4) var(--space-5) ...`
+     silently computed to padding:0 rather than falling back to something
+     sane. That is what made dashboard content sit flush against the sidebar
+     and topbar. Don't remove a step from this scale without grepping for it
+     first — the failure is silent and looks like a layout bug, not a typo. */
   --space-1: 8px;
   --space-2: 12px;
   --space-3: 16px;
   --space-4: 24px;
+  --space-5: 28px;
   --space-6: 32px;
   --space-8: 48px;
 

@@ -75,7 +75,14 @@ html { overflow-x: hidden; }
 .nav-links a { font-weight: 500; white-space: nowrap; }
 .nav-links { flex-wrap: nowrap; }
 .btn .nav-icon { display: none; width: 18px; height: 18px; flex: none; }
-@media (max-width: 1000px) { .brand-sep, .brand-long { display: none; } }
+/* Collapse the wordmark to just "KCMPS" at the SAME breakpoint the nav
+   collapses at (1200px), not 1000px. The long form is
+   "Kaalyados Creatives Merchandise and Printing Services" — at 1024px
+   (a very common tablet width) it was still rendering in full while the
+   account buttons had already been squeezed to icons, so the brand ate the
+   row and pushed everything else into itself. */
+.lbl-short { display: none; }
+@media (max-width: 1200px) { .brand-sep, .brand-long { display: none; } }
 /* Below 1200px the full text nav (marketing links + My Orders + Dashboard +
    cart + account) no longer fits in one row — it silently overflows past
    the viewport (clipped by html's overflow-x:hidden, see docs/history.md
@@ -89,14 +96,55 @@ html { overflow-x: hidden; }
 @media (max-width: 1200px) {
   .nav-links a:not(.btn) { display: none; }
   .nav-links .btn-primary { display: none; }
-  #orders-link, #dashboard-link, #track-order-link { width: 36px; height: 36px; padding: 0; }
+  /* Icon ABOVE a tiny label, not icon-only. A bare icon is a guessing game
+     ("is that My Orders or the cart?"), and these are the two controls a
+     logged-in customer/staffer actually reaches for. Stacking keeps the
+     button ~44-52px wide — barely wider than the 36px icon-only version it
+     replaces — while staying a legible word. 9.5px is small but it is a
+     short, high-frequency, high-contrast word next to a matching icon, not
+     body copy; the accessible name still comes from aria-label, and .lbl-short
+     is aria-hidden so screen readers get the full "My Orders", not "Orders". */
+  #orders-link, #dashboard-link, #track-order-link {
+    width: auto; min-width: 44px; height: 40px; padding: 3px 7px;
+    flex-direction: column; justify-content: center; gap: 1px;
+  }
   #orders-link .lbl, #dashboard-link .lbl, #track-order-link .lbl { display: none; }
-  #orders-link.btn .nav-icon, #dashboard-link.btn .nav-icon, #track-order-link.btn .nav-icon { display: block; }
+  #orders-link .lbl-short, #dashboard-link .lbl-short, #track-order-link .lbl-short {
+    display: block; font-size: 9.5px; line-height: 1; font-weight: 700;
+    letter-spacing: 0.02em; white-space: nowrap;
+  }
+  #orders-link.btn .nav-icon, #dashboard-link.btn .nav-icon, #track-order-link.btn .nav-icon { display: block; width: 16px; height: 16px; }
 }
 @media (max-width: 760px) {
   .nav { gap: var(--space-2); }
   .nav-links { gap: var(--space-2); }
-  .auth-user-name { max-width: 60px; overflow: hidden; text-overflow: ellipsis; }
+  /* Drop the signed-in name on phones. Measured at 375px logged in, the nav
+     needed 430px — a 55px overflow that html's overflow-x:hidden silently
+     CLIPPED rather than scrolled, which is what looked like the nav items
+     "pushing each other out". The name is the least load-bearing thing in
+     that row: Orders + Dashboard only appear when signed in, so the state is
+     already obvious, and the actual account identity is one tap away. Keeping
+     it and shrinking everything else would have meant an unreadable Logout. */
+  .auth-user-name { display: none; }
+  #logout-btn, .auth-user .btn { padding: var(--space-2) var(--space-3); }
+  /* Tighter than the 12px .nav-links gap above. Measured logged-in-as-staff
+     — the widest case, since it is the only one showing BOTH Orders and
+     Dashboard — the row needed 374px. These reclaim ~28px of pure spacing
+     before anything has to be hidden or abbreviated. */
+  .nav-links { gap: 8px; }
+  #orders-link, #dashboard-link, #track-order-link { padding: 3px 4px; }
+}
+/* Last resort, and only here: below ~360px even a fully tightened row can't
+   hold logo + wordmark + Orders + Dashboard + cart + Logout. Drop the
+   "KCMPS" wordmark and keep the logo mark, which still identifies the brand
+   and is itself the link home. Chosen over abbreviating "Dashboard" to
+   something like "Dash" (cryptic for the label we just added to make these
+   buttons legible) or over shrinking the labels below 9.5px (unreadable),
+   and over letting the row clip — which is the bug being fixed here: the
+   overflow was hidden by html's overflow-x:hidden, so it read as text
+   colliding rather than as a row that was simply too long. */
+@media (max-width: 360px) {
+  .brand-short { display: none; }
 }
 
 .kicker-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
@@ -411,7 +459,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
          @media (max-width: 1200px) rule above) instead of vanishing. -->
     <a href="orders.html" id="orders-link" class="btn btn-ghost is-hidden" aria-label="My Orders" title="My Orders">
       <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,24H56A16,16,0,0,0,40,40V224a8,8,0,0,0,11.58,7.16L64,224.94l12.42,6.22a8,8,0,0,0,7.16,0L96,224.94l12.42,6.22a8,8,0,0,0,7.16,0L128,224.94l12.42,6.22a8,8,0,0,0,7.16,0L160,224.94l12.42,6.22a8,8,0,0,0,7.16,0L192,224.94l12.42,6.22A8,8,0,0,0,216,224V40A16,16,0,0,0,200,24Zm0,177.06-4.42-2.22a8,8,0,0,0-7.16,0L176,205.06l-12.42-6.22a8,8,0,0,0-7.16,0L144,205.06l-12.42-6.22a8,8,0,0,0-7.16,0L112,205.06,99.58,198.84a8,8,0,0,0-7.16,0L80,205.06,67.58,198.84a8,8,0,0,0-7.16,0L56,201.06V40H200ZM80,88a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,88Zm0,40a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,128Z"/></svg>
-      <span class="lbl">My Orders</span>
+      <span class="lbl">My Orders</span><span class="lbl-short" aria-hidden="true">Orders</span>
     </a>
 
     <!-- Track an order — guest lookup (no account needed), shown only when
@@ -419,13 +467,13 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
          same way as #orders-link, just inverted. -->
     <a href="track-order.html" id="track-order-link" class="btn btn-ghost" aria-label="Track an order" title="Track an order">
       <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
-      <span class="lbl">Track an order</span>
+      <span class="lbl">Track an order</span><span class="lbl-short" aria-hidden="true">Track</span>
     </a>
 
     <!-- Dashboard link — shown only for users in the "Staff" Cognito group. -->
     <a href="#" id="dashboard-link" class="btn btn-ghost is-hidden" aria-label="Dashboard" title="Dashboard">
       <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M112,32H48A16,16,0,0,0,32,48v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V48A16,16,0,0,0,112,32Zm0,80H48V48h64v64Zm96-80H144a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,80H144V48h64v64ZM112,144H48a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V160A16,16,0,0,0,112,144Zm0,80H48V160h64v64Zm96-80H144a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V160A16,16,0,0,0,208,144Zm0,80H144V160h64v64Z"/></svg>
-      <span class="lbl">Dashboard</span>
+      <span class="lbl">Dashboard</span><span class="lbl-short" aria-hidden="true">Dashboard</span>
     </a>
 
     <!-- Cart button — stubbed. See CART INTEGRATION POINT in the auth script

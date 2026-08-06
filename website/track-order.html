@@ -111,8 +111,22 @@
       '<p class="card-body" style="margin-top:var(--space-4)">Questions about this order? <a href="mailto:' + O.ORDER_EMAIL + '?subject=' + encodeURIComponent("Order " + order.orderId) + '">Contact us</a>.</p>';
   }
 
+  // UAT found bare-suffix entry (e.g. "3A94793FF8" instead of
+  // "ORD-3A94793FF8") got rejected — the backend's own lookup is being made
+  // tolerant of the bare suffix, but this normalizes on the client too
+  // (trim, case-insensitive, "ORD-" optional) so it works the same way
+  // regardless of which side of that change is live, and so a valid-but-
+  // unprefixed entry is never blocked before it even reaches the API. This
+  // never narrows what's accepted — only ever adds a missing prefix / fixes
+  // case — so it can't produce a false "not found" for a real order ID.
+  function normalizeOrderId(raw) {
+    var s = String(raw || "").trim().toUpperCase();
+    if (!s) return s;
+    return /^ORD-/.test(s) ? s : "ORD-" + s;
+  }
+
   function submit() {
-    var orderId = orderIdInput.value.trim();
+    var orderId = normalizeOrderId(orderIdInput.value);
     var contact = contactInput.value.trim();
     errorEl.style.display = "none";
     resultEl.innerHTML = "";

@@ -189,7 +189,8 @@
     // getMessages() header). Opening the order or the 8s background poll
     // should show the thread without silently clearing the "new message"
     // banner before the customer ever sees it; only markRead() below
-    // (wired to the reply box's focus) does that.
+    // (wired to two real "seen" signals: reply-box focus, and the dwell
+    // watcher below) does that.
     O.getMessages(orderId).then(renderMessages).catch(function () { /* silent — don't disrupt the rest of the page over a poll failure */ });
   }
 
@@ -199,6 +200,56 @@
     markedReadFor = orderId;
     O.markMessagesRead(orderId).then(renderMessages)
       .catch(function () { /* silent — don't disrupt the page over a mark-read failure */ });
+  }
+
+  /* ---------- unread "seen" dwell watcher ----------
+     UAT gap: the reply-box-focus signal alone left the "new message" banner
+     lit for a customer who scrolled down, actually read a staff reply, and
+     left without ever clicking into the textbox. This adds a second signal
+     — the Messages card genuinely on-screen, in a foregrounded tab, for a
+     sustained dwell — WITHOUT going back to "any fetch clears it" (that was
+     the original bug: mark-read used to fire on every get-messages call, so
+     the routine act of opening a ticket to check for a reply silently wiped
+     the badge before the person had actually read anything).
+     Why a dwell-visibility signal can't regress that bug: it's driven by
+     IntersectionObserver + document.visibilityState, never by loadMessages()
+     or the 8s poll — the poll keeps re-fetching without marking anything
+     read, exactly as before. And unlike a fetch (which fires the instant a
+     page/tab opens, visible or not), this requires the card to be:
+       1) intersecting the viewport (not just present in the DOM — the
+          customer has to have scrolled to it or landed with it in view),
+       2) in a tab that's actually focused/visible (background tabs and
+          minimized windows can't accrue dwell time), and
+       3) continuously so for DWELL_MS — a drive-by scroll past the card
+          cancels the timer before it fires, same as switching tabs mid-dwell.
+     A customer who glances at the order and leaves within DWELL_MS never
+     triggers it; one who stops and reads the thread does — which is the
+     actual bar for "has this person seen the message," not merely "did a
+     request for it round-trip." */
+  var DWELL_MS = 1500;
+  var messagesObserver = null;
+  var clearMessagesDwell = function () {}; // reassigned per watcher; the shared visibilitychange listener below always calls the current one
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible") clearMessagesDwell();
+  });
+  function wireMessagesDwellWatcher(orderId) {
+    if (messagesObserver) { messagesObserver.disconnect(); messagesObserver = null; }
+    clearMessagesDwell();
+    var card = document.getElementById("messages");
+    if (!card || typeof IntersectionObserver === "undefined") return;
+    var dwellTimer = null;
+    clearMessagesDwell = function () { if (dwellTimer) { clearTimeout(dwellTimer); dwellTimer = null; } };
+    function maybeStartDwell() {
+      clearMessagesDwell();
+      if (document.visibilityState !== "visible") return;
+      dwellTimer = setTimeout(function () { markRead(orderId); }, DWELL_MS);
+    }
+    messagesObserver = new IntersectionObserver(function (entries) {
+      var entry = entries[0];
+      if (entry && entry.isIntersecting) maybeStartDwell();
+      else clearMessagesDwell();
+    }, { threshold: 0.6 });
+    messagesObserver.observe(card);
   }
 
   function wireMessages(order) {
@@ -213,6 +264,7 @@
     var sendBtn = document.getElementById("message-send-btn");
     var errorEl = document.getElementById("message-error");
     input.addEventListener("focus", function () { markRead(order.orderId); });
+    wireMessagesDwellWatcher(order.orderId);
     function send() {
       var text = input.value.trim();
       var files = Array.prototype.slice.call(filesInput.files || []);
@@ -283,7 +335,15 @@
         if (result.priceChanged.length) lines.push("Note: pricing has changed since this order for " + result.priceChanged.map(O.escapeHtml).join(", ") + ".");
         report.innerHTML = lines.join("<br>");
         reorderBtn.textContent = "Reorder"; reorderBtn.disabled = false;
-        if (result.added.length) window.KCMPS_STORE.open();
+        // window.KCMPS_STORE.open() slides the cart drawer open so the
+        // shopper can SEE the re-added items — reorder used to silently
+        // succeed with no visible feedback. Feature-detected: if a future
+        // store.js build ever drops/renames it, the text report above
+        // (always rendered regardless, right above) is still a clear
+        // confirmation on its own, so this never leaves the page silent.
+        if (result.added.length && window.KCMPS_STORE && typeof window.KCMPS_STORE.open === "function") {
+          window.KCMPS_STORE.open();
+        }
       }).catch(function (err) {
         document.getElementById("reorder-report").textContent = err.message;
         reorderBtn.textContent = "Reorder"; reorderBtn.disabled = false;

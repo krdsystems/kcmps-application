@@ -336,7 +336,7 @@
       el.querySelector("#session-guard-title").textContent = "Screen locked while you were away";
       el.querySelector("#session-guard-desc").textContent = pinSet
         ? "For privacy, this stayed open longer than usual, so it's been hidden. Enter your PIN to resume — nothing was lost."
-        : "For privacy, this stayed open longer than usual, so it's been hidden. Nothing was lost.";
+        : "For privacy, this stayed open longer than usual, so it's been hidden. Nothing was lost. Set a 4-digit PIN and only you can bring this screen back.";
       if (pinSet) {
         // A correct PIN at stage 1 is a real "resume" — the session itself
         // is not in question here, only whether the right person is
@@ -346,11 +346,27 @@
           onSuccess: () => { lastActivityAt = Date.now(); closeSessionGuard(); },
         });
       } else {
-        // No PIN on file for this staffer — sensible fallback so nobody is
-        // ever locked out of their own dashboard for not having opted in.
-        // Settings has the "set a PIN" UI; this plain Resume is the default
-        // until they do.
-        actions.innerHTML = '<button type="button" class="btn btn-primary" id="session-guard-resume">Resume</button>';
+        // No PIN on file — this is the moment the feature is most obviously
+        // useful, so the primary action sends them to Settings to set one
+        // (deep-linked to #idle-pin) rather than just letting them dismiss.
+        //
+        // "Resume without a PIN" stays as a deliberate second option, and
+        // that is NOT a half-measure: this overlay is a shoulder-surfing
+        // deterrent, not an auth boundary (the Cognito JWT every backend
+        // route re-verifies is the real one), so a hard gate here would buy
+        // no actual security while creating a genuine way to strand a
+        // staffer out of their own dashboard mid-job — exactly the failure
+        // this codebase avoids elsewhere. Nudge, don't trap.
+        actions.innerHTML =
+          '<button type="button" class="btn btn-primary" id="session-guard-setpin">Set up a PIN</button>' +
+          '<button type="button" class="btn btn-ghost" id="session-guard-resume">Resume without a PIN</button>';
+        el.querySelector("#session-guard-setpin").addEventListener("click", () => {
+          // Close first so the overlay isn't left painted over the page we
+          // are navigating to if the browser restores this view from bfcache.
+          lastActivityAt = Date.now();
+          closeSessionGuard();
+          global.location.href = "settings.html#idle-pin";
+        });
         el.querySelector("#session-guard-resume").addEventListener("click", () => {
           lastActivityAt = Date.now();
           closeSessionGuard();
@@ -376,6 +392,12 @@
           onSuccess: () => { renderStage2Actions(actions); },
         });
       } else {
+        // Deliberately NO "set up a PIN" nudge at stage 2, unlike stage 1.
+        // Stage 2 means the token has probably already expired, so sending
+        // them to settings.html would just bounce them to login and the PIN
+        // could not be saved anyway — a prompt that cannot succeed is worse
+        // than no prompt. They get the nudge next time stage 1 fires on a
+        // live session.
         renderStage2Actions(actions);
       }
     }

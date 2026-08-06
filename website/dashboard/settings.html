@@ -22,7 +22,9 @@
     </header>
 
     <main class="dash-content">
-      <section class="dsec">
+      <!-- id is the deep-link target for the idle guard's "Set up a PIN"
+           prompt in dashboard-shell.js — keep them in sync. -->
+      <section class="dsec" id="idle-pin" style="scroll-margin-top:var(--space-5)">
         <div class="dsec-head">
           <h2>Idle-screen PIN</h2>
           <span class="hint">A privacy deterrent, not a login — read the note below</span>

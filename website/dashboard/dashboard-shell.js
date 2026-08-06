@@ -108,7 +108,7 @@
     { key: "clients", href: "clients.html", label: "Clients", hint: "CRM", soon: true },
     { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
-    { key: "design", href: "design-library.html", label: "Design Library", hint: "Asset library" },
+    { key: "design", href: "asset-library.html", label: "Asset Library", hint: "Files, designs & approvals" },
     { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs", soon: true },
   ];
 

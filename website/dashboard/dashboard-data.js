@@ -1077,59 +1077,96 @@
     });
   }
 
-  /* ---- Design Asset Library (live — Milestone: Design Asset Library) ----
+  /* ---- Asset Library (formerly Design Library — renamed 2026-08-07) ----
      Behind the same KCMPS_DASH seam as getAllOrders/verifyPayment/etc — live-only,
      no localStorage fallback, matching how those functions work. Backend is
-     backend/design-library/*.js (get-upload-url.js/publish-design.js/list-designs.js/
-     patch-design.js), deployed on kcmps-backend-staging. See root CLAUDE.md's
-     "Design asset library" row. */
-  async function getDesigns() {
-    const { designs } = await apiFetch("/designs", { method: "GET" });
+     backend/asset-library/*.js (get-upload-url.js/publish-design.js/list-designs.js/
+     patch-design.js), routes /assets*, deployed on kcmps-backend-staging ONLY —
+     production has no /assets routes, which is what assetApiAvailable() reports
+     so asset-library.html can render an honest "staging only" state instead of
+     bare 404s. See root CLAUDE.md's "Design asset library" row and
+     docs/asset-library-rebuild-plan-2026-08-06.md. */
+
+  // True only where the Asset Library backend actually exists. Kept here
+  // (not in the page) because this file owns the hostname->API_BASE branch
+  // the answer derives from.
+  function assetApiAvailable() {
+    return typeof location !== "undefined" && location.hostname === "dev.kcmps.com";
+  }
+
+  async function getAssets() {
+    const { designs } = await apiFetch("/assets", { method: "GET" });
     return designs || [];
+  }
+
+  // Lightweight approval-queue summary for the Admin banner — no presigns,
+  // no events, cheap enough to poll. Returns { count, items }.
+  async function getAssetApprovalSummary() {
+    return apiFetch("/assets?view=pending-summary", { method: "GET" });
   }
 
   // Step 1 of 2 — presigned PUT URLs for the original + web-ready files.
   // meta: { category, original: {filename, contentType, size}, web: {filename, contentType, size} }
-  async function getDesignUploadUrls(meta) {
-    return apiFetch("/designs/upload-url", { method: "POST", body: JSON.stringify(meta) });
+  async function getAssetUploadUrls(meta) {
+    return apiFetch("/assets/upload-url", { method: "POST", body: JSON.stringify(meta) });
   }
 
-  // Step 2 of 2 — called after both presigned PUTs succeed. meta: { name,
-  // description, category, tags, status, s3KeyOriginal, s3KeyWeb }. May
-  // 409 with { stillScanning: true } if GuardDuty hasn't verdicted either
-  // file yet — callers should treat that as a retry-able state, not an error.
-  async function publishDesign(meta) {
-    return apiFetch("/designs", { method: "POST", body: JSON.stringify(meta) });
+  // Step 2 of 2 — called after both presigned PUTs succeed. Always creates a
+  // DRAFT (the backend rejects status "published" outright — publishing goes
+  // through the submit/approve workflow below). meta: { name, description,
+  // category, tags, s3KeyOriginal, s3KeyWeb }.
+  async function createAsset(meta) {
+    return apiFetch("/assets", { method: "POST", body: JSON.stringify({ ...meta, status: "draft" }) });
   }
 
-  async function updateDesign(id, patch) {
-    return apiFetch("/designs/" + encodeURIComponent(id), {
-      method: "PATCH", body: JSON.stringify({ action: "update", ...patch }),
-    });
+  async function updateAsset(id, patch) {
+    return assetPatch(id, { action: "update", ...patch });
   }
 
-  async function archiveDesign(id) {
-    return apiFetch("/designs/" + encodeURIComponent(id), {
-      method: "PATCH", body: JSON.stringify({ action: "archive" }),
-    });
+  async function archiveAsset(id) {
+    return assetPatch(id, { action: "archive" });
   }
 
-  async function restoreDesign(id) {
-    return apiFetch("/designs/" + encodeURIComponent(id), {
-      method: "PATCH", body: JSON.stringify({ action: "restore" }),
-    });
+  async function restoreAsset(id) {
+    return assetPatch(id, { action: "restore" });
   }
 
-  // draft -> published promotion, same fail-closed scan gate as publishDesign().
-  async function promoteDesign(id) {
-    return apiFetch("/designs/" + encodeURIComponent(id), {
-      method: "PATCH", body: JSON.stringify({ action: "publish" }),
+  // draft -> pending_approval. May 409 with { stillScanning: true } while
+  // GuardDuty hasn't verdicted both files — the page treats that as the
+  // self-resolving "Scanning…" state, never a user error. If the caller is
+  // the ONLY Admin, the backend publishes immediately (response.published).
+  async function submitAssetForApproval(id) {
+    return assetPatch(id, { action: "submit" });
+  }
+
+  // Admin-only. The approval completing the current Admin set publishes
+  // inline (response.published === true).
+  async function approveAsset(id) {
+    return assetPatch(id, { action: "approve" });
+  }
+
+  // Admin-only veto — reason is required, returns the asset to draft and
+  // clears all collected approvals.
+  async function rejectAsset(id, reason) {
+    return assetPatch(id, { action: "reject", reason });
+  }
+
+  // Admin-only break-glass direct publish (mandatory reason, audited with
+  // breakGlass: true). The malware-scan gate still applies in full.
+  async function publishAssetDirect(id, reason) {
+    return assetPatch(id, { action: "publish", reason });
+  }
+
+  function assetPatch(id, body) {
+    return apiFetch("/assets/" + encodeURIComponent(id), {
+      method: "PATCH", body: JSON.stringify(body),
     });
   }
 
   global.KCMPS_DASH = {
     STORAGE_KEY, STATIONS, STATION_LABELS,
-    getDesigns, getDesignUploadUrls, publishDesign, updateDesign, archiveDesign, restoreDesign, promoteDesign,
+    assetApiAvailable, getAssets, getAssetApprovalSummary, getAssetUploadUrls, createAsset,
+    updateAsset, archiveAsset, restoreAsset, submitAssetForApproval, approveAsset, rejectAsset, publishAssetDirect,
     getMailboxes, getMessages, getMessage, getThread, markMessageRead, sendReply,
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
     advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, setOnHold,

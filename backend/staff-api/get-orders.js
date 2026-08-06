@@ -39,8 +39,14 @@ exports.handler = async (event) => {
   const staff = isStaff(claims);
   const orders = staff ? await getAllOrders() : await getOrdersForSub(claims.sub);
   if (staff) {
-    await Promise.all(orders.map(withCorrespondenceUrls));
-    await Promise.all(orders.map(withDesignFileUrls));
+    // Independent passes (correspondence attachments vs. design-file
+    // attachments touch disjoint fields on each order) — run them
+    // concurrently instead of as two serial Promise.all sweeps over every
+    // order. Halves this stage's wall-clock cost with no ordering risk.
+    await Promise.all([
+      Promise.all(orders.map(withCorrespondenceUrls)),
+      Promise.all(orders.map(withDesignFileUrls)),
+    ]);
   }
   if (!staff) orders.forEach(redactForCustomer); // strips correspondenceLog entirely — customers never see it
   orders.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -88,21 +94,30 @@ async function scanAll(params) {
 }
 
 
+// META/LINEITEM#/EVENT# (and MSG#) all share one partition key (ORDER#<id>,
+// see keys.js's orderPk/metaSk/lineItemSk/eventSk) — so this order's line
+// items and events are both already in the SAME partition the caller Scanned
+// META out of. The previous version issued two separate Query round-trips
+// per order (one begins_with(SK, "LINEITEM#"), one begins_with(SK, "EVENT#"))
+// — measured as the dominant contributor to get-orders' p99 (see
+// docs/performance-audit-2026-08-06.md). A single PK-only Query returns
+// everything in the partition in one round-trip; splitting by SK prefix
+// client-side is free compared to a second network call. Also kicks off the
+// payment-screenshot presign (its own I/O, independent of this query)
+// concurrently rather than after, since neither depends on the other.
 async function attachLineItems(order) {
-  const [lineItemsRes, eventsRes] = await Promise.all([
+  const [itemsRes, payment] = await Promise.all([
     client.send(new QueryCommand({
       TableName: TABLE,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
-      ExpressionAttributeValues: { ":pk": order.PK, ":prefix": "LINEITEM#" },
+      KeyConditionExpression: "PK = :pk",
+      ExpressionAttributeValues: { ":pk": order.PK },
     })),
-    client.send(new QueryCommand({
-      TableName: TABLE,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
-      ExpressionAttributeValues: { ":pk": order.PK, ":prefix": "EVENT#" },
-    })),
+    withScreenshotUrl(order.payment),
   ]);
-  const payment = await withScreenshotUrl(order.payment);
-  return { ...order, payment, lineItems: lineItemsRes.Items || [], events: eventsRes.Items || [] };
+  const items = itemsRes.Items || [];
+  const lineItems = items.filter((i) => typeof i.SK === "string" && i.SK.startsWith("LINEITEM#"));
+  const events = items.filter((i) => typeof i.SK === "string" && i.SK.startsWith("EVENT#"));
+  return { ...order, payment, lineItems, events };
 }
 
 // ---- attachment download rules (one place, three call sites) ----

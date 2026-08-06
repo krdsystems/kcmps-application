@@ -400,7 +400,7 @@
     thumb.className = "product-thumb";
     if (imageSrc) {
       var img = document.createElement("img");
-      img.src = imageSrc; img.alt = alt; img.loading = "lazy";
+      img.src = imageSrc; img.alt = alt; img.loading = "lazy"; img.decoding = "async";
       thumb.appendChild(img);
     } else {
       thumb.innerHTML = '<span class="mono">' + initials(alt) + '</span>';
@@ -767,6 +767,7 @@
 
     var img = document.createElement("img");
     img.loading = "lazy";
+    img.decoding = "async";
     // Was mouse-only (no tabindex, click listener only) — a keyboard user
     // couldn't reach the thumb at all to open the lightbox. tabindex="0" +
     // role="button" + Enter/Space below make it keyboard-operable without
@@ -855,7 +856,7 @@
       pick.setAttribute("aria-label", "Select design: " + title);
 
       var pimg = document.createElement("img");
-      pimg.src = src; pimg.alt = ""; pimg.loading = "lazy";
+      pimg.src = src; pimg.alt = ""; pimg.loading = "lazy"; pimg.decoding = "async";
       pick.appendChild(pimg);
 
       var check = document.createElement("span");
@@ -977,7 +978,7 @@
         var title2 = designTitle(src);
         tile.setAttribute("aria-label", "View design: " + title2);
         var timg = document.createElement("img");
-        timg.src = src; timg.alt = ""; timg.loading = "lazy";
+        timg.src = src; timg.alt = ""; timg.loading = "lazy"; timg.decoding = "async";
         tile.appendChild(timg);
         var label = document.createElement("span");
         label.className = "design-pick-label";
@@ -1891,7 +1892,7 @@
           thumbBtn.type = "button"; thumbBtn.className = "c-thumb";
           thumbBtn.setAttribute("aria-label", "View full-size design: " + (i.designName || i.name));
           var thumbImg = document.createElement("img");
-          thumbImg.src = i.designRef; thumbImg.alt = ""; thumbImg.loading = "lazy";
+          thumbImg.src = i.designRef; thumbImg.alt = ""; thumbImg.loading = "lazy"; thumbImg.decoding = "async";
           thumbBtn.appendChild(thumbImg);
           thumbBtn.addEventListener("click", function () {
             openLightbox([{ src: i.designRef, alt: i.designName || i.name }], 0);

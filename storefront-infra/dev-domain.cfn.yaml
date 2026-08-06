@@ -118,6 +118,31 @@ Resources:
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt DevBasicAuthFunction.FunctionMetadata.FunctionARN
+        # PREPARED, NOT APPLIED — see docs/performance-audit-2026-08-06.md Fix 1 and
+        # storefront-infra/cloudfront-caching-behavior.md for the full rationale and the
+        # equivalent production CLI commands. This CacheBehavior is written here so the
+        # dev stack's template is the source of truth for the change, but it is
+        # deliberately NOT deployed: applying it to dev.kcmps.com right now would make the
+        # dev domain cache assets/* at the edge, which fights the whole point of a
+        # fast-iteration staging domain (a synced image wouldn't show up until the cache
+        # entry expires or is invalidated). Uncomment and redeploy only when that
+        # tradeoff is intentionally accepted, or apply the equivalent change directly to
+        # PRODUCTION only, on the owner's explicit go-ahead, via the CLI steps in that doc.
+        #
+        # CacheBehaviors:
+        #   - PathPattern: assets/*
+        #     TargetOriginId: dev-origin
+        #     ViewerProtocolPolicy: redirect-to-https
+        #     Compress: true
+        #     AllowedMethods: [GET, HEAD]
+        #     CachedMethods: [GET, HEAD]
+        #     # AWS managed "CachingOptimized" — respects S3 Cache-Control if set,
+        #     # otherwise a sane default TTL. Real edge caching for images/fonts/manifest.
+        #     CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        #     ResponseHeadersPolicyId: !Ref DevResponseHeadersPolicy
+        #     FunctionAssociations:
+        #       - EventType: viewer-request
+        #         FunctionARN: !GetAtt DevBasicAuthFunction.FunctionMetadata.FunctionARN
         ViewerCertificate:
           AcmCertificateArn: !Ref AcmCertificateArn
           SslSupportMethod: sni-only

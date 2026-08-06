@@ -507,10 +507,10 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
     </div>
     <div class="hero-figure hero-carousel duotone" id="hero-carousel" aria-roledescription="carousel" aria-label="KCMPS studio photos">
       <div class="carousel-track" id="carousel-track">
-        <figure class="carousel-slide"><img src="assets/design/apparel/sublimation/street-statment/02-BTS SHIRT 1.jpg" alt="Street statement sublimation print design, ready to press" /></figure>
-        <figure class="carousel-slide"><img src="assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg" alt="Clean logo DTF transfer design, ready to press" /></figure>
-        <figure class="carousel-slide"><img src="assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg" alt="Typographic quote DTF transfer design, ready to press" /></figure>
-        <figure class="carousel-slide"><img src="assets/leaves/subli.jpg" alt="Full-color sublimation printing on fabric at KCMPS" /></figure>
+        <figure class="carousel-slide"><img src="assets/design/apparel/sublimation/street-statment/02-BTS SHIRT 1.jpg" alt="Street statement sublimation print design, ready to press" fetchpriority="high" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg" alt="Clean logo DTF transfer design, ready to press" loading="lazy" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg" alt="Typographic quote DTF transfer design, ready to press" loading="lazy" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="assets/leaves/subli.jpg" alt="Full-color sublimation printing on fabric at KCMPS" loading="lazy" decoding="async" /></figure>
       </div>
       <button type="button" class="carousel-arrow prev" id="carousel-prev" aria-label="Previous photo">
         <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>
@@ -806,7 +806,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
         <div class="note-card">Walk-in consultations are welcome. Run the estimator above to pre-generate layout specs before visiting — directions are shared instantly on a validated quote.</div>
       </div>
       <figure class="contact-figure duotone">
-        <img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/b808ffe8e_generated_image.png" alt="3D printing studio floor" />
+        <img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/b808ffe8e_generated_image.png" alt="3D printing studio floor" loading="lazy" decoding="async" />
       </figure>
     </div>
   </section>
@@ -816,7 +816,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   <div class="wrap">
     <div class="foot-top">
       <div>
-        <div class="foot-brand"><img src="assets/logo-mark.png" alt="" /><span>KCMPS</span></div>
+        <div class="foot-brand"><img src="assets/logo-mark.png" alt="" loading="lazy" decoding="async" /><span>KCMPS</span></div>
         <p class="tagline">Kaalyados Creatives — merchandise and printing services. High-fidelity print, pre-press drafting, precision 3D fabrication and curated hardware storage, made in Manila.</p>
       </div>
       <div class="foot-links">
@@ -1084,7 +1084,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
   function cardHtml(o) {
     return `
       <button type="button" class="est-product-pick" data-opt-id="${o.id}" role="option" aria-selected="false">
-        <div class="product-thumb">${o.image ? `<img src="${o.image}" alt="" loading="lazy" />` : `<span class="mono">${escapeHtml(initialsOf(o.name))}</span>`}</div>
+        <div class="product-thumb">${o.image ? `<img src="${o.image}" alt="" loading="lazy" decoding="async" />` : `<span class="mono">${escapeHtml(initialsOf(o.name))}</span>`}</div>
         <span class="est-product-pick-name">${escapeHtml(o.name)}</span>
         <span class="est-product-pick-price">${fmt(o.unitPrice)}</span>
       </button>`;

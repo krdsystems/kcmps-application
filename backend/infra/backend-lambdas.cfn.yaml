@@ -511,6 +511,7 @@ Resources:
   SendMessageLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-send-message", RetentionInDays: 14 } }
   GetUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-unread-messages", RetentionInDays: 14 } }
   AddCorrespondenceLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-add-correspondence", RetentionInDays: 14 } }
+  SetOrderTagsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-set-order-tags", RetentionInDays: 14 } }
   StreamsHandlerLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-streams-handler", RetentionInDays: 14 } }
   ExpirePendingOrdersLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-expire-pending-orders", RetentionInDays: 14 } }
   NotifyUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-notify-unread-messages", RetentionInDays: 14 } }
@@ -734,6 +735,22 @@ Resources:
         Variables:
           TABLE_NAME: !Ref TableName
           UPLOADS_BUCKET: !Ref UploadsBucket
+
+  SetOrderTagsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SetOrderTagsLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-set-order-tags
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-set-order-tags.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
 
   StreamsHandlerFunction:
     Type: AWS::Lambda::Function
@@ -1084,6 +1101,7 @@ Resources:
   SendMessageIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SendMessageFunction.Arn, PayloadFormatVersion: "2.0" } }
   GetUnreadMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetUnreadMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
   AddCorrespondenceIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt AddCorrespondenceFunction.Arn, PayloadFormatVersion: "2.0" } }
+  SetOrderTagsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SetOrderTagsFunction.Arn, PayloadFormatVersion: "2.0" } }
 
   DesignUploadUrlIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt DesignUploadUrlFunction.Arn, PayloadFormatVersion: "2.0" } }
   PublishDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PublishDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
@@ -1111,6 +1129,7 @@ Resources:
   RouteSendMessage: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SendMessageIntegration}" } }
   RouteGetUnreadMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /messages/unread", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetUnreadMessagesIntegration}" } }
   RouteAddCorrespondence: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/correspondence", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AddCorrespondenceIntegration}" } }
+  RouteSetOrderTags: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/tags", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SetOrderTagsIntegration}" } }
 
 # Asset Library routes (renamed from /designs* 2026-08-07 while production
   # still has zero /designs routes and zero external consumers — the one-time
@@ -1145,6 +1164,7 @@ Resources:
   PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets" } }
   PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets/*" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
+  PermSetOrderTags: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SetOrderTagsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/tags" } }
   PermGetMailboxes: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailboxesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes" } }
   PermGetMailMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages" } }
   PermGetMailMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*" } }

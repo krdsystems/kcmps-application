@@ -20,4 +20,5 @@ module.exports = {
   ...require("./threat-descriptions"),
   ...require("./magic-bytes"),
   ...require("./mail"),
+  ...require("./tags"),
 };

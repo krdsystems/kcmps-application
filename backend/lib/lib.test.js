@@ -283,6 +283,27 @@ test("redactForCustomer strips staff-internal fields from line items and events"
   assert.equal("station" in redacted.events[1], false);
 });
 
+test("redactForCustomer strips order tags and their audit events entirely", () => {
+  const order = {
+    orderId: "ORD-1",
+    tags: [{ key: "Type", value: "Reprint" }, { key: "Test", value: "" }],
+    lineItems: [],
+    events: [
+      { at: "2026-01-01T00:00:00Z", from: null, to: "Quoted", meta: { via: "createOrder" } },
+      {
+        at: "2026-01-01T01:00:00Z", from: null, to: "Tags updated", lineItemId: "ORDER",
+        actorSub: "sub-1", actorName: "Staffer",
+        meta: { via: "setTags", added: [{ key: "Type", value: "Reprint" }], removed: [], changed: [] },
+      },
+    ],
+  };
+  const redacted = redactForCustomer(order);
+
+  assert.equal("tags" in redacted, false);
+  assert.equal(redacted.events.length, 1);
+  assert.equal(redacted.events[0].to, "Quoted");
+});
+
 // ---- upload-types.js (customer design-file allowlist) ----
 
 test("resolveUploadType accepts the print/design formats the owner allowlisted", () => {

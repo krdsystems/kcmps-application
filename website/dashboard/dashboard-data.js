@@ -113,6 +113,7 @@
   function normalizeOrder(order) {
     order.client = order.client || { name: order.customerName };
     (order.lineItems || []).forEach((li) => { li.description = li.description || li.name; });
+    order.tags = Array.isArray(order.tags) ? order.tags : [];
     return order;
   }
 
@@ -999,6 +1000,62 @@
     return entry;
   }
 
+  /* ---- order tags (AWS-style key/value chips) ----
+     backend/staff-api/set-order-tags.js — a small staff-set key/value
+     list per order, for filtering/reporting (Type=Reprint, Priority=Rush,
+     Test=…), separate from the order-status state machine. Full-set PUT:
+     the caller (job-detail.html's tag editor) always sends the COMPLETE
+     desired tag list, never one add/remove call per tag — see the
+     Lambda's header for why. Real validation (length caps, character
+     allowlist, max count, duplicate-key rejection) is server-side in
+     backend/lib/tags.js; the constants below are UI-only (maxlength
+     attributes, a client-side pre-check for a snappier error before the
+     round trip) and must not be treated as the source of truth. */
+  const MAX_TAGS_PER_ORDER = 20;
+  const TAG_KEY_MAX = 40;
+  const TAG_VALUE_MAX = 120;
+
+  // Small "quick add" starter set the tag editor offers as one-click
+  // chips — purely a client-side convenience list, NOT enforced or even
+  // known to the backend (which accepts any key/value obeying the
+  // general rules above). Edit this ONE array to change what staff see
+  // as suggestions; nothing else needs to change.
+  const DEFAULT_ORDER_TAGS = [
+    { key: "Environment", value: "Test", hint: "Synthetic/internal order — exclude from real metrics" },
+    { key: "Priority", value: "Rush", hint: "Needs expedited turnaround" },
+    { key: "Type", value: "Reprint", hint: "Remake/redo of a prior job, not new revenue" },
+    { key: "Channel", value: "Walk-in", hint: "Taken in person/phone/DM, not through online checkout" },
+    { key: "Client", value: "VIP", hint: "Repeat/high-value client — handle with extra care" },
+  ];
+  function getDefaultOrderTags() { return DEFAULT_ORDER_TAGS.slice(); }
+
+  // `tags` is the COMPLETE desired list — [{key, value}], value may be
+  // "". Returns the normalized, stored list on success.
+  async function setOrderTags(orderId, tags, actorName) {
+    if (isMockOnlyOrder(orderId)) return setOrderTagsMock(orderId, tags, actorName);
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/tags", {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    });
+    return res.tags;
+  }
+
+  function setOrderTagsMock(orderId, tags, actorName) {
+    const state = load();
+    const order = state.orders.find((o) => o.orderId === orderId);
+    if (!order) throw new Error("Order not found: " + orderId);
+    const now = nowIso();
+    order.tags = tags;
+    state.events.push({
+      pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#ORDER",
+      orderId, lineItemId: "ORDER", from: null, to: "Tags updated",
+      actorSub: "current-user", actorName: actorName || "You",
+      station: null, at: now, meta: { via: "setTags" },
+    });
+    save(state);
+    return order.tags;
+  }
+
   // Shared by addCorrespondence/sendOrderMessage — `uploads` is the
   // {s3Key, uploadUrl} list the Lambda returned, positionally matching
   // `files` (same order the caller built the `attachments` metadata in).
@@ -1273,6 +1330,7 @@
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondence,
+    setOrderTags, getDefaultOrderTags,
     getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,
     resetSeed,

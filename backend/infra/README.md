@@ -319,11 +319,48 @@ verdict item is written unconditionally before routing, and it is what the publi
 actually reads. **The record annotation is a convenience copy for the dashboard; the `SCAN#`
 item is the source of truth.**
 
-Production needs the CloudFormation equivalent applied to the production Lambda stack (still
-CLI-managed, not this template) once a production `kcmps-design-originals-est-2026` bucket and
-GuardDuty plan exist — not done here.
+**Production promotion — done, 2026-08-07, CLI (not this template — production Lambdas stay
+CLI-managed).** Built the CLI equivalent of everything above, resource-for-resource:
+- Bucket `kcmps-design-originals-est-2026` — same versioning/encryption/public-access-block/
+  lifecycle as `kcmps-design-originals-staging`, verified by reading the staging bucket's live
+  config rather than re-deriving it from this template.
+- GuardDuty Malware Protection plan (`72cfed5b64b78faf37f5`), same `kcmps-guardduty-malware-s3`
+  role used by every other protected bucket, with a new bucket-scoped inline policy
+  (`kcmps-guardduty-malware-s3-design-originals-prod-inline`) — same one-policy-per-bucket
+  pattern as the other three. `Tagging: ENABLED` (the API defaults it to `DISABLED`; staging has
+  it on — matched by hand after the plan came up in the wrong state).
+- EventBridge rule `kcmps-guardduty-design-originals-scan-result`, filtered to the new bucket,
+  targeting `kcmps-handle-scan-result` (production). That target Lambda **predated the Asset
+  Library entirely and had zero `designs/` routing** — its production copy was still the
+  pre-2026-08-05 build. Diffed the deployed code against current `main` (four existing prefix
+  branches unchanged, one new `designs/` branch added, nothing else different) before
+  redeploying it, since it also handles real payment-proof/message/correspondence scanning.
+- IAM role `kcmps-design-library-lambda-role`, same two inline policies as staging's role
+  (`design-library-inline`/`design-library-s3`) with `kcmps-staging`→`kcmps` table and
+  `kcmps-design-originals-staging`→`kcmps-design-originals-est-2026` bucket swapped in. The one
+  detail worth flagging for whoever touches this next: `PUBLIC_ASSETS_KEY_PREFIX` is
+  `assets/designs/` here, **not** `dev-site/assets/designs/` — get that wrong and a publish
+  either 404s or writes into the wrong environment's storefront.
+- Five Lambdas (`kcmps-design-upload-url`, `kcmps-publish-design`, `kcmps-list-designs`,
+  `kcmps-patch-design`, `kcmps-purge-archived-designs`) built from current `backend/asset-library/
+  *.js` + `purge-archived-designs.js`, `TABLE_NAME=kcmps`. **The first deploy of all five
+  crashed on every invocation** (`Cannot find module '../lib'`) — the build script rewrote each
+  handler's own `require("../lib")` to `require("./lib")` but not the same require inside the
+  *sibling* files bundled alongside it (`scan-verdict.js` for the four asset-library Lambdas,
+  the same class of miss would have hit `purge-archived-designs.js` too). Caught by directly
+  invoking each function with synthetic JWT claims — a `LastUpdateStatus: Successful` deploy
+  proves nothing about whether the code runs. Fixed by rewriting every file in every zip, then
+  re-verifying zero remaining `require("../lib` occurrences before redeploying.
+- Four API routes (`POST /assets/upload-url`, `POST /assets`, `GET /assets`, `PATCH /assets/{id}`)
+  on the production API (`6msg2uho6c`), same JWT authorizer as every other production route, plus
+  the 15-minute purge schedule (`kcmps-purge-archived-designs-schedule`).
 
-### Asset Library Lambdas (formerly Design Library) — staging only (2026-08-06)
+Verified against real invocations post-fix: 403 for `Customer` on write routes, 404 for
+`patch-design` on a nonexistent asset, `{"designs":[]}` for a clean `list-designs` (correct —
+zero assets exist in production yet). Cost: near-₱0/mo at zero current volume, same basis as the
+existing GuardDuty pricing entry in `docs/cost-governance.md`.
+
+### Asset Library Lambdas (formerly Design Library) — staging + production (2026-08-06, promoted 2026-08-07)
 
 **Renamed 2026-08-07** (docs/asset-library-rebuild-plan-2026-08-06.md §5): the folder is now
 `backend/asset-library/`, the API routes are `/assets*` (renamed while production had zero
@@ -1552,12 +1589,54 @@ the same SES identity that carries live order mail — and a bounce there damage
 sending reputation. Staging sets it to `admin+admin.kcmps.uat@kcmps.com`; anything else is a
 clean 400 raised **before** any SES call. A production deploy would set it empty (unrestricted).
 
-**Production promotion — NOT RUN, documented only.** Production's 17 Lambdas are still
-CLI-managed and none of this exists there. Promoting needs the owner's explicit go-ahead, and
-then: create the prod `send-mail-reply` function + the four updated read functions from the same
-zips, attach a prod-equivalent of `MailLambdaRole`'s `mail-ses-send` policy (both the identity
-**and** configuration-set ARNs), add the route to `kcmps-checkout-api`, and set
-`MAIL_ALLOWED_RECIPIENTS` empty with `PERSONAL_MAILBOXES` populated for real staff.
+**Production promotion — done, 2026-08-07.** One correction to the paragraph this replaces:
+`PERSONAL_MAILBOXES` doesn't exist in current code — personal-mailbox mirroring was deleted, not
+dormant, in the C5 redesign above; do not set or reference it.
+
+**The repoint decision.** There is exactly one real Spacemail mailbox in this business
+(`admin@kcmps.com`, aliased as `order@`/`info@`), so there is no such thing as separate "staging
+mail" and "production mail" — only one inbound pipeline exists and only one ever will, short of
+a second SES receiving identity + a second Spacemail forwarding rule (real infra, real DNS in
+the other AWS account, and Spacemail confirmed no such second rule is configured). Rather than
+build that, the owner chose to **repoint the single pipeline to the production table**:
+- `kcmps-ingest-inbound` (new, production-named — not a rename of `kcmps-staging-ingest-inbound`,
+  which is CloudFormation-managed and would drift if deleted or mutated by CLI; it still exists,
+  just no longer wired to anything) reuses `kcmps-staging-ingest-inbound`'s exact deployed zip
+  with `TABLE_NAME=kcmps` instead of `kcmps-staging` — no code changed, only the target table.
+  The inbound bucket's S3 event notification was repointed from the staging function to this one
+  in a single `put-bucket-notification-configuration` call — that call IS the cutover moment;
+  everything before it is prep, everything after is live.
+- The 42 real mail items already sitting in `kcmps-staging` at cutover time were deliberately
+  **left there, not migrated** — production mail starts clean. They remain visible only on
+  `dev.kcmps.com`.
+- New IAM role `kcmps-mail-lambda-role`, the same three policies as
+  `kcmps-staging-mail-lambda-role` (`mail-table`/`mail-inbound-bucket-read`/`mail-ses-send`) with
+  `kcmps-staging`→`kcmps` swapped in `mail-table`; the SES identity/configuration-set ARNs in
+  `mail-ses-send` are unchanged (one SES identity, shared by both environments already). Creating
+  this role — specifically the `ses:SendRawEmail`/`ses:SendEmail` grant — needed an explicit
+  owner override of this environment's permission classifier; IAM grants that let a Lambda send
+  real email are exactly the class of action it's supposed to catch.
+- Five Lambdas (`kcmps-get-mailboxes`, `kcmps-get-mail-messages`, `kcmps-get-mail-message`,
+  `kcmps-mark-mail-read`, `kcmps-send-mail-reply`) built from current `backend/mail/*.js`,
+  `TABLE_NAME=kcmps`. **Same require-path miss as the Asset Library build below hit them too**
+  (`mail-parse.js`, the one shared sibling file, was copied into each zip without its own
+  `require("../lib")` rewritten) — checked every source file's requires exhaustively this time
+  before the first deploy, so it shipped correct on the first attempt.
+- `MAIL_ALLOWED_RECIPIENTS` left **unset** on `kcmps-send-mail-reply` — confirmed in code, not
+  assumed: `send-reply.js`'s `isRecipientAllowed()` returns `true` unconditionally when the env
+  var is empty (`if (!ALLOWED_RECIPIENTS.length) return true;`), so unset genuinely means
+  unrestricted, matching what "open the email restriction" was asking for.
+- Five routes on the production API, same JWT authorizer.
+
+**Verified against real production traffic, not synthetic data**, within hours of the cutover:
+real order-notification Bcc copies (KCMPS's own automated customer emails, which Bcc
+`admin@kcmps.com` on every send) flowed the full path — Spacemail → SES → S3 → `ingest-inbound`
+→ the `kcmps` table — with correct parsing, threading, and SPF/DKIM/spam/virus verdicts (all
+`PASS`). All four read Lambdas confirmed against that real data; two apparent 404s during
+verification turned out to be test error (passing the stored SK's hash instead of the raw
+`Message-ID` the list endpoint actually returns — the single-message lookup hashes it internally
+to match storage) — retested with the correct value, both correct. `send-mail-reply` was proven
+end-to-end by the owner directly, from the production dashboard.
 
 **Verified live on staging (2026-08-06), via direct `aws lambda invoke` with synthetic JWT
 claims.** No staff Cognito login was available and no password was entered, so **API Gateway's

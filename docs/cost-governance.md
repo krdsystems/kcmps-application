@@ -204,8 +204,9 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
     bucket + CloudFront distribution — no second distribution, no new origin, and the images
     are served with a 1-year immutable `Cache-Control` so repeat views hit the CDN rather
     than S3.
-  - **Not deployed to production** — no production Lambdas, routes, or bucket writes exist for
-    this feature, so production spend is unchanged at exactly ₱0. Promotion is owner-gated.
+  - **Promoted to production 2026-08-07** — see the dated entry below for the production
+    bucket/GuardDuty/Lambda cost, which follows the same near-₱0 reasoning as this staging
+    entry (empty bucket, no scans yet, on-demand DynamoDB against ~0 additional items).
 
 - **SES inbound-mail relay: `mirror.kcmps.com` receiving + bounce/complaint alerting**
   (applied 2026-08-06 — `docs/roadmap.md`'s "Staff email panel" / SES-relay track,
@@ -231,3 +232,23 @@ Each entry: decision, $ reasoning, trigger that would revisit it.
   - **Parser Lambda and reply-send Lambda are explicitly out of scope for this session** (C2/C3
     own those) — so this entry covers only what's live today: the bucket, the receipt rule,
     and the bounce/complaint event destination.
+
+- **Asset Library + mail relay: production promotion (2026-08-07)** — **near-₱0/mo added**:
+  - **Asset Library production**: new bucket `kcmps-design-originals-est-2026` (empty at
+    promotion — 0 objects, so storage cost is exactly ₱0 until the first upload), a GuardDuty
+    Malware Protection plan on it (same per-object pricing as every other protected bucket in
+    this account — free tier covers current volume across all of them combined), 5 new Lambdas
+    at effectively-zero invocation count (0 assets exist in production yet), and one EventBridge
+    rule (free). Same reasoning as the staging entry above — the marginal cost of a second
+    empty bucket + idle Lambdas is indistinguishable from ₱0.
+  - **Mail relay production**: **zero new AWS resources** for the inbound side — the existing
+    single pipeline (SES receiving identity, inbound bucket, receipt rule) was *repointed*, not
+    duplicated, so there's no second bucket or second SES identity to price. Five new Lambdas
+    (near-zero invocation volume — a handful of staff mailbox reads/replies a day) plus one new
+    IAM role, both free. The only genuinely new spend category is that `send-mail-reply` can now
+    send real customer-facing email from production — but that rides the *existing* `kcmps.com`
+    sending identity/configuration-set already priced under SES's standard sending rate elsewhere
+    in this file; it does not add a new pricing dimension, only a small increase in send volume.
+  - **Revisit trigger**: unchanged from both entries above — Asset Library at ~500 designs or
+    visible publish latency; mail at meaningfully higher invocation/storage volume than a
+    4-person shop's inbox produces. Neither is expected soon.

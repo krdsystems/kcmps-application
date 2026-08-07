@@ -295,6 +295,32 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   `keydown` (Escape/arrow-step) also early-returns when `e.target` is that input, so typing
   digits doesn't step the design carousel underneath.
 
+## Subagent model policy — cost is a real constraint here
+
+Owner runs on limited credits. **Default subagents to the cheapest model that meets the bar:**
+
+1. **Sonnet** — mechanical, well-specified work with an in-repo pattern to copy (a route modeled
+   on an existing one, a layout matching a supplied sketch, doc edits, deploys already written down).
+2. **Opus** — the default for anything needing judgement: production changes, security-relevant
+   code, audits, diagnosing a bug from symptoms, anything where being wrong is expensive.
+3. **Fable** — **only after Opus has actually been tried and demonstrably fallen short on that
+   specific problem.** Never a starting point.
+
+**The mistake this exists to prevent** (2026-08-07): four subagents, three on Fable, burned ~950k
+tokens in one batch and most of the owner's remaining credits — work had to stop mid-flight. Fable
+was picked because the tasks *sounded* high-stakes ("production", "payment path", "live customer
+mail"). But what actually produced the value was **diligence, not reasoning horsepower**: an agent
+checking and finding mail attachments were never GuardDuty-scanned (contradicting its brief),
+another finding the real product ids differed from what its brief assumed, another measuring the
+DOM instead of trusting a screenshot. That is careful verification — Opus does it well.
+
+**High stakes justify a better brief, not a more expensive model.** Put the care into the prompt:
+name the known traps, demand "report what you verified by running vs. by reading", require
+invoke-after-deploy. Those instructions are what caught the real bugs. Before reaching for Fable,
+be able to name the specific reasoning step Opus is expected to fail at; if the honest answer is
+"it feels important", use Opus. Watch spend across a whole batch, not per agent, and say so before
+dispatching several expensive agents at once.
+
 ## Git / worktree workflow
 
 - Feature work happens on `claude/<slug>` branches, often in a git worktree under

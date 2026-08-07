@@ -371,9 +371,20 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
 **SES is in production and sends real customer mail. Every test send is charged against the
 `kcmps.com` sending reputation. Two rules, no exceptions, in every session and every subagent:**
 
-1. **The only permitted test recipient is `admin+admin.kcmps.uat@kcmps.com`.** Never a fake,
-   placeholder, `example.com`, or made-up address. Never a real customer address. If a test
-   needs a second address, it needs the owner's explicit approval first, not a guess.
+1. **Permitted test recipients — these three shapes only** (owner-owned, updated 2026-08-07):
+   - `kenneth.dungca+<anything>@kcmps.com`
+   - `ken.rodulfo.dungca+<anything>@gmail.com`
+   - `admin+admin.kcmps.uat@kcmps.com` (the original UAT address, still valid)
+
+   The `+tag` part is free — use it to label what the test was (`+threading`, `+scan-gate`) so a
+   real inbox stays sortable. **Never invent an address outside these shapes**: no `example.com`,
+   no `test@test.com`, no placeholder or made-up local part, and never a real customer address.
+   A made-up address is not "harmlessly fake" — it is an address that is *guaranteed to bounce*,
+   which is precisely the damage this rule exists to prevent. Anything else needs the owner's
+   explicit approval first, not a guess.
+
+   These are real, owner-controlled mailboxes (`kenneth.dungca@kcmps.com` is a genuine mailbox
+   the owner owns, confirmed 2026-08-07), so mail to them is delivered, not bounced.
 2. **Never design a test whose success condition is a bounce or a rejected send.** Prove
    negative cases by *inspecting configuration*, never by sending mail that is expected to fail:
    - accepted recipients / receipt rules → `aws ses describe-active-receipt-rule-set`

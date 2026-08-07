@@ -10,6 +10,7 @@
      design-uploads/<uuid>.<ext>            checkout/upload-design-file.js
      messages/<orderId>/<...>               staff-api/send-message.js
      correspondence/<orderId>/<...>         staff-api/add-correspondence.js
+     mail-attachments/<msgHash>/<i>.<ext>   mail/ingest-inbound.js (2026-08-07)
 
    ...plus one prefix on the SEPARATE, private kcmps-design-originals-*
    bucket (Design Asset Library, docs/roadmap.md "Parallel track — Design
@@ -205,6 +206,17 @@ function recordVerdict(bucket, key, verdict) {
   if (key.startsWith("correspondence/")) return markCorrespondenceAttachment(key, ref, verdict);
   if (key.startsWith("design-uploads/")) return markDesignFile(ref, verdict);
   if (key.startsWith("designs/")) return markDesignLibraryFile(key, ref, verdict);
+  if (key.startsWith("mail-attachments/")) {
+    // Staff-mail attachments extracted by backend/mail/ingest-inbound.js.
+    // No record annotation on purpose: the message is copied into 1–3
+    // MAILBOX# partitions whose ids aren't recoverable from the key, and
+    // the read path (backend/mail/get-mail-message.js) consults the
+    // standalone SCAN#<ref> item written above on every open — fail
+    // closed, so the verdict is never lost and never needed here. The
+    // purge on THREATS_FOUND already ran before this routing.
+    console.log("handle-scan-result: mail attachment verdict recorded (standalone SCAN# item):", key);
+    return Promise.resolve();
+  }
   console.warn("handle-scan-result: unrecognized prefix, nothing to annotate:", key);
   return Promise.resolve();
 }

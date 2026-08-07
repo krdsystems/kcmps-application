@@ -533,7 +533,19 @@ select.input { appearance: auto; }
 .thread-chevron { flex-shrink: 0; font-size: 11px; color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .thread-card-body { padding: var(--space-3); }
 .thread-card-body .ticket-meta { margin-bottom: var(--space-2); }
-.thread-attachments { margin-top: var(--space-3); }
+.thread-attachments { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-start; }
+/* Scan-clean image attachments render as inline thumbnails (presigned S3
+   URL, allowlisted in email.html's CSP img-src); clicking opens full-size
+   in a new tab. Non-image/blocked/pending ones stay text chips. */
+.mail-att-imglink { display: inline-flex; flex-direction: column; gap: 4px; text-decoration: none; max-width: 220px; }
+.mail-att-img {
+  max-width: 220px; max-height: 160px; width: auto; height: auto; display: block;
+  border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--color-text) 15%, transparent);
+  object-fit: contain; background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+.mail-att-link { text-decoration: none; }
+.mail-att-link:hover { text-decoration: underline; }
+.mail-att-blocked { background: #fbe6e4; color: #a5271b; }
 .quoted-toggle {
   display: inline-block; margin: 6px 0; font-size: 12px; font-weight: 600; color: var(--color-accent-700, var(--color-accent));
   background: none; border: 0; cursor: pointer; padding: 2px 0;

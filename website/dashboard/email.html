@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
 <title>Email — KCMPS Ops</title>
 <meta name="robots" content="noindex" />
 <link rel="stylesheet" href="../styles.css" />
@@ -286,15 +286,26 @@
   /* ---- read pane ----
      SAFETY: every field below is attacker-controlled (a display name, a
      subject, an attachment filename), so all of it goes through escapeHtml.
-     v1 deliberately renders NOTHING but plain text:
+     The BODY deliberately renders NOTHING but plain text:
        - HTML parts are never rendered (an iframe is ruled out in
          docs/roadmap.md, and a hand-maintained sanitizer is not worth the
          risk for a triage panel) — a notice is shown instead
-       - remote images are never loaded; the page CSP (img-src 'self' data:)
-         fails closed anyway, and remote images are tracking pixels
-       - attachments are metadata-only; there is no download path yet
+       - remote images referenced by the body are never loaded (tracking
+         pixels / phishing); the CSP img-src allowlists ONLY our own two
+         scanned-uploads S3 hosts for the attachment previews below, never
+         arbitrary hosts
        - URLs are not auto-linkified; auto-<a> on arbitrary mail is a
-         phishing amplifier                                               ---- */
+         phishing amplifier
+     ATTACHMENTS (2026-08-07) are no longer metadata-only: the backend
+     extracts each part to the GuardDuty-scanned uploads bucket and
+     get-mail-message.js presigns a URL ONLY for a NO_THREATS_FOUND verdict
+     (fail closed — no verdict yet renders "Scanning…", an infected file
+     renders its threat explanation and no link, and the object is already
+     destroyed). Images/PDF open inline in a new tab from the S3 presigned
+     host (cross-origin, so even a hostile file can't touch this page's
+     session/DOM); everything else — SVG very much included — is forced to
+     download by the server's Content-Disposition. renderAttachment() below
+     only labels what the server already decided; it must never widen it. ---- */
   /* ---- provenance strip ----
      Mail reaches this panel by being FORWARDED — Spacemail relays the one
      real admin@kcmps.com mailbox to an SES receiving address, and
@@ -452,6 +463,38 @@
       '" data-thread-msg="' + escapeHtml(t.messageId) + '">' + head + body + "</article>";
   }
 
+  /* One attachment chip. The server (get-mail-message.js) has already made
+     every security decision: `url` exists ONLY for a scan-clean file, and
+     the presigned response's Content-Disposition — not anything here —
+     decides inline vs forced download (`a.inline` just labels it). No url +
+     a scanStatus = blocked or still scanning; no url and no scanStatus =
+     legacy metadata-only chip. Filenames are attacker-controlled →
+     escapeHtml, like everything else on this page. */
+  function renderAttachment(a) {
+    if (!a) return "";
+    const name = escapeHtml(a.filename || "attachment");
+    const size = fmtSize(a.size != null ? a.size : (a.sizeBytes || 0));
+    if (a.url) {
+      const href = escapeHtml(a.url);
+      if (a.inline && /^image\//i.test(a.contentType || "")) {
+        return '<a class="mail-att-imglink" href="' + href + '" target="_blank" rel="noopener noreferrer" title="Open full size">' +
+          '<img class="mail-att-img" src="' + href + '" alt="' + name + '" loading="lazy" />' +
+          '<span class="tag tag-outline">' + name + " · " + size + "</span></a>";
+      }
+      const label = a.inline ? "Open" : "Download";
+      return '<a class="tag tag-outline mail-att-link" href="' + href + '" target="_blank" rel="noopener noreferrer">' +
+        name + " · " + size + " · " + label + "</a>";
+    }
+    if (a.scanStatus === "PENDING") {
+      return '<span class="tag tag-outline">' + name + " · " + size + " · Scanning for malware…</span>";
+    }
+    if (a.scanStatus) {
+      const why = a.threatInfo && a.threatInfo.label ? a.threatInfo.label : "did not pass the malware scan";
+      return '<span class="tag tag-outline mail-att-blocked">' + name + " · blocked — " + escapeHtml(why) + " (file destroyed)</span>";
+    }
+    return '<span class="tag tag-outline">' + name + " · " + size + "</span>";
+  }
+
   function renderThreadCardBody(full, mb) {
     const { main, quoted } = splitQuoted(full.bodyText || "");
     const meta =
@@ -473,10 +516,13 @@
         '<pre class="mail-body quoted-block" hidden>' + escapeHtml(quoted) + "</pre>"
       : "";
 
-    const attach = (full.attachments && full.attachments.length)
+    const atts = full.attachments || [];
+    const anyRef = atts.some((a) => a && (a.url || a.ref || a.scanStatus));
+    const attach = atts.length
       ? '<div class="thread-attachments">' +
-        full.attachments.map((a) => '<span class="tag tag-outline">' + escapeHtml(a.filename) + " · " + fmtSize(a.sizeBytes) + "</span>").join(" ") +
-        '<p class="q-empty">Attachments are listed for reference only — open them in your mail client for now.</p></div>'
+        atts.map(renderAttachment).join(" ") +
+        (!anyRef ? '<p class="q-empty">Attachments on this older message are listed for reference only — open them in your mail client.</p>' : "") +
+        "</div>"
       : "";
 
     return '<div class="thread-card-body">' +

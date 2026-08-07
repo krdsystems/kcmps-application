@@ -50,14 +50,41 @@
    get-mail-messages.js/mark-mail-read.js for where it does.
    ============================================================ */
 
-const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, PutCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, PutCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
 const { simpleParser } = require("mailparser");
 const { mailboxPk, mailMessageSk, baseItem, UNPARSEABLE_MAILBOX, QUARANTINE_MAILBOX } = require("../lib");
 const { hashMessageId, toMailFields } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
+
+/* ------------------------------------------------------------
+   ATTACHMENT EXTRACTION (2026-08-07)
+   ------------------------------------------------------------
+   Attachment bytes live inside the raw MIME in the inbound-mail bucket,
+   which has NO GuardDuty Malware Protection plan — so serving them from
+   there would bypass the fail-closed scan gate every other download path
+   in this codebase enforces. Instead, each attachment part is extracted
+   here to its own object under mail-attachments/ on UPLOADS_BUCKET_NAME
+   (the payment-uploads bucket, whose GuardDuty plan was extended with
+   this fifth prefix). GuardDuty then scans it like any other upload,
+   jobs/handle-scan-result.js persists the standalone SCAN#<ref> verdict
+   (and purges every version on THREATS_FOUND), and get-mail-message.js
+   only presigns a download/view URL for NO_THREATS_FOUND — the exact
+   pattern staff-api/get-messages.js uses for order-thread attachments.
+
+   Deterministic keys (<hash of Message-ID>/<index>.<ext>) make this
+   naturally idempotent on S3-event retry, same reasoning as the MSG# SK.
+   Extraction is best-effort per attachment: a failed PUT leaves that
+   attachment metadata-only (no ref -> the UI renders it as before), and
+   never fails the ingest. UPLOADS_BUCKET_NAME unset = extraction off.
+   Quarantined messages never reach this — their attachments are dropped
+   entirely, unchanged. */
+const UPLOADS_BUCKET = (process.env.UPLOADS_BUCKET_NAME || "").trim();
+const ATTACHMENT_PREFIX = "mail-attachments/";
+const MAX_EXTRACTED_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // SES inbound caps whole messages at 40MB anyway
 
 const s3 = new S3Client({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -122,6 +149,7 @@ async function processRecord(record) {
       return { ok: true, s3Ref, mailboxes: [QUARANTINE_MAILBOX], quarantined: true };
     }
 
+    await extractAttachments(parsed, fields);
     await Promise.all(mailboxes.map((mailboxId) => writeMailItem(mailboxId, fields)));
     return { ok: true, s3Ref, mailboxes, routedBy };
   } catch (err) {
@@ -137,9 +165,91 @@ async function writeMailItem(mailboxId, fields) {
     SK: mailMessageSk(hashMessageId(fields.messageId)),
     mailboxId,
     ...fields,
+    threadId: await resolveThreadId(mailboxId, fields),
   };
   delete item.status; // baseItem() stamps status:undefined — mail items have no status field
   await ddb.send(new PutCommand({ TableName: TABLE, Item: item }));
+}
+
+/* Prefer the STORED threadId of a parent that already exists in this
+   mailbox over the derived one. This is what keeps a thread whole when a
+   client's References header is truncated (In-Reply-To pointing at OUR
+   reply, whose id is not the thread root) and what lets replies to
+   pre-2026-08-07 messages join their original (old-scheme, subject-hash)
+   threads instead of forking a second one. Direct parent first
+   (In-Reply-To), then the References chain newest-to-oldest; bounded to a
+   handful of GetItems. Any lookup failure falls back to the derived id —
+   threading must never fail an ingest. */
+const MAX_PARENT_LOOKUPS = 5;
+
+async function resolveThreadId(mailboxId, fields) {
+  const candidates = [];
+  const push = (id) => { const v = String(id || "").trim(); if (v && !candidates.includes(v)) candidates.push(v); };
+  push(fields.inReplyTo);
+  const refs = Array.isArray(fields.references) ? fields.references : [];
+  for (let i = refs.length - 1; i >= 0; i--) push(refs[i]);
+
+  for (const cand of candidates.slice(0, MAX_PARENT_LOOKUPS)) {
+    try {
+      const res = await ddb.send(new GetCommand({
+        TableName: TABLE,
+        Key: { PK: mailboxPk(mailboxId), SK: mailMessageSk(hashMessageId(cand)) },
+        ProjectionExpression: "threadId",
+      }));
+      if (res.Item && res.Item.threadId) return res.Item.threadId;
+    } catch (err) {
+      console.error("ingest-inbound: parent threadId lookup failed for", mailboxId, err.message);
+      break;
+    }
+  }
+  return fields.threadId;
+}
+
+/* See the ATTACHMENT EXTRACTION block at the top. Mutates
+   fields.attachments in place, adding `ref` to each successfully
+   extracted part; parts that are oversized, empty, past the count cap, or
+   that fail to PUT simply keep no ref (metadata-only, the pre-2026-08-07
+   behavior). */
+async function extractAttachments(parsed, fields) {
+  if (!UPLOADS_BUCKET) return;
+  const parts = parsed.attachments || [];
+  const metas = fields.attachments || [];
+  const msgHash = hashMessageId(fields.messageId);
+  const count = Math.min(metas.length, parts.length, MAX_EXTRACTED_ATTACHMENTS);
+  for (let i = 0; i < count; i++) {
+    const part = parts[i];
+    const content = part && part.content;
+    if (!content || !content.length || content.length > MAX_ATTACHMENT_BYTES) continue;
+    const key = `${ATTACHMENT_PREFIX}${msgHash}/${i}.${safeExtension(part.filename)}`;
+    try {
+      await s3.send(new PutObjectCommand({
+        Bucket: UPLOADS_BUCKET,
+        Key: key,
+        Body: content,
+        // Sender-declared, so sanitized to a bare type token. Only ever
+        // rendered inline via contentDispositionFor()'s CLOSED allowlist
+        // (backend/lib/upload-types.js) — anything unlisted, SVG included,
+        // is forced to attachment + octet-stream at presign time.
+        ContentType: safeContentType(part.contentType),
+      }));
+      metas[i].ref = `s3://${UPLOADS_BUCKET}/${key}`;
+    } catch (err) {
+      console.error("ingest-inbound: attachment extraction failed for", key, err.message);
+    }
+  }
+}
+
+// Server-chosen key extension — the sender's filename never becomes part of
+// the key beyond a strictly [a-z0-9] extension token (same containment idea
+// as checkout/upload-design-file.js's server-generated keys).
+function safeExtension(filename) {
+  const m = /\.([a-zA-Z0-9]{1,8})$/.exec(String(filename || "").trim());
+  return m ? m[1].toLowerCase() : "bin";
+}
+
+function safeContentType(contentType) {
+  const t = String(contentType || "").toLowerCase().split(";")[0].trim();
+  return /^[\w.+-]+\/[\w.+-]+$/.test(t) ? t : "application/octet-stream";
 }
 
 async function writeUnparseable(s3Ref, errorMessage) {

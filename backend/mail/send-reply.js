@@ -59,7 +59,7 @@ const {
   mailboxPk, mailMessageSk, baseItem, extractClaims,
   canAccessMailbox, canSendFrom, sendAddressFor, normalizeMailboxId,
 } = require("../lib");
-const { hashMessageId } = require("./mail-parse");
+const { hashMessageId, normalizeReferences } = require("./mail-parse");
 
 const TABLE = process.env.TABLE_NAME;
 const SENDER_NAME = process.env.MAIL_SENDER_NAME || "KCMPS";
@@ -175,6 +175,10 @@ exports.handler = async (event) => {
     // same values the mock stamps.
     flags: { seen: true, answered: false, flagged: false },
     inReplyTo: original.messageId || null,
+    // Same chain that went out on the wire — so a reply-to-this-reply
+    // (staff or customer) keeps deepening it instead of restarting at one
+    // element. See buildReferences().
+    references: buildReferences(original),
     relatedOrderId: original.relatedOrderId || null,
   };
 
@@ -209,17 +213,19 @@ function replySubject(subject) {
 }
 
 // RFC 5322 §3.6.4: References is the original's References chain with its
-// Message-ID appended. ingest-inbound.js doesn't persist the inbound
-// References header (only the derived threadId), so for a first reply
-// this is just the original's Message-ID — correct, if shorter than a
-// full-fidelity chain. Persisting inbound `references` is the follow-up
-// that would deepen it.
+// Message-ID appended. ingest-inbound.js persists the inbound References
+// header on every message item (2026-08-07 — it used to persist only the
+// derived threadId, which collapsed every outbound chain to one element),
+// and the SENT item below stores this same chain, so the chain deepens
+// correctly through an arbitrarily long back-and-forth. normalizeReferences
+// caps it at MAX_REFERENCES keeping the root + most recent — see
+// mail-parse.js.
 function buildReferences(original) {
   const refs = [];
   if (Array.isArray(original.references)) refs.push(...original.references);
   else if (original.references) refs.push(original.references);
   if (original.messageId && !refs.includes(original.messageId)) refs.push(original.messageId);
-  return refs;
+  return normalizeReferences(refs);
 }
 
 function normalizeCc(cc) {

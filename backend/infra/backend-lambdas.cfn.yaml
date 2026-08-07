@@ -474,6 +474,22 @@ Resources:
                 Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub arn:aws:s3:::${InboundMailBucket}/inbound/*
+        # Attachment extraction (2026-08-07): ingest-inbound.js copies each
+        # MIME attachment part to its own object under mail-attachments/ on
+        # the GuardDuty-scanned uploads bucket (the inbound-mail bucket has
+        # no malware-protection plan, so serving bytes from it would bypass
+        # the scan gate); get-mail-message.js presigns GETs against the same
+        # prefix, gated on the SCAN#<ref> verdict. Put+Get scoped to that
+        # one prefix — mail Lambdas have no business anywhere else on the
+        # uploads bucket.
+        - PolicyName: mail-attachments-bucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: MailAttachmentsPrefixOnly
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/mail-attachments/*
         # send-reply.js only. Scoped to the one verified sending identity
         # (SesSenderIdentity = kcmps.com) — NOT a wildcard — and further
         # narrowed by a FromAddress condition so this role can only send as
@@ -937,6 +953,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref TableName
           EXPECTED_FORWARDER_HOST: !Ref ExpectedForwarderHost
+          UPLOADS_BUCKET_NAME: !Ref UploadsBucket
 
   PermIngestInboundS3:
     Type: AWS::Lambda::Permission
@@ -994,6 +1011,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET_NAME: !Ref UploadsBucket
 
   MarkMailReadFunction:
     Type: AWS::Lambda::Function

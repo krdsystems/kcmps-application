@@ -388,12 +388,21 @@ Cognito needs `http(s)://`, not `file://`. Full setup and testing checklist: `RE
    lowercased string match** (`send-reply.js`'s `isRecipientAllowed()`) — which is why the tag is
    fixed at `+test` rather than freeform. A different tag will be rejected.
 
+   **The four-address rule applies in PRODUCTION too — with no safety net.** Production changes
+   inevitably need testing against production, so test sends from production are expected and
+   legitimate. When you do, the recipient must still be one of the four above.
+
    **Production deliberately leaves `MAIL_ALLOWED_RECIPIENTS` UNSET, and it must stay that way.**
    Unset means unrestricted, which is required: `send-mail-reply` is how staff reply to **real
    customers** from the dashboard Email page. Setting the allowlist in production would reject
-   every genuine customer reply and silently break a live feature. The rule above governs what a
-   human or agent may *choose* to send to in production; the env var is the enforcement mechanism
-   for staging only.
+   every genuine customer reply and silently break a live feature.
+
+   So understand the asymmetry: **on staging the guardrail is enforced by the runtime; in
+   production it is enforced only by whoever is typing.** The absence of the env var in
+   production is a technical necessity, *not* permission to widen the recipient list. A mistake
+   there is unprotected — it is a real send, from the live `kcmps.com` identity, charged against
+   the sending reputation that carries every customer order notification. Be correspondingly
+   more careful, not less.
 2. **Never design a test whose success condition is a bounce or a rejected send.** Prove
    negative cases by *inspecting configuration*, never by sending mail that is expected to fail:
    - accepted recipients / receipt rules → `aws ses describe-active-receipt-rule-set`

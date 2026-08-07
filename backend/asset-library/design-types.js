@@ -14,7 +14,7 @@
    Two files per design, both landing on the PRIVATE originals bucket
    (kcmps-design-originals-*) under one `designs/` prefix:
 
-     designs/<category>/<designId>/original.<ext>   PSD | AI | PDF
+     designs/<category>/<designId>/original.<ext>   any extension (2026-08-07 — see below)
      designs/<category>/<designId>/web.<ext>        JPG | PNG | WEBP
 
    Why the web-ready file is ALSO staged privately instead of being PUT
@@ -31,25 +31,31 @@
    content-type/extension pair, not from what was handed to us.
    ============================================================ */
 
-// Source files. Deliberately narrower than the customer allowlist: no
-// office documents, no raster-only formats, and (same reasoning as
-// upload-types.js) no archives.
+// Source files: OPEN (owner decision, 2026-08-07 — superseded the earlier
+// psd/ai/pdf/svg-only allowlist the day after launch, once real uploads
+// started hitting formats staff actually use: raw camera photos, .cdr,
+// .eps, .tiff, fonts, whatever the job calls for). Any extension is
+// accepted; there is no content-type/extension agreement check left to
+// spoof, because there is no longer a fixed type list to spoof it against.
 //
-// SVG (owner decision, 2026-08-07): allowed as a SOURCE file only. An SVG
-// can carry script, so it is ATTACHMENT-ONLY everywhere: list-designs.js
-// already forces Content-Disposition: attachment + application/octet-stream
-// on every original download, and SVG must NEVER be added to WEB_TYPES,
-// never reach an <img>/inline render, and never enter store.js's
-// SAFE_IMAGE_RE. The web-ready allowlist below stays raster-only.
-const ORIGINAL_TYPES = Object.freeze({
-  "image/vnd.adobe.photoshop": "psd",
-  "application/x-photoshop": "psd",
-  "application/illustrator": "ai",
-  "application/postscript": "ai", // what a browser usually reports for .ai
-  "application/pdf": "pdf",
-  "image/svg+xml": "svg",
-});
-const ORIGINAL_EXTENSIONS = Object.freeze({ psd: "psd", ai: "ai", pdf: "pdf", svg: "svg" });
+// This is safe specifically BECAUSE nothing about how an original is
+// served ever depends on its type: list-designs.js's presignAttachment()
+// is unconditional — attachment + application/octet-stream, no branch on
+// extension — so an original can never render inline or execute regardless
+// of what was uploaded. That is what made PSD/AI/PDF/SVG safe under the old
+// narrow list, and it is exactly what keeps ANY extension safe now. GuardDuty
+// still scans every original before any download link is issued (fail-
+// closed, unchanged) — this decision widens what can be UPLOADED, not what
+// can be SERVED or RENDERED, and only the latter is a security boundary.
+//
+// The one thing still enforced: the extension becomes part of an S3 key
+// (originalKey()), so it is validated as a short lowercase-alphanumeric
+// token — never trusted verbatim from the caller's filename — to rule out
+// path traversal or key-format injection via a crafted extension. A
+// filename with no extension, or a run of unrecognised characters, is
+// rejected the same as before; only the FIXED LIST of allowed extensions
+// is gone, not extension validation itself.
+const ORIGINAL_EXTENSION_RE = /^[a-z0-9]{1,12}$/;
 
 // Derived, storefront-facing image. Only formats a browser renders
 // natively and that carry no scripting surface.
@@ -76,15 +82,14 @@ const DESIGN_CATEGORIES = Object.freeze([
 
 const KEY_PREFIX = "designs";
 
-// Both the declared content-type AND the filename extension must land in
-// the same allowlist and agree — see upload-types.js's resolveUploadType()
-// for the full reasoning (a spoofed type on a payload.exe is caught on the
-// extension; a renamed executable is stored under a server-chosen key with
-// a server-chosen extension and is never executed). `.psd`/`.ai` routinely
-// arrive as application/octet-stream with no OS mapping, so that one
-// generic type is accepted for originals only.
+// Open allowlist: any filename whose extension is a short lowercase-
+// alphanumeric token is accepted, regardless of declared content-type — see
+// the ORIGINAL_EXTENSION_RE comment above for why this is safe. A missing
+// or malformed extension (no dot, empty, non-alphanumeric, or absurdly
+// long) is still rejected; only the fixed format list is gone.
 function resolveOriginalType(contentType, filename) {
-  return resolve(contentType, filename, ORIGINAL_TYPES, ORIGINAL_EXTENSIONS, true);
+  const ext = extensionOf(filename);
+  return ORIGINAL_EXTENSION_RE.test(ext) ? ext : null;
 }
 
 // No octet-stream fallback for the web-ready file: every accepted format
@@ -150,13 +155,17 @@ function parseDesignKey(key, kind) {
   if (!m) return null;
   const [, base, ext] = m;
   if (base !== kind) return null;
-  const allowed = kind === "original" ? ORIGINAL_EXTENSIONS : WEB_EXTENSIONS;
-  if (allowed[ext] !== ext) return null;
+  // Web-ready stays a fixed lookup (raster-only, never widened — this is
+  // the format that renders inline on the storefront). Original re-uses
+  // the same open extension check as resolveOriginalType() above; the
+  // basename regex already constrained ext to [a-z0-9]+ before this runs.
+  if (kind === "web" && WEB_EXTENSIONS[ext] !== ext) return null;
+  if (kind === "original" && !ORIGINAL_EXTENSION_RE.test(ext)) return null;
   return { category, designId, ext, kind };
 }
 
 module.exports = {
-  ORIGINAL_TYPES, ORIGINAL_EXTENSIONS, WEB_TYPES, WEB_EXTENSIONS,
+  ORIGINAL_EXTENSION_RE, WEB_TYPES, WEB_EXTENSIONS,
   MAX_DESIGN_BYTES, DESIGN_CATEGORIES, KEY_PREFIX,
   resolveOriginalType, resolveWebType, extensionOf,
   isValidCategory, isValidDesignId,

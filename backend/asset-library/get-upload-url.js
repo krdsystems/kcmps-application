@@ -81,9 +81,11 @@ exports.handler = async (event) => {
     return response(400, { error: `category must be one of: ${DESIGN_CATEGORIES.join(", ")}` });
   }
 
-  const originalExt = validateFile(body.original, resolveOriginalType);
+  const originalExt = validateFile(body.original, resolveOriginalType,
+    "the source file needs a filename with a recognisable extension.");
   if (originalExt.error) return response(400, { error: `original: ${originalExt.error}` });
-  const webExt = validateFile(body.web, resolveWebType);
+  const webExt = validateFile(body.web, resolveWebType,
+    "that image type isn't accepted. Web-ready image: JPG, PNG, or WebP.");
   if (webExt.error) return response(400, { error: `web: ${webExt.error}` });
 
   // Server-generated, and the ONLY identity a key is built from.
@@ -113,7 +115,7 @@ exports.handler = async (event) => {
   });
 };
 
-function validateFile(file, resolver) {
+function validateFile(file, resolver, noTypeMessage) {
   if (!file || typeof file !== "object") return { error: "filename, contentType and size are required" };
   const filename = typeof file.filename === "string" ? file.filename.trim() : "";
   const size = Number(file.size);
@@ -123,9 +125,7 @@ function validateFile(file, resolver) {
     return { error: `file is too large — the limit is ${Math.floor(MAX_DESIGN_BYTES / (1024 * 1024))}MB per file.` };
   }
   const ext = resolver(file.contentType, filename);
-  if (!ext) {
-    return { error: "that file type isn't accepted. Source files: PSD, AI, PDF, SVG. Web-ready image: JPG, PNG, WebP." };
-  }
+  if (!ext) return { error: noTypeMessage };
   return { ext };
 }
 

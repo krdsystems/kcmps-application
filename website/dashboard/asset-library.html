@@ -259,7 +259,7 @@
       <div class="dropzones">
         <div class="dropzone" id="zone-original" tabindex="0">
           <span class="zl">Source file</span>
-          <span class="zt">PSD · AI · PDF · SVG — up to 300MB</span>
+          <span class="zt">Any file type — up to 300MB</span>
           <span class="zt">Drag here or click to browse</span>
         </div>
         <div class="dropzone" id="zone-web" tabindex="0">
@@ -268,7 +268,7 @@
           <span class="zt">Drag here or click to browse</span>
         </div>
       </div>
-      <input type="file" id="file-original" accept=".psd,.ai,.pdf,.svg" style="display:none" />
+      <input type="file" id="file-original" style="display:none" />
       <input type="file" id="file-web" accept=".jpg,.jpeg,.png,.webp" style="display:none" />
       <div id="upload-progress"></div>
       <div id="upload-status-1"></div>
@@ -869,7 +869,7 @@
     fileOriginal.value = ""; fileWeb.value = "";
     zoneOriginal.classList.remove("is-filled"); zoneWeb.classList.remove("is-filled");
     zoneOriginal.querySelector(".zl").textContent = "Source file";
-    resetZoneBody(zoneOriginal, "PSD · AI · PDF · SVG — up to 300MB");
+    resetZoneBody(zoneOriginal, "Any file type — up to 300MB");
     resetZoneBody(zoneWeb, "JPG · PNG · WebP — up to 300MB");
     zoneWeb.querySelector(".zl").textContent = "Web-ready image";
     progressHost.innerHTML = "";
@@ -916,13 +916,18 @@
     input.addEventListener("change", () => { const f = input.files && input.files[0]; if (f) onFile(f); });
   }
 
-  const ORIGINAL_EXT_RE = /\.(psd|ai|pdf|svg)$/i;
+  // Source file type is open (owner decision, 2026-08-07) — no client-side
+  // extension check. It never was the security boundary (backend/asset-
+  // library/design-types.js's server-side re-validation is), so removing it
+  // here just stops a real file from being rejected before it ever reaches
+  // that check. A bare extension is still required, same as the server.
+  const ORIGINAL_EXT_RE = /\.[a-z0-9]{1,12}$/i;
   const WEB_EXT_RE = /\.(jpe?g|png|webp)$/i;
   const MAX_BYTES = 300 * 1024 * 1024;
 
   wireZone(zoneOriginal, fileOriginal, (f) => {
     if (up.started) return;
-    if (!ORIGINAL_EXT_RE.test(f.name)) { showInlineError(document.getElementById("upload-status-1"), "Source file must be PSD, AI, PDF or SVG."); return; }
+    if (!ORIGINAL_EXT_RE.test(f.name)) { showInlineError(document.getElementById("upload-status-1"), "Source file needs a filename with an extension."); return; }
     if (f.size > MAX_BYTES) { showInlineError(document.getElementById("upload-status-1"), "Source file is over the 300MB limit."); return; }
     up.originalFile = f;
     zoneOriginal.classList.add("is-filled");

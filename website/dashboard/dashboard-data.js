@@ -1131,17 +1131,14 @@
      Behind the same KCMPS_DASH seam as getAllOrders/verifyPayment/etc — live-only,
      no localStorage fallback, matching how those functions work. Backend is
      backend/asset-library/*.js (get-upload-url.js/publish-design.js/list-designs.js/
-     patch-design.js), routes /assets*, deployed on kcmps-backend-staging ONLY —
-     production has no /assets routes, which is what assetApiAvailable() reports
-     so asset-library.html can render an honest "staging only" state instead of
-     bare 404s. See root CLAUDE.md's "Design asset library" row and
-     docs/asset-library-rebuild-plan-2026-08-06.md. */
+     patch-design.js), routes /assets*. Production got its own bucket + Lambdas +
+     routes on 2026-08-07 (see root CLAUDE.md's "Design asset library" row), so the
+     backend now exists everywhere this file does. assetApiAvailable() is kept as a
+     stub rather than deleted — asset-library.html's callers still check it, and a
+     stub costs nothing — but it always returns true now. */
 
-  // True only where the Asset Library backend actually exists. Kept here
-  // (not in the page) because this file owns the hostname->API_BASE branch
-  // the answer derives from.
   function assetApiAvailable() {
-    return typeof location !== "undefined" && location.hostname === "dev.kcmps.com";
+    return true;
   }
 
   async function getAssets() {

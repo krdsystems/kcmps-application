@@ -409,19 +409,13 @@
   uCategory.addEventListener("change", syncReachNote);
   syncReachNote();
 
-  /* ---- environment guard: this backend exists on staging only. On any
-     other hostname the page says so instead of pretending 404s might
-     resolve (the "silent production failure" UAT trap). ---- */
-  if (!apiAvailable) {
-    document.getElementById("env-notice").innerHTML =
-      '<div class="asset-env-notice"><strong>Staging only for now.</strong> The Asset Library backend runs on ' +
-      '<strong>dev.kcmps.com</strong> — open this page there to browse and upload assets. ' +
-      (KCMPS_DASH_SHELL.isLocalHost()
-        ? "(On localhost the layout renders, but API calls can't reach the staging backend.)"
-        : "Nothing is broken; this environment simply has no Asset Library API yet.") +
-      "</div>";
-    document.getElementById("upload-open-btn").disabled = true;
-  }
+  /* Was an environment guard for when the Asset Library backend existed on
+     staging only ("Staging only for now..." banner + disabled upload
+     button). Removed 2026-08-07: production got its own bucket + Lambdas +
+     routes, so apiAvailable() is always true now and this branch could
+     never fire — left in place it would have been dead code with a
+     misleading comment. #env-notice stays in the DOM as an empty, harmless
+     placeholder rather than restructuring the page layout for its removal. */
 
   /* ---- state ---- */
   let assets = [];
@@ -607,12 +601,6 @@
      on the user, and the fail-closed server gate is polled toward,
      never bypassed. ---- */
   async function load() {
-    if (!apiAvailable) {
-      document.getElementById("asset-grid").innerHTML = '<p class="q-empty" style="grid-column:1/-1">Open this page on dev.kcmps.com to load the library.</p>';
-      document.getElementById("recycle-grid").innerHTML = "";
-      document.getElementById("approvals-list").innerHTML = '<p class="q-empty">Open this page on dev.kcmps.com to load the approval queue.</p>';
-      return;
-    }
     try {
       assets = await KCMPS_DASH.getAssets();
     } catch (err) {

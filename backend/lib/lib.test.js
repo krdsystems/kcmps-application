@@ -11,7 +11,7 @@ const { toCentavos, toPesos, formatPeso, assertCentavos } = require("./money");
 const keys = require("./keys");
 const { buildEvent } = require("./events");
 const { STATUS, ACTIVE_STATUSES, TERMINAL_STATUSES, SCAN_STATUS, isCleanScanVerdict } = require("./constants");
-const { hasRole, isStaff, getGroups, ROLES } = require("./auth");
+const { hasRole, isStaff, getGroups, requireRole, extractClaims, ROLES } = require("./auth");
 const { deriveOrderStatus } = require("./order-status");
 const { redactForCustomer } = require("./customer-view");
 const { resolveUploadType, extensionOf, MAX_UPLOAD_BYTES, contentDispositionFor, INLINE_VIEWABLE_TYPES } = require("./upload-types");
@@ -191,6 +191,39 @@ test("isStaff is true for any non-Customer role, false for Customer-only or no c
 test("isStaff treats Staff as a first-class role, no legacy-group fallback needed", () => {
   assert.equal(isStaff({ "cognito:groups": "Staff" }), true);
   assert.equal(isStaff({ "cognito:groups": ["Staff"] }), true);
+});
+
+test("requireRole allows a caller holding any required role, in every claim form", () => {
+  assert.equal(requireRole({ "cognito:groups": "[Admin]" }, ROLES.ADMIN), null);
+  assert.equal(requireRole({ "cognito:groups": "[Staff Admin]" }, [ROLES.SALES, ROLES.ADMIN]), null);
+  assert.equal(requireRole({ "cognito:groups": ["Production"] }, [ROLES.PRODUCTION, ROLES.SALES, ROLES.ADMIN]), null);
+});
+
+test("requireRole denies (403 shape) when no required role is held — fail closed", () => {
+  const denied = requireRole({ "cognito:groups": "[Customer]" }, [ROLES.PRODUCTION, ROLES.SALES, ROLES.ADMIN]);
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.error, "Forbidden");
+  assert.deepEqual(denied.requiredRoles, [ROLES.PRODUCTION, ROLES.SALES, ROLES.ADMIN]);
+  // No claims / no groups at all must also deny, never throw.
+  assert.equal(requireRole(null, ROLES.ADMIN).statusCode, 403);
+  assert.equal(requireRole({}, ROLES.ADMIN).statusCode, 403);
+  // A Finance caller is staff but must NOT pass a Production/Sales/Admin gate
+  // (the exact distinction the asset-library write routes rely on).
+  assert.equal(requireRole({ "cognito:groups": "[Finance]" }, [ROLES.PRODUCTION, ROLES.SALES, ROLES.ADMIN]).statusCode, 403);
+  // Role names are exact — a look-alike group must not satisfy the gate.
+  assert.equal(requireRole({ "cognito:groups": "[Administrator]" }, ROLES.ADMIN).statusCode, 403);
+});
+
+test("extractClaims only returns the JWT-authorizer claims path, null otherwise", () => {
+  const claims = { sub: "abc", "cognito:groups": "[Admin]" };
+  assert.equal(extractClaims({ requestContext: { authorizer: { jwt: { claims } } } }), claims);
+  // Every partial/absent shape is null — an unauthorized route must read as
+  // "no claims", never throw or hand back a truthy empty object.
+  assert.equal(extractClaims(undefined), null);
+  assert.equal(extractClaims({}), null);
+  assert.equal(extractClaims({ requestContext: {} }), null);
+  assert.equal(extractClaims({ requestContext: { authorizer: {} } }), null);
+  assert.equal(extractClaims({ requestContext: { authorizer: { jwt: {} } } }), null);
 });
 
 // ---- order-status.js ----

@@ -321,6 +321,32 @@ be able to name the specific reasoning step Opus is expected to fail at; if the 
 "it feels important", use Opus. Watch spend across a whole batch, not per agent, and say so before
 dispatching several expensive agents at once.
 
+### Guardrail — hold the owner to this, at his own request (2026-08-07)
+
+The owner asked to be **actively reminded** when he is about to bypass the ladder above, because
+in the moment ("use the best model", "escalate to Fable", "spare no expense") it is easy to
+override a budget decision he made deliberately when not under pressure. This is a
+pre-commitment he asked to be enforced — honour it.
+
+**When the owner asks for Fable, or for several expensive agents at once:**
+
+1. **Pause before dispatching. Do not spawn first and mention cost afterwards.**
+2. Say plainly that it departs from the policy, and give the concrete comparison: what the
+   equivalent Opus run would cost against the ~950k-token/4-agent batch that triggered this rule.
+3. Offer the Opus alternative explicitly, with what (if anything) is genuinely lost.
+4. **If he still wants Fable, require a specific reason** — name the reasoning step Opus is
+   expected to fail at. *"It's important"*, *"it's production"*, *"it's security"* are **not**
+   sufficient on their own; those describe stakes, not reasoning difficulty, and that exact
+   conflation is what caused the overspend.
+5. Given a real reason, **proceed** — it is his call and his budget. Record the reason in the
+   dispatch so the decision is visible later.
+
+Warn about **batch size** too, not just tier: the 2026-08-07 overspend was four concurrent agents,
+and would have been costly even on a cheaper model. Never dispatch several agents without first
+stating how many and roughly what they will cost.
+
+Do not be tiresome about this — warn once, clearly, then respect the answer.
+
 ## Git / worktree workflow
 
 - Feature work happens on `claude/<slug>` branches, often in a git worktree under

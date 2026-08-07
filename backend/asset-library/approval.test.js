@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { approvalState, hasApproved, approvalSnapshot } = require("./approval");
+const { approvalState, hasApproved, approvalSnapshot, requiresAdminToEditPublished } = require("./approval");
 
 const ana = { sub: "sub-ana", name: "Ana" };
 const ken = { sub: "sub-ken", name: "Ken" };
@@ -74,4 +74,33 @@ test("approvalSnapshot marks approved vs outstanding, display-only shape", () =>
     { sub: "sub-ana", name: "Ana", approved: true },
     { sub: "sub-ken", name: "Ken", approved: false },
   ]);
+});
+
+// ---- requiresAdminToEditPublished (2026-08-07 governance fix) ----
+// Restricts metadata edits (name/description/tags) on an already-published
+// asset to Admin, since approval only re-reviews the image, never the
+// words next to it. patch-design.js's handleUpdate() is the only caller.
+
+test("published asset, non-admin editor: requires admin", () => {
+  assert.equal(requiresAdminToEditPublished("published", false), true);
+});
+
+test("published asset, admin editor: does not require admin (already is one)", () => {
+  assert.equal(requiresAdminToEditPublished("published", true), false);
+});
+
+test("draft asset, non-admin editor: unaffected — normal write gate applies", () => {
+  assert.equal(requiresAdminToEditPublished("draft", false), false);
+});
+
+test("pending_approval asset, non-admin editor: unaffected — normal write gate applies", () => {
+  assert.equal(requiresAdminToEditPublished("pending_approval", false), false);
+});
+
+test("archived asset, non-admin editor: unaffected — normal write gate applies", () => {
+  assert.equal(requiresAdminToEditPublished("archived", false), false);
+});
+
+test("published asset, undefined/missing isAdmin flag: fails safe (treated as non-admin)", () => {
+  assert.equal(requiresAdminToEditPublished("published", undefined), true);
 });

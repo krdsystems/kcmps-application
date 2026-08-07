@@ -145,44 +145,76 @@ from a fresh `describe-user-pool` (every current mutable setting, plus just the 
 field changing) rather than a hand-written partial one, and diff before/after to confirm
 nothing else moved — see entry 62 for the exact approach.
 
-## `design-library/` — what's in it (STAGING ONLY, 2026-08-06)
+## `asset-library/` — what's in it (STAGING ONLY, 2026-08-06; renamed from `design-library/` 2026-08-07)
 
-Design Asset Library (`docs/roadmap.md`'s parallel track). **Deployed to
-`kcmps-backend-staging` only** — production has no originals bucket and no `/designs` routes,
-and promotion is owner-gated (`backend/infra/README.md`'s "Design Asset Library Lambdas").
+Asset Library (`docs/roadmap.md`'s parallel track; full rebuild diagnosis, IA/UX, the
+Admin-approval workflow design, and the rename decision log are in
+`docs/asset-library-rebuild-plan-2026-08-06.md`). **Deployed to `kcmps-backend-staging`
+only** — production has no originals bucket and no `/assets` routes, and promotion is
+owner-gated (`backend/infra/README.md`'s "Asset Library Lambdas"). Folder was
+`backend/design-library/` and routes were `/designs*` until the 2026-08-07 rename pass
+(rebuild-plan doc §5) — DynamoDB's `DESIGN#` PK prefix and the S3 `designs/` object prefix
+deliberately kept their old names (relabeling deployed keys for zero user-visible benefit
+wasn't worth it), so don't be surprised those still say "design" while everything
+human-facing says "asset."
 
 | File | Purpose |
 |---|---|
-| `get-upload-url.js` | `POST /designs/upload-url` — presigned PUT URLs for BOTH files (source + web-ready), 300MB each, single PUT (no multipart, a resolved spec decision). Keys are always server-generated: `designs/<category>/<designId>/{original,web}.<ext>` |
-| `publish-design.js` | `POST /designs` — writes the `DESIGN#<id>` META record + `EVENT#` audit item, then on publish copies the web-ready image into the public bucket and regenerates `design-manifest.json`. **The manifest's exact JSON shape is documented in this file's header — it is a contract with `website/store.js`'s `buildDesignGrid()`; change both ends or neither.** |
-| `design-types.js` | Server-side allowlists (originals: PSD/AI/PDF; web: JPG/PNG/WebP), the 300MB cap, the catalog-leaf category list, and `parseDesignKey()` |
-| `manifest.js` | `regenerateManifest()` — the ONE place `design-manifest.json` is produced. Regenerates whole from DynamoDB every time, never patches. Shared with archive/restore so two writers can't emit two shapes |
+| `get-upload-url.js` | `POST /assets/upload-url` — presigned PUT URLs for BOTH files (source + web-ready), 300MB each, single PUT (no multipart, a resolved spec decision). Keys are always server-generated: `designs/<category>/<designId>/{original,web}.<ext>` |
+| `publish-design.js` | `POST /assets` — writes the `DESIGN#<id>` META record + `EVENT#` audit item as a `draft`. Publishing itself no longer happens here — see `patch-design.js`'s Admin-approval workflow below. **The manifest's exact JSON shape is documented in this file's header — it is a contract with `website/store.js`'s `buildDesignGrid()`; change both ends or neither.** |
+| `list-designs.js` | `GET /assets` — `isStaff()`-gated (a read, so looser than the write routes) |
+| `patch-design.js` | `PATCH /assets/{id}` — one handler for every metadata/state edit: `update` (name/description/tags — **published assets require Admin specifically, see the governance note below**), `archive`/`restore`, and the full Admin-approval workflow: `submit` (draft → pending_approval, scan-clean required), `approve`/`reject` (Admin-only), `publish` (Admin-only break-glass direct publish, mandatory reason). `requireRole(Production/Sales/Admin)` gates `update`/`archive`/`restore`/`submit`; `requireRole([ADMIN])` gates `approve`/`reject`/`publish` |
+| `approval.js` | Pure, unit-tested (`approval.test.js`) approval-set math — `approvalState()`/`hasApproved()`/`approvalSnapshot()` (the "all current Admin-group members must approve" rule, re-evaluated from `ListUsersInGroup` on every call, never snapshotted) and `requiresAdminToEditPublished()` (the 2026-08-07 governance fix below) |
+| `design-types.js` | Server-side allowlists (originals: PSD/AI/PDF/SVG — SVG added 2026-08-07, attachment-only, never in the web-ready set; web: JPG/PNG/WebP), the 300MB cap, the catalog-leaf category list, and `parseDesignKey()` |
+| `manifest.js` | `regenerateManifest()` — the ONE place `design-manifest.json` is produced. Regenerates whole from DynamoDB every time, never patches. Shared by every status transition that changes what's public (`patch-design.js`'s publish/archive/restore) so multiple writers can't emit two shapes |
 | `scan-verdict.js` | Fail-closed GuardDuty verdict lookup against the standalone `SCAN#<ref>` item |
 
 Three things here are easy to get wrong and were each proven live:
 
-- **`requireRole(Production/Sales/Admin)`, not `isStaff()`.** `isStaff()` includes `Finance`,
-  which has no business writing to the design library. Both handlers use `requireRole()`.
+- **`requireRole(Production/Sales/Admin)`, not `isStaff()`, for ordinary writes; `requireRole([ADMIN])` for approve/reject/publish.** `isStaff()` includes `Finance`, which has no business writing to the library. Never loosen the Admin-only actions to `isStaff()` either — approval is the whole point of the workflow.
 - **Fail closed on the scan, and "no verdict" is a refusal, not a pass.** Publishing makes an
   object world-readable, so both objects must carry a persisted `NO_THREATS_FOUND`. The files
   are uploaded *before* any `DESIGN#` record exists, so the verdict routinely lands with
   nothing to annotate — `scan-verdict.js` reads the standalone `SCAN#<ref>` item precisely to
   cover that race. Anything other than a clean verdict (including none) returns 409; a
-  `stillScanning: true` flag distinguishes "retry in a moment" from "this file is bad."
+  `stillScanning: true` flag distinguishes "retry in a moment" from "this file is bad." Every
+  publish path (final-approval, single-admin auto-publish, break-glass) re-runs this gate —
+  none of them trust an earlier check.
 - **Copy to the public bucket happens BEFORE the DynamoDB write, deliberately.** The reverse
   order leaves a `published` record pointing at an image that was never created, and no retry
   fixes it because the same designId is refused twice. Failing the other way leaves only a
   harmless orphan object.
 
-`parseDesignKey()` is the reason a caller cannot turn `POST /designs` into an arbitrary
+`parseDesignKey()` is the reason a caller cannot turn `POST /assets` into an arbitrary
 private→public copy primitive: the `s3Key*` strings in the body are re-parsed and every
 component re-validated (prefix, known catalog leaf, well-formed uuid, allowlisted extension,
 exact basename), so only a key this system would itself have issued is ever accepted. Likewise
 `uploadedBy` is the JWT's verified `sub`, never a body field.
 
-**Known gap for the next pass:** a design saved as `status: "draft"` can't currently be
-promoted to `published` — `publish-design.js` refuses a second write for the same designId.
-That transition belongs to the roadmap's `PATCH /designs/{id}` route, which isn't built.
+**Admin-approval workflow** (`patch-design.js`'s `submit`/`approve`/`reject`/`publish`
+actions + `approval.js`, built 2026-08-07 — the `draft`→`published` promotion this section
+used to flag as a known gap): an asset only goes live once **every current member of the
+Cognito Admin group** approves it. The approver set is re-evaluated via `ListUsersInGroup` on
+every `approve` call, never snapshotted at submission — an admin added mid-queue must also
+sign off, a removed admin's recorded approval stops counting (but stays in the audit trail).
+An empty Admin group can never auto-complete (fail closed, same stance as the scan gate). A
+single-admin group, or an Admin submitting their own asset, publishes immediately — the
+submit-as-sign-off case is recorded as an `approve` event stamped `via: "submit"`. `reject`
+(Admin-only, reason required) returns the asset to `draft` and clears every collected
+approval, so an edit after a rejection means everyone re-reviews. `publish` is a break-glass
+direct-publish escape hatch (Admin-only, mandatory reason, evented with `breakGlass: true`)
+for the day one founder is unreachable — the scan gate still applies in full. Full state
+machine, race handling, and rationale → `docs/asset-library-rebuild-plan-2026-08-06.md` §4.
+
+**Published-asset metadata edits are Admin-only** (2026-08-07 security-review fix,
+`requiresAdminToEditPublished()` in `approval.js`, enforced at the top of `patch-design.js`'s
+`handleUpdate()`). The approval workflow above re-reviews the *image* on every publish; it
+never re-reviews the name/description/tags shown next to it, so a Production/Sales caller
+could silently edit an already-approved asset's public storefront copy with zero oversight. A
+non-Admin editing a `published` asset's metadata now gets a 403 explaining why
+("re-submit for approval if this needs a content change"); draft/pending_approval/archived
+edits are unaffected and still open to the normal Production/Sales/Admin write gate. Covered
+in `approval.test.js`.
 
 ## Hard rule before you send ANY test email
 

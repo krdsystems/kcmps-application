@@ -42,6 +42,15 @@
    Never isStaff() anywhere here (Finance is staff but has no business
    writing to the library).
 
+   update on a PUBLISHED asset is Admin-only too (2026-08-07 security
+   review fix): approval re-reviews the image, never the name/description/
+   tags next to it, so a Production/Sales edit after publish changed public
+   storefront copy with zero re-review. handleUpdate() enforces this itself
+   (design.status isn't known until after the GetCommand, so it can't be
+   folded into the requireRole() call above) via approval.js's
+   requiresAdminToEditPublished() — draft/pending_approval/archived are
+   unaffected, still open to the normal Production/Sales/Admin write gate.
+
    ── CONCURRENCY ────────────────────────────────────────────────────
    Two admins approving simultaneously race on a ConditionExpression
    (#status = :pending_approval). The loser re-reads: if the winner's
@@ -66,7 +75,7 @@ const {
 const { parseDesignKey } = require("./design-types");
 const { checkVerdict } = require("./scan-verdict");
 const { regenerateManifest } = require("./manifest");
-const { approvalState, hasApproved, approvalSnapshot } = require("./approval");
+const { approvalState, hasApproved, approvalSnapshot, requiresAdminToEditPublished } = require("./approval");
 
 const PUBLIC_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
@@ -143,6 +152,12 @@ exports.handler = async (event) => {
 // status/deletedAt/approvals/S3 — those go through the dedicated actions
 // above so each state transition has exactly one code path. ----
 async function handleUpdate(design, pk, body, actor, now) {
+  if (requiresAdminToEditPublished(design.status, actor.isAdmin)) {
+    return response(403, {
+      error: "Published assets can only be edited by Admin — re-submit for approval if this needs a content change.",
+    });
+  }
+
   const sets = [];
   const names = {};
   const values = {};

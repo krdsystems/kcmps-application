@@ -75,4 +75,17 @@ function approvalSnapshot(approvals, adminUsers) {
   };
 }
 
-module.exports = { approvalState, hasApproved, approvalSnapshot };
+// ---- published-asset metadata-edit gate ----
+// Approval only re-reviews the IMAGE — name/description/tags are a plain
+// requireRole(Production/Sales/Admin) write with no re-review step, so once
+// an asset is published, a non-Admin editing its metadata changes what a
+// customer sees on an already-approved asset with zero oversight (found in
+// a 2026-08-07 security review). Once published, metadata edits require
+// Admin specifically; draft/pending_approval/archived stay open to the
+// normal write-role gate. Pure so it's unit-tested without a DynamoDB mock
+// — patch-design.js's handleUpdate() is the only caller.
+function requiresAdminToEditPublished(status, isAdmin) {
+  return status === "published" && !isAdmin;
+}
+
+module.exports = { approvalState, hasApproved, approvalSnapshot, requiresAdminToEditPublished };

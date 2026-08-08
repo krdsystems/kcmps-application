@@ -12,10 +12,24 @@
    "Ops dashboard mock data/API" row, docs/roadmap.md ~1122-1246):
 
      messageId   <- RFC822 Message-ID header (parsed.messageId)
-     threadId    <- References[0], else In-Reply-To, else a hash of the
-                    normalized subject (strips leading Re:/Fwd:) — mirrors
-                    what a real client does when a message has no thread
-                    headers at all (first-time contact)
+     threadId    <- References[0], else In-Reply-To, else the message's OWN
+                    Message-ID — all three in the same THR#ref# namespace,
+                    which is the entire fix for the "threads split after 3
+                    messages" bug (2026-08-07): a root used to get
+                    THR#subj#<subject hash> while every reply referencing it
+                    derived THR#ref#<hash of the root's Message-ID>, so the
+                    two could never match. Deriving the root from its own
+                    Message-ID makes the ids collide correctly. The subject
+                    hash survives only as a last resort for a message with
+                    no Message-ID at all.
+     inReplyTo   <- RFC822 In-Reply-To, persisted verbatim so
+                    ingest-inbound.js can inherit the parent's stored
+                    threadId (covers clients whose References chain is
+                    truncated or missing) and so a thread never re-splits.
+     references  <- the full References chain, persisted (capped at
+                    MAX_REFERENCES, keeping the root + the most recent) so
+                    send-reply.js's outbound References header deepens
+                    properly instead of collapsing to one element.
      from/to/cc  <- parsed.from.value / parsed.to.value / parsed.cc.value,
                     each already {name, address} — same shape the mock uses
      subject     <- parsed.subject
@@ -54,13 +68,40 @@ function normalizeSubjectForThread(subject) {
     .toLowerCase();
 }
 
+/* Cap on the persisted References chain. RFC 5322 §3.6.4's trimming advice:
+   when a chain must be shortened, keep the FIRST id (the thread root — it is
+   what every participant's refs[0] threading, including ours, keys on) and
+   the most recent ids; drop from the middle. 200 ids ≈ 8KB of header, well
+   inside SES's limits, and comfortably past the owner's ~100-message
+   requirement. */
+const MAX_REFERENCES = 200;
+
+function normalizeReferences(refs) {
+  const list = Array.isArray(refs) ? refs : (refs ? [refs] : []);
+  const clean = list.map((r) => String(r || "").trim()).filter(Boolean);
+  if (clean.length <= MAX_REFERENCES) return clean;
+  return [clean[0], ...clean.slice(clean.length - (MAX_REFERENCES - 1))];
+}
+
+/* THE thread-id derivation. Every branch that has a real RFC822 message id
+   to work with lands in the SAME `THR#ref#` namespace:
+     reply with References  -> hash of refs[0] (the thread root)
+     reply with In-Reply-To -> hash of the parent
+     root message           -> hash of its OWN Message-ID
+   so a root and the replies that reference it agree by construction. (The
+   old code sent roots to a `THR#subj#` subject-hash namespace instead —
+   that's the bug that split every thread at message 3; see the header.)
+   The In-Reply-To branch hashes the PARENT, not the root, so a chain whose
+   References header was stripped can still land one hop off — that gap is
+   closed by ingest-inbound.js's resolveThreadId(), which inherits the
+   parent's STORED threadId whenever the parent exists in the mailbox. */
 function deriveThreadId(parsed) {
-  const refs = parsed.references;
-  const firstRef = Array.isArray(refs) ? refs[0] : refs;
-  if (firstRef) return `THR#ref#${hashMessageId(firstRef)}`;
+  const refs = normalizeReferences(parsed.references);
+  if (refs.length) return `THR#ref#${hashMessageId(refs[0])}`;
   if (parsed.inReplyTo) return `THR#ref#${hashMessageId(parsed.inReplyTo)}`;
+  if (parsed.messageId) return `THR#ref#${hashMessageId(parsed.messageId)}`;
   const normalized = normalizeSubjectForThread(parsed.subject);
-  return `THR#subj#${hashMessageId(normalized || parsed.messageId || Math.random().toString(36))}`;
+  return `THR#subj#${hashMessageId(normalized || Math.random().toString(36))}`;
 }
 
 /* ------------------------------------------------------------
@@ -209,6 +250,11 @@ function toMailFields(parsed, { s3Ref }) {
     fields: {
       messageId: parsed.messageId || `<generated-${hashMessageId(s3Ref + dateIso)}@kcmps.com>`,
       threadId: deriveThreadId(parsed),
+      // Persisted so replies can build a full-fidelity References chain
+      // (send-reply.js's buildReferences) and so ingest can inherit a
+      // parent's stored threadId — see deriveThreadId() above.
+      inReplyTo: parsed.inReplyTo || null,
+      references: normalizeReferences(parsed.references),
       from: fromList[0] || { name: "", address: "" },
       to: toAddressList(parsed.to),
       cc: toAddressList(parsed.cc),
@@ -248,6 +294,8 @@ module.exports = {
   EXPECTED_FORWARDER_HOST,
   hashMessageId,
   deriveThreadId,
+  normalizeReferences,
+  MAX_REFERENCES,
   headerValues,
   extractForwardedRecipients,
   extractToCcRecipients,

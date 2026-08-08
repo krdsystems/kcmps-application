@@ -395,8 +395,6 @@
       `</div>` +
       `<div class="text-muted" style="text-align:right;font-size:12px">Line ${li.lineItemId}</div></div>` +
 
-      renderTags(order) +
-
       `<div class="card ticket-meta">` +
       `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +
       // Split contact channels (backend/checkout/create-order.js) so staff
@@ -499,13 +497,15 @@
       (actions.length ? "" : `<span class="text-muted" style="font-size:13px">${li.status === "Order Placed" ? "Waiting on the customer to submit GCash payment proof — no staff action yet." : "This line is in a terminal state — no further action."}</span>`) +
       `</div></div>` +
 
-      `<div class="card"><h3 style="margin-top:0">Event timeline</h3><div class="timeline">` +
+      `<div class="card" style="margin-bottom:var(--space-4)"><h3 style="margin-top:0">Event timeline</h3><div class="timeline">` +
       (events.length ? events.map((e) => (
         `<div class="timeline-row"><span class="tl-time">${fmtDateTime(e.at)}</span>` +
         `<span class="tl-transition">${e.from || "—"} → ${e.to}</span>` +
         `<span class="text-muted">${e.station ? "station " + escapeHtml(e.station) + " · " : ""}${escapeHtml(e.actorName || "")}</span></div>`
       )).join("") : '<p class="q-empty">No recorded transitions yet.</p>') +
-      `</div></div>`;
+      `</div></div>` +
+
+      renderTags(order);
 
     document.getElementById("search-spacemail-btn").addEventListener("click", () => {
       const url = SPACEMAIL_SEARCH_URL.replace("{q}", encodeURIComponent(order.orderId));

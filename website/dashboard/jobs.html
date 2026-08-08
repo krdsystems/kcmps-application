@@ -117,7 +117,7 @@
         </div>
         <div class="card" id="job-list-card">
           <div class="job-row job-row-head" style="font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);font-weight:700">
-            <span>Job</span><span>Client</span><span>Status</span><span>Due</span><span></span>
+            <span>Job</span><span>Client</span><span>Status</span><span>Due</span><span>Tags</span>
           </div>
           <div id="job-list"></div>
         </div>
@@ -133,6 +133,25 @@
   const claims = KCMPS_DASH_SHELL.mount("jobs");
   if (!claims) return;
   const { fmtDate, escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
+
+  // Compact tag chips for the list row — this column previously showed the
+  // order/line id (reference-only, already one tap away via job-detail.html,
+  // dropped on mobile for the same reason), now repurposed for tags per the
+  // owner's request. Shows at most 2 chips + a "+N" overflow count rather
+  // than wrapping, since the row is a single fixed-height line; each chip
+  // is independently truncated so one long tag can't blow out the column.
+  function jobTagsCell(order) {
+    const tags = Array.isArray(order.tags) ? order.tags : [];
+    if (!tags.length) return '<span class="text-muted" style="font-size:11px">—</span>';
+    const shown = tags.slice(0, 2);
+    const extra = tags.length - shown.length;
+    const chips = shown.map((t) => {
+      const label = escapeHtml(t.key) + (t.value ? ": " + escapeHtml(t.value) : "");
+      return `<span class="tag tag-outline" style="font-size:10px;padding:1px 7px;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>`;
+    }).join("");
+    const more = extra > 0 ? `<span class="text-muted" style="font-size:10px;flex:0 0 auto">+${extra}</span>` : "";
+    return `<span style="display:flex;gap:4px;justify-content:flex-end;overflow:hidden">${chips}${more}</span>`;
+  }
 
   function statusTone(status) {
     if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
@@ -181,7 +200,7 @@
       `<span>${escapeHtml(order.client ? order.client.name : "—")}</span>` +
       `<span class="status-pill ${statusTone(li.status)}">${li.status}</span>` +
       `<span>${fmtDate(order.originalPromisedDate)}</span>` +
-      `<span class="text-muted" style="font-size:12px">${order.orderId} / ${li.lineItemId}</span>` +
+      jobTagsCell(order) +
       `</a>`
     )).join("");
     highlightOrderId = null;

@@ -468,6 +468,39 @@ Skipping straight to step 2 is still technically possible (nothing *enforces* th
 but is exactly the shortcut this rule exists to prevent — treat step 1 as the default and
 step 2 as gated, never automatic.
 
+### NEVER use `--metadata-directive REPLACE` to change one header (2026-08-08, site-down)
+
+**`aws s3 cp` with `--metadata-directive REPLACE` discards EVERY header you don't
+re-specify in that same command — including `Content-Type`.** It does not merge. Objects
+silently come back as `binary/octet-stream`, and a browser then **downloads** `.html`
+instead of rendering it: every page on the affected prefix is dead, and the site looks
+completely broken to a visitor while S3 still reports the sync as successful.
+
+This took `dev.kcmps.com` down. The intent was harmless — retrofit `Cache-Control` onto 8
+already-uploaded dashboard files. The command carried `--cache-control` and nothing else,
+so all 8 lost their `Content-Type`. Production was untouched **only** because the loop
+happened to be scoped to the `dev-site/` prefix; the exact same command aimed one prefix
+higher would have taken down the live storefront.
+
+**The rule: to change object metadata, re-run the normal `aws s3 sync` from `website/`.**
+Sync derives `Content-Type` from the file extension automatically and applies
+`--cache-control` at the same time — that is the whole reason both commands above carry the
+flag inline. There is no case in this repo that needs a metadata-only rewrite.
+
+If a metadata-only rewrite is ever genuinely unavoidable, it must pass **`--content-type`
+explicitly, per file** (extensions differ, so a single loop value is wrong by
+construction), and be followed by a `head-object` check of `ContentType` on every key
+touched — not just a "command succeeded" read. The failure is invisible from the CLI's exit
+code; only the response header shows it.
+
+Detection, if pages ever download instead of render:
+```bash
+aws s3api head-object --bucket kcmps-online-bucket-est-2026 --key <key> \
+  --profile kcmps-claude-priv --query '[ContentType,CacheControl]' --output text
+```
+`binary/octet-stream` on a `.html`/`.css`/`.js` object is the smoking gun. Fix by
+re-syncing that content from `website/`.
+
 Backend/Lambda changes follow the same gate against `kcmps-backend-staging` before
 `kcmps-*` production functions/infra — see `backend/infra/README.md`'s "Staging" section
 for the exact commands and `docs/claude-code-workflow.md`'s "Deploying — backend" for when

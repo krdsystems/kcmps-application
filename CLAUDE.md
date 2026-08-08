@@ -501,10 +501,40 @@ aws s3api head-object --bucket kcmps-online-bucket-est-2026 --key <key> \
 `binary/octet-stream` on a `.html`/`.css`/`.js` object is the smoking gun. Fix by
 re-syncing that content from `website/`.
 
+### A production push mirrors back to staging too (2026-08-08)
+
+**When the owner approves promoting a file (or set of files) to production, sync that same
+content to `dev-site/` as well, in the same turn.** Not a relaxation of the staging-first
+gate — new work still stages first, and still waits for explicit approval before it goes to
+production. This is specifically about what happens *after* that approval: production must
+never end up ahead of staging on content the owner has already signed off on.
+
+**Why:** staging silently regressed behind production on 2026-08-08. `asset-library.html`'s
+per-product-targeting picker was promoted to both environments together, correctly. Later
+the same session, an unrelated **full** `aws s3 sync website/ ... dev-site/` was run from a
+worktree on a *different* branch — one whose local checkout of `asset-library.html` predated
+the picker entirely. That sync doesn't know or care what it's overwriting; it silently
+reverted staging's copy to the older version while production kept the newer one. The gap
+went unnoticed until the owner asked "what's on staging that isn't in prod yet" and a
+feature was found *missing from staging* that had already shipped to production days
+earlier — backwards from every other gap this workflow produces, and confusing precisely
+because it inverts the usual direction of drift.
+
+**How to apply:** after any owner-approved production sync, run the identical `aws s3 cp`/
+`sync` (same file, same content) against `dev-site/` immediately after, and verify both
+land with a `head-object` byte/`ContentType`/`CacheControl` check — same discipline as any
+other sync, not a skip-the-check afterthought. If the production push covered many files, so
+does the staging mirror.
+
 Backend/Lambda changes follow the same gate against `kcmps-backend-staging` before
 `kcmps-*` production functions/infra — see `backend/infra/README.md`'s "Staging" section
 for the exact commands and `docs/claude-code-workflow.md`'s "Deploying — backend" for when
 staging is required vs safely skippable.
+
+This is a manual discipline because there's no CI/CD pipeline yet — the owner's intent,
+stated 2026-08-08, is to build one eventually; until then, every sync in both directions is
+a deliberate CLI command someone has to remember to run, and the rule above exists to make
+that memory unnecessary for at least the "prod is ahead of staging" failure mode.
 
 Deliberately **no `--delete`** on either command — this only uploads new/changed files, it
 never removes anything from the bucket that isn't in `website/` locally (the bucket has

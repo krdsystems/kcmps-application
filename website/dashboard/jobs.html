@@ -116,10 +116,11 @@
           </div>
         </div>
         <div class="card" id="job-list-card">
-          <div class="job-row job-row-head" style="font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);font-weight:700">
-            <span>Job</span><span>Client</span><span>Status</span><span>Due</span><span>Tags</span>
+          <p class="hint" style="margin:0 0 var(--space-2)">Drag a column heading to reorder it — saved to your account, so it follows you to any device. Click the &#9662; on a heading to filter by its values.</p>
+          <div class="job-table-scroll">
+            <div class="job-row job-row-head" id="job-list-head" style="font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);font-weight:700"></div>
+            <div id="job-list"></div>
           </div>
-          <div id="job-list"></div>
         </div>
       </section>
     </main>
@@ -134,12 +135,17 @@
   if (!claims) return;
   const { fmtDate, escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
 
-  // Compact tag chips for the list row — this column previously showed the
-  // order/line id (reference-only, already one tap away via job-detail.html,
-  // dropped on mobile for the same reason), now repurposed for tags per the
-  // owner's request. Shows at most 2 chips + a "+N" overflow count rather
-  // than wrapping, since the row is a single fixed-height line; each chip
-  // is independently truncated so one long tag can't blow out the column.
+  function statusTone(status) {
+    if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
+    if (["Rework", "On Hold", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
+    if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
+    if (status === "In Production" || status === "QC") return "st-info";
+    return "st-neutral";
+  }
+
+  // Compact tag chips — at most 2 + a "+N" overflow count rather than
+  // wrapping, since a row is a single fixed-height line; each chip is
+  // independently truncated so one long tag can't blow out the column.
   function jobTagsCell(order) {
     const tags = Array.isArray(order.tags) ? order.tags : [];
     if (!tags.length) return '<span class="text-muted" style="font-size:11px">—</span>';
@@ -147,18 +153,62 @@
     const extra = tags.length - shown.length;
     const chips = shown.map((t) => {
       const label = escapeHtml(t.key) + (t.value ? ": " + escapeHtml(t.value) : "");
-      return `<span class="tag tag-outline" style="font-size:10px;padding:1px 7px;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>`;
+      return `<span class="tag tag-outline jc-tag-chip" title="${label}">${label}</span>`;
     }).join("");
     const more = extra > 0 ? `<span class="text-muted" style="font-size:10px;flex:0 0 auto">+${extra}</span>` : "";
-    return `<span style="display:flex;gap:4px;justify-content:flex-end;overflow:hidden">${chips}${more}</span>`;
+    return chips + more;
   }
 
-  function statusTone(status) {
-    if (["Delivered", "Ready for Dispatch", "Dispatched"].includes(status)) return "st-good";
-    if (["Rework", "On Hold", "Cancelled", "Auto-Cancelled", "Quote Expired"].includes(status)) return "st-bad";
-    if (["Pending Payment Verification", "Quoted", "Priced"].includes(status)) return "st-warn";
-    if (status === "In Production" || status === "QC") return "st-info";
-    return "st-neutral";
+  /* ---- columns: definition, default order, dynamic layout ----
+     Every column is a fixed px width (no fr tracks) so the row's total
+     width is stable regardless of viewport — .job-table-scroll's
+     overflow-x:auto is what handles "doesn't fit," not shrinking text.
+     value() returns the raw comparable string used by both the search
+     box's haystack and the per-column filter popover; render() is what
+     actually reaches the DOM (through escapeHtml same as before). ---- */
+  const COLUMN_DEFS = {
+    status: {
+      label: "Status", minWidth: 190,
+      value: (order, li) => li.status,
+      render: (order, li) => `<span class="status-pill ${statusTone(li.status)}">${escapeHtml(li.status)}</span>`,
+    },
+    due: {
+      label: "Due", minWidth: 100,
+      value: (order) => fmtDate(order.originalPromisedDate) || "—",
+      render: (order) => escapeHtml(fmtDate(order.originalPromisedDate)),
+    },
+    job: {
+      label: "Job", minWidth: 260,
+      value: (order, li) => li.description,
+      render: (order, li) => escapeHtml(li.description) + (order.source === "manual" ? ' <span class="tag tag-neutral" style="font-size:10px">Manual</span>' : ""),
+    },
+    orderId: {
+      label: "Order ID", minWidth: 190,
+      value: (order) => order.orderId,
+      render: (order, li) => escapeHtml(order.orderId) + " / " + escapeHtml(li.lineItemId),
+    },
+    client: {
+      label: "Client", minWidth: 160,
+      value: (order) => (order.client ? order.client.name : "—"),
+      render: (order) => escapeHtml(order.client ? order.client.name : "—"),
+    },
+    tags: {
+      label: "Tags", minWidth: 190,
+      value: (order) => (Array.isArray(order.tags) && order.tags.length ? order.tags.map((t) => t.key + (t.value ? ": " + t.value : "")).join(", ") : "—"),
+      render: (order) => jobTagsCell(order),
+    },
+  };
+  const DEFAULT_COLUMN_ORDER = ["status", "due", "job", "orderId", "client", "tags"];
+  let columns = DEFAULT_COLUMN_ORDER.slice();
+  // Per-column value filters — key present + non-empty Set means "only
+  // show rows whose value() is in this set." Absent/empty = no filter on
+  // that column. An all-unchecked popover is treated as "no filter"
+  // (permissive default) rather than "show nothing," since the latter
+  // looks like a bug to someone who just cleared every checkbox.
+  let columnFilters = {};
+
+  function gridTemplate() {
+    return columns.map((k) => COLUMN_DEFS[k].minWidth + "px").join(" ");
   }
 
   async function allRows() {
@@ -178,32 +228,170 @@
     sel.value = statuses.includes(current) ? current : "";
   }
 
+  function matchesColumnFilters(order, li) {
+    return Object.keys(columnFilters).every((key) => {
+      const set = columnFilters[key];
+      if (!set || !set.size) return true;
+      return set.has(COLUMN_DEFS[key].value(order, li));
+    });
+  }
+
+  /* ---- drag-to-reorder + per-column value filter ----
+     Native HTML5 drag-and-drop on header cells; the filter button inside
+     each cell is draggable="false" so a click on it doesn't also start a
+     drag. Listeners are bound ONCE on the stable #job-list-head container
+     (delegated via closest()) since its innerHTML is rebuilt on every
+     render() — binding inside render() would pile up duplicate listeners. */
+  const headEl = document.getElementById("job-list-head");
+  let dragKey = null;
+
+  function renderHead() {
+    headEl.style.gridTemplateColumns = gridTemplate();
+    headEl.innerHTML = columns.map((k) => {
+      const def = COLUMN_DEFS[k];
+      const isFiltered = columnFilters[k] && columnFilters[k].size;
+      return `<span class="jc jc-head${isFiltered ? " is-filtered" : ""}" draggable="true" data-col="${k}">` +
+        `<span class="jc-head-label">${escapeHtml(def.label)}</span>` +
+        `<button type="button" class="col-filter-btn" data-col="${k}" draggable="false" aria-label="Filter ${escapeHtml(def.label)}" title="Filter by value">&#9662;</button>` +
+        `</span>`;
+    }).join("");
+  }
+
+  function persistColumnOrder() {
+    KCMPS_DASH.setDashboardPref("jobsColumnOrder", columns).catch((err) => {
+      console.error("Failed to save column order — it'll reset next visit:", err);
+    });
+  }
+
+  headEl.addEventListener("dragstart", (e) => {
+    const cell = e.target.closest(".jc-head");
+    if (!cell) return;
+    dragKey = cell.dataset.col;
+    e.dataTransfer.effectAllowed = "move";
+    cell.classList.add("is-dragging");
+  });
+  headEl.addEventListener("dragend", (e) => {
+    const cell = e.target.closest(".jc-head");
+    if (cell) cell.classList.remove("is-dragging");
+    headEl.querySelectorAll(".is-drop-target").forEach((el) => el.classList.remove("is-drop-target"));
+    dragKey = null;
+  });
+  headEl.addEventListener("dragover", (e) => {
+    if (!dragKey) return;
+    const cell = e.target.closest(".jc-head");
+    if (!cell) return;
+    e.preventDefault();
+    headEl.querySelectorAll(".is-drop-target").forEach((el) => el.classList.remove("is-drop-target"));
+    if (cell.dataset.col !== dragKey) cell.classList.add("is-drop-target");
+  });
+  headEl.addEventListener("drop", (e) => {
+    if (!dragKey) return;
+    const cell = e.target.closest(".jc-head");
+    if (!cell) return;
+    e.preventDefault();
+    const targetKey = cell.dataset.col;
+    if (targetKey !== dragKey) {
+      columns.splice(columns.indexOf(dragKey), 1);
+      columns.splice(columns.indexOf(targetKey), 0, dragKey);
+      persistColumnOrder();
+      render();
+    }
+  });
+
+  const filterPopover = document.createElement("div");
+  filterPopover.className = "col-filter-popover";
+  document.body.appendChild(filterPopover);
+  let openPopoverKey = null;
+
+  function closeFilterPopover() {
+    filterPopover.classList.remove("is-open");
+    openPopoverKey = null;
+  }
+
+  function openFilterPopover(key, btn) {
+    if (openPopoverKey === key) { closeFilterPopover(); return; }
+    const def = COLUMN_DEFS[key];
+    const values = [...new Set(rows.map((r) => def.value(r.order, r.li)))].sort();
+    const active = columnFilters[key];
+    filterPopover.innerHTML =
+      `<div class="cfp-head"><strong>${escapeHtml(def.label)}</strong><button type="button" class="cfp-clear" data-act="clear">Clear</button></div>` +
+      `<div class="cfp-list">` +
+      values.map((v) => {
+        const checked = !active || !active.size || active.has(v);
+        return `<label class="cfp-row"><input type="checkbox" value="${escapeHtml(v)}"${checked ? " checked" : ""} /><span>${escapeHtml(v)}</span></label>`;
+      }).join("") +
+      `</div>`;
+    const r = btn.getBoundingClientRect();
+    filterPopover.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + "px";
+    filterPopover.style.top = (r.bottom + 4) + "px";
+    filterPopover.classList.add("is-open");
+    openPopoverKey = key;
+
+    filterPopover.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const boxes = [...filterPopover.querySelectorAll('input[type="checkbox"]')];
+        const checkedVals = boxes.filter((b) => b.checked).map((b) => b.value);
+        if (!checkedVals.length || checkedVals.length === boxes.length) delete columnFilters[key];
+        else columnFilters[key] = new Set(checkedVals);
+        render();
+      });
+    });
+    filterPopover.querySelector('[data-act="clear"]').addEventListener("click", () => {
+      delete columnFilters[key];
+      closeFilterPopover();
+      render();
+    });
+  }
+
+  headEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".col-filter-btn");
+    if (!btn) return;
+    e.stopPropagation();
+    openFilterPopover(btn.dataset.col, btn);
+  });
+  document.addEventListener("click", (e) => {
+    if (openPopoverKey && !filterPopover.contains(e.target) && !e.target.closest(".col-filter-btn")) closeFilterPopover();
+  });
+
   // Set right before a render() that should call out its result — a job
   // just created via the manual-order form. Cleared after one render so the
   // 20s poll refresh below doesn't keep re-flashing it.
   let highlightOrderId = null;
 
+  function rowHtml(order, li) {
+    const cells = columns.map((k) => `<span class="jc jc-${k}">${COLUMN_DEFS[k].render(order, li)}</span>`).join("");
+    return `<a class="job-row${order.orderId === highlightOrderId ? " is-new" : ""}" style="text-decoration:none;color:inherit;grid-template-columns:${gridTemplate()}" href="job-detail.html?order=${encodeURIComponent(order.orderId)}&line=${encodeURIComponent(li.lineItemId)}">${cells}</a>`;
+  }
+
   function render() {
+    renderHead();
     const q = document.getElementById("f-search").value.trim().toLowerCase();
     const statusFilter = document.getElementById("f-status").value;
     const filtered = rows.filter((r) => {
       if (statusFilter && r.li.status !== statusFilter) return false;
+      if (!matchesColumnFilters(r.order, r.li)) return false;
       if (!q) return true;
       const hay = [r.li.description, r.order.client?.name, r.order.orderId].join(" ").toLowerCase();
       return hay.includes(q);
     });
     const list = document.getElementById("job-list");
-    if (!filtered.length) { list.innerHTML = '<div class="empty-state">No jobs match.</div>'; return; }
-    list.innerHTML = filtered.map(({ order, li }) => (
-      `<a class="job-row${order.orderId === highlightOrderId ? " is-new" : ""}" style="text-decoration:none;color:inherit" href="job-detail.html?order=${encodeURIComponent(order.orderId)}&line=${encodeURIComponent(li.lineItemId)}">` +
-      `<span>${escapeHtml(li.description)}${order.source === "manual" ? ' <span class="tag tag-neutral" style="font-size:10px">Manual</span>' : ""}</span>` +
-      `<span>${escapeHtml(order.client ? order.client.name : "—")}</span>` +
-      `<span class="status-pill ${statusTone(li.status)}">${li.status}</span>` +
-      `<span>${fmtDate(order.originalPromisedDate)}</span>` +
-      jobTagsCell(order) +
-      `</a>`
-    )).join("");
+    if (!filtered.length) { list.innerHTML = '<div class="empty-state">No jobs match.</div>'; highlightOrderId = null; return; }
+    list.innerHTML = filtered.map(({ order, li }) => rowHtml(order, li)).join("");
     highlightOrderId = null;
+  }
+
+  async function loadColumnOrder() {
+    try {
+      const { data } = await KCMPS_DASH.getDashboardPrefs();
+      const saved = data && data.jobsColumnOrder;
+      if (Array.isArray(saved) && saved.length === DEFAULT_COLUMN_ORDER.length && DEFAULT_COLUMN_ORDER.every((k) => saved.includes(k))) {
+        columns = saved.slice();
+      }
+    } catch (err) {
+      // Preferences are a nice-to-have — a failed fetch just keeps the
+      // default order rather than blocking the page.
+      console.error("Failed to load dashboard prefs, using default column order:", err);
+    }
   }
   document.getElementById("f-search").addEventListener("input", render);
   document.getElementById("f-status").addEventListener("change", render);
@@ -220,7 +408,11 @@
     refreshStatusFilterOptions();
     render();
   }
-  init();
+  // Column order is a one-time bootstrap load, not part of the 20s poll
+  // below (init() re-runs on that interval to refresh row data — reloading
+  // prefs every 20s would be wasted calls and could clobber a reorder still
+  // settling).
+  loadColumnOrder().then(init);
 
   // Live-ish refresh: staff shouldn't have to hit F5 to see a job another
   // teammate just advanced. Re-fetches and re-renders on an interval rather

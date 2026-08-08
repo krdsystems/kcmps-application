@@ -835,6 +835,18 @@
     save(state);
     return state.inventory;
   }
+  // Per-staffer UI preferences (jobs.html's draggable column order, first
+  // consumer) — backend/staff-api/dashboard-prefs.js, USER#<sub>/PREFS.
+  // Server-side, not localStorage, specifically so it follows a staffer
+  // across devices. PATCH shallow-merges server-side, so setDashboardPref
+  // only ever needs to send the one key it's changing.
+  async function getDashboardPrefs() {
+    return apiFetch("/staff/prefs", { method: "GET" });
+  }
+  async function setDashboardPref(key, value) {
+    return apiFetch("/staff/prefs", { method: "PATCH", body: JSON.stringify({ data: { [key]: value } }) });
+  }
+
   async function getAllOrders() {
     const { orders } = await apiFetch("/orders", { method: "GET" });
     const normalized = (orders || []).map(normalizeOrder);
@@ -1362,6 +1374,7 @@
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondence,
+    getDashboardPrefs, setDashboardPref,
     setOrderTags, getDefaultOrderTags,
     getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,

@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KCMPS — Design subsection wizard (mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --text:#1a2b42; --accent:#f2882e; --accent-600:#d96d18; --navy:#1d3f72; --navy-800:#142b52; --navy-900:#0b1930;
+  --n100:#fbfbfc; --n200:#eef0f3; --n300:#dde0e6; --n400:#c1c6d0; --n500:#9ba1af; --n600:#767d8d; --n700:#565e70;
+  --green:#4a9d5c; --bg:#f6f7f9;
+  --fh:"Plus Jakarta Sans",system-ui,sans-serif; --fb:"Inter",system-ui,sans-serif;
+  --r:14px; --shadow:0 10px 30px rgba(11,25,48,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--fb);color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--fh);margin:0}
+button{font:inherit;cursor:pointer}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+
+/* --- mock chrome --- */
+.demo-bar{background:var(--navy-900);color:#fff;font-size:12.5px;padding:8px 0}
+.demo-bar .wrap{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.demo-bar b{color:var(--accent)}
+.demo-bar button{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:8px;padding:5px 11px;font-size:12px}
+.demo-bar button:hover{background:rgba(255,255,255,.22)}
+.nav{background:#fff;border-bottom:1px solid var(--n300);position:sticky;top:0;z-index:20}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--fh);font-weight:800;letter-spacing:-.2px}
+.brand-mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--navy),var(--accent))}
+.cart-btn{border:1px solid var(--n300);background:#fff;border-radius:999px;padding:7px 15px;font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center}
+.cart-btn .badge{background:var(--accent);color:#fff;border-radius:999px;min-width:20px;height:20px;display:grid;place-items:center;font-size:11.5px;font-weight:700;padding:0 5px}
+
+/* --- tabs --- */
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--n300);margin:26px 0 0;overflow-x:auto}
+.tab-btn{background:none;border:0;padding:12px 16px;font-weight:600;font-size:15px;color:var(--n600);border-bottom:2px solid transparent;white-space:nowrap}
+.tab-btn[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--accent)}
+.hero{padding:34px 0 4px}
+.hero h1{font-size:clamp(26px,4vw,38px);letter-spacing:-.6px}
+.hero p{color:var(--n700);margin:9px 0 0;max-width:60ch}
+
+/* --- design grid --- */
+.strip{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:22px 0 14px}
+.chip{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--n300);border-radius:999px;padding:6px 13px;font-size:13.5px;font-weight:600}
+.chip .sw{width:14px;height:14px;border-radius:5px;border:1px solid rgba(0,0,0,.18)}
+.chip button{border:0;background:none;color:var(--n600);font-size:12px;text-decoration:underline;padding:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:16px;padding-bottom:60px}
+.tile{background:#fff;border:1px solid var(--n300);border-radius:var(--r);overflow:hidden;text-align:left;padding:0;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.tile:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.tile-img{aspect-ratio:1;display:grid;place-items:center;padding:16px;position:relative}
+.tile-img img{max-width:100%;max-height:100%;filter:drop-shadow(0 4px 10px rgba(0,0,0,.25))}
+.tile-meta{padding:11px 13px 14px;border-top:1px solid var(--n200)}
+.tile-meta strong{display:block;font-size:14px;font-family:var(--fh)}
+.tile-meta span{font-size:12.5px;color:var(--n600)}
+.tile.is-unavailable{opacity:.45}
+.tile-flag{position:absolute;left:10px;top:10px;background:rgba(11,25,48,.85);color:#fff;font-size:11px;font-weight:600;border-radius:999px;padding:4px 9px}
+
+/* --- modal shell --- */
+.backdrop{position:fixed;inset:0;background:rgba(11,25,48,.62);backdrop-filter:blur(3px);z-index:120;display:grid;place-items:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .22s}
+.backdrop.is-open{opacity:1;pointer-events:auto}
+.sheet{background:#fff;border-radius:20px;max-width:820px;width:100%;padding:30px;box-shadow:0 30px 70px rgba(11,25,48,.35);transform:translateY(14px) scale(.98);transition:transform .28s cubic-bezier(.2,.9,.25,1)}
+.backdrop.is-open .sheet{transform:none}
+.sheet h2{font-size:24px;letter-spacing:-.4px}
+.sheet .sub{color:var(--n600);margin:7px 0 22px;font-size:14.5px}
+.obj-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.obj{border:1.5px solid var(--n300);background:#fff;border-radius:16px;padding:22px 16px;text-align:center;transition:.16s}
+.obj:hover:not(:disabled){border-color:var(--accent);transform:translateY(-3px);box-shadow:var(--shadow)}
+.obj .ico{font-size:38px;line-height:1}
+.obj strong{display:block;margin-top:12px;font-family:var(--fh);font-size:16px}
+.obj span{display:block;color:var(--n600);font-size:12.5px;margin-top:4px}
+.obj:disabled{background:var(--n100);cursor:not-allowed}
+.obj .soon{display:inline-block;margin-top:9px;background:var(--n200);color:var(--n700);font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px}
+.ghost{background:none;border:0;color:var(--n600);text-decoration:underline;font-size:13.5px;margin-top:20px;padding:0}
+
+/* --- design lightbox --- */
+.lb{background:#fff;border-radius:20px;max-width:1040px;width:100%;display:grid;grid-template-columns:1.05fr .95fr;overflow:hidden;box-shadow:0 30px 70px rgba(11,25,48,.4);transform:translateY(14px) scale(.98);transition:transform .28s cubic-bezier(.2,.9,.25,1);max-height:92vh}
+.backdrop.is-open .lb{transform:none}
+.lb-stage{background:linear-gradient(170deg,#eef0f3,#dfe3ea);padding:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.lb-close{position:absolute;right:12px;top:12px;z-index:3;border:0;background:rgba(255,255,255,.85);border-radius:999px;width:32px;height:32px;font-size:18px;line-height:1}
+.shirt{isolation:isolate;position:relative;width:min(370px,68vh);aspect-ratio:900/1050;filter:drop-shadow(0 16px 26px rgba(11,25,48,.22))}
+.shirt-color{position:absolute;inset:0;background:#111}
+.shirt-shade{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:multiply}
+.shirt-print{position:absolute;display:grid;place-items:center;transition:all .3s cubic-bezier(.2,.8,.2,1)}
+.shirt-print img{max-width:100%;max-height:100%;object-fit:contain}
+.print-guide{position:absolute;border:1px dashed rgba(11,25,48,.35);border-radius:4px;opacity:0;transition:opacity .2s;pointer-events:none}
+.shirt:hover .print-guide{opacity:.9}
+.view-toggle{display:flex;gap:5px;background:rgba(255,255,255,.7);border-radius:999px;padding:4px;margin-top:16px}
+.view-toggle button{border:0;background:none;border-radius:999px;padding:6px 15px;font-size:13px;font-weight:600;color:var(--n700)}
+.view-toggle button.on{background:#fff;color:var(--navy);box-shadow:0 2px 6px rgba(11,25,48,.14)}
+.lb-panel{padding:26px 26px 0;display:flex;flex-direction:column;overflow:auto}
+.lb-kicker{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-600)}
+.lb-panel h3{font-size:22px;margin:5px 0 3px;letter-spacing:-.3px}
+.lb-panel .blurb{color:var(--n600);font-size:13.5px;margin:0 0 18px}
+.field{margin-bottom:17px}
+.field > label{display:block;font-size:12.5px;font-weight:700;color:var(--n700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px}
+.seg{display:flex;gap:6px;background:var(--n200);border-radius:12px;padding:4px}
+.seg button{flex:1;border:0;background:none;border-radius:9px;padding:9px 6px;font-size:13.5px;font-weight:600;color:var(--n700)}
+.seg button.on{background:#fff;color:var(--navy);box-shadow:0 2px 6px rgba(11,25,48,.12)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.colors{display:flex;gap:8px}
+.color{display:flex;align-items:center;gap:8px;border:1.5px solid var(--n300);background:#fff;border-radius:11px;padding:8px 12px;font-size:13.5px;font-weight:600}
+.color.on{border-color:var(--navy);box-shadow:0 0 0 3px rgba(29,63,114,.13)}
+.color .sw{width:18px;height:18px;border-radius:6px;border:1px solid rgba(0,0,0,.2)}
+.color .sw.is-custom{background:conic-gradient(#f2882e,#4a9d5c,#35619c,#d83c3c,#f2882e)}
+.cpanel{display:none;align-items:center;gap:10px;margin-top:10px;background:var(--n100);border:1px solid var(--n300);border-radius:11px;padding:10px}
+.cpanel.on{display:flex}
+.cpanel input[type=color]{width:44px;height:34px;border:0;background:none;padding:0}
+.cpanel .hex{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
+.cpanel button{margin-left:auto;border:0;background:var(--navy);color:#fff;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:600}
+.note{font-size:12px;color:var(--n600);margin:8px 0 0}
+.note.warn{color:var(--accent-600);font-weight:600}
+.qty{display:flex;align-items:center;gap:0;border:1.5px solid var(--n300);border-radius:11px;overflow:hidden;width:fit-content}
+.qty button{border:0;background:var(--n100);width:40px;height:40px;font-size:18px;font-weight:600;color:var(--n700)}
+.qty input{border:0;width:66px;height:40px;text-align:center;font-size:15px;font-weight:700;font-family:var(--fb)}
+.bulk{display:none;margin-top:9px;background:#eaf6ec;border:1px solid #bfe0c6;color:#25642f;border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600}
+.bulk.on{display:block}
+.bulk s{color:#6a8a70;font-weight:500}
+.lb-foot{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--n200);margin:auto -26px 0;padding:15px 26px 18px;display:flex;align-items:center;gap:14px}
+.price{font-family:var(--fh);font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1}
+.price small{display:block;font-family:var(--fb);font-size:11.5px;font-weight:500;color:var(--n600);letter-spacing:0;margin-top:3px}
+.btn-add{margin-left:auto;border:0;background:var(--accent);color:#fff;border-radius:12px;padding:13px 22px;font-weight:700;font-size:15px;box-shadow:0 6px 16px rgba(242,136,46,.35);transition:.16s}
+.btn-add:hover{background:var(--accent-600);transform:translateY(-1px)}
+.btn-add:disabled{background:var(--n400);box-shadow:none;transform:none;cursor:not-allowed}
+
+/* --- cap popup --- */
+.cap{background:#fff;border-radius:18px;max-width:440px;padding:26px;box-shadow:0 30px 70px rgba(11,25,48,.4)}
+.cap h3{font-size:19px;margin-bottom:8px}
+.cap p{color:var(--n700);font-size:14px;line-height:1.55;margin:0 0 18px}
+.cap-row{display:flex;gap:10px;justify-content:flex-end}
+.cap-row button{border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;border:1.5px solid var(--n300);background:#fff}
+.cap-row button.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+/* --- cart drawer --- */
+.overlay{position:fixed;inset:0;background:rgba(11,25,48,.45);z-index:100;opacity:0;pointer-events:none;transition:opacity .25s}
+.overlay.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(420px,100%);background:#fff;z-index:101;transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.85,.25,1);display:flex;flex-direction:column;box-shadow:-16px 0 40px rgba(11,25,48,.2)}
+.drawer.on{transform:none}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--n200)}
+.drawer-body{flex:1;overflow:auto;padding:16px 20px}
+.line{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--n200)}
+.line-thumb{width:66px;height:78px;border-radius:9px;flex:none;position:relative;overflow:hidden;background:var(--n200)}
+.line-thumb .shirt{width:100%;filter:none}
+.line b{font-size:14px;font-family:var(--fh);display:block}
+.line .meta{font-size:12.5px;color:var(--n600);margin-top:3px;line-height:1.5}
+.line .pr{margin-top:6px;font-size:13.5px;font-weight:700}
+.line .pair{display:inline-block;background:#eaf0fa;color:var(--navy);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;margin-top:6px}
+.drawer-foot{border-top:1px solid var(--n200);padding:16px 20px;background:var(--n100)}
+.drawer-foot .tot{display:flex;justify-content:space-between;font-family:var(--fh);font-weight:800;font-size:18px;margin-bottom:12px}
+.drawer-foot .btn-add{width:100%;margin:0;justify-content:center;text-align:center}
+.empty{color:var(--n600);font-size:14px;text-align:center;padding:40px 0}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--navy-900);color:#fff;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:600;z-index:200;opacity:0;pointer-events:none;transition:.25s}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media(max-width:860px){
+  .lb{grid-template-columns:1fr;max-height:94vh}
+  .lb-stage{padding:16px}
+  .shirt{width:min(240px,42vh)}
+  .obj-grid{grid-template-columns:1fr}
+  .sheet{padding:22px}
+}
+</style>
+</head>
+<body>
+
+<div class="demo-bar"><div class="wrap">
+  <span><b>MOCKUP</b> — Design subsection wizard. Not connected to anything. Click <b>Design</b> to start.</span>
+  <span><button id="replay">↻ Replay from start</button></span>
+</div></div>
+
+<header class="nav"><div class="wrap">
+  <div class="brand"><span class="brand-mark"></span> KCMPS</div>
+  <button class="cart-btn" id="cartBtn">Cart <span class="badge" id="cartCount">0</span></button>
+</div></header>
+
+<main class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab-btn" data-cat="print" aria-selected="false">Print &amp; Office</button>
+    <button class="tab-btn" data-cat="design" aria-selected="true">Design</button>
+    <button class="tab-btn" data-cat="merch" aria-selected="false">Merch</button>
+  </div>
+
+  <section class="hero">
+    <h1 id="secTitle">Pick a design, we'll press it</h1>
+    <p id="secBlurb">Ready-to-press graphics on the shirt you choose. Bulk pricing kicks in automatically at 10+ pcs.</p>
+  </section>
+
+  <div class="strip">
+    <div id="filterChips"></div>
+    <span class="chip" id="countChip">8 designs</span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</main>
+
+<!-- object picker -->
+<div class="backdrop" id="objBackdrop"><div class="sheet">
+  <h2>What are we making?</h2>
+  <p class="sub">Pick what you want it printed on — we'll handle the rest (and quietly pick the right process for you).</p>
+  <div class="obj-grid">
+    <button class="obj" data-obj="apparel"><span class="ico">👕</span><strong>Apparel</strong><span>Shirts, hoodies, jerseys</span></button>
+    <button class="obj" data-obj="3dprint" disabled><span class="ico">🧩</span><strong>3D Print</strong><span>Figures, props, parts</span><span class="soon">REQUEST A QUOTE</span></button>
+    <button class="obj" data-obj="souvenir" disabled><span class="ico">🎁</span><strong>Souvenir</strong><span>Mugs, tumblers, giveaways</span><span class="soon">REQUEST A QUOTE</span></button>
+  </div>
+  <button class="ghost" id="justBrowse">Just browse everything →</button>
+</div></div>
+
+<!-- design lightbox -->
+<div class="backdrop" id="lbBackdrop"><div class="lb">
+  <div class="lb-stage">
+    <button class="lb-close" id="lbClose" aria-label="Close">×</button>
+    <div class="shirt" id="shirt">
+      <div class="shirt-color" id="shirtColor"></div>
+      <img class="shirt-shade" id="shirtShade" alt="" />
+      <div class="print-guide" id="printGuide"></div>
+      <div class="shirt-print" id="shirtPrint"><img id="printImg" alt="" /></div>
+    </div>
+    <div class="view-toggle" id="viewToggle" style="display:none">
+      <button data-view="front" class="on">Front view</button>
+      <button data-view="back">Back view</button>
+    </div>
+  </div>
+
+  <div class="lb-panel">
+    <span class="lb-kicker" id="lbKicker">Pre-made · Apparel</span>
+    <h3 id="lbName">Design</h3>
+    <p class="blurb">Ready-to-press transfer. Add a shirt and we'll press it for you.</p>
+
+    <div class="field">
+      <label>Shirt color</label>
+      <div class="colors" id="colors"></div>
+      <div class="cpanel" id="cpanel">
+        <input type="color" id="cInput" value="#7b1e28" />
+        <span class="hex" id="cHex">#7B1E28</span>
+        <button id="cUse">Use this color</button>
+      </div>
+      <p class="note" id="colorNote" style="display:none">We'll do our best to match the selected color, subject to availability.</p>
+      <p class="note warn" id="processNote" style="display:none"></p>
+    </div>
+
+    <div class="field">
+      <label>Placement</label>
+      <div class="seg" id="placement">
+        <button data-p="front" class="on">Front</button>
+        <button data-p="back">Back</button>
+        <button data-p="both">Both</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Print size</label>
+      <div class="seg" id="sizes"></div>
+      <p class="note" id="sizeNote" style="display:none"></p>
+    </div>
+
+    <div class="field">
+      <label>Quantity</label>
+      <div class="qty"><button id="qMinus">−</button><input id="qVal" type="number" value="1" min="1" /><button id="qPlus">+</button></div>
+      <div class="bulk" id="bulk"></div>
+    </div>
+
+    <div class="lb-foot">
+      <div class="price" id="price">₱0<small id="priceSub"></small></div>
+      <button class="btn-add" id="addBtn">Add to cart</button>
+    </div>
+  </div>
+</div></div>
+
+<!-- capacity popup -->
+<div class="backdrop" id="capBackdrop"><div class="cap">
+  <h3 id="capTitle">That's a big order</h3>
+  <p id="capBody"></p>
+  <div class="cap-row" id="capRow"></div>
+</div></div>
+
+<!-- cart -->
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><h3>Your cart</h3><button class="lb-close" id="drawerClose" style="position:static">×</button></div>
+  <div class="drawer-body" id="cartBody"></div>
+  <div class="drawer-foot">
+    <div class="tot"><span>Total</span><span id="cartTotal">₱0</span></div>
+    <button class="btn-add" id="checkoutBtn">Checkout</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   MOCKUP DATA — mirrors products.js shapes (dtf-street-statement)
+   ============================================================ */
+const ASSETS = {
+  frontShade: "__SHIRT_FRONT__", frontMask: "__SHIRT_FRONT_MASK__",
+  backShade:  "__SHIRT_BACK__",  backMask:  "__SHIRT_BACK_MASK__",
+  designs: ["__D1__","__D2__","__D3__","__D4__","__D5__","__D6__","__D7__","__D8__"]
+};
+const DESIGNS = [
+  {id:"d1", name:"MOBA Legends",     process:"dtf",   img:0},
+  {id:"d2", name:"Brawl Squad",      process:"dtf",   img:1},
+  {id:"d3", name:"Stay Weird",       process:"dtf",   img:2},
+  {id:"d4", name:"Hustle Harder",    process:"dtf",   img:3},
+  {id:"d5", name:"Native Gold",      process:"subli", img:4},
+  {id:"d6", name:"Solve It",         process:"dtf",   img:5},
+  {id:"d7", name:"Virtual",          process:"subli", img:6},
+  {id:"d8", name:"Run Don't Walk",   process:"dtf",   img:7},
+];
+const SIZES = [{label:"3×5 in",price:50},{label:"A4",price:80},{label:"A3",price:150}];
+const SHIRT_ADDON = 110;
+const BULK = [{minQty:10,pct:6},{minQty:25,pct:10},{minQty:50,pct:13},{minQty:100,pct:16}];
+const SOFT_CAP = 150, HARD_MULT = 5;
+const PRINT_AREA = { // % of the shirt box
+  front:{left:32,top:31,width:36,height:26},
+  back: {left:25,top:26,width:50,height:38}
+};
+
+/* ---- state ---- */
+let S = { obj:null, design:null, color:"black", custom:"#7b1e28", placement:"front", size:1, qty:1, view:"front" };
+let capOK = {};           // per-design soft-cap acknowledgement (resets on refresh, like prod)
+let cart = [];
+const $ = s => document.querySelector(s);
+const peso = n => "₱" + n.toLocaleString("en-PH",{minimumFractionDigits:(n%1?2:0),maximumFractionDigits:2});
+
+/* ---- color helpers ---- */
+function colorHex(){ return S.color==="black" ? "#141414" : S.color==="white" ? "#f4f4f4" : S.custom; }
+function isDark(hex){
+  const c = hex.replace("#",""); const r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),b=parseInt(c.substr(4,2),16);
+  return (0.2126*r+0.7152*g+0.0722*b)/255 < 0.62;
+}
+function colorLabel(){ return S.color==="black"?"Black":S.color==="white"?"White":"Custom ("+S.custom.toUpperCase()+")"; }
+/* THE GUARD: sublimation physically can't print on dark/poly-dark garments */
+function designAllowed(d){ return d.process!=="subli" || !isDark(colorHex()); }
+
+/* ============================================================
+   GRID
+   ============================================================ */
+function renderGrid(){
+  const g = $("#grid"); g.innerHTML="";
+  const list = S.obj===null ? DESIGNS : DESIGNS; // (all objects share the pool in this mockup)
+  list.forEach(d=>{
+    const ok = designAllowed(d);
+    const t = document.createElement("button");
+    t.className = "tile" + (ok?"":" is-unavailable");
+    t.innerHTML =
+      '<div class="tile-img" style="background:'+(isDark(colorHex())?"#1b1b1b":"#e9ebef")+'">'+
+        (ok?"":'<span class="tile-flag">Light shirts only</span>')+
+        '<img src="'+ASSETS.designs[d.img]+'" alt="" /></div>'+
+      '<div class="tile-meta"><strong>'+d.name+'</strong><span>From '+peso(SIZES[0].price)+' · press-ready</span></div>';
+    t.addEventListener("click", ()=> ok ? openLightbox(d) : toast("This design is sublimation — it only works on light shirts."));
+    g.appendChild(t);
+  });
+  $("#countChip").textContent = list.filter(designAllowed).length + " of " + list.length + " designs available";
+  renderChips();
+}
+function renderChips(){
+  const c = $("#filterChips"); c.innerHTML="";
+  if(!S.obj) return;
+  const objChip = document.createElement("span");
+  objChip.className="chip";
+  objChip.innerHTML = '<span>👕 Apparel</span> <button id="changeObj">change</button>';
+  c.appendChild(objChip);
+  const col = document.createElement("span");
+  col.className="chip"; col.style.marginLeft="8px";
+  col.innerHTML = '<span class="sw" style="background:'+colorHex()+'"></span> '+colorLabel();
+  c.appendChild(col);
+  const cb = document.getElementById("changeObj");
+  if(cb) cb.addEventListener("click", e=>{ e.stopPropagation(); openObj(); });
+}
+
+/* ============================================================
+   OBJECT PICKER
+   ============================================================ */
+function openObj(){ $("#objBackdrop").classList.add("is-open"); }
+function closeObj(){ $("#objBackdrop").classList.remove("is-open"); }
+document.querySelectorAll(".obj").forEach(b=>b.addEventListener("click",()=>{
+  S.obj = b.dataset.obj; closeObj(); renderGrid();
+  toast("Showing apparel designs — DTF, sublimation and hotmelt, merged.");
+}));
+$("#justBrowse").addEventListener("click",()=>{ S.obj="apparel"; closeObj(); renderGrid(); });
+
+/* ============================================================
+   LIGHTBOX
+   ============================================================ */
+function openLightbox(d){
+  S.design=d; S.placement="front"; S.size=1; S.qty=1; S.view="front";
+  $("#lbName").textContent = d.name;
+  $("#lbKicker").textContent = "Pre-made · " + (d.process==="subli"?"Sublimation":"DTF") + " (auto-selected)";
+  $("#addBtn").disabled=false; $("#processNote").style.display="none";
+  buildColors(); buildSizes(); syncPlacement(); syncShirt(); refresh();
+  $("#lbBackdrop").classList.add("is-open");
+}
+function closeLightbox(){ $("#lbBackdrop").classList.remove("is-open"); }
+$("#lbClose").addEventListener("click", closeLightbox);
+$("#lbBackdrop").addEventListener("click", e=>{ if(e.target.id==="lbBackdrop") closeLightbox(); });
+
+function buildColors(){
+  const wrap = $("#colors"); wrap.innerHTML="";
+  [{k:"black",l:"Black",sw:"#141414"},{k:"white",l:"White",sw:"#f4f4f4"},{k:"custom",l:"Custom",sw:null}].forEach(c=>{
+    const b=document.createElement("button");
+    b.className="color"+(S.color===c.k?" on":"");
+    b.innerHTML='<span class="sw'+(c.k==="custom"?" is-custom":"")+'" style="'+(c.sw?"background:"+c.sw:(S.color==="custom"&&c.k==="custom"?"background:"+S.custom:""))+'"></span>'+
+      (c.k==="custom"&&S.color==="custom" ? "Custom "+S.custom.toUpperCase() : c.l);
+    b.addEventListener("click",()=>{
+      if(c.k==="custom"){ $("#cpanel").classList.toggle("on"); return; }  // two-step, like prod
+      $("#cpanel").classList.remove("on");
+      S.color=c.k; afterColorChange();
+    });
+    wrap.appendChild(b);
+  });
+}
+$("#cInput").addEventListener("input",e=>{ S.custom=e.target.value; $("#cHex").textContent=S.custom.toUpperCase(); });
+$("#cUse").addEventListener("click",()=>{ S.color="custom"; $("#cpanel").classList.remove("on"); afterColorChange(); });
+
+function afterColorChange(){
+  buildColors(); syncShirt(); refresh(); renderGrid();
+  $("#colorNote").style.display = S.color==="custom" ? "" : "none";
+  const d=S.design;
+  if(d && !designAllowed(d)){
+    $("#processNote").style.display="";
+    $("#processNote").innerHTML = "This design is sublimation — it can't be printed on a dark shirt. "+
+      "<a href='#' id='fixColor'>Switch to white</a> or pick another design.";
+    $("#addBtn").disabled = true;
+    const f=document.getElementById("fixColor");
+    if(f) f.addEventListener("click",e=>{e.preventDefault(); S.color="white"; afterColorChange();});
+  } else {
+    $("#processNote").style.display="none"; $("#addBtn").disabled=false;
+  }
+}
+
+function buildSizes(){
+  const wrap=$("#sizes"); wrap.innerHTML="";
+  SIZES.forEach((s,i)=>{
+    const b=document.createElement("button"); b.textContent=s.label; b.className=(S.size===i?"on":"");
+    b.addEventListener("click",()=>{ S.size=i; buildSizes(); syncShirt(); refresh(); $("#sizeNote").style.display="none"; });
+    wrap.appendChild(b);
+  });
+}
+
+$("#placement").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-p]"); if(!b) return;
+  const prev=S.placement; S.placement=b.dataset.p;
+  // back prints default to the bigger size — overridable
+  if(S.placement!=="front" && prev==="front" && S.size<2){
+    S.size=2; buildSizes();
+    $("#sizeNote").textContent="Bumped to A3 — a back print at A4 gets lost. Change it if you want.";
+    $("#sizeNote").style.display="";
+  }
+  S.view = S.placement==="back" ? "back" : "front";
+  syncPlacement(); syncShirt(); refresh();
+});
+function syncPlacement(){
+  document.querySelectorAll("#placement button").forEach(b=>b.classList.toggle("on",b.dataset.p===S.placement));
+  const vt=$("#viewToggle"); vt.style.display = S.placement==="both" ? "" : "none";
+  vt.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.view===S.view));
+}
+$("#viewToggle").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  S.view=b.dataset.view; syncPlacement(); syncShirt();
+});
+
+function syncShirt(){
+  const back = S.view==="back";
+  const mask = back?ASSETS.backMask:ASSETS.frontMask;
+  const el=$("#shirtColor");
+  el.style.background = colorHex();
+  el.style.webkitMaskImage = "url("+mask+")"; el.style.maskImage="url("+mask+")";
+  el.style.webkitMaskSize="100% 100%"; el.style.maskSize="100% 100%";
+  $("#shirtShade").src = back?ASSETS.backShade:ASSETS.frontShade;
+  const a = PRINT_AREA[back?"back":"front"];
+  // print size scales with the chosen transfer size
+  const scale = [0.62,0.82,1][S.size];
+  const w=a.width*scale, h=a.height*scale;
+  const p=$("#shirtPrint");
+  p.style.left=(a.left+(a.width-w)/2)+"%"; p.style.top=(a.top+(a.height-h)/2)+"%";
+  p.style.width=w+"%"; p.style.height=h+"%";
+  const g=$("#printGuide");
+  g.style.left=a.left+"%"; g.style.top=a.top+"%"; g.style.width=a.width+"%"; g.style.height=a.height+"%";
+  if(S.design) $("#printImg").src = ASSETS.designs[S.design.img];
+}
+
+/* ---- qty + capacity soft-cap (commit-on-blur, per-design ack) ---- */
+$("#qPlus").addEventListener("click",()=>requestQty(S.qty+1));
+$("#qMinus").addEventListener("click",()=>requestQty(S.qty-1));
+$("#qVal").addEventListener("blur",()=>requestQty(parseInt($("#qVal").value||"1",10)));
+$("#qVal").addEventListener("keydown",e=>{ if(e.key==="Enter") e.target.blur(); });
+
+function requestQty(n){
+  n = Math.max(1, isNaN(n)?1:n);
+  const key = S.design.id;
+  const hard = SOFT_CAP*HARD_MULT;
+  if(n > hard){
+    showCap("Too large to order online",
+      "We can't take "+n.toLocaleString()+" pcs through the site — a run that size needs a real conversation about materials and schedule. Message us and we'll quote it properly.",
+      [{t:"Set to "+hard.toLocaleString(),primary:true,fn:()=>commitQty(hard)}]);
+    return;
+  }
+  if(n > SOFT_CAP && !capOK[key]){
+    showCap("That's a big order",
+      n.toLocaleString()+" pcs is above what our 4-person team presses in a normal turnaround, so this one needs extra lead time. Still want to proceed?",
+      [{t:"Keep it at "+SOFT_CAP,fn:()=>commitQty(SOFT_CAP)},
+       {t:"I agree — proceed",primary:true,fn:()=>{ capOK[key]=true; commitQty(n); }}]);
+    return;
+  }
+  commitQty(n);
+}
+function commitQty(n){ S.qty=n; $("#qVal").value=n; refresh(); }
+function showCap(title,body,btns){
+  $("#capTitle").textContent=title; $("#capBody").textContent=body;
+  const r=$("#capRow"); r.innerHTML="";
+  btns.forEach(b=>{ const el=document.createElement("button"); el.textContent=b.t;
+    if(b.primary) el.className="primary";
+    el.addEventListener("click",()=>{ $("#capBackdrop").classList.remove("is-open"); b.fn(); }); r.appendChild(el); });
+  $("#capBackdrop").classList.add("is-open");
+}
+
+/* ---- pricing ---- */
+function tier(q){ let t=null; BULK.forEach(b=>{ if(q>=b.minQty) t=b; }); return t; }
+function unitBase(){
+  const transfers = S.placement==="both" ? 2 : 1;
+  return SIZES[S.size].price*transfers + SHIRT_ADDON;
+}
+function refresh(){
+  const base=unitBase(), t=tier(S.qty);
+  const unit = t ? base*(1-t.pct/100) : base;
+  $("#price").innerHTML = peso(unit*S.qty) +
+    "<small>"+peso(unit)+" each · "+S.qty+" pc"+(S.qty>1?"s":"")+
+    (S.placement==="both"?" · 2 transfers, 1 shirt":"")+"</small>";
+  const b=$("#bulk");
+  if(t){ b.classList.add("on"); b.innerHTML="Bulk price applied — "+t.pct+"% off at "+t.minQty+"+ pcs &nbsp; <s>"+peso(base)+"</s> → <b>"+peso(unit)+"</b> each"; }
+  else { b.classList.remove("on"); }
+}
+
+/* ---- add to cart ---- */
+$("#addBtn").addEventListener("click",()=>{
+  const lines = S.placement==="both" ? ["front","back"] : [S.placement];
+  const pairId = S.placement==="both" ? "pair-"+Date.now() : null;
+  const size=SIZES[S.size], t=tier(S.qty);
+  lines.forEach((pl,idx)=>{
+    // "Both" = two transfers on ONE shirt: the shirt addon is charged once,
+    // on the first line. The second line is transfer-only and says so.
+    const carriesShirt = idx===0;
+    const base = size.price + (carriesShirt ? SHIRT_ADDON : 0);
+    const unit = t ? base*(1-t.pct/100) : base;
+    // DEDUPE KEY includes placement — otherwise a front run and a back run
+    // silently merge into one line and the presser prints the wrong side.
+    const key=[S.design.id,size.label,S.color,S.color==="custom"?S.custom:"",pl,carriesShirt].join("|");
+    const found=cart.find(l=>l.key===key);
+    if(found){ found.qty+=S.qty; found.unit=unit; }
+    else cart.push({key,pairId,carriesShirt,design:S.design,size:size.label,color:S.color,
+                    custom:S.custom,placement:pl,qty:S.qty,unit});
+  });
+  closeLightbox(); renderCart(); openDrawer();
+  toast(S.placement==="both" ? "Added as 2 lines — front + back on one shirt" : "Added to cart");
+});
+
+/* ---- cart ---- */
+function miniShirt(l){
+  const back = l.placement==="back";
+  const mask = back?ASSETS.backMask:ASSETS.frontMask;
+  const hex = l.color==="black"?"#141414":l.color==="white"?"#f4f4f4":l.custom;
+  const a = PRINT_AREA[back?"back":"front"];
+  return '<div class="shirt" style="position:relative;aspect-ratio:900/1050">'+
+    '<div class="shirt-color" style="background:'+hex+';-webkit-mask-image:url('+mask+');mask-image:url('+mask+');-webkit-mask-size:100% 100%;mask-size:100% 100%"></div>'+
+    '<img class="shirt-shade" src="'+(back?ASSETS.backShade:ASSETS.frontShade)+'" alt="" />'+
+    '<div class="shirt-print" style="left:'+a.left+'%;top:'+a.top+'%;width:'+a.width+'%;height:'+a.height+'%">'+
+      '<img src="'+ASSETS.designs[l.design.img]+'" alt="" /></div></div>';
+}
+function renderCart(){
+  const body=$("#cartBody"); body.innerHTML="";
+  if(!cart.length){ body.innerHTML='<p class="empty">Your cart is empty.</p>'; }
+  cart.forEach(l=>{
+    const el=document.createElement("div"); el.className="line";
+    const colTxt = l.color==="custom" ? "Custom "+l.custom.toUpperCase() : (l.color==="black"?"Black":"White");
+    el.innerHTML='<div class="line-thumb">'+miniShirt(l)+'</div><div>'+
+      '<b>'+l.design.name+'</b>'+
+      '<div class="meta">'+l.size+' · '+(l.carriesShirt?('incl. shirt ('+colTxt+')'):('2nd print on the same shirt'))+'<br><b style="color:#1a2b42">'+
+        (l.placement==="front"?"Front print":"Back print")+'</b></div>'+
+      (l.pairId?'<span class="pair">↔ front + back pair</span>':'')+
+      '<div class="pr">'+l.qty+' × '+peso(l.unit)+' — '+peso(l.qty*l.unit)+'</div></div>';
+    body.appendChild(el);
+  });
+  $("#cartTotal").textContent = peso(cart.reduce((s,l)=>s+l.qty*l.unit,0));
+  $("#cartCount").textContent = cart.reduce((s,l)=>s+l.qty,0);
+}
+function openDrawer(){ $("#drawer").classList.add("on"); $("#overlay").classList.add("on"); }
+function closeDrawer(){ $("#drawer").classList.remove("on"); $("#overlay").classList.remove("on"); }
+$("#cartBtn").addEventListener("click",()=>{ renderCart(); openDrawer(); });
+$("#drawerClose").addEventListener("click",closeDrawer);
+$("#overlay").addEventListener("click",closeDrawer);
+$("#checkoutBtn").addEventListener("click",()=>toast("Checkout is the existing flow — unchanged by this feature."));
+
+/* ---- tabs ---- */
+document.querySelectorAll(".tab-btn").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".tab-btn").forEach(x=>x.setAttribute("aria-selected","false"));
+  b.setAttribute("aria-selected","true");
+  if(b.dataset.cat==="design"){ $("#secTitle").textContent="Pick a design, we'll press it";
+    $("#secBlurb").textContent="Ready-to-press graphics on the shirt you choose. Bulk pricing kicks in automatically at 10+ pcs.";
+    $("#grid").style.display=""; $("#filterChips").parentElement.style.display="";
+    if(!S.obj) openObj(); }
+  else { $("#secTitle").textContent="Not part of this mockup";
+    $("#secBlurb").textContent="Only the Design subsection is mocked up here. Click Design to go back.";
+    $("#grid").style.display="none"; $("#filterChips").parentElement.style.display="none"; }
+}));
+
+/* ---- misc ---- */
+let toastT;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),2600); }
+$("#replay").addEventListener("click",()=>{ S.obj=null; S.color="black"; cart=[]; capOK={}; renderCart(); closeDrawer(); renderGrid(); openObj(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ closeLightbox(); closeObj(); closeDrawer(); $("#capBackdrop").classList.remove("is-open"); }});
+
+/* ---- boot ---- */
+renderGrid(); openObj();
+</script>
+</body>
+</html>

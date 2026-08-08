@@ -270,27 +270,35 @@ select.input { appearance: auto; }
 @media (prefers-reduced-motion: reduce) { .dash-collapsible { transition: opacity 200ms ease-out; } }
 
 /* — job list / detail — */
-/* Each .job-row (including the header row) is its OWN CSS Grid instance —
-   they're sibling divs, not rows of one shared table. With a trailing
-   `auto` track, that track's width was resolved per-row from that row's own
-   last-cell content (the order/line-id text, which varies in length row to
-   row), so the fr-tracks before it split a different remaining width on
-   every row and the whole grid visibly zig-zagged instead of lining up
-   under the header. Fixed: every track after the first is a concrete px
-   width (identical on every row, header included, since header/rows share
-   this exact selector) so column boundaries can never depend on content —
-   plus min-width:0 + ellipsis below stop a long description/status from
-   overflowing into the next column, which is what made status pills look
-   like they were bleeding across the Status/Due boundary. */
-/* Status is 190px, not 150px, because the widest REAL status —
-   "Pending Payment Verification" — measures ~185px in the pill at this font
-   size. At 150px it could neither wrap (white-space: nowrap) nor clip (no
-   overflow rule, see below), so it simply painted over the right-aligned Due
-   column next to it. Sizing a fixed track by eye instead of by the longest
-   value it must hold is what caused that; if a longer status is ever added
-   to backend/lib/constants.js's STATUS vocabulary, re-measure this. */
+/* Columns are now user-reorderable (drag a header cell) and persisted
+   per-staffer server-side (jobs.html's KCMPS_DASH.getDashboardPrefs/
+   setDashboardPref) — a column's position is no longer a fixed nth-child,
+   so per-position CSS (the old approach: "column 3 is always Status")
+   would break the moment someone drags Status somewhere else. Every cell
+   instead carries a class keyed to its COLUMN, not its position
+   (jobs.html's rowHtml()/renderHead(): <span class="jc jc-status">, etc.)
+   grid-template-columns is computed and set inline per render (jobs.html's
+   gridTemplate()) from the current column order's fixed px widths — pure
+   px, no fr tracks, so the row's total width is stable regardless of
+   viewport. .job-table-scroll below is what handles "doesn't fit," not
+   shrinking text or restructuring layout at a breakpoint. Header and body
+   rows are still sibling grid instances (not a real <table>), kept in
+   sync only by sharing the same computed template string every render. */
+/* min-width:0 is load-bearing, not tidiness. #job-list-card is a .card
+   (website/styles.css: display:flex; flex-direction:column) — flex items
+   default to min-width:auto, which means their intrinsic minimum content
+   size (here, the grid's fixed-px column tracks, which by design cannot
+   shrink) can force the FLEX ITEM itself wider than the card, bypassing
+   overflow-x:auto entirely rather than being caught by it. Without this,
+   the wide table drags the whole card (and everything to its right) out
+   of alignment with the rest of the page instead of scrolling locally —
+   exactly the "rightmost edge doesn't match the header" symptom this
+   fixes. Same root cause as .dash-main's own min-width:0 one layout level
+   up (this file, ~line 71) for the sidebar grid — the identical flex/grid
+   "auto-minimum-size" trap, one nesting level deeper. */
+.job-table-scroll { overflow-x: auto; min-width: 0; }
 .job-row {
-  display: grid; grid-template-columns: 1.6fr 1fr 190px 90px 150px; column-gap: var(--space-3); align-items: center;
+  display: grid; column-gap: var(--space-3); align-items: center;
   padding: 10px 12px; border-radius: var(--radius-md); transition: background-color 120ms ease;
   border-bottom: 1px solid var(--color-divider);
 }
@@ -303,61 +311,70 @@ select.input { appearance: auto; }
 .job-row.is-new { animation: dash-flash-settle 900ms ease; }
 @media (prefers-reduced-motion: reduce) { .job-row.is-new { animation: none; } }
 
-/* Desktop column boundaries: min-width:0 overrides the grid-item default of
-   min-width:auto (content's min-content size), which is what let a long
-   value force a track wider than its declared share and desync the row
-   underneath it. Job/Client truncate with an ellipsis rather than wrap or
-   overflow; Status keeps natural width (pills are short and shouldn't
-   clip); Due and the trailing order/line id right-align so numbers/dates
-   read like a spreadsheet column instead of ragging left. */
-.job-row > span { min-width: 0; }
-.job-row > span:nth-child(1),
-.job-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The status cell IS the pill (jobs.html puts .status-pill on the span
-   itself, it is not a child), so it has to clip on its own. Widening the
-   track above fixes today's longest status; this is the belt-and-braces so
-   ANY future status physically cannot paint over the Due column again —
-   a truncated status is a cosmetic annoyance, one overlapping two columns
-   is the bug that was reported. */
-.job-row > span:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-/* max-width: 100% is the load-bearing part of these two rules, not padding.
-   `justify-self: end` makes a grid item size to its CONTENT rather than
-   stretch to the track, and a content-sized item is free to grow WIDER than
-   its track — anchored at the right edge, it grows leftward, straight over
-   the column before it. `overflow: hidden` never fires because nothing is
-   overflowing the box; the box itself got bigger. `min-width: 0` doesn't
-   help either — that permits shrinking, it doesn't impose a ceiling.
-   Measured: the order/line-id cell rendered 166px inside its 130px track and
-   painted 20px into the Due column. That was the reported overlap. */
-.job-row > span:nth-child(4) { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); white-space: nowrap; justify-self: end; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.job-row > span:nth-child(5) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-self: end; max-width: 100%; }
+/* Generic cell: min-width:0 overrides the grid-item default of
+   min-width:auto (content's min-content size, which let a long value force
+   a track wider than its declared px width and desync header vs. rows —
+   the exact bug that motivated fixed px tracks over content-sized ones in
+   the first place). Ellipsis-truncate by default; opt out per column below
+   where the content manages its own sizing (a pill, a flex row of chips). */
+.jc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Status keeps the base .jc containment (overflow:hidden + min-width:0),
+   NOT an opt-out — this is the one column that bit before (see the
+   "painted 20px into the Due column" history above the .job-row rule): the
+   pill is nested one level inside .jc-status now (jc-status > .status-pill)
+   rather than being the direct grid child, but the same overflow:hidden on
+   the OUTER .jc wrapper still contains it exactly the same way. */
+.jc-due, .jc-orderId { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.jc-job { font-weight: 600; font-size: 13.5px; }
+/* Tags is the one cell that's a flex row of multiple chips rather than a
+   single text run, so it opts out of ellipsis-on-the-whole-cell in favor
+   of each chip truncating itself (below) — the outer .jc-tags still keeps
+   overflow:hidden so the row can never grow past its track. */
+.jc-tags { overflow: hidden; text-overflow: clip; white-space: normal; display: flex; gap: 4px; }
+.jc-tag-chip { font-size: 10.5px; padding: 1px 8px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; }
 
-/* Phone layout: the 5-column grid (description/client/status/due/id) has no
-   room at 320-375px, so it restructures into a 2-row card — description +
-   status on top, client + due below. The column-header row above the list
-   (jobs.html's `.job-row-head`, plain text, no real cells) just hides:
-   headers don't mean anything once the list is stacked cards. The trailing
-   order/line-id column (5th child) is reference-only — dropped here, still
-   one tap away via job-detail.html. */
-@media (max-width: 640px) {
-  .job-row-head { display: none; }
-  .job-row {
-    grid-template-columns: 1fr auto; grid-template-areas: "desc status" "client due"; row-gap: 4px;
-  }
-  .job-row > span:nth-child(1) {
-    grid-area: desc; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-weight: 600; font-size: 13.5px;
-  }
-  .job-row > span:nth-child(2) {
-    grid-area: client; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent);
-  }
-  .job-row > span:nth-child(3) { grid-area: status; justify-self: end; }
-  .job-row > span:nth-child(4) {
-    grid-area: due; justify-self: end; font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent);
-  }
-  .job-row > span:nth-child(5) { display: none; }
+/* Header cells: draggable for reorder, plus a filter button. Headers never
+   need ellipsis truncation — every label is a short fixed word — so this
+   opts fully out of .jc's overflow:hidden rather than relying on that
+   staying true by luck; a clipped filter button was exactly the bug this
+   caused before the opt-out was added. cursor:grab signals the drag
+   affordance; the filter button is draggable="false" in the markup so a
+   click on it doesn't also start a column drag. */
+.jc-head { overflow: visible; display: flex; align-items: center; gap: 4px; cursor: grab; user-select: none; }
+.jc-head:active { cursor: grabbing; }
+.jc-head-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jc-head.is-dragging { opacity: 0.4; }
+.jc-head.is-drop-target { background: color-mix(in srgb, var(--color-accent-2-500) 16%, transparent); border-radius: 4px; }
+.jc-head.is-filtered .jc-head-label { color: var(--color-accent-2-700); }
+.col-filter-btn {
+  border: none; background: none; cursor: pointer; padding: 2px 3px; font-size: 12px; line-height: 1;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); flex: 0 0 auto; border-radius: 4px;
 }
+.jc-head.is-filtered .col-filter-btn { color: var(--color-accent-2-700); }
+.col-filter-btn:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+
+/* Filter popover: position:fixed + appended to <body> (jobs.html) rather
+   than living inside .job-table-scroll, so an overflow-x:auto ancestor
+   (which computes overflow-y to a clipping value too, per spec, once one
+   axis is non-visible) can never clip it — same reasoning as store.js's
+   .design-popup gotcha in the root CLAUDE.md. */
+.col-filter-popover {
+  display: none; position: fixed; z-index: 40; width: 240px;
+  background: var(--color-neutral-100); border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-accent-2-900) 18%, transparent); padding: var(--space-2);
+}
+.col-filter-popover.is-open { display: block; }
+.cfp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12.5px; }
+.cfp-clear { border: none; background: none; cursor: pointer; font-size: 11px; text-decoration: underline; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+/* Compact override of the shared .input look (which is sized for a normal
+   form field) — this lives inside a small popover. */
+.cfp-search { font-size: 12.5px; padding: 5px 8px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
+/* max-height/scroll on the LIST only, not the whole popover, so the
+   head + search box stay pinned and visible while a long value list scrolls. */
+.cfp-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.cfp-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 2px; border-radius: 4px; cursor: pointer; }
+.cfp-row:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.cfp-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-pill { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .status-pill.st-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
 .status-pill.st-warn { background: var(--color-accent-100); color: var(--color-accent-800); }
@@ -533,7 +550,19 @@ select.input { appearance: auto; }
 .thread-chevron { flex-shrink: 0; font-size: 11px; color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .thread-card-body { padding: var(--space-3); }
 .thread-card-body .ticket-meta { margin-bottom: var(--space-2); }
-.thread-attachments { margin-top: var(--space-3); }
+.thread-attachments { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-start; }
+/* Scan-clean image attachments render as inline thumbnails (presigned S3
+   URL, allowlisted in email.html's CSP img-src); clicking opens full-size
+   in a new tab. Non-image/blocked/pending ones stay text chips. */
+.mail-att-imglink { display: inline-flex; flex-direction: column; gap: 4px; text-decoration: none; max-width: 220px; }
+.mail-att-img {
+  max-width: 220px; max-height: 160px; width: auto; height: auto; display: block;
+  border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--color-text) 15%, transparent);
+  object-fit: contain; background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+.mail-att-link { text-decoration: none; }
+.mail-att-link:hover { text-decoration: underline; }
+.mail-att-blocked { background: #fbe6e4; color: #a5271b; }
 .quoted-toggle {
   display: inline-block; margin: 6px 0; font-size: 12px; font-weight: 600; color: var(--color-accent-700, var(--color-accent));
   background: none; border: 0; cursor: pointer; padding: 2px 0;
@@ -668,4 +697,20 @@ select.input { appearance: auto; }
 @media (prefers-reduced-motion: reduce) { .session-guard-backdrop, .session-guard-box { transition: none; animation: none; } }
 @media (max-width: 480px) {
   .session-guard-box { padding: var(--space-4); }
+}
+
+/* — idle-screen PIN input masking —
+   The PIN fields (session-guard overlay + settings.html) are deliberately
+   type="text", NOT type="password": password managers key on
+   type="password" to offer save/autofill, and an autofilled PIN unlocks
+   the privacy screen for anyone walking past (the exact bug this class
+   exists to fix — see dashboard-shell.js's renderPinGate). Masking is
+   done here in CSS instead. -webkit-text-security is supported by
+   Chrome/Edge/Safari and by Firefox 138+; on anything older the digits
+   render visibly, which is an accepted fallback (brief, numeric, and the
+   staffer is present and typing) — do NOT "fix" that by reverting to
+   type="password". */
+.dash-pin-mask {
+  -webkit-text-security: disc;
+  text-security: disc;
 }

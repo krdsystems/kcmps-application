@@ -20,4 +20,9 @@ module.exports = {
   ...require("./threat-descriptions"),
   ...require("./magic-bytes"),
   ...require("./mail"),
+  ...require("./tags"),
 };
+// NOTE: ./business-hours and ./pin are deliberately NOT spread here —
+// require them directly (require("../lib/business-hours") /
+// require("../lib/pin")) for a smaller require graph, same as
+// staff-api/verify-payment.js does for business-hours.

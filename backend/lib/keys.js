@@ -169,6 +169,27 @@ function designPk(designId) {
   return `DESIGN#${designId}`;
 }
 
+// ---- Per-staff-account records (idle-screen PIN, staff-api/staff-pin.js) ----
+// PK: USER#<cognito sub>, SK: "PIN". The sub is ALWAYS the verified JWT's
+// claims.sub — never a caller-supplied id — so one staffer can never
+// read/set/verify another's PIN record. Audit events for set/clear reuse
+// the EVENT#<ISO>#<suffix> shape under the same PK.
+function userPk(sub) {
+  return `USER#${sub}`;
+}
+
+function staffPinSk() {
+  return "PIN";
+}
+
+// Same USER#<sub> partition, sibling record — small per-staffer UI
+// preferences blob (e.g. jobs.html's column order), synced across
+// devices because it's server-side, not localStorage. See
+// staff-api/dashboard-prefs.js.
+function staffPrefsSk() {
+  return "PREFS";
+}
+
 // ---- Inbound mail (SES relay, docs/roadmap.md "Parallel track — Staff email
 // panel", "SES relay" track) ----
 // PK: MAILBOX#<mailboxId> (mailboxId is the lowercased recipient address,
@@ -219,6 +240,9 @@ module.exports = {
   messageSk,
   scanResultPk,
   designPk,
+  userPk,
+  staffPinSk,
+  staffPrefsSk,
   mailboxPk,
   mailMessageSk,
 };

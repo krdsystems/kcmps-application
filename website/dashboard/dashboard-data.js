@@ -101,7 +101,14 @@
     }
     let body = {};
     try { body = await res.json(); } catch { /* empty/non-JSON body */ }
-    if (!res.ok) throw new Error(body.error || res.statusText);
+    if (!res.ok) {
+      // Callers that need more than a message (e.g. verifyStaffPin's 429
+      // lockout handling) read status/body off the error object.
+      const err = new Error(body.error || res.statusText);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
     return body;
   }
 
@@ -113,6 +120,7 @@
   function normalizeOrder(order) {
     order.client = order.client || { name: order.customerName };
     (order.lineItems || []).forEach((li) => { li.description = li.description || li.name; });
+    order.tags = Array.isArray(order.tags) ? order.tags : [];
     return order;
   }
 
@@ -461,10 +469,15 @@
     "Ready for Pickup": "Picked Up",
   };
 
-  // Manual orders (createManualOrder, below) have no backend Lambda in
-  // 1.3's scope and only ever exist in the mock — real orders are never
-  // written there. Check the mock first so a manual order's buttons keep
-  // working exactly as before, and only real orders go over the wire.
+  // LEGACY PATH as of 2026-08-08: createManualOrder() (below) now writes
+  // real orders via POST /orders/manual, so a NEWLY created manual order
+  // is never in state.orders and this correctly returns false for it,
+  // routing it through the normal real-order code paths like any other
+  // order. This only still matches manual orders created BEFORE that
+  // change, which exist solely in whichever browser's localStorage
+  // created them — kept so their action buttons (correspondence,
+  // verify-payment, etc.) don't break while any pre-migration stragglers
+  // still exist. Safe to delete once none remain.
   function isMockOnlyOrder(orderId) {
     return !!load().orders.find((o) => o.orderId === orderId);
   }
@@ -827,13 +840,30 @@
     save(state);
     return state.inventory;
   }
+  // Per-staffer UI preferences (jobs.html's draggable column order, first
+  // consumer) — backend/staff-api/dashboard-prefs.js, USER#<sub>/PREFS.
+  // Server-side, not localStorage, specifically so it follows a staffer
+  // across devices. PATCH shallow-merges server-side, so setDashboardPref
+  // only ever needs to send the one key it's changing.
+  async function getDashboardPrefs() {
+    return apiFetch("/staff/prefs", { method: "GET" });
+  }
+  async function setDashboardPref(key, value) {
+    return apiFetch("/staff/prefs", { method: "PATCH", body: JSON.stringify({ data: { [key]: value } }) });
+  }
+
   async function getAllOrders() {
     const { orders } = await apiFetch("/orders", { method: "GET" });
     const normalized = (orders || []).map(normalizeOrder);
-    // createManualOrder() (below) still writes mock-only orders — it has
-    // no backend Lambda in 1.3's scope. Merge them in so "Log a manual
-    // order" doesn't silently vanish from the live jobs list; real orders
-    // never carry source:"manual", so there's no collision risk.
+    // LEGACY as of 2026-08-08: createManualOrder() (below) now writes real
+    // orders via POST /orders/manual, which already come back in `orders`
+    // above with source:"manual" intact — this merge is no longer needed
+    // for anything created from here on. Kept only so manual orders
+    // created BEFORE that change (which exist solely in whichever
+    // browser's localStorage created them) don't silently vanish from
+    // that one browser's jobs list. Real orders never carry
+    // source:"manual", so there's no collision risk either way. Safe to
+    // delete once no pre-migration stragglers remain.
     const manualOnly = load().orders.filter((o) => o.source === "manual");
     const merged = normalized.concat(manualOnly);
     liveOrdersCache = merged;
@@ -882,82 +912,71 @@
     custom: ["Quoted", "Priced", "Confirmed"],
   };
 
-  function createManualOrder(opts) {
+  // Real backend as of 2026-08-08 — POST /orders/manual
+  // (backend/staff-api/create-manual-order.js). Used to write straight to
+  // the localStorage mock, which meant a manual order existed only on the
+  // one browser/device that created it — invisible to every other device,
+  // gone if that browser's storage was ever cleared. Real orders and
+  // manual orders now share one backend and one ID space; source:"manual"
+  // (set server-side) is still the only marker, so existing "Manual"
+  // badges keep working unchanged.
+  //
+  // The "pick an existing client or add a new one" flow stays exactly as
+  // it was, but it's now PURELY a local convenience autocomplete (recent
+  // names), not the order's actual identity — the real backend has no
+  // Client entity, same as a checkout order (create-order.js), which
+  // stores customerName flat on the order. Client-side validation here is
+  // a fast-fail UX nicety; the server re-validates everything for real.
+  async function createManualOrder(opts) {
     opts = opts || {};
     const description = (opts.description || "").trim();
     if (!description) throw new Error("A description is required.");
     if (!opts.promisedDate) throw new Error("A promised date is required.");
 
     const state = load();
-    let client;
+    let customerName;
     if (opts.newClientName && opts.newClientName.trim()) {
-      client = {
-        id: uid("C"), name: opts.newClientName.trim(),
-        type: opts.newClientType === "B2B" ? "B2B" : "B2C",
-        totalRevenue: 0, lastOrderAt: nowIso(), reorderIntervalDays: null,
-      };
-      state.clients.push(client);
+      customerName = opts.newClientName.trim();
     } else {
-      client = state.clients.find((c) => c.id === opts.clientId);
+      const client = state.clients.find((c) => c.id === opts.clientId);
       if (!client) throw new Error("Select an existing client or enter a new client name.");
+      customerName = client.name;
     }
 
     const type = opts.type === "custom" ? "custom" : "sku";
     const allowedStatuses = MANUAL_ORDER_STATUSES[type];
     const status = allowedStatuses.includes(opts.status) ? opts.status : allowedStatuses[0];
-    const qty = Math.max(1, parseInt(opts.qty, 10) || 1);
-    const priceEach = opts.priceEach !== "" && opts.priceEach != null && !isNaN(parseFloat(opts.priceEach))
-      ? parseFloat(opts.priceEach) : null;
-    const amount = priceEach != null ? Math.round(priceEach * qty * 100) / 100 : 0;
-
-    let payment = null;
     if (status === "Pending Payment Verification") {
-      const ref = (opts.gcashRefNumber || "").trim();
-      const claimed = parseFloat(opts.claimedAmount);
-      if (!ref) throw new Error("A GCash reference number is required for Pending Payment Verification.");
-      if (!(claimed > 0)) throw new Error("A claimed amount is required for Pending Payment Verification.");
-      payment = gcashProof(claimed, ref, nowIso());
+      if (!(opts.gcashRefNumber || "").trim()) throw new Error("A GCash reference number is required for Pending Payment Verification.");
+      if (!(parseFloat(opts.claimedAmount) > 0)) throw new Error("A claimed amount is required for Pending Payment Verification.");
     }
 
-    // Confirmed = already paid, by whatever method — logged as a note since
-    // cash has no proof object to attach (see header note above).
-    let notes = (opts.notes || "").trim();
-    if (status === "Confirmed" && opts.paidVia) {
-      const viaLabel = opts.paidVia === "cash" ? "Cash" : opts.paidVia === "gcash" ? "GCash" : "Other";
-      const ref = (opts.paidRef || "").trim();
-      const paidNote = "Paid via " + viaLabel + (ref ? " (ref " + ref + ")" : "") + ".";
-      notes = notes ? paidNote + " " + notes : paidNote;
-    }
-
-    const now = nowIso();
-    const orderId = uid("ORD");
-    const lineItemId = uid("L");
-    const lineItem = {
-      lineItemId, orderId, type, qty,
-      priceEach: priceEach != null ? priceEach : 0, amount,
-      sku: (opts.sku || "").trim() || undefined,
-      description, status, station: null, setupMinutes: null,
-      spoilage: [], enteredStatusAt: now,
-      notes,
-    };
-    const order = {
-      orderId, client, customerSub: null, createdAt: now,
-      originalPromisedDate: opts.promisedDate, lineItems: [lineItem],
-      payment, correspondenceLog: [], source: "manual",
-    };
-    order.orderStatus = deriveOrderStatus(order);
-    state.orders.push(order);
-    client.lastOrderAt = now;
-
-    state.events.push({
-      pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#" + lineItemId,
-      orderId, lineItemId, from: null, to: status,
-      actorSub: "current-user", actorName: opts.actorName || "You",
-      station: null, at: now, meta: { via: "manualOrder" },
+    const result = await apiFetch("/orders/manual", {
+      method: "POST",
+      body: JSON.stringify({
+        customerName, description, type,
+        sku: opts.sku, qty: opts.qty, priceEach: opts.priceEach,
+        promisedDate: opts.promisedDate, status,
+        gcashRefNumber: opts.gcashRefNumber, claimedAmount: opts.claimedAmount,
+        paidVia: opts.paidVia, paidRef: opts.paidRef, notes: opts.notes,
+      }),
     });
 
-    save(state);
-    return order;
+    // Only after a confirmed create: remember a brand-new name locally so
+    // it shows up in the dropdown next time. Doing this before the API
+    // call risked polluting the "recent clients" list with a name from an
+    // order that never actually got created.
+    if (opts.newClientName && opts.newClientName.trim()) {
+      state.clients.push({
+        id: uid("C"), name: customerName,
+        type: opts.newClientType === "B2B" ? "B2B" : "B2C",
+        totalRevenue: 0, lastOrderAt: nowIso(), reorderIntervalDays: null,
+      });
+      save(state);
+    }
+
+    liveOrdersCache = null; // force a fresh fetch — the new order is real now
+    return result;
   }
 
   // Manual order↔email linking: staff log a note referencing a Spacemail
@@ -997,6 +1016,62 @@
     order.correspondenceLog.push(entry);
     save(state);
     return entry;
+  }
+
+  /* ---- order tags (AWS-style key/value chips) ----
+     backend/staff-api/set-order-tags.js — a small staff-set key/value
+     list per order, for filtering/reporting (Type=Reprint, Priority=Rush,
+     Test=…), separate from the order-status state machine. Full-set PUT:
+     the caller (job-detail.html's tag editor) always sends the COMPLETE
+     desired tag list, never one add/remove call per tag — see the
+     Lambda's header for why. Real validation (length caps, character
+     allowlist, max count, duplicate-key rejection) is server-side in
+     backend/lib/tags.js; the constants below are UI-only (maxlength
+     attributes, a client-side pre-check for a snappier error before the
+     round trip) and must not be treated as the source of truth. */
+  const MAX_TAGS_PER_ORDER = 20;
+  const TAG_KEY_MAX = 40;
+  const TAG_VALUE_MAX = 120;
+
+  // Small "quick add" starter set the tag editor offers as one-click
+  // chips — purely a client-side convenience list, NOT enforced or even
+  // known to the backend (which accepts any key/value obeying the
+  // general rules above). Edit this ONE array to change what staff see
+  // as suggestions; nothing else needs to change.
+  const DEFAULT_ORDER_TAGS = [
+    { key: "Environment", value: "Test", hint: "Synthetic/internal order — exclude from real metrics" },
+    { key: "Priority", value: "Rush", hint: "Needs expedited turnaround" },
+    { key: "Type", value: "Reprint", hint: "Remake/redo of a prior job, not new revenue" },
+    { key: "Channel", value: "Walk-in", hint: "Taken in person/phone/DM, not through online checkout" },
+    { key: "Client", value: "VIP", hint: "Repeat/high-value client — handle with extra care" },
+  ];
+  function getDefaultOrderTags() { return DEFAULT_ORDER_TAGS.slice(); }
+
+  // `tags` is the COMPLETE desired list — [{key, value}], value may be
+  // "". Returns the normalized, stored list on success.
+  async function setOrderTags(orderId, tags, actorName) {
+    if (isMockOnlyOrder(orderId)) return setOrderTagsMock(orderId, tags, actorName);
+    const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/tags", {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    });
+    return res.tags;
+  }
+
+  function setOrderTagsMock(orderId, tags, actorName) {
+    const state = load();
+    const order = state.orders.find((o) => o.orderId === orderId);
+    if (!order) throw new Error("Order not found: " + orderId);
+    const now = nowIso();
+    order.tags = tags;
+    state.events.push({
+      pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#ORDER",
+      orderId, lineItemId: "ORDER", from: null, to: "Tags updated",
+      actorSub: "current-user", actorName: actorName || "You",
+      station: null, at: now, meta: { via: "setTags" },
+    });
+    save(state);
+    return order.tags;
   }
 
   // Shared by addCorrespondence/sendOrderMessage — `uploads` is the
@@ -1210,57 +1285,82 @@
     });
   }
 
-  /* ---- staff idle-screen PIN (privacy deterrent, NOT a security boundary) ----
-     Gates dashboard-shell.js's SESSION_GUARD idle overlay so a passer-by who
-     nudges the mouse/keyboard can't dismiss the privacy screen without
-     knowing a 4-digit code. This is explicitly NOT real authentication: the
-     actual security boundary is the Cognito JWT every backend route
-     re-verifies (see root CLAUDE.md's "Client-decoded JWT claims are
-     UI-only" gotcha). Anyone with devtools access to this origin's
-     localStorage can read the salt+hash below and brute-force a 4-digit PIN
-     in well under a second — that's fine, because the threat this defends
-     against is a colleague glancing at an unattended, still-logged-in
-     screen, not a determined attacker. Never represent this as more than
-     that in any UI copy.
+  /* ---- staff idle-screen PIN (server-verified since 2026-08-07) ----
+     Gates dashboard-shell.js's SESSION_GUARD idle overlay. The PIN now
+     lives ONLY on the backend — backend/staff-api/staff-pin.js stores a
+     per-staffer scrypt hash keyed off the JWT's verified `sub` (never a
+     sub from a request body) and rate-limits verification attempts
+     server-side (exponential lockout after 5 wrong guesses, counted on
+     the record so devtools/network replays can't dodge it). NOTHING about
+     the PIN is kept in localStorage/sessionStorage any more, in any form —
+     the old kcmps_pin_v1:<sub> salt+SHA-256 records were brute-forceable
+     offline in under a second, and the type="password" fields that fed
+     them taught browser password managers to save the PIN and then
+     AUTO-FILL IT INTO THE LOCK SCREEN, unlocking it for anyone walking
+     past. Legacy records are scrubbed on load (below).
 
-     Stored PER STAFFER, keyed by their Cognito `sub` (the JWT subject claim
-     dashboard-shell.js already decodes and passes in as `userKey`) under
-     kcmps_pin_v1:<sub> — so on a shared/kiosk browser one staffer's PIN can
-     never unlock another staffer's session, and it never "syncs" anywhere
-     (this is one browser's local storage, same as everything else in this
-     file). Never stored in plaintext: SHA-256(salt + pin) via SubtleCrypto,
-     with a fresh 16-byte random salt per staffer per set/change. */
-  function pinStorageKey(userKey) { return "kcmps_pin_v1:" + userKey; }
-  function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
-  async function hashPin(pin, saltB64) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(saltB64 + ":" + pin));
-    return bufToB64(digest);
+     Honest threat model (mirror of staff-pin.js's header): this defends
+     against a passer-by at an unattended screen and against casual
+     devtools bypass of the old client-side check. It is NOT a defence
+     against the authenticated staffer themselves — the Cognito session
+     is the real boundary, and devtools can still delete the overlay DOM
+     and read what the page already loaded. Never oversell it in UI copy.
+
+     hasStaffPin() must stay synchronous (dashboard-shell.js builds the
+     overlay markup inline), so the status is prefetched once per page
+     load (prefetchStaffPinStatus, called from the shell's mount()) and
+     cached in memory. `pinStatusCache`: null = not yet known. */
+  let pinStatusCache = null;
+  // Scrub the retired client-side PIN records — they hold a weakly-hashed
+  // copy of what may still be the staffer's current PIN.
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.indexOf("kcmps_pin_v1:") === 0)
+      .forEach((k) => localStorage.removeItem(k));
+  } catch { /* ignore */ }
+
+  function staffPinStatusKnown() { return pinStatusCache !== null; }
+  // userKey params below are kept for call-site compatibility but unused:
+  // the server keys everything off the verified JWT sub itself.
+  function hasStaffPin() { return pinStatusCache === true; }
+  async function getStaffPinStatus() {
+    const res = await apiFetch("/staff/pin", { method: "GET" });
+    pinStatusCache = !!res.pinSet;
+    return pinStatusCache;
   }
-  // Synchronous (no hashing needed, just "does a record exist") so
-  // dashboard-shell.js can check it inline while building the overlay's
-  // markup without an extra render pass.
-  function hasStaffPin(userKey) {
-    if (!userKey) return false;
-    try { return !!localStorage.getItem(pinStorageKey(userKey)); } catch { return false; }
+  // Fire-and-forget wrapper for mount(): never throws (an offline/failed
+  // status fetch leaves the cache null, and the guard fails closed on the
+  // restored-lock path — see dashboard-shell.js).
+  function prefetchStaffPinStatus() {
+    return getStaffPinStatus().catch(() => null);
   }
   async function setStaffPin(userKey, pin) {
-    if (!userKey) throw new Error("No staff identity to attach a PIN to — try logging out and back in.");
-    if (!/^\d{4}$/.test(pin || "")) throw new Error("PIN must be exactly 4 digits.");
-    const salt = bufToB64(crypto.getRandomValues(new Uint8Array(16)).buffer);
-    const hash = await hashPin(pin, salt);
-    localStorage.setItem(pinStorageKey(userKey), JSON.stringify({ salt, hash }));
+    if (!/^\d{4,6}$/.test(pin || "")) throw new Error("PIN must be 4-6 digits.");
+    await apiFetch("/staff/pin", { method: "PUT", body: JSON.stringify({ pin }) });
+    pinStatusCache = true;
     return true;
   }
+  /* Returns a structured result, not a bare boolean:
+       { ok: true }                                   correct PIN
+       { ok: false }                                  wrong PIN
+       { ok: false, pinSet: false }                   no PIN on file (treat as unlocked)
+       { ok: false, locked: true, retryAfterSeconds } rate-limited (server 429)
+       { ok: false, error }                           network/other failure   */
   async function verifyStaffPin(userKey, pin) {
-    if (!userKey || !pin) return false;
-    let rec;
-    try { rec = JSON.parse(localStorage.getItem(pinStorageKey(userKey))); } catch { return false; }
-    if (!rec || !rec.salt || !rec.hash) return false;
-    return (await hashPin(pin, rec.salt)) === rec.hash;
+    try {
+      const res = await apiFetch("/staff/pin/verify", { method: "POST", body: JSON.stringify({ pin }) });
+      if (res.pinSet === false) pinStatusCache = false;
+      return res;
+    } catch (err) {
+      if (err && err.status === 429 && err.body) {
+        return { ok: false, locked: true, retryAfterSeconds: err.body.retryAfterSeconds || 30 };
+      }
+      return { ok: false, error: err && err.message ? err.message : "Couldn't check the PIN — are you online?" };
+    }
   }
-  function clearStaffPin(userKey) {
-    if (!userKey) return;
-    try { localStorage.removeItem(pinStorageKey(userKey)); } catch { /* ignore */ }
+  async function clearStaffPin() {
+    await apiFetch("/staff/pin", { method: "DELETE" });
+    pinStatusCache = false;
   }
 
   global.KCMPS_DASH = {
@@ -1273,9 +1373,12 @@
     getWeekData, getMonthData,
     getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondence,
+    getDashboardPrefs, setDashboardPref,
+    setOrderTags, getDefaultOrderTags,
     getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,
     resetSeed,
     hasStaffPin, setStaffPin, verifyStaffPin, clearStaffPin,
+    staffPinStatusKnown, getStaffPinStatus, prefetchStaffPinStatus,
   };
 })(window);

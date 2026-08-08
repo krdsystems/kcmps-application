@@ -165,6 +165,93 @@
     );
   }
 
+  // AWS-style order tags — small staff-set key/value pairs
+  // (backend/staff-api/set-order-tags.js) for filtering/reporting, e.g.
+  // Type=Reprint or Environment=Test. Every value here reaches the DOM,
+  // so both the key and the value go through escapeHtml() same as
+  // correspondence notes; the server (backend/lib/tags.js) is the real
+  // validation boundary, this is display + a fail-fast client check.
+  function renderTags(order) {
+    const tags = Array.isArray(order.tags) ? order.tags : [];
+    const suggestions = KCMPS_DASH.getDefaultOrderTags()
+      .filter((d) => !tags.some((t) => t.key.toLowerCase() === d.key.toLowerCase()));
+    return (
+      `<div class="card" style="margin-bottom:var(--space-4)">` +
+      `<h3 style="margin-top:0">Tags</h3>` +
+      `<div id="tags-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--space-2)">` +
+      (tags.length
+        ? tags.map((t) =>
+            `<span class="tag tag-outline" style="display:inline-flex;align-items:center;gap:6px;padding-right:4px">` +
+            `${escapeHtml(t.key)}${t.value ? ": " + escapeHtml(t.value) : ""}` +
+            `<button type="button" class="tag-remove-btn" data-key="${escapeHtml(t.key)}" aria-label="Remove tag ${escapeHtml(t.key)}" style="border:none;background:none;cursor:pointer;font-size:13px;line-height:1;padding:0 2px;color:inherit">&times;</button>` +
+            `</span>`
+          ).join("")
+        : `<p class="q-empty" style="margin:0">No tags yet.</p>`) +
+      `</div>` +
+      (suggestions.length
+        ? `<div style="margin-bottom:var(--space-2)">` +
+          `<p class="text-muted" style="font-size:12px;margin:0 0 4px">Suggested:</p>` +
+          `<div style="display:flex;flex-wrap:wrap;gap:6px">` +
+          suggestions.map((d) =>
+            `<button type="button" class="tag tag-neutral tag-suggest-btn" data-key="${escapeHtml(d.key)}" data-value="${escapeHtml(d.value)}" title="${escapeHtml(d.hint || "")}" style="cursor:pointer;border:none">+ ${escapeHtml(d.key)}${d.value ? ": " + escapeHtml(d.value) : ""}</button>`
+          ).join("") +
+          `</div></div>`
+        : "") +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">` +
+      `<input class="input" id="tag-key-input" style="flex:1;min-width:110px" placeholder="Key" maxlength="40" />` +
+      `<input class="input" id="tag-value-input" style="flex:1;min-width:110px" placeholder="Value (optional)" maxlength="120" />` +
+      `<button type="button" class="btn btn-secondary" id="tag-add-btn">Add tag</button>` +
+      `</div>` +
+      `<p id="tags-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>` +
+      `</div>`
+    );
+  }
+
+  function wireTags(order) {
+    const errorHost = document.getElementById("tags-error");
+    async function commitTags(newTags, btn) {
+      errorHost.style.display = "none";
+      await withBusy(btn, async () => {
+        try {
+          await KCMPS_DASH.setOrderTags(order.orderId, newTags, claims.name || claims.email);
+          await render();
+        } catch (err) {
+          errorHost.textContent = err.message;
+          errorHost.style.display = "";
+        }
+      });
+    }
+    document.querySelectorAll(".tag-remove-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.key;
+        commitTags((order.tags || []).filter((t) => t.key !== key), btn);
+      });
+    });
+    document.querySelectorAll(".tag-suggest-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        commitTags((order.tags || []).concat([{ key: btn.dataset.key, value: btn.dataset.value }]), btn);
+      });
+    });
+    const addBtn = document.getElementById("tag-add-btn");
+    const keyInput = document.getElementById("tag-key-input");
+    const valueInput = document.getElementById("tag-value-input");
+    function addFromInputs() {
+      const key = keyInput.value.trim();
+      const value = valueInput.value.trim();
+      errorHost.style.display = "none";
+      if (!key) { errorHost.textContent = "A tag key is required."; errorHost.style.display = ""; return; }
+      if ((order.tags || []).some((t) => t.key.toLowerCase() === key.toLowerCase())) {
+        errorHost.textContent = `A tag with key "${key}" already exists.`;
+        errorHost.style.display = "";
+        return;
+      }
+      commitTags((order.tags || []).concat([{ key, value }]), addBtn);
+    }
+    addBtn.addEventListener("click", addFromInputs);
+    valueInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addFromInputs(); });
+    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addFromInputs(); });
+  }
+
   // Customer-uploaded design/print files (checkout/upload-design-file.js) —
   // same gate as every other attachment, just laid out as full-width rows
   // since print filenames are long and staff scan this list deliberately.
@@ -308,6 +395,8 @@
       `</div>` +
       `<div class="text-muted" style="text-align:right;font-size:12px">Line ${li.lineItemId}</div></div>` +
 
+      renderTags(order) +
+
       `<div class="card ticket-meta">` +
       `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +
       // Split contact channels (backend/checkout/create-order.js) so staff
@@ -444,6 +533,7 @@
       if (e.key === "Enter") document.getElementById("correspondence-add-btn").click();
     });
     wireMessages(order);
+    wireTags(order);
 
     const formHost = document.getElementById("action-form");
     const errorHost = document.getElementById("action-error");

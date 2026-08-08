@@ -13,23 +13,35 @@
 
 function redactForCustomer(order) {
   delete order.correspondenceLog;
+  // Order tags (set-order-tags.js) are a staff-only filtering/reporting
+  // aid, same "internal, not customer-facing" stance as correspondenceLog
+  // — a customer has no reason to see "Type=Reprint" or "Test" on their
+  // own order.
+  delete order.tags;
   order.lineItems = (order.lineItems || []).map((li) => {
     const { station, setupMinutes, spoilage, ...rest } = li;
     return rest;
   });
-  order.events = (order.events || []).map((ev) => ({
-    at: ev.at,
-    from: ev.from,
-    to: ev.to,
-    // holdReason is the one meta field a customer needs (it's the same
-    // text already surfaced on payment.holdReason) — everything else in
-    // `meta` (via, station) and the actor fields are internal. The legacy
-    // `rejectionReason` key is still read so events written before the
-    // Payment Rejected -> On Hold rename keep rendering their reason.
-    meta: ev.meta && (ev.meta.holdReason || ev.meta.rejectionReason)
-      ? { holdReason: ev.meta.holdReason || ev.meta.rejectionReason }
-      : {},
-  }));
+  order.events = (order.events || [])
+    // set-order-tags.js writes its audit EVENT# with the synthetic
+    // lineItemId "ORDER" (it isn't scoped to any one line item) and
+    // `meta.via === "setTags"` — drop these entirely rather than let a
+    // redacted-but-present "Tags updated" row leak that staff have been
+    // tagging the order, which isn't information a customer needs.
+    .filter((ev) => !(ev.meta && ev.meta.via === "setTags"))
+    .map((ev) => ({
+      at: ev.at,
+      from: ev.from,
+      to: ev.to,
+      // holdReason is the one meta field a customer needs (it's the same
+      // text already surfaced on payment.holdReason) — everything else in
+      // `meta` (via, station) and the actor fields are internal. The legacy
+      // `rejectionReason` key is still read so events written before the
+      // Payment Rejected -> On Hold rename keep rendering their reason.
+      meta: ev.meta && (ev.meta.holdReason || ev.meta.rejectionReason)
+        ? { holdReason: ev.meta.holdReason || ev.meta.rejectionReason }
+        : {},
+    }));
   return order;
 }
 

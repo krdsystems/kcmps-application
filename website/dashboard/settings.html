@@ -35,20 +35,30 @@
             plain "Resume" button. Setting a PIN here means <strong>your</strong> PIN has to be
             typed to reopen it instead — so a colleague walking past an unattended, still-logged-in
             screen can't casually see customer names, payment screenshots, or GCash references.
-            <strong>This is not a real login</strong> — it's stored only in this browser and can't
-            stop someone with technical access to this computer. The actual security boundary is
-            your Cognito sign-in, which every action on this dashboard re-checks regardless of this
-            PIN. If your session has genuinely expired, entering the right PIN will not "carry on"
-            for you — you'll still be asked to refresh or log back in.
-            <strong>Forgot your PIN?</strong> Log out and back in from the top bar — that always works
-            and clears the old PIN.
+            The PIN is checked on the server (never stored on this computer), and repeated wrong
+            guesses lock it out for a while — but <strong>it is still not a real login</strong>:
+            the actual security boundary is your Cognito sign-in, which every action on this
+            dashboard re-checks regardless of this PIN. If your session has genuinely expired,
+            entering the right PIN will not "carry on" for you — you'll still be asked to refresh
+            or log back in.
+            <strong>Forgot your PIN?</strong> Use "Log out instead" on the locked screen, log back
+            in, then come back here and save a new PIN — the old one isn't needed to replace it.
           </p>
           <div id="pin-status" class="hint" style="margin-bottom:var(--space-3)"></div>
+          <!-- Deliberately NOT type="password": that's what taught browser
+               password managers to save the PIN and then autofill it into the
+               idle lock screen, unlocking it by itself. CSS-masked text
+               inputs instead — see dashboard.css's .dash-pin-mask and
+               dashboard-shell.js's renderPinGate for the full story. -->
           <div class="dash-form-grid">
-            <div class="field"><label for="pin-new">New 4-digit PIN</label>
-              <input class="input" id="pin-new" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" /></div>
+            <div class="field"><label for="pin-new">New PIN (4&ndash;6 digits)</label>
+              <input class="input dash-pin-mask" id="pin-new" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                autocomplete="one-time-code" name="kcmps-idle-code-new" spellcheck="false"
+                data-lpignore="true" data-1p-ignore data-bwignore /></div>
             <div class="field"><label for="pin-confirm">Confirm PIN</label>
-              <input class="input" id="pin-confirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" /></div>
+              <input class="input dash-pin-mask" id="pin-confirm" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                autocomplete="one-time-code" name="kcmps-idle-code-confirm" spellcheck="false"
+                data-lpignore="true" data-1p-ignore data-bwignore /></div>
           </div>
           <div id="pin-error"></div>
           <div style="display:flex;gap:8px;margin-top:var(--space-3);flex-wrap:wrap">
@@ -114,12 +124,14 @@
     .map((s) => `<span class="tag tag-neutral">${escapeHtml(s.label)} (${s.id})</span>`).join("");
 
   /* ---- idle-screen PIN (dashboard-shell.js's SESSION_GUARD gate) ----
-     claims.sub is the same Cognito subject used to key the stored PIN — see
-     dashboard-data.js's setStaffPin() header for the full storage/threat
-     model. No "old PIN required to change" step: this page already sits
-     behind a live Cognito session, which is a stronger check than the PIN
-     itself, so re-asking for the PIN just to replace it would add friction
-     with no real benefit. */
+     Server-verified since 2026-08-07 (backend/staff-api/staff-pin.js via
+     dashboard-data.js's setStaffPin/clearStaffPin/getStaffPinStatus) —
+     the backend keys the record off the verified JWT sub itself, so
+     claims.sub is passed only for call-site compatibility. No "old PIN
+     required to change" step: this page already sits behind a live
+     Cognito session, which is a stronger check than the PIN itself, so
+     re-asking for the PIN just to replace it would add friction with no
+     real benefit — and it doubles as the forgot-my-PIN recovery path. */
   const pinStatus = document.getElementById("pin-status");
   const pinErrorHost = document.getElementById("pin-error");
   const pinNewInput = document.getElementById("pin-new");
@@ -127,12 +139,17 @@
   const pinSaveBtn = document.getElementById("pin-save-btn");
   const pinRemoveBtn = document.getElementById("pin-remove-btn");
 
-  function refreshPinStatus() {
-    const set = KCMPS_DASH.hasStaffPin(claims.sub);
+  function paintPinStatus(set) {
     pinStatus.textContent = set
       ? "A PIN is set — the idle screen requires it before it will reopen."
       : "No PIN set yet — the idle screen reopens with a plain Resume button.";
     pinRemoveBtn.style.display = set ? "" : "none";
+  }
+  async function refreshPinStatus() {
+    pinStatus.textContent = "Checking…";
+    pinRemoveBtn.style.display = "none";
+    try { paintPinStatus(await KCMPS_DASH.getStaffPinStatus()); }
+    catch { pinStatus.textContent = "Couldn't reach the server to check the PIN status — you can still try saving one."; }
   }
   refreshPinStatus();
 
@@ -140,14 +157,14 @@
     pinErrorHost.innerHTML = "";
     const a = pinNewInput.value.trim();
     const b = pinConfirmInput.value.trim();
-    if (!/^\d{4}$/.test(a)) { showInlineError(pinErrorHost, "PIN must be exactly 4 digits."); return; }
+    if (!/^\d{4,6}$/.test(a)) { showInlineError(pinErrorHost, "PIN must be 4-6 digits."); return; }
     if (a !== b) { showInlineError(pinErrorHost, "The two PINs don't match."); return; }
     await withBusy(pinSaveBtn, async () => {
       try {
         await KCMPS_DASH.setStaffPin(claims.sub, a);
         pinNewInput.value = "";
         pinConfirmInput.value = "";
-        refreshPinStatus();
+        paintPinStatus(true);
       } catch (err) { showInlineError(pinErrorHost, err.message); }
     });
   });
@@ -155,8 +172,10 @@
   pinRemoveBtn.addEventListener("click", async () => {
     pinErrorHost.innerHTML = "";
     await withBusy(pinRemoveBtn, async () => {
-      KCMPS_DASH.clearStaffPin(claims.sub);
-      refreshPinStatus();
+      try {
+        await KCMPS_DASH.clearStaffPin(claims.sub);
+        paintPinStatus(false);
+      } catch (err) { showInlineError(pinErrorHost, err.message); }
     });
   });
 })();

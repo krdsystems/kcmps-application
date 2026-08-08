@@ -474,6 +474,22 @@ Resources:
                 Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub arn:aws:s3:::${InboundMailBucket}/inbound/*
+        # Attachment extraction (2026-08-07): ingest-inbound.js copies each
+        # MIME attachment part to its own object under mail-attachments/ on
+        # the GuardDuty-scanned uploads bucket (the inbound-mail bucket has
+        # no malware-protection plan, so serving bytes from it would bypass
+        # the scan gate); get-mail-message.js presigns GETs against the same
+        # prefix, gated on the SCAN#<ref> verdict. Put+Get scoped to that
+        # one prefix — mail Lambdas have no business anywhere else on the
+        # uploads bucket.
+        - PolicyName: mail-attachments-bucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: MailAttachmentsPrefixOnly
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${UploadsBucket}/mail-attachments/*
         # send-reply.js only. Scoped to the one verified sending identity
         # (SesSenderIdentity = kcmps.com) — NOT a wildcard — and further
         # narrowed by a FromAddress condition so this role can only send as
@@ -511,6 +527,10 @@ Resources:
   SendMessageLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-send-message", RetentionInDays: 14 } }
   GetUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-unread-messages", RetentionInDays: 14 } }
   AddCorrespondenceLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-add-correspondence", RetentionInDays: 14 } }
+  SetOrderTagsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-set-order-tags", RetentionInDays: 14 } }
+  CreateManualOrderLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-create-manual-order", RetentionInDays: 14 } }
+  StaffPinLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-staff-pin", RetentionInDays: 14 } }
+  DashboardPrefsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-dashboard-prefs", RetentionInDays: 14 } }
   StreamsHandlerLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-streams-handler", RetentionInDays: 14 } }
   ExpirePendingOrdersLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-expire-pending-orders", RetentionInDays: 14 } }
   NotifyUnreadMessagesLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-notify-unread-messages", RetentionInDays: 14 } }
@@ -718,6 +738,44 @@ Resources:
         Variables:
           TABLE_NAME: !Ref TableName
 
+  # One Lambda, four routes (GET/PUT/DELETE /staff/pin + POST
+  # /staff/pin/verify) — the server-verified idle-screen PIN behind
+  # dashboard-shell.js's SESSION_GUARD. See backend/staff-api/staff-pin.js.
+  StaffPinFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: StaffPinLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-staff-pin
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-staff-pin.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  # Per-staffer UI preferences (jobs.html column order/filters, first
+  # consumer) — server-side so it follows a staffer across devices.
+  # See backend/staff-api/dashboard-prefs.js.
+  DashboardPrefsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DashboardPrefsLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-dashboard-prefs
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-dashboard-prefs.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
   AddCorrespondenceFunction:
     Type: AWS::Lambda::Function
     DependsOn: AddCorrespondenceLogGroup
@@ -734,6 +792,42 @@ Resources:
         Variables:
           TABLE_NAME: !Ref TableName
           UPLOADS_BUCKET: !Ref UploadsBucket
+
+  SetOrderTagsFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: SetOrderTagsLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-set-order-tags
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-set-order-tags.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
+  # Real backend for jobs.html's "+ New manual order" form — replaces the
+  # localStorage-only mock (see backend/staff-api/create-manual-order.js's
+  # header for why: orders were invisible on every device but the one that
+  # created them).
+  CreateManualOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CreateManualOrderLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-create-manual-order
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-create-manual-order.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
 
   StreamsHandlerFunction:
     Type: AWS::Lambda::Function
@@ -937,6 +1031,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref TableName
           EXPECTED_FORWARDER_HOST: !Ref ExpectedForwarderHost
+          UPLOADS_BUCKET_NAME: !Ref UploadsBucket
 
   PermIngestInboundS3:
     Type: AWS::Lambda::Permission
@@ -994,6 +1089,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          UPLOADS_BUCKET_NAME: !Ref UploadsBucket
 
   MarkMailReadFunction:
     Type: AWS::Lambda::Function
@@ -1047,9 +1143,10 @@ Resources:
       ProtocolType: HTTP
       CorsConfiguration:
         AllowOrigins: [https://dev.kcmps.com, http://localhost:5500, http://localhost:5501]
-        # PATCH added for PATCH /designs/{id} (patch-design.js) — every other
-        # route in this API is GET/POST only.
-        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        # PATCH added for PATCH /designs/{id} (patch-design.js); PUT/DELETE
+        # added for PUT/DELETE /staff/pin (staff-pin.js) — every other route
+        # in this API is GET/POST only.
+        AllowMethods: [GET, POST, PATCH, PUT, DELETE, OPTIONS]
         AllowHeaders: [content-type, authorization]
         MaxAge: 300
 
@@ -1084,6 +1181,10 @@ Resources:
   SendMessageIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SendMessageFunction.Arn, PayloadFormatVersion: "2.0" } }
   GetUnreadMessagesIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetUnreadMessagesFunction.Arn, PayloadFormatVersion: "2.0" } }
   AddCorrespondenceIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt AddCorrespondenceFunction.Arn, PayloadFormatVersion: "2.0" } }
+  SetOrderTagsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SetOrderTagsFunction.Arn, PayloadFormatVersion: "2.0" } }
+  CreateManualOrderIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt CreateManualOrderFunction.Arn, PayloadFormatVersion: "2.0" } }
+  StaffPinIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt StaffPinFunction.Arn, PayloadFormatVersion: "2.0" } }
+  DashboardPrefsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt DashboardPrefsFunction.Arn, PayloadFormatVersion: "2.0" } }
 
   DesignUploadUrlIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt DesignUploadUrlFunction.Arn, PayloadFormatVersion: "2.0" } }
   PublishDesignIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt PublishDesignFunction.Arn, PayloadFormatVersion: "2.0" } }
@@ -1111,6 +1212,14 @@ Resources:
   RouteSendMessage: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/messages", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SendMessageIntegration}" } }
   RouteGetUnreadMessages: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /messages/unread", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetUnreadMessagesIntegration}" } }
   RouteAddCorrespondence: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/correspondence", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${AddCorrespondenceIntegration}" } }
+  RouteSetOrderTags: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/{orderId}/tags", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SetOrderTagsIntegration}" } }
+  RouteCreateManualOrder: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /orders/manual", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${CreateManualOrderIntegration}" } }
+  RouteStaffPinStatus: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /staff/pin", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${StaffPinIntegration}" } }
+  RouteStaffPinSet: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PUT /staff/pin", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${StaffPinIntegration}" } }
+  RouteStaffPinClear: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "DELETE /staff/pin", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${StaffPinIntegration}" } }
+  RouteStaffPinVerify: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /staff/pin/verify", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${StaffPinIntegration}" } }
+  RouteDashboardPrefsGet: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /staff/prefs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DashboardPrefsIntegration}" } }
+  RouteDashboardPrefsPatch: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /staff/prefs", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${DashboardPrefsIntegration}" } }
 
 # Asset Library routes (renamed from /designs* 2026-08-07 while production
   # still has zero /designs routes and zero external consumers — the one-time
@@ -1145,6 +1254,11 @@ Resources:
   PermListDesigns: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref ListDesignsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets" } }
   PermPatchDesign: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref PatchDesignFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/assets/*" } }
   PermAddCorrespondence: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref AddCorrespondenceFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/correspondence" } }
+  PermSetOrderTags: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SetOrderTagsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/*/tags" } }
+  PermCreateManualOrder: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref CreateManualOrderFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/orders/manual" } }
+  PermStaffPin: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref StaffPinFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/staff/pin" } }
+  PermStaffPinVerify: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref StaffPinFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/staff/pin/verify" } }
+  PermDashboardPrefs: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref DashboardPrefsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/staff/prefs" } }
   PermGetMailboxes: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailboxesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes" } }
   PermGetMailMessages: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessagesFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages" } }
   PermGetMailMessage: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetMailMessageFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/mail/mailboxes/*/messages/*" } }

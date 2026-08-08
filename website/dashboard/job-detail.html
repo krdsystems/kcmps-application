@@ -395,13 +395,7 @@
       `</div>` +
       `<div class="text-muted" style="text-align:right;font-size:12px">Line ${li.lineItemId}</div></div>` +
 
-      // Tags card (renderTags()/wireTags(), below) is built but NOT wired
-      // into this render yet — POST /orders/{orderId}/tags and its Lambda
-      // (backend/staff-api/set-order-tags.js) exist in source and in the
-      // CloudFormation template but are not deployed to staging or
-      // production. Wiring this in before the route exists would mean a
-      // "Add tag" click 404ing for every real (non-mock) order. See
-      // docs/wip-order-tags-mobile-nav.md for the exact remaining steps.
+      renderTags(order) +
 
       `<div class="card ticket-meta">` +
       `<div class="m-block"><h4>Client</h4><p>${escapeHtml(order.client ? order.client.name : "—")}</p></div>` +
@@ -539,8 +533,7 @@
       if (e.key === "Enter") document.getElementById("correspondence-add-btn").click();
     });
     wireMessages(order);
-    // wireTags(order); — intentionally not called yet, see the comment
-    // above renderTags()'s call site (removed from the template above).
+    wireTags(order);
 
     const formHost = document.getElementById("action-form");
     const errorHost = document.getElementById("action-error");

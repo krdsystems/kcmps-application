@@ -145,13 +145,11 @@ from a fresh `describe-user-pool` (every current mutable setting, plus just the 
 field changing) rather than a hand-written partial one, and diff before/after to confirm
 nothing else moved — see entry 62 for the exact approach.
 
-## `asset-library/` — what's in it (STAGING ONLY, 2026-08-06; renamed from `design-library/` 2026-08-07)
+## `asset-library/` — what's in it (staging + production, both live; promoted 2026-08-07; renamed from `design-library/` 2026-08-07)
 
 Asset Library (`docs/roadmap.md`'s parallel track; full rebuild diagnosis, IA/UX, the
 Admin-approval workflow design, and the rename decision log are in
-`docs/asset-library-rebuild-plan-2026-08-06.md`). **Deployed to `kcmps-backend-staging`
-only** — production has no originals bucket and no `/assets` routes, and promotion is
-owner-gated (`backend/infra/README.md`'s "Asset Library Lambdas"). Folder was
+`docs/asset-library-rebuild-plan-2026-08-06.md`). Folder was
 `backend/design-library/` and routes were `/designs*` until the 2026-08-07 rename pass
 (rebuild-plan doc §5) — DynamoDB's `DESIGN#` PK prefix and the S3 `designs/` object prefix
 deliberately kept their old names (relabeling deployed keys for zero user-visible benefit
@@ -227,13 +225,14 @@ the reputation of the identity that delivers real customer order mail, and AWS s
 10% bounce rate. This was violated once (2026-08-06) by a "confirm SES rejects it" verification
 step — the config check was available, free, and stronger evidence.
 
-## `mail/` — what's in it (STAGING ONLY, hardened 2026-08-06)
+## `mail/` — what's in it (staging + production, both live; hardened 2026-08-06; threading fix + attachments promoted 2026-08-08)
 
 SES relay inbound-mail ingest + staff mail read/reply API (`docs/roadmap.md`'s "Parallel track —
-Staff email panel"). **Deployed to `kcmps-backend-staging` only.** Infra:
-`backend/infra/ses-relay.cfn.yaml` (`mirror.kcmps.com` receiving identity, the
-`kcmps-inbound-mail-est-2026` private bucket) — but note the domain-wide catchall receipt rule it
-originally described is **gone**, see below.
+Staff email panel"). Infra: `backend/infra/ses-relay.cfn.yaml` (`mirror.kcmps.com` receiving
+identity, the `kcmps-inbound-mail-est-2026` private bucket) — but note the domain-wide catchall
+receipt rule it originally described is **gone**, see below. `backfill-threading-2026-08-07.js`
+is a one-time ops script, never deployed — see the root `CLAUDE.md`'s Staff email panel row for
+the bug it fixes and why the backfill was still needed on top of the code fix.
 
 **The one thing to internalize:** there is exactly ONE real Spacemail mailbox,
 `admin@kcmps.com`. `order@kcmps.com` and `info@kcmps.com` are **aliases delivering into it**

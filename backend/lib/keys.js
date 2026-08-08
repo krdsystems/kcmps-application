@@ -182,6 +182,14 @@ function staffPinSk() {
   return "PIN";
 }
 
+// Same USER#<sub> partition, sibling record — small per-staffer UI
+// preferences blob (e.g. jobs.html's column order), synced across
+// devices because it's server-side, not localStorage. See
+// staff-api/dashboard-prefs.js.
+function staffPrefsSk() {
+  return "PREFS";
+}
+
 // ---- Inbound mail (SES relay, docs/roadmap.md "Parallel track — Staff email
 // panel", "SES relay" track) ----
 // PK: MAILBOX#<mailboxId> (mailboxId is the lowercased recipient address,
@@ -234,6 +242,7 @@ module.exports = {
   designPk,
   userPk,
   staffPinSk,
+  staffPrefsSk,
   mailboxPk,
   mailMessageSk,
 };

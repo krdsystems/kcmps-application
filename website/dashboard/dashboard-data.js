@@ -101,7 +101,14 @@
     }
     let body = {};
     try { body = await res.json(); } catch { /* empty/non-JSON body */ }
-    if (!res.ok) throw new Error(body.error || res.statusText);
+    if (!res.ok) {
+      // Callers that need more than a message (e.g. verifyStaffPin's 429
+      // lockout handling) read status/body off the error object.
+      const err = new Error(body.error || res.statusText);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
     return body;
   }
 
@@ -1267,57 +1274,82 @@
     });
   }
 
-  /* ---- staff idle-screen PIN (privacy deterrent, NOT a security boundary) ----
-     Gates dashboard-shell.js's SESSION_GUARD idle overlay so a passer-by who
-     nudges the mouse/keyboard can't dismiss the privacy screen without
-     knowing a 4-digit code. This is explicitly NOT real authentication: the
-     actual security boundary is the Cognito JWT every backend route
-     re-verifies (see root CLAUDE.md's "Client-decoded JWT claims are
-     UI-only" gotcha). Anyone with devtools access to this origin's
-     localStorage can read the salt+hash below and brute-force a 4-digit PIN
-     in well under a second — that's fine, because the threat this defends
-     against is a colleague glancing at an unattended, still-logged-in
-     screen, not a determined attacker. Never represent this as more than
-     that in any UI copy.
+  /* ---- staff idle-screen PIN (server-verified since 2026-08-07) ----
+     Gates dashboard-shell.js's SESSION_GUARD idle overlay. The PIN now
+     lives ONLY on the backend — backend/staff-api/staff-pin.js stores a
+     per-staffer scrypt hash keyed off the JWT's verified `sub` (never a
+     sub from a request body) and rate-limits verification attempts
+     server-side (exponential lockout after 5 wrong guesses, counted on
+     the record so devtools/network replays can't dodge it). NOTHING about
+     the PIN is kept in localStorage/sessionStorage any more, in any form —
+     the old kcmps_pin_v1:<sub> salt+SHA-256 records were brute-forceable
+     offline in under a second, and the type="password" fields that fed
+     them taught browser password managers to save the PIN and then
+     AUTO-FILL IT INTO THE LOCK SCREEN, unlocking it for anyone walking
+     past. Legacy records are scrubbed on load (below).
 
-     Stored PER STAFFER, keyed by their Cognito `sub` (the JWT subject claim
-     dashboard-shell.js already decodes and passes in as `userKey`) under
-     kcmps_pin_v1:<sub> — so on a shared/kiosk browser one staffer's PIN can
-     never unlock another staffer's session, and it never "syncs" anywhere
-     (this is one browser's local storage, same as everything else in this
-     file). Never stored in plaintext: SHA-256(salt + pin) via SubtleCrypto,
-     with a fresh 16-byte random salt per staffer per set/change. */
-  function pinStorageKey(userKey) { return "kcmps_pin_v1:" + userKey; }
-  function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
-  async function hashPin(pin, saltB64) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(saltB64 + ":" + pin));
-    return bufToB64(digest);
+     Honest threat model (mirror of staff-pin.js's header): this defends
+     against a passer-by at an unattended screen and against casual
+     devtools bypass of the old client-side check. It is NOT a defence
+     against the authenticated staffer themselves — the Cognito session
+     is the real boundary, and devtools can still delete the overlay DOM
+     and read what the page already loaded. Never oversell it in UI copy.
+
+     hasStaffPin() must stay synchronous (dashboard-shell.js builds the
+     overlay markup inline), so the status is prefetched once per page
+     load (prefetchStaffPinStatus, called from the shell's mount()) and
+     cached in memory. `pinStatusCache`: null = not yet known. */
+  let pinStatusCache = null;
+  // Scrub the retired client-side PIN records — they hold a weakly-hashed
+  // copy of what may still be the staffer's current PIN.
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.indexOf("kcmps_pin_v1:") === 0)
+      .forEach((k) => localStorage.removeItem(k));
+  } catch { /* ignore */ }
+
+  function staffPinStatusKnown() { return pinStatusCache !== null; }
+  // userKey params below are kept for call-site compatibility but unused:
+  // the server keys everything off the verified JWT sub itself.
+  function hasStaffPin() { return pinStatusCache === true; }
+  async function getStaffPinStatus() {
+    const res = await apiFetch("/staff/pin", { method: "GET" });
+    pinStatusCache = !!res.pinSet;
+    return pinStatusCache;
   }
-  // Synchronous (no hashing needed, just "does a record exist") so
-  // dashboard-shell.js can check it inline while building the overlay's
-  // markup without an extra render pass.
-  function hasStaffPin(userKey) {
-    if (!userKey) return false;
-    try { return !!localStorage.getItem(pinStorageKey(userKey)); } catch { return false; }
+  // Fire-and-forget wrapper for mount(): never throws (an offline/failed
+  // status fetch leaves the cache null, and the guard fails closed on the
+  // restored-lock path — see dashboard-shell.js).
+  function prefetchStaffPinStatus() {
+    return getStaffPinStatus().catch(() => null);
   }
   async function setStaffPin(userKey, pin) {
-    if (!userKey) throw new Error("No staff identity to attach a PIN to — try logging out and back in.");
-    if (!/^\d{4}$/.test(pin || "")) throw new Error("PIN must be exactly 4 digits.");
-    const salt = bufToB64(crypto.getRandomValues(new Uint8Array(16)).buffer);
-    const hash = await hashPin(pin, salt);
-    localStorage.setItem(pinStorageKey(userKey), JSON.stringify({ salt, hash }));
+    if (!/^\d{4,6}$/.test(pin || "")) throw new Error("PIN must be 4-6 digits.");
+    await apiFetch("/staff/pin", { method: "PUT", body: JSON.stringify({ pin }) });
+    pinStatusCache = true;
     return true;
   }
+  /* Returns a structured result, not a bare boolean:
+       { ok: true }                                   correct PIN
+       { ok: false }                                  wrong PIN
+       { ok: false, pinSet: false }                   no PIN on file (treat as unlocked)
+       { ok: false, locked: true, retryAfterSeconds } rate-limited (server 429)
+       { ok: false, error }                           network/other failure   */
   async function verifyStaffPin(userKey, pin) {
-    if (!userKey || !pin) return false;
-    let rec;
-    try { rec = JSON.parse(localStorage.getItem(pinStorageKey(userKey))); } catch { return false; }
-    if (!rec || !rec.salt || !rec.hash) return false;
-    return (await hashPin(pin, rec.salt)) === rec.hash;
+    try {
+      const res = await apiFetch("/staff/pin/verify", { method: "POST", body: JSON.stringify({ pin }) });
+      if (res.pinSet === false) pinStatusCache = false;
+      return res;
+    } catch (err) {
+      if (err && err.status === 429 && err.body) {
+        return { ok: false, locked: true, retryAfterSeconds: err.body.retryAfterSeconds || 30 };
+      }
+      return { ok: false, error: err && err.message ? err.message : "Couldn't check the PIN — are you online?" };
+    }
   }
-  function clearStaffPin(userKey) {
-    if (!userKey) return;
-    try { localStorage.removeItem(pinStorageKey(userKey)); } catch { /* ignore */ }
+  async function clearStaffPin() {
+    await apiFetch("/staff/pin", { method: "DELETE" });
+    pinStatusCache = false;
   }
 
   global.KCMPS_DASH = {
@@ -1335,5 +1367,6 @@
     createManualOrder,
     resetSeed,
     hasStaffPin, setStaffPin, verifyStaffPin, clearStaffPin,
+    staffPinStatusKnown, getStaffPinStatus, prefetchStaffPinStatus,
   };
 })(window);

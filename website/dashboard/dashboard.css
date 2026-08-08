@@ -672,3 +672,19 @@ select.input { appearance: auto; }
 @media (max-width: 480px) {
   .session-guard-box { padding: var(--space-4); }
 }
+
+/* — idle-screen PIN input masking —
+   The PIN fields (session-guard overlay + settings.html) are deliberately
+   type="text", NOT type="password": password managers key on
+   type="password" to offer save/autofill, and an autofilled PIN unlocks
+   the privacy screen for anyone walking past (the exact bug this class
+   exists to fix — see dashboard-shell.js's renderPinGate). Masking is
+   done here in CSS instead. -webkit-text-security is supported by
+   Chrome/Edge/Safari and by Firefox 138+; on anything older the digits
+   render visibly, which is an accepted fallback (brief, numeric, and the
+   staffer is present and typing) — do NOT "fix" that by reverting to
+   type="password". */
+.dash-pin-mask {
+  -webkit-text-security: disc;
+  text-security: disc;
+}

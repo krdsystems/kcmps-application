@@ -172,6 +172,9 @@
   }
 
   function logout() {
+    // A deliberate identity change — the lock flag shouldn't survive into
+    // the next person's fresh login in this tab.
+    try { sessionStorage.removeItem("kcmps_guard_lock_v1"); } catch { /* ignore */ }
     clearTokens();
     const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
       client_id: COGNITO_CONFIG.clientId,
@@ -251,8 +254,9 @@
     backdrop.addEventListener("keydown", (e) => {
       if (e.key !== "Tab") return;
       // Includes text inputs now — the PIN-gated states below put a
-      // password-type <input> before the buttons, and it needs to be part
-      // of the trap's first/last boundary like everything else in here.
+      // CSS-masked text <input> before the buttons (deliberately NOT
+      // type="password" — see renderPinGate's autofill note), and it needs
+      // to be part of the trap's first/last boundary like everything else.
       const focusables = backdrop.querySelectorAll("button, input");
       if (!focusables.length) return;
       const first = focusables[0], last = focusables[focusables.length - 1];
@@ -279,58 +283,167 @@
       // the session is genuinely expired — this button doesn't need to
       // know which case it is. Entering the right PIN never skips this:
       // the PIN only unlocked the CONTROLS, Refresh still does the real
-      // expiry check it always did.
+      // expiry check it always did. Clearing the persisted lock here is
+      // legitimate: this button is only reachable after the PIN checked
+      // out (or when no PIN exists) — without clearing it, the reload
+      // would restore the lock and Refresh could never succeed.
+      clearPersistedLock();
       window.location.reload();
     });
     const primary = actions.querySelector(".btn-primary");
     if (primary) primary.focus();
   }
 
-  // A 4-digit PIN entry step, used at both overlay stages when the signed-in
-  // staffer has one set (see dashboard-data.js's setStaffPin() header for
-  // the full "privacy deterrent, not a security boundary" rationale). There
-  // is no lockout/attempt counter — a wrong PIN just re-prompts — since that
-  // would turn a convenience feature into its own support burden for no real
-  // security gain. "Log out instead" never needs the PIN: logging out can't
-  // leak anything and is the documented recovery path for a forgotten PIN.
+  /* The PIN entry step, used at both overlay stages when the signed-in
+     staffer has one set. Verification is SERVER-SIDE since 2026-08-07
+     (backend/staff-api/staff-pin.js, via dashboard-data.js's
+     verifyStaffPin) — wrong attempts are counted on the backend record
+     and lock out with exponential backoff (5 free, then 30s doubling to
+     15min), so a 4-digit code can't be brute-forced from this field OR
+     from curl. "Log out instead" never needs the PIN: logging out can't
+     leak anything and is the recovery path for a forgotten PIN (log back
+     in, then set a new one in Settings — no old PIN required there,
+     because a live Cognito login is a stronger check than the PIN).
+
+     AUTOFILL: this input must NEVER be type="password", and must never
+     sit in a password-manager-recognizable form. The original
+     implementation used type="password" (+ a same-shaped pair on
+     settings.html), and Chrome's password manager offered to save the
+     "password" — then AUTO-FILLED IT INTO THIS LOCK SCREEN when it
+     reopened, unlocking it for anyone who walked past. autocomplete="off"
+     did not stop it (password managers famously ignore it on password
+     fields). The fix: type="text" + inputmode="numeric" (so phones still
+     get a digit pad) masked purely by CSS (.dash-pin-mask,
+     -webkit-text-security in dashboard.css), autocomplete="one-time-code"
+     (the strongest "this is not a credential" signal), a name that
+     matches no login heuristic, and opt-out attributes for the big
+     third-party managers (data-lpignore/data-1p-ignore/data-bwignore).
+     No surrounding <form> — Enter is handled on keydown — so nothing
+     here matches the save-a-login heuristics either. */
   function renderPinGate(actions, opts) {
     actions.innerHTML =
-      '<form id="session-guard-pin-form" style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%">' +
-      '<input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" ' +
-      'class="input" id="session-guard-pin-input" placeholder="4-digit PIN" ' +
+      '<div id="session-guard-pin-form" style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%">' +
+      '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+      'autocomplete="one-time-code" name="kcmps-idle-code" spellcheck="false" ' +
+      'data-lpignore="true" data-1p-ignore data-bwignore ' +
+      'class="input dash-pin-mask" id="session-guard-pin-input" placeholder="PIN" aria-label="Idle-screen PIN" ' +
       'style="text-align:center;letter-spacing:8px;font-size:18px;max-width:150px" />' +
       '<p id="session-guard-pin-error" role="alert" style="display:none;color:#b91c1c;font-size:12.5px;margin:0"></p>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
       '<button type="button" class="btn btn-ghost" id="session-guard-pin-logout">Log out instead</button>' +
-      `<button type="submit" class="btn btn-primary" id="session-guard-pin-submit">${opts.continueLabel}</button>` +
-      '</div></form>';
-    const form = actions.querySelector("#session-guard-pin-form");
+      `<button type="button" class="btn btn-primary" id="session-guard-pin-submit">${opts.continueLabel}</button>` +
+      '</div></div>';
     const input = actions.querySelector("#session-guard-pin-input");
     const errorEl = actions.querySelector("#session-guard-pin-error");
+    const submitBtn = actions.querySelector("#session-guard-pin-submit");
     actions.querySelector("#session-guard-pin-logout").addEventListener("click", logout);
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+
+    let busy = false;
+    let lockTimer = null;
+    function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+    function lockCountdown(seconds) {
+      // Server said "locked out" — disable the field and count down so
+      // the staffer isn't left mashing a dead button. The server is the
+      // authority; this timer is presentation only.
+      if (lockTimer) clearInterval(lockTimer);
+      let left = seconds;
+      input.disabled = true;
+      submitBtn.disabled = true;
+      const paint = () => showError("Too many wrong attempts — locked for " + left + "s. You can always log out instead.");
+      paint();
+      lockTimer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(lockTimer); lockTimer = null;
+          input.disabled = false; submitBtn.disabled = false;
+          errorEl.style.display = "none";
+          input.focus();
+        } else paint();
+      }, 1000);
+    }
+    async function submit() {
+      if (busy || input.disabled) return;
       const pin = input.value.trim();
+      if (!pin) { input.focus(); return; }
       errorEl.style.display = "none";
-      const ok = pin && global.KCMPS_DASH && global.KCMPS_DASH.verifyStaffPin && await global.KCMPS_DASH.verifyStaffPin(guardUserKey, pin);
-      if (ok) { opts.onSuccess(); return; }
-      errorEl.textContent = "Incorrect PIN — try again, or log out.";
-      errorEl.style.display = "";
+      busy = true; submitBtn.disabled = true;
+      let result = { ok: false, error: "PIN check unavailable." };
+      try {
+        if (global.KCMPS_DASH && global.KCMPS_DASH.verifyStaffPin) {
+          result = await global.KCMPS_DASH.verifyStaffPin(guardUserKey, pin);
+        }
+      } finally { busy = false; submitBtn.disabled = false; }
+      // Back-compat: a bare boolean still means ok/not-ok.
+      if (result === true) result = { ok: true };
+      if (!result || typeof result !== "object") result = { ok: false };
+      if (result.ok || result.pinSet === false) {
+        // pinSet === false: server says there is no PIN on file (e.g. it
+        // was removed on another device) — nothing to gate on, unlock.
+        opts.onSuccess();
+        return;
+      }
       input.value = "";
+      if (result.locked) { lockCountdown(result.retryAfterSeconds || 30); return; }
+      showError(result.error ? result.error : "Incorrect PIN — try again, or log out.");
       input.focus();
-    });
+    }
+    submitBtn.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     input.focus();
+  }
+
+  /* ---- lock persistence (anti reload-bypass) ----
+     The overlay used to be pure in-memory state, so F5 (or typing another
+     dashboard page's URL into the same tab) dismissed the privacy screen
+     with no PIN at all — an unattended locked screen was one keystroke
+     from unlocked. A flag in sessionStorage (NOT the PIN, not anything
+     derived from it — just "this tab is locked at stage N") survives
+     reload/navigation within the tab, and mount() re-opens the guard
+     from it. sessionStorage is the right scope: it's per-tab, exactly
+     like the kcmps_tokens session itself — a NEW tab has no tokens and
+     lands on the login gate anyway, so it needs no flag. */
+  const GUARD_LOCK_KEY = "kcmps_guard_lock_v1";
+  function persistLock(stage) {
+    try { sessionStorage.setItem(GUARD_LOCK_KEY, String(stage)); } catch { /* ignore */ }
+  }
+  function clearPersistedLock() {
+    try { sessionStorage.removeItem(GUARD_LOCK_KEY); } catch { /* ignore */ }
+  }
+  function persistedLockStage() {
+    try {
+      const raw = sessionStorage.getItem(GUARD_LOCK_KEY);
+      return raw === "1" || raw === "2" ? Number(raw) : 0;
+    } catch { return 0; }
   }
 
   function openSessionGuard(stage) {
     const wasOpen = guardStage !== 0;
     guardStage = stage;
+    persistLock(stage);
     const el = ensureGuardEl();
     const box = el.querySelector("#session-guard-box");
     const actions = el.querySelector("#session-guard-actions");
     box.dataset.stage = String(stage);
 
-    const pinSet = !!(global.KCMPS_DASH && global.KCMPS_DASH.hasStaffPin && global.KCMPS_DASH.hasStaffPin(guardUserKey));
+    /* PIN-status source: dashboard-data.js's in-memory cache, prefetched
+       by mount(). If the prefetch hasn't resolved yet (or failed —
+       offline), FAIL CLOSED: render the PIN gate rather than a free
+       Resume button, otherwise "reload before the status query lands"
+       would be a lock bypass. The closed stance self-heals both ways:
+       when the prefetch resolves, the re-render below repaints the
+       correct variant, and if the server says no PIN is on file, the
+       gate's verify path unlocks on that answer (pinSet === false). */
+    const dash = global.KCMPS_DASH || {};
+    const statusKnown = !(dash.staffPinStatusKnown) || dash.staffPinStatusKnown();
+    const pinSet = statusKnown
+      ? !!(dash.hasStaffPin && dash.hasStaffPin(guardUserKey))
+      : true;
+    if (!statusKnown && dash.getStaffPinStatus) {
+      dash.getStaffPinStatus().then(() => {
+        // Still open at the same stage? Repaint with the real answer.
+        if (guardStage === stage) openSessionGuard(stage);
+      }).catch(() => { /* stay failed-closed on the PIN gate */ });
+    }
 
     if (stage === 1) {
       el.querySelector("#session-guard-title").textContent = "Screen locked while you were away";
@@ -409,6 +522,7 @@
   }
 
   function closeSessionGuard() {
+    clearPersistedLock();
     if (!guardEl) return;
     guardStage = 0;
     guardEl.style.display = "none";
@@ -433,6 +547,19 @@
     lastActivityAt = Date.now();
     attachActivityListeners();
     document.documentElement.classList.add("dash-ready");
+
+    // Warm the PIN-status cache (hasStaffPin is synchronous by contract —
+    // see dashboard-data.js). Best-effort: a failed fetch leaves the cache
+    // unknown and the guard fails closed on the PIN gate.
+    if (global.KCMPS_DASH && global.KCMPS_DASH.prefetchStaffPinStatus) {
+      global.KCMPS_DASH.prefetchStaffPinStatus();
+    }
+    // Re-arm a lock that was active before a reload / same-tab navigation
+    // (the anti reload-bypass flag — see persistLock's comment). Restored
+    // BEFORE first paint of any data below the overlay would matter, but
+    // the overlay covers the page either way.
+    const restoredStage = persistedLockStage();
+    if (restoredStage) openSessionGuard(restoredStage);
 
     const navMount = document.getElementById("dash-nav");
     const topbarMount = document.getElementById("dash-topbar-content");

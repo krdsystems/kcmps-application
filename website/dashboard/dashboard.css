@@ -284,7 +284,19 @@ select.input { appearance: auto; }
    shrinking text or restructuring layout at a breakpoint. Header and body
    rows are still sibling grid instances (not a real <table>), kept in
    sync only by sharing the same computed template string every render. */
-.job-table-scroll { overflow-x: auto; }
+/* min-width:0 is load-bearing, not tidiness. #job-list-card is a .card
+   (website/styles.css: display:flex; flex-direction:column) — flex items
+   default to min-width:auto, which means their intrinsic minimum content
+   size (here, the grid's fixed-px column tracks, which by design cannot
+   shrink) can force the FLEX ITEM itself wider than the card, bypassing
+   overflow-x:auto entirely rather than being caught by it. Without this,
+   the wide table drags the whole card (and everything to its right) out
+   of alignment with the rest of the page instead of scrolling locally —
+   exactly the "rightmost edge doesn't match the header" symptom this
+   fixes. Same root cause as .dash-main's own min-width:0 one layout level
+   up (this file, ~line 71) for the sidebar grid — the identical flex/grid
+   "auto-minimum-size" trap, one nesting level deeper. */
+.job-table-scroll { overflow-x: auto; min-width: 0; }
 .job-row {
   display: grid; column-gap: var(--space-3); align-items: center;
   padding: 10px 12px; border-radius: var(--radius-md); transition: background-color 120ms ease;

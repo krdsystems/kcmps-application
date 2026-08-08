@@ -469,10 +469,15 @@
     "Ready for Pickup": "Picked Up",
   };
 
-  // Manual orders (createManualOrder, below) have no backend Lambda in
-  // 1.3's scope and only ever exist in the mock — real orders are never
-  // written there. Check the mock first so a manual order's buttons keep
-  // working exactly as before, and only real orders go over the wire.
+  // LEGACY PATH as of 2026-08-08: createManualOrder() (below) now writes
+  // real orders via POST /orders/manual, so a NEWLY created manual order
+  // is never in state.orders and this correctly returns false for it,
+  // routing it through the normal real-order code paths like any other
+  // order. This only still matches manual orders created BEFORE that
+  // change, which exist solely in whichever browser's localStorage
+  // created them — kept so their action buttons (correspondence,
+  // verify-payment, etc.) don't break while any pre-migration stragglers
+  // still exist. Safe to delete once none remain.
   function isMockOnlyOrder(orderId) {
     return !!load().orders.find((o) => o.orderId === orderId);
   }
@@ -850,10 +855,15 @@
   async function getAllOrders() {
     const { orders } = await apiFetch("/orders", { method: "GET" });
     const normalized = (orders || []).map(normalizeOrder);
-    // createManualOrder() (below) still writes mock-only orders — it has
-    // no backend Lambda in 1.3's scope. Merge them in so "Log a manual
-    // order" doesn't silently vanish from the live jobs list; real orders
-    // never carry source:"manual", so there's no collision risk.
+    // LEGACY as of 2026-08-08: createManualOrder() (below) now writes real
+    // orders via POST /orders/manual, which already come back in `orders`
+    // above with source:"manual" intact — this merge is no longer needed
+    // for anything created from here on. Kept only so manual orders
+    // created BEFORE that change (which exist solely in whichever
+    // browser's localStorage created them) don't silently vanish from
+    // that one browser's jobs list. Real orders never carry
+    // source:"manual", so there's no collision risk either way. Safe to
+    // delete once no pre-migration stragglers remain.
     const manualOnly = load().orders.filter((o) => o.source === "manual");
     const merged = normalized.concat(manualOnly);
     liveOrdersCache = merged;
@@ -902,82 +912,71 @@
     custom: ["Quoted", "Priced", "Confirmed"],
   };
 
-  function createManualOrder(opts) {
+  // Real backend as of 2026-08-08 — POST /orders/manual
+  // (backend/staff-api/create-manual-order.js). Used to write straight to
+  // the localStorage mock, which meant a manual order existed only on the
+  // one browser/device that created it — invisible to every other device,
+  // gone if that browser's storage was ever cleared. Real orders and
+  // manual orders now share one backend and one ID space; source:"manual"
+  // (set server-side) is still the only marker, so existing "Manual"
+  // badges keep working unchanged.
+  //
+  // The "pick an existing client or add a new one" flow stays exactly as
+  // it was, but it's now PURELY a local convenience autocomplete (recent
+  // names), not the order's actual identity — the real backend has no
+  // Client entity, same as a checkout order (create-order.js), which
+  // stores customerName flat on the order. Client-side validation here is
+  // a fast-fail UX nicety; the server re-validates everything for real.
+  async function createManualOrder(opts) {
     opts = opts || {};
     const description = (opts.description || "").trim();
     if (!description) throw new Error("A description is required.");
     if (!opts.promisedDate) throw new Error("A promised date is required.");
 
     const state = load();
-    let client;
+    let customerName;
     if (opts.newClientName && opts.newClientName.trim()) {
-      client = {
-        id: uid("C"), name: opts.newClientName.trim(),
-        type: opts.newClientType === "B2B" ? "B2B" : "B2C",
-        totalRevenue: 0, lastOrderAt: nowIso(), reorderIntervalDays: null,
-      };
-      state.clients.push(client);
+      customerName = opts.newClientName.trim();
     } else {
-      client = state.clients.find((c) => c.id === opts.clientId);
+      const client = state.clients.find((c) => c.id === opts.clientId);
       if (!client) throw new Error("Select an existing client or enter a new client name.");
+      customerName = client.name;
     }
 
     const type = opts.type === "custom" ? "custom" : "sku";
     const allowedStatuses = MANUAL_ORDER_STATUSES[type];
     const status = allowedStatuses.includes(opts.status) ? opts.status : allowedStatuses[0];
-    const qty = Math.max(1, parseInt(opts.qty, 10) || 1);
-    const priceEach = opts.priceEach !== "" && opts.priceEach != null && !isNaN(parseFloat(opts.priceEach))
-      ? parseFloat(opts.priceEach) : null;
-    const amount = priceEach != null ? Math.round(priceEach * qty * 100) / 100 : 0;
-
-    let payment = null;
     if (status === "Pending Payment Verification") {
-      const ref = (opts.gcashRefNumber || "").trim();
-      const claimed = parseFloat(opts.claimedAmount);
-      if (!ref) throw new Error("A GCash reference number is required for Pending Payment Verification.");
-      if (!(claimed > 0)) throw new Error("A claimed amount is required for Pending Payment Verification.");
-      payment = gcashProof(claimed, ref, nowIso());
+      if (!(opts.gcashRefNumber || "").trim()) throw new Error("A GCash reference number is required for Pending Payment Verification.");
+      if (!(parseFloat(opts.claimedAmount) > 0)) throw new Error("A claimed amount is required for Pending Payment Verification.");
     }
 
-    // Confirmed = already paid, by whatever method — logged as a note since
-    // cash has no proof object to attach (see header note above).
-    let notes = (opts.notes || "").trim();
-    if (status === "Confirmed" && opts.paidVia) {
-      const viaLabel = opts.paidVia === "cash" ? "Cash" : opts.paidVia === "gcash" ? "GCash" : "Other";
-      const ref = (opts.paidRef || "").trim();
-      const paidNote = "Paid via " + viaLabel + (ref ? " (ref " + ref + ")" : "") + ".";
-      notes = notes ? paidNote + " " + notes : paidNote;
-    }
-
-    const now = nowIso();
-    const orderId = uid("ORD");
-    const lineItemId = uid("L");
-    const lineItem = {
-      lineItemId, orderId, type, qty,
-      priceEach: priceEach != null ? priceEach : 0, amount,
-      sku: (opts.sku || "").trim() || undefined,
-      description, status, station: null, setupMinutes: null,
-      spoilage: [], enteredStatusAt: now,
-      notes,
-    };
-    const order = {
-      orderId, client, customerSub: null, createdAt: now,
-      originalPromisedDate: opts.promisedDate, lineItems: [lineItem],
-      payment, correspondenceLog: [], source: "manual",
-    };
-    order.orderStatus = deriveOrderStatus(order);
-    state.orders.push(order);
-    client.lastOrderAt = now;
-
-    state.events.push({
-      pk: "ORDER#" + orderId, sk: "EVENT#" + now + "#" + lineItemId,
-      orderId, lineItemId, from: null, to: status,
-      actorSub: "current-user", actorName: opts.actorName || "You",
-      station: null, at: now, meta: { via: "manualOrder" },
+    const result = await apiFetch("/orders/manual", {
+      method: "POST",
+      body: JSON.stringify({
+        customerName, description, type,
+        sku: opts.sku, qty: opts.qty, priceEach: opts.priceEach,
+        promisedDate: opts.promisedDate, status,
+        gcashRefNumber: opts.gcashRefNumber, claimedAmount: opts.claimedAmount,
+        paidVia: opts.paidVia, paidRef: opts.paidRef, notes: opts.notes,
+      }),
     });
 
-    save(state);
-    return order;
+    // Only after a confirmed create: remember a brand-new name locally so
+    // it shows up in the dropdown next time. Doing this before the API
+    // call risked polluting the "recent clients" list with a name from an
+    // order that never actually got created.
+    if (opts.newClientName && opts.newClientName.trim()) {
+      state.clients.push({
+        id: uid("C"), name: customerName,
+        type: opts.newClientType === "B2B" ? "B2B" : "B2C",
+        totalRevenue: 0, lastOrderAt: nowIso(), reorderIntervalDays: null,
+      });
+      save(state);
+    }
+
+    liveOrdersCache = null; // force a fresh fetch — the new order is real now
+    return result;
   }
 
   // Manual order↔email linking: staff log a note referencing a Spacemail

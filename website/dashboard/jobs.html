@@ -544,7 +544,7 @@
     await withBusy(moSubmitBtn, async () => {
       let newOrder;
       try {
-        newOrder = KCMPS_DASH.createManualOrder({
+        newOrder = await KCMPS_DASH.createManualOrder({
           clientId: isNewClient ? null : moClient.value,
           newClientName: isNewClient ? document.getElementById("mo-newclient-name").value : "",
           newClientType: document.getElementById("mo-newclient-type").value,

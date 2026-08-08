@@ -445,18 +445,28 @@ for the go-ahead to promote it**:
    credentials aren't in this repo, ask whoever set up the stack or check the password
    manager):
    ```bash
-   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --profile kcmps-claude-priv
+   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/dev-site/ --cache-control "no-cache, must-revalidate" --profile kcmps-claude-priv
    ```
 2. **Stop and report back what changed and how it was verified on dev.kcmps.com.** Only
    after the owner explicitly says to promote, sync the same content to production:
    ```bash
-   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --profile kcmps-claude-priv
+   aws s3 sync website/ s3://kcmps-online-bucket-est-2026/ --cache-control "no-cache, must-revalidate" --profile kcmps-claude-priv
    ```
 
-Both use `CachingDisabled`, so either sync shows up immediately — no invalidation step,
-no wait. Skipping straight to step 2 is still technically possible (nothing *enforces* the
-order) but is exactly the shortcut this rule exists to prevent — treat step 1 as the
-default and step 2 as gated, never automatic.
+Both use `CachingDisabled` at the CloudFront layer, so either sync is live at the CDN the
+instant it lands — no invalidation step, no wait. `--cache-control` (added 2026-08-08) is
+the *browser*-side half of that same "always live" promise — CDN caching was already off,
+but with no `Cache-Control` header a visitor's own browser was free to apply its own
+heuristic caching against `Last-Modified`, so a hard-synced fix could still look "not
+deployed" to someone with a warm cache. This was found the hard way: several jobs.html
+re-syncs in one session left a browser rendering a stale column set with no way to tell
+from the S3/CloudFront side that anything was wrong. `no-cache, must-revalidate` (not
+`no-store`) still lets the browser keep a copy, it just forces a revalidation request every
+time — cheap on `CachingDisabled` origins, and exactly matches this repo's existing "edits
+are live on refresh" premise, which the missing header had been quietly violating.
+Skipping straight to step 2 is still technically possible (nothing *enforces* the order)
+but is exactly the shortcut this rule exists to prevent — treat step 1 as the default and
+step 2 as gated, never automatic.
 
 Backend/Lambda changes follow the same gate against `kcmps-backend-staging` before
 `kcmps-*` production functions/infra — see `backend/infra/README.md`'s "Staging" section

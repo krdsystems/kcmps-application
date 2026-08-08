@@ -193,7 +193,7 @@
       render: (order) => escapeHtml(order.client ? order.client.name : "—"),
     },
     tags: {
-      label: "Tags", minWidth: 190,
+      label: "Tags", minWidth: 280,
       value: (order) => (Array.isArray(order.tags) && order.tags.length ? order.tags.map((t) => t.key + (t.value ? ": " + t.value : "")).join(", ") : "—"),
       render: (order) => jobTagsCell(order),
     },
@@ -315,14 +315,18 @@
     const active = columnFilters[key];
     filterPopover.innerHTML =
       `<div class="cfp-head"><strong>${escapeHtml(def.label)}</strong><button type="button" class="cfp-clear" data-act="clear">Clear</button></div>` +
+      `<input type="text" class="input cfp-search" placeholder="Type to filter the list…" autocomplete="off" />` +
       `<div class="cfp-list">` +
       values.map((v) => {
         const checked = !active || !active.size || active.has(v);
-        return `<label class="cfp-row"><input type="checkbox" value="${escapeHtml(v)}"${checked ? " checked" : ""} /><span>${escapeHtml(v)}</span></label>`;
+        // data-needle: lowercased once here rather than re-lowercasing v on
+        // every keystroke in the search handler below.
+        return `<label class="cfp-row" data-needle="${escapeHtml(v.toLowerCase())}"><input type="checkbox" value="${escapeHtml(v)}"${checked ? " checked" : ""} /><span>${escapeHtml(v)}</span></label>`;
       }).join("") +
+      (values.length ? "" : '<p class="q-empty" style="margin:2px 0;font-size:12px">No values to filter on.</p>') +
       `</div>`;
     const r = btn.getBoundingClientRect();
-    filterPopover.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + "px";
+    filterPopover.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 260)) + "px";
     filterPopover.style.top = (r.bottom + 4) + "px";
     filterPopover.classList.add("is-open");
     openPopoverKey = key;
@@ -341,6 +345,17 @@
       closeFilterPopover();
       render();
     });
+    // Narrows which rows are VISIBLE in the checkbox list — never touches
+    // selection state, so typing to find a value and then clicking it
+    // can't accidentally uncheck something already filtered out of view.
+    const searchInput = filterPopover.querySelector(".cfp-search");
+    searchInput.addEventListener("input", () => {
+      const needle = searchInput.value.trim().toLowerCase();
+      filterPopover.querySelectorAll(".cfp-row").forEach((row) => {
+        row.style.display = !needle || row.dataset.needle.includes(needle) ? "" : "none";
+      });
+    });
+    searchInput.focus();
   }
 
   headEl.addEventListener("click", (e) => {

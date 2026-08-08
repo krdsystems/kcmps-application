@@ -306,27 +306,40 @@ select.input { appearance: auto; }
    the first place). Ellipsis-truncate by default; opt out per column below
    where the content manages its own sizing (a pill, a flex row of chips). */
 .jc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jc-status, .jc-tags { overflow: visible; text-overflow: clip; white-space: normal; }
+/* Status keeps the base .jc containment (overflow:hidden + min-width:0),
+   NOT an opt-out — this is the one column that bit before (see the
+   "painted 20px into the Due column" history above the .job-row rule): the
+   pill is nested one level inside .jc-status now (jc-status > .status-pill)
+   rather than being the direct grid child, but the same overflow:hidden on
+   the OUTER .jc wrapper still contains it exactly the same way. */
 .jc-due, .jc-orderId { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .jc-job { font-weight: 600; font-size: 13.5px; }
-.jc-tags { display: flex; gap: 4px; overflow: hidden; }
-.jc-tag-chip { font-size: 10px; padding: 1px 7px; max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; }
+/* Tags is the one cell that's a flex row of multiple chips rather than a
+   single text run, so it opts out of ellipsis-on-the-whole-cell in favor
+   of each chip truncating itself (below) — the outer .jc-tags still keeps
+   overflow:hidden so the row can never grow past its track. */
+.jc-tags { overflow: hidden; text-overflow: clip; white-space: normal; display: flex; gap: 4px; }
+.jc-tag-chip { font-size: 10.5px; padding: 1px 8px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; }
 
-/* Header cells: draggable for reorder, plus a filter button. cursor:grab
-   signals the drag affordance; the filter button is draggable="false" in
-   the markup so a click on it doesn't also start a column drag. */
-.jc-head { display: flex; align-items: center; gap: 4px; cursor: grab; user-select: none; }
+/* Header cells: draggable for reorder, plus a filter button. Headers never
+   need ellipsis truncation — every label is a short fixed word — so this
+   opts fully out of .jc's overflow:hidden rather than relying on that
+   staying true by luck; a clipped filter button was exactly the bug this
+   caused before the opt-out was added. cursor:grab signals the drag
+   affordance; the filter button is draggable="false" in the markup so a
+   click on it doesn't also start a column drag. */
+.jc-head { overflow: visible; display: flex; align-items: center; gap: 4px; cursor: grab; user-select: none; }
 .jc-head:active { cursor: grabbing; }
 .jc-head-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jc-head.is-dragging { opacity: 0.4; }
 .jc-head.is-drop-target { background: color-mix(in srgb, var(--color-accent-2-500) 16%, transparent); border-radius: 4px; }
 .jc-head.is-filtered .jc-head-label { color: var(--color-accent-2-700); }
 .col-filter-btn {
-  border: none; background: none; cursor: pointer; padding: 0 2px; font-size: 9px; line-height: 1;
-  color: color-mix(in srgb, var(--color-text) 45%, transparent); flex: 0 0 auto;
+  border: none; background: none; cursor: pointer; padding: 2px 3px; font-size: 12px; line-height: 1;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); flex: 0 0 auto; border-radius: 4px;
 }
 .jc-head.is-filtered .col-filter-btn { color: var(--color-accent-2-700); }
-.col-filter-btn:hover { color: var(--color-text); }
+.col-filter-btn:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
 
 /* Filter popover: position:fixed + appended to <body> (jobs.html) rather
    than living inside .job-table-scroll, so an overflow-x:auto ancestor
@@ -334,14 +347,19 @@ select.input { appearance: auto; }
    axis is non-visible) can never clip it — same reasoning as store.js's
    .design-popup gotcha in the root CLAUDE.md. */
 .col-filter-popover {
-  display: none; position: fixed; z-index: 40; width: 220px; max-height: 320px; overflow-y: auto;
+  display: none; position: fixed; z-index: 40; width: 240px;
   background: var(--color-neutral-100); border: 1px solid var(--color-divider); border-radius: var(--radius-md);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--color-accent-2-900) 18%, transparent); padding: var(--space-2);
 }
 .col-filter-popover.is-open { display: block; }
 .cfp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12.5px; }
 .cfp-clear { border: none; background: none; cursor: pointer; font-size: 11px; text-decoration: underline; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
-.cfp-list { display: flex; flex-direction: column; gap: 2px; }
+/* Compact override of the shared .input look (which is sized for a normal
+   form field) — this lives inside a small popover. */
+.cfp-search { font-size: 12.5px; padding: 5px 8px; margin-bottom: 6px; width: 100%; box-sizing: border-box; }
+/* max-height/scroll on the LIST only, not the whole popover, so the
+   head + search box stay pinned and visible while a long value list scrolls. */
+.cfp-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
 .cfp-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 2px; border-radius: 4px; cursor: pointer; }
 .cfp-row:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
 .cfp-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -578,3 +578,7 @@ CloudFront; `site.kcmps.com` still resolves to the same distribution but gets 30
 - Full build log / design rationale / auth implementation notes → `docs/history.md`
 - Design-system-specific, ops-dashboard-specific, storefront-infra-specific, and
   backend-specific notes → their own `CLAUDE.md` files
+- Claude's cross-session auto-memory (what it remembers about the owner, past feedback,
+  project state) is mirrored to GitHub at [`docs/memory/`](docs/memory/) — the local
+  `~/.claude/.../memory/` store stays the source of truth; `docs/memory/sync-from-local.sh`
+  copies it in one direction, on request, never automatically. See that folder's `README.md`.

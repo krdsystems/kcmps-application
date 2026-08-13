@@ -1,0 +1,9 @@
+- [Lambda migration open bugs](project_lambda_migration_open_bugs.md) — 2 unfixed items from 2026-08-05 session: login promo to prod, retired-pool grep sweep
+- [SES test recipient](feedback_ses_test_recipient.md) — only ever test-send to admin+admin.kcmps.uat@kcmps.com; live SES, bounces threaten sender reputation
+- [No agent DNS changes](feedback_no_agent_dns_changes.md) — never touch Route 53 in account 260866268499; hand the owner exact step-by-step instructions instead
+- [CSP when a page goes live](feedback_csp_when_page_goes_live.md) — add connect-src the moment a page starts fetching; a silent CSP block looks exactly like a dead feature
+- [Never git add -A](feedback_never_git_add_all.md) — stage by explicit path; verify with `git status --short` before commit and `git show --stat` before push
+- [Never --metadata-directive REPLACE](feedback_never_metadata_directive_replace.md) — it wipes Content-Type and downs the site; re-sync from website/ instead. Same trap as Lambda env maps
+- [Agent model policy](feedback_agent_model_policy.md) — Sonnet for mechanical, Opus for hard; escalate to Fable only when Opus has actually fallen short. Credits are a real constraint
+- [KCMPS prod state 2026-08-08](project_wip_2026_08_07.md) — mail/PIN/tags/prefs/manual-orders now live in prod; only asset-library-v2 still unmerged, publish still deadlocked
+- [Open owner actions](project_open_owner_actions.md) — 2026-08-06 state: unverified browser round trips, Spacemail follow-ups, infra-scrub findings (CAA, DMARC, stale IAM), remaining plan tasks

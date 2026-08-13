@@ -10,6 +10,9 @@
     "WebsiteURL": "https://kcmps.com"
   },
   "EnforcementStatus": "HEALTHY",
+  "PricingAttributes": {
+    "CurrentPlan": "ESSENTIALS"
+  },
   "ProductionAccessEnabled": true,
   "SendQuota": {
     "Max24HourSend": 50000.0,
@@ -21,7 +24,15 @@
     "SuppressedReasons": [
       "BOUNCE",
       "COMPLAINT"
-    ]
+    ],
+    "ValidationAttributes": {
+      "ConditionThreshold": {
+        "ConditionThresholdEnabled": "ENABLED",
+        "OverallConfidenceThreshold": {
+          "ConfidenceVerdictThreshold": "MANAGED"
+        }
+      }
+    }
   },
   "VdmAttributes": {
     "DashboardAttributes": {

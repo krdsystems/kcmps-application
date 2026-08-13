@@ -6,12 +6,22 @@
       ],
       "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/awscli-cloudformation-package-deploy-1786169554/0c1889fa-55ef-4756-bfea-8d6ff8950812",
       "CreationTime": "2026-08-05T09:07:36.720000+00:00",
+      "DeploymentConfig": {
+        "DisableRollback": false,
+        "Mode": "STANDARD"
+      },
       "Description": "KCMPS staging backend ? all 20 Lambdas + the checkout/staff HTTP API + EventBridge schedules + the DynamoDB Streams trigger, as CloudFormation. Built during the Node.js 20.x EOL migration (backend/infra/README.md's \"Staging\" section) to give dev.kcmps.com its own backend instead of sharing production's. Not staging-specific by construction ? same file could later, deliberately, stand up a CFN-managed production stack ? but only ever deploy this as kcmps-backend-staging for now. Lambda code comes from S3 (ArtifactsBucket/ArtifactsPrefix/<fn>.zip), never inlined.\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
       "EnableTerminationProtection": false,
+      "LastOperations": [
+        {
+          "OperationId": "aeda1388-c505-4fad-89b8-40a6c27a3d0f",
+          "OperationType": "UPDATE_STACK"
+        }
+      ],
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -110,12 +120,22 @@
     },
     {
       "CreationTime": "2026-08-05T08:58:37.265000+00:00",
+      "DeploymentConfig": {
+        "DisableRollback": false,
+        "Mode": "STANDARD"
+      },
       "Description": "KCMPS Milestone 1.0 foundation ? single-table DynamoDB (with GSI1, Streams, PITR, deletion protection) plus the 5 Cognito staff/customer groups in the EXISTING User Pool. Does not create a User Pool. Safe to run against the existing account: it only adds resources, it does not modify or replace anything that already exists. See backend/infra/README.md for apply and rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md ?2.1/?2.3 for the schema this template must stay in sync with.\nReused for the staging environment (stack kcmps-foundation-staging, TableName=kcmps-staging, CreateCognitoGroups=false, EnablePitr=false) ? see the Node.js 20.x EOL migration's staging build in README.md. Staging reuses the existing kcmps-user-pool-v2 groups rather than creating a second set, so CreateCognitoGroups defaults true (unchanged behavior for the original kcmps-foundation stack) but can be turned off.\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
       "EnableTerminationProtection": false,
+      "LastOperations": [
+        {
+          "OperationId": "d891d7c0-90ab-11f1-81a3-0213eb409b39",
+          "OperationType": "CREATE_STACK"
+        }
+      ],
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -161,12 +181,22 @@
     {
       "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/awscli-cloudformation-package-deploy-1785918916/59ef0d34-308b-47d3-9f2b-3fa04137c434",
       "CreationTime": "2026-08-05T07:07:52.450000+00:00",
+      "DeploymentConfig": {
+        "DisableRollback": false,
+        "Mode": "STANDARD"
+      },
       "Description": "KCMPS user pool v2 ? a REPLACEMENT Cognito User Pool whose schema requires only the attributes the app actually collects (email, given_name, family_name). Exists because a pool's `Required` schema flags are immutable after creation, so the original pool (ap-southeast-1_iDvAEumNp) can never drop its middle_name/preferred_username/name requirements.\nThis template only CREATES resources ? it does not touch, modify, or delete the existing pool. Both pools can coexist indefinitely; cutover is a frontend + API-authorizer change, documented in README.md (\"User pool v2\").\nSee README.md for apply/rollback, the Google client-secret handling, the account-recreation list, and the cutover checklist.\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
       "EnableTerminationProtection": true,
+      "LastOperations": [
+        {
+          "OperationId": "00e9ee3f-11c9-456a-843f-619bf677995c",
+          "OperationType": "UPDATE_STACK"
+        }
+      ],
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -233,12 +263,22 @@
       ],
       "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/obs-dashboard-alarms-202608131450/7a17f2f6-75c8-4843-97ef-6a35802756fb",
       "CreationTime": "2026-08-02T06:33:07.923000+00:00",
+      "DeploymentConfig": {
+        "DisableRollback": false,
+        "Mode": "STANDARD"
+      },
       "Description": "KCMPS Milestone 1.5 observability ? SNS alert topic, a shared Lambda dead-letter queue, and CloudWatch alarms on every deployed backend Lambda, the Streams handler's IteratorAge, DLQ depth, and the checkout API's 5xx rate. All resources here are new ? nothing pre-existing is imported or modified. See backend/infra/README.md's \"Observability ? Milestone 1.5\" section for the CLI steps that wire this stack's outputs into the existing Streams event source mapping, expire-pending-orders' async invoke config, and the checkout API's stage throttle settings (those touch resources this stack doesn't own, so they stay CLI, not CFN ? same split the rest of backend/infra/ already uses).\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
       "EnableTerminationProtection": true,
+      "LastOperations": [
+        {
+          "OperationId": "dbee3eb0-ad2f-4401-84ed-74a91af39fc6",
+          "OperationType": "UPDATE_STACK"
+        }
+      ],
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -272,12 +312,22 @@
     {
       "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/awscli-cloudformation-package-deploy-1785209976/53cc0146-f447-439d-b09a-0a5e31cc0e01",
       "CreationTime": "2026-07-28T03:39:36.424000+00:00",
+      "DeploymentConfig": {
+        "DisableRollback": false,
+        "Mode": "STANDARD"
+      },
       "Description": "KCMPS Milestone 1.0 foundation ? single-table DynamoDB (with GSI1, Streams, PITR, deletion protection) plus the 5 Cognito staff/customer groups in the EXISTING User Pool. Does not create a User Pool. Safe to run against the existing account: it only adds resources, it does not modify or replace anything that already exists. See backend/infra/README.md for apply and rollback instructions, and ../../ops-dashboard/infra/backend-infra-to-deploy.md ?2.1/?2.3 for the schema this template must stay in sync with.\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
       "EnableTerminationProtection": true,
+      "LastOperations": [
+        {
+          "OperationId": "cdfba92c-bb70-4344-894f-4c5354c0c3c0",
+          "OperationType": "CREATE_STACK"
+        }
+      ],
       "NotificationARNs": [],
       "Outputs": [
         {

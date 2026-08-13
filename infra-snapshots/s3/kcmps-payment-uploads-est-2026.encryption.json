@@ -5,6 +5,11 @@
         "ApplyServerSideEncryptionByDefault": {
           "SSEAlgorithm": "AES256"
         },
+        "BlockedEncryptionTypes": {
+          "EncryptionType": [
+            "SSE-C"
+          ]
+        },
         "BucketKeyEnabled": true
       }
     ]

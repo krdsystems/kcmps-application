@@ -23,6 +23,12 @@
     },
     "EstimatedNumberOfUsers": 10,
     "Id": "ap-southeast-1_LHJsFdCgo",
+    "IssuerConfiguration": {
+      "Type": "ORIGINAL"
+    },
+    "KeyConfiguration": {
+      "KeyType": "AWS_OWNED_KEY"
+    },
     "LambdaConfig": {
       "PostConfirmation": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-post-confirmation"
     },

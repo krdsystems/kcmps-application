@@ -1,0 +1,15 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": "sts:AssumeRole",
+        "Effect": "Allow",
+        "Resource": "arn:aws:iam::260866268499:role/KCMPSSnapshotReaderDNS",
+        "Sid": "ChainIntoDnsAccountReadOnlyRole"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "assume-dns-reader",
+  "RoleName": "KCMPSSnapshotReader"
+}

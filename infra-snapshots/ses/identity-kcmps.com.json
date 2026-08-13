@@ -2,10 +2,11 @@
   "ConfigurationSetName": "my-first-configuration-set",
   "DkimAttributes": {
     "CurrentSigningKeyLength": "RSA_2048_BIT",
-    "LastKeyGenerationTimestamp": "2026-07-31T16:14:36.517000+08:00",
+    "LastKeyGenerationTimestamp": "2026-07-31T08:14:36.517000+00:00",
     "NextSigningKeyLength": "RSA_2048_BIT",
     "SigningAttributesOrigin": "AWS_SES",
     "SigningEnabled": true,
+    "SigningHostedZone": "dkim.amazonses.com",
     "Status": "SUCCESS",
     "Tokens": [
       "btzpixjk3e322nzut3zikqz6wiupq4gm",
@@ -24,8 +25,8 @@
   "Tags": [],
   "VerificationInfo": {
     "ErrorType": "HOST_NOT_FOUND",
-    "LastCheckedTimestamp": "2026-08-13T10:54:45.533000+08:00",
-    "LastSuccessTimestamp": "2026-08-13T10:54:46.180000+08:00",
+    "LastCheckedTimestamp": "2026-08-13T02:54:45.533000+00:00",
+    "LastSuccessTimestamp": "2026-08-13T02:54:46.180000+00:00",
     "SOARecord": {
       "AdminEmail": "awsdns-hostmaster.amazon.com",
       "PrimaryNameServer": "ns-319.awsdns-39.com",

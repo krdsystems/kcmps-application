@@ -90,7 +90,8 @@
             "Enabled": false
           },
           "S3OriginConfig": {
-            "OriginAccessIdentity": ""
+            "OriginAccessIdentity": "",
+            "OriginReadTimeout": 30
           }
         }
       ],

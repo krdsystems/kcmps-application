@@ -10,13 +10,14 @@
               "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
             },
             "StringLike": {
-              "token.actions.githubusercontent.com:sub": "repo:krdsystems/kcmps-application:*"
+              "token.actions.githubusercontent.com:sub": "repo:krdsystems@310685649/kcmps-application@1307558132:*"
             }
           },
           "Effect": "Allow",
           "Principal": {
             "Federated": "arn:aws:iam::600929977538:oidc-provider/token.actions.githubusercontent.com"
-          }
+          },
+          "Sid": "GitHubOIDCImmutableSubject"
         }
       ],
       "Version": "2012-10-17"

@@ -1,0 +1,56 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps",
+          "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps/index/*"
+        ],
+        "Sid": "TableReadWrite"
+      },
+      {
+        "Action": [
+          "dynamodb:TransactWriteItems"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps"
+        ],
+        "Sid": "TableTransact"
+      },
+      {
+        "Action": [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:ses:ap-southeast-1:600929977538:identity/kcmps.com",
+          "arn:aws:ses:ap-southeast-1:600929977538:configuration-set/my-first-configuration-set"
+        ],
+        "Sid": "SendVerificationEmail"
+      },
+      {
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:logs:ap-southeast-1:600929977538:*",
+        "Sid": "Logs"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "kcmps-staff-api-inline",
+  "RoleName": "kcmps-staff-api-lambda-role"
+}

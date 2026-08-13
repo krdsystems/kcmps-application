@@ -39,8 +39,14 @@ key-formatting and status logic that quietly drifts.
 - `README.md` — validate/apply/rollback commands, and how the stack's outputs
   (`TableName`/`TableStreamArn`/`GSI1Name`) feed the 1.1+ Lambdas.
 - `observability.cfn.yaml` — Milestone 1.5: SNS alert topic, shared Lambda DLQ, and 37
-  CloudWatch alarms (Errors/Throttles on all 17 deployed Lambdas, `streams-handler`'s IteratorAge,
-  DLQ depth, checkout API 5xx). Deployed as stack `kcmps-observability`. Full detail, plus the
+  CloudWatch alarms (Errors/Throttles on the 17 Lambdas that existed when it was written,
+  `streams-handler`'s IteratorAge, DLQ depth, checkout API 5xx). Deployed as stack
+  `kcmps-observability`. **The alarm set has not grown with the Lambda set: production is now
+  32 Lambdas, so 15 have no Errors/Throttles alarm at all** (verified 2026-08-13) — including
+  the entire mail pipeline (`ingest-inbound`, `send-mail-reply`, the 3 mail readers), the whole
+  Asset Library, `staff-pin`, `set-order-tags`, `dashboard-prefs`, and `create-manual-order`.
+  A silent failure in `ingest-inbound` would stop inbound customer mail with nothing paging
+  anyone. See `docs/disaster-recovery-and-cicd-plan.md` G11. Full detail, plus the
   CLI-only updates it doesn't cover (Streams ESM retry/DLQ config, `expire-pending-orders`' async
   invoke config, API Gateway route throttling), in `README.md`'s "Observability" section.
 
@@ -286,7 +292,7 @@ and render in `email.html`. **No ARC** — the IETF is moving it to Historic by 
 
 ## Cost convention: set log retention at creation
 
-Every one of the 7 deployed Lambdas' CloudWatch log groups was found with **no retention
+Every one of the 7 Lambdas deployed *at the time* had CloudWatch log groups with **no retention
 policy** (unbounded storage, i.e. never expires) during the 2026-08-02 cost-governance audit —
 fixed then via `aws logs put-retention-policy --retention-in-days 30`. Any new Lambda must set
 30-day retention as part of its own creation (CLI `--retention-in-days 30` right after

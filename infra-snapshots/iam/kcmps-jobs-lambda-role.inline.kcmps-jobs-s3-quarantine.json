@@ -1,0 +1,48 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:s3:::kcmps-payment-uploads-est-2026/design-uploads/*",
+          "arn:aws:s3:::kcmps-payment-uploads-est-2026/payments/*",
+          "arn:aws:s3:::kcmps-payment-uploads-est-2026/messages/*",
+          "arn:aws:s3:::kcmps-payment-uploads-est-2026/correspondence/*"
+        ],
+        "Sid": "QuarantineInfectedUploads"
+      },
+      {
+        "Action": [
+          "s3:ListBucketVersions"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026",
+        "Sid": "ListVersionsForQuarantine"
+      },
+      {
+        "Action": [
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-design-originals-est-2026/designs/*",
+        "Sid": "QuarantineInfectedDesignOriginals"
+      },
+      {
+        "Action": [
+          "s3:ListBucketVersions"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-design-originals-est-2026",
+        "Sid": "ListVersionsForDesignOriginalsQuarantine"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "kcmps-jobs-s3-quarantine",
+  "RoleName": "kcmps-jobs-lambda-role"
+}

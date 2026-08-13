@@ -1,6 +1,17 @@
 /* ============================================================
    KCMPS backend — disguised-file (content/extension mismatch) detector
    ============================================================
+   NOT DEPLOYED (as of 2026-08-13). This file is written but has no Lambda
+   behind it in either environment — no `kcmps-validate-upload-content` or
+   `kcmps-staging-validate-upload-content` function exists in production or
+   staging. Its only inbound reference anywhere in the repo is a comment in
+   backend/lib/magic-bytes.js. Before this does anything it needs: an S3
+   ObjectCreated trigger on the relevant upload prefix(es), an execution
+   role/IAM grants, and a CloudFormation entry (staging via
+   backend-lambdas.cfn.yaml, production via whatever manages production's
+   CLI Lambdas today). Do not assume the disguised-file gap described below
+   is actually closed until this is deployed.
+
    UAT finding (2026-08-07): a JPEG renamed to `invoice.pdf` uploads
    successfully. Root cause: upload-design-file.js's resolveUploadType()
    (backend/lib/upload-types.js) can only catch a MISMATCH between the

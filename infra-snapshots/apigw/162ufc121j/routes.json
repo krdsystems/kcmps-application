@@ -1,0 +1,295 @@
+{
+  "Items": [
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "2yz9fxn",
+      "RouteKey": "GET /orders/{orderId}/messages",
+      "Target": "integrations/sc4nuiv"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "NONE",
+      "RequestModels": {},
+      "RouteId": "331fho4",
+      "RouteKey": "POST /orders/{orderId}/payment-proof",
+      "Target": "integrations/j8jykyo"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "NONE",
+      "RequestModels": {},
+      "RouteId": "36n4v8v",
+      "RouteKey": "POST /orders/lookup",
+      "Target": "integrations/7e28kvu"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "3vhtspu",
+      "RouteKey": "POST /orders/{orderId}/messages",
+      "Target": "integrations/iba1sf7"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "7sh0izi",
+      "RouteKey": "PUT /staff/pin",
+      "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "8jpvwl6",
+      "RouteKey": "GET /assets",
+      "Target": "integrations/6qwr9l2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "NONE",
+      "RequestModels": {},
+      "RouteId": "9flzg74",
+      "RouteKey": "POST /orders",
+      "Target": "integrations/do5gbje"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "a8g3l57",
+      "RouteKey": "GET /mail/mailboxes",
+      "Target": "integrations/yz5sfg6"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "c17htn7",
+      "RouteKey": "GET /staff/prefs",
+      "Target": "integrations/g75stpp"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "c30po8l",
+      "RouteKey": "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/reply",
+      "Target": "integrations/pjcw8np"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "d9npai4",
+      "RouteKey": "PATCH /assets/{id}",
+      "Target": "integrations/016cs84"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "ft1lps4",
+      "RouteKey": "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read",
+      "Target": "integrations/bcod61a"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "i5zbmy8",
+      "RouteKey": "GET /staff/pin",
+      "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "kb1vw3m",
+      "RouteKey": "DELETE /staff/pin",
+      "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "NONE",
+      "RequestModels": {},
+      "RouteId": "knr4vo0",
+      "RouteKey": "POST /design-uploads",
+      "Target": "integrations/9j82kve"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "le4pjn6",
+      "RouteKey": "POST /orders/{orderId}/set-on-hold",
+      "Target": "integrations/w3mfjw2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "lrk5cpi",
+      "RouteKey": "POST /assets",
+      "Target": "integrations/vc6sie2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "NONE",
+      "RequestModels": {},
+      "RouteId": "n0s0rpb",
+      "RouteKey": "POST /orders/{orderId}/cancel",
+      "Target": "integrations/y1rgp1r"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "n7ue9vq",
+      "RouteKey": "POST /line-items/{lineItemId}/advance",
+      "Target": "integrations/c970s21"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "nbghaem",
+      "RouteKey": "POST /staff/pin/verify",
+      "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "nm2a2td",
+      "RouteKey": "PATCH /staff/prefs",
+      "Target": "integrations/g75stpp"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "ny5jx79",
+      "RouteKey": "GET /mail/mailboxes/{mailboxId}/messages",
+      "Target": "integrations/mxjva79"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "o0ywghq",
+      "RouteKey": "POST /orders/{orderId}/correspondence",
+      "Target": "integrations/16m4d5o"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "obnrs81",
+      "RouteKey": "GET /mail/mailboxes/{mailboxId}/messages/{messageId}",
+      "Target": "integrations/s142spk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "ph9ltcn",
+      "RouteKey": "POST /orders/manual",
+      "Target": "integrations/kuhokb4"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "rlqp0gp",
+      "RouteKey": "POST /orders/{orderId}/tags",
+      "Target": "integrations/xdt2c9v"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "shve35c",
+      "RouteKey": "GET /messages/unread",
+      "Target": "integrations/678ewjk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "slan9lk",
+      "RouteKey": "GET /orders",
+      "Target": "integrations/am5i45r"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "yfzpown",
+      "RouteKey": "POST /orders/{orderId}/verify-payment",
+      "Target": "integrations/w3mfjw2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "ze9y8sc",
+      "RouteKey": "POST /assets/upload-url",
+      "Target": "integrations/iasyd4q"
+    }
+  ]
+}

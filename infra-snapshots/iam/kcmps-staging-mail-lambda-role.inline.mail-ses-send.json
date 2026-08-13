@@ -1,0 +1,26 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "ses:SendRawEmail",
+          "ses:SendEmail"
+        ],
+        "Condition": {
+          "StringLike": {
+            "ses:FromAddress": "*@kcmps.com"
+          }
+        },
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:ses:ap-southeast-1:600929977538:identity/kcmps.com",
+          "arn:aws:ses:ap-southeast-1:600929977538:configuration-set/my-first-configuration-set"
+        ],
+        "Sid": "SendMailReplyFromVerifiedIdentityOnly"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "mail-ses-send",
+  "RoleName": "kcmps-staging-mail-lambda-role"
+}

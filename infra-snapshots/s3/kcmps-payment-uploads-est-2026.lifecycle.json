@@ -1,0 +1,38 @@
+{
+  "Rules": [
+    {
+      "Filter": {},
+      "ID": "expire-noncurrent-versions",
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Status": "Enabled"
+    },
+    {
+      "Filter": {},
+      "ID": "tier-payment-proofs",
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"
+        },
+        {
+          "Days": 90,
+          "StorageClass": "GLACIER_IR"
+        }
+      ]
+    },
+    {
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      },
+      "Filter": {
+        "Prefix": "design-uploads/"
+      },
+      "ID": "abort-incomplete-design-uploads",
+      "Status": "Enabled"
+    }
+  ],
+  "TransitionDefaultMinimumObjectSize": "all_storage_classes_128K"
+}

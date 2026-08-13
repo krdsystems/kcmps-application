@@ -1,0 +1,22 @@
+{
+  "Rules": [
+    {
+      "Filter": {
+        "Prefix": ""
+      },
+      "ID": "noncurrent-version-glacier-then-expire",
+      "NoncurrentVersionExpiration": {
+        "NewerNoncurrentVersions": 5,
+        "NoncurrentDays": 30
+      },
+      "NoncurrentVersionTransitions": [
+        {
+          "NoncurrentDays": 30,
+          "StorageClass": "GLACIER"
+        }
+      ],
+      "Status": "Enabled"
+    }
+  ],
+  "TransitionDefaultMinimumObjectSize": "all_storage_classes_128K"
+}

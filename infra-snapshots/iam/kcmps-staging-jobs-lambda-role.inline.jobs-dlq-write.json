@@ -1,0 +1,14 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": "sqs:SendMessage",
+        "Effect": "Allow",
+        "Resource": "arn:aws:sqs:ap-southeast-1:600929977538:kcmps-staging-lambda-dlq"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "jobs-dlq-write",
+  "RoleName": "kcmps-staging-jobs-lambda-role"
+}

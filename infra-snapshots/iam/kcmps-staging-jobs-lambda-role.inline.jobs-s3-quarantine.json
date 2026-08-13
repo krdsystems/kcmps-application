@@ -1,0 +1,44 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:s3:::kcmps-payment-uploads-staging/design-uploads/*",
+          "arn:aws:s3:::kcmps-payment-uploads-staging/payments/*",
+          "arn:aws:s3:::kcmps-payment-uploads-staging/messages/*",
+          "arn:aws:s3:::kcmps-payment-uploads-staging/correspondence/*"
+        ],
+        "Sid": "QuarantineInfectedUploads"
+      },
+      {
+        "Action": "s3:ListBucketVersions",
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-staging",
+        "Sid": "ListVersionsForQuarantine"
+      },
+      {
+        "Action": [
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-design-originals-staging/designs/*",
+        "Sid": "QuarantineInfectedDesignOriginals"
+      },
+      {
+        "Action": "s3:ListBucketVersions",
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-design-originals-staging",
+        "Sid": "ListVersionsForDesignOriginalsQuarantine"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "jobs-s3-quarantine",
+  "RoleName": "kcmps-staging-jobs-lambda-role"
+}

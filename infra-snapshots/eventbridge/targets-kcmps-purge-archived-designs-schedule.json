@@ -1,0 +1,8 @@
+{
+  "Targets": [
+    {
+      "Arn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-purge-archived-designs",
+      "Id": "PurgeTarget"
+    }
+  ]
+}

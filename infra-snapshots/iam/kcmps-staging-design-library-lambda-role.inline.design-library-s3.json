@@ -1,0 +1,38 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetObjectTagging"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-design-originals-staging/designs/*",
+        "Sid": "DesignOriginalsReadWrite"
+      },
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:PutObjectTagging"
+        ],
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:s3:::kcmps-online-bucket-est-2026/dev-site/assets/designs/*"
+        ],
+        "Sid": "PublishWebReadyImageAndManifest"
+      },
+      {
+        "Action": [
+          "s3:DeleteObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-online-bucket-est-2026/dev-site/assets/designs/*",
+        "Sid": "DeletePublishedImageOnPurge"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "design-library-s3",
+  "RoleName": "kcmps-staging-design-library-lambda-role"
+}

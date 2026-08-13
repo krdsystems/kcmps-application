@@ -1,0 +1,26 @@
+_autodiscover._tcp.kcmps.com.	60	SRV	0 0 443 autoconfig.spacemail.com.
+_bebe137cbeeb2e7816175662a6b5f2a8.kcmps.com.	300	CNAME	_5d153b3b661f509b6f34aae3b152ec4e.jkddzztszm.acm-validations.aws.
+_dmarc.kcmps.com.	300	TXT	"v=DMARC1; p=none;"
+btzpixjk3e322nzut3zikqz6wiupq4gm._domainkey.kcmps.com.	300	CNAME	btzpixjk3e322nzut3zikqz6wiupq4gm.dkim.amazonses.com
+cqj7lsz2sdafyeszkhjeivit65erovej._domainkey.kcmps.com.	300	CNAME	cqj7lsz2sdafyeszkhjeivit65erovej.dkim.amazonses.com
+dev.kcmps.com.	300	CNAME	ds2x71y4pbzj3.cloudfront.net
+eke5qzn27sd5t5ipb3tmefcenxy4zrgj._domainkey.mirror.kcmps.com.	300	CNAME	eke5qzn27sd5t5ipb3tmefcenxy4zrgj.dkim.amazonses.com
+gd4lhxbwhi3uohtdssj4vhgvkuin5oo5._domainkey.kcmps.com.	300	CNAME	gd4lhxbwhi3uohtdssj4vhgvkuin5oo5.dkim.amazonses.com
+kcmps.com.	ALIAS	A	d370ib8wcl1f2f.cloudfront.net.
+kcmps.com.	60	MX	0 mx1.spacemail.com.
+kcmps.com.	60	MX	0 mx2.spacemail.com.
+kcmps.com.	172800	NS	ns-319.awsdns-39.com.
+kcmps.com.	172800	NS	ns-939.awsdns-53.net.
+kcmps.com.	172800	NS	ns-1055.awsdns-03.org.
+kcmps.com.	172800	NS	ns-1758.awsdns-27.co.uk.
+kcmps.com.	900	SOA	ns-319.awsdns-39.com. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400
+kcmps.com.	60	TXT	"v=spf1 include:spf.spacemail.com ~all"
+kcmps.com.	60	TXT	"21a07cad-2df2-46ec-822e-2e667e8141cb"
+le4ojqtlmrv43fofrpqufzqdnwggzwnw._domainkey.mirror.kcmps.com.	300	CNAME	le4ojqtlmrv43fofrpqufzqdnwggzwnw.dkim.amazonses.com
+mail.kcmps.com.	300	MX	10 feedback-smtp.ap-southeast-1.amazonses.com
+mail.kcmps.com.	300	TXT	"v=spf1 include:amazonses.com ~all"
+mirror.kcmps.com.	300	MX	10 inbound-smtp.ap-southeast-1.amazonaws.com
+rov2frygzswdjhdfcm5g23km3w44s6gc._domainkey.mirror.kcmps.com.	300	CNAME	rov2frygzswdjhdfcm5g23km3w44s6gc.dkim.amazonses.com
+site.kcmps.com.	ALIAS	A	d370ib8wcl1f2f.cloudfront.net.
+spacemail._domainkey.kcmps.com.	60	TXT	"v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1yNLnmlJA66UX9u8DgfXYodDRavbxHZKHpgDv/Yajl1K4skSiAAOQJUW1FXi2ktIb57K3DPMYLS4A87pZ9uL9zmkPe29q3L47yHpAxmiIq7nG6zxF3515M9yqRe2heWhSoml/GDhkrklFjgmy" "YJxfELR5BIOx7S0xIdAovpLq4vKNhOVMW0rP4JdvgDLNzzRQh26an737Z6/KmEbvZCYUQXTRqkxqZxxqmTWBjjBxPtWR3aD8SBsRnKN3keZNv44MGwZ9/1AqcVyBnJiB/354vQwcNbYXaE162cN2eY1jdaA04D7NKvYNbHhXeRPNwILH4+klbEoVQPKd/x5zGB2XQIDAQAB"
+www.kcmps.com.	ALIAS	A	d370ib8wcl1f2f.cloudfront.net.

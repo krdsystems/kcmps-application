@@ -1,0 +1,14 @@
+{
+  "StackResourceSummaries": [
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T08:59:04.050000+00:00",
+      "LogicalResourceId": "KcmpsTable",
+      "PhysicalResourceId": "kcmps-staging",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::DynamoDB::Table"
+    }
+  ]
+}

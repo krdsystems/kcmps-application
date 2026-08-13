@@ -1,0 +1,27 @@
+{
+  "Role": {
+    "Arn": "arn:aws:iam::600929977538:role/kcmps-staging-mail-lambda-role",
+    "AssumeRolePolicyDocument": {
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          }
+        }
+      ],
+      "Version": "2012-10-17"
+    },
+    "CreateDate": "2026-08-05T17:43:30+00:00",
+    "Description": "",
+    "MaxSessionDuration": 3600,
+    "Path": "/",
+    "RoleId": "AROAYX2RXYTBA2TEA5H5B",
+    "RoleLastUsed": {
+      "LastUsedDate": "2026-08-08T06:15:52+00:00",
+      "Region": "ap-southeast-1"
+    },
+    "RoleName": "kcmps-staging-mail-lambda-role"
+  }
+}

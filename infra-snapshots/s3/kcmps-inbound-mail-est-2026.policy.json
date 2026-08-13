@@ -1,0 +1,3 @@
+{
+  "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowSESPuts\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ses.amazonaws.com\"},\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::kcmps-inbound-mail-est-2026/*\",\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"600929977538\"},\"StringLike\":{\"aws:SourceArn\":\"arn:aws:ses:ap-southeast-1:600929977538:receipt-rule-set/*:receipt-rule/*\"}}}]}"
+}

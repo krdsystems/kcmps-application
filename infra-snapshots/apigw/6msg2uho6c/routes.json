@@ -1,0 +1,239 @@
+{
+  "Items": [
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "0u4hlyr",
+      "RouteKey": "POST /assets/upload-url",
+      "Target": "integrations/ef60ulk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "15ffyp9",
+      "RouteKey": "GET /mail/mailboxes",
+      "Target": "integrations/1dsdn0h"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "17g66io",
+      "RouteKey": "DELETE /staff/pin",
+      "Target": "integrations/lzhmloq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "NONE",
+      "RouteId": "2hlnsfo",
+      "RouteKey": "POST /design-uploads",
+      "Target": "integrations/lf8m0ts"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "4o7j3z7",
+      "RouteKey": "POST /orders/{orderId}/messages",
+      "Target": "integrations/e6makdr"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "5ep4j77",
+      "RouteKey": "GET /orders",
+      "Target": "integrations/speeu3b"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "NONE",
+      "RouteId": "69inwgr",
+      "RouteKey": "POST /orders",
+      "Target": "integrations/y3mfo40"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "6qf9ws9",
+      "RouteKey": "GET /orders/{orderId}/messages",
+      "Target": "integrations/39exh71"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "71t8pqh",
+      "RouteKey": "PATCH /assets/{id}",
+      "Target": "integrations/glbel47"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "7j1mmj1",
+      "RouteKey": "POST /assets",
+      "Target": "integrations/qw39jn0"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "7sv49ir",
+      "RouteKey": "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/read",
+      "Target": "integrations/oi1pt4q"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "b70di3m",
+      "RouteKey": "POST /staff/pin/verify",
+      "Target": "integrations/lzhmloq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "NONE",
+      "RouteId": "c6luhmh",
+      "RouteKey": "POST /orders/{orderId}/payment-proof",
+      "Target": "integrations/52res9m"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "ccpt69b",
+      "RouteKey": "GET /mail/mailboxes/{mailboxId}/messages/{messageId}",
+      "Target": "integrations/w0vv02g"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "dur9pbm",
+      "RouteKey": "POST /orders/{orderId}/tags",
+      "Target": "integrations/255rn0h"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "fs6xc8t",
+      "RouteKey": "GET /mail/mailboxes/{mailboxId}/messages",
+      "Target": "integrations/h0fb1xe"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "g0330b9",
+      "RouteKey": "GET /staff/prefs",
+      "Target": "integrations/to3e722"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "gcfcht5",
+      "RouteKey": "POST /line-items/{lineItemId}/advance",
+      "Target": "integrations/m17gsoc"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "gzyqppn",
+      "RouteKey": "POST /orders/manual",
+      "Target": "integrations/1w5jvid"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "jda10yb",
+      "RouteKey": "POST /orders/{orderId}/verify-payment",
+      "Target": "integrations/6n3nzid"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "l6wrw80",
+      "RouteKey": "PATCH /staff/prefs",
+      "Target": "integrations/to3e722"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "m1yw67t",
+      "RouteKey": "PUT /staff/pin",
+      "Target": "integrations/lzhmloq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "mi8mfnu",
+      "RouteKey": "GET /staff/pin",
+      "Target": "integrations/lzhmloq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "ocoacsj",
+      "RouteKey": "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/reply",
+      "Target": "integrations/ygixd9a"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "ppndmg6",
+      "RouteKey": "POST /orders/{orderId}/correspondence",
+      "Target": "integrations/p0kj3im"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "x8wv7r7",
+      "RouteKey": "GET /messages/unread",
+      "Target": "integrations/cg7eqrq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "xtbrl9m",
+      "RouteKey": "GET /assets",
+      "Target": "integrations/s640jkp"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "NONE",
+      "RouteId": "xvqjv09",
+      "RouteKey": "POST /orders/lookup",
+      "Target": "integrations/gsp6h0o"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "ywyixib",
+      "RouteKey": "POST /orders/{orderId}/set-on-hold",
+      "Target": "integrations/1h3tzuk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "NONE",
+      "RouteId": "zg1b3in",
+      "RouteKey": "POST /orders/{orderId}/cancel",
+      "Target": "integrations/ayzopdq"
+    }
+  ]
+}

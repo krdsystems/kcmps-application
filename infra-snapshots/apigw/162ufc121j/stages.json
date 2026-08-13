@@ -1,0 +1,22 @@
+{
+  "Items": [
+    {
+      "AutoDeploy": true,
+      "CreatedDate": "2026-08-05T09:07:46+00:00",
+      "DefaultRouteSettings": {
+        "DetailedMetricsEnabled": false
+      },
+      "DeploymentId": "peaua1",
+      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'peaua1'",
+      "LastUpdatedDate": "2026-08-08T06:13:29+00:00",
+      "RouteSettings": {},
+      "StageName": "$default",
+      "StageVariables": {},
+      "Tags": {
+        "aws:cloudformation:logical-id": "HttpApiStage",
+        "aws:cloudformation:stack-id": "arn:aws:cloudformation:ap-southeast-1:600929977538:stack/kcmps-backend-staging/1a167f60-90ad-11f1-af38-02f13afc7929",
+        "aws:cloudformation:stack-name": "kcmps-backend-staging"
+      }
+    }
+  ]
+}

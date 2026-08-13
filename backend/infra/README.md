@@ -500,8 +500,11 @@ aws lambda update-function-code \
 ```
 
 **Bump the runtime** (e.g. the next Node.js EOL cycle) is a *different* command —
-`update-function-code` never touches `Runtime`, and there's no template that holds the
-runtime value (all 17 Lambdas were created by CLI, not CloudFormation):
+`update-function-code` never touches `Runtime`, and production has no template that holds
+the runtime value (all 32 production Lambdas were created by CLI, not CloudFormation — this
+was also true of staging's Lambdas at the time this section was first written, but staging's
+32 Lambdas are now CloudFormation-managed via `kcmps-backend-staging`, see "Staging" below;
+only production still needs this CLI-per-function runtime bump):
 
 ```bash
 aws lambda update-function-configuration \
@@ -513,9 +516,11 @@ aws lambda wait function-updated-v2 --function-name kcmps-create-order \
 ```
 
 Rehearse on the staging stack first (see "Staging" below) — this exact command flipped
-all 17 functions from `nodejs20.x` to `nodejs24.x` on 2026-08-05 (the Node.js 20.x EOL
-migration), one at a time in blast-radius order, verifying `CodeSha256` was unchanged
-and `State: Active` after each before moving to the next. Rollback is the same command
+all 17 functions that existed at the time from `nodejs20.x` to `nodejs24.x` on 2026-08-05
+(the Node.js 20.x EOL migration), one at a time in blast-radius order, verifying
+`CodeSha256` was unchanged and `State: Active` after each before moving to the next.
+(Both environments have since grown to 32 Lambdas apiece — the same rehearse-on-staging-
+first procedure applies to whatever the current count is.) Rollback is the same command
 with `--runtime nodejs20.x` — available until AWS blocks function updates on the old
 runtime (currently Mar 3 2027 for `nodejs20.x`; check
 https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html for current dates).

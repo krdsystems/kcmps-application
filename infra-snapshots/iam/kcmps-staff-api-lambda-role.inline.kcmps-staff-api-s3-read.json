@@ -1,0 +1,44 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026/payments/*",
+        "Sid": "PaymentProofRead"
+      },
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026/correspondence/*",
+        "Sid": "CorrespondenceAttachments"
+      },
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026/messages/*",
+        "Sid": "MessageAttachments"
+      },
+      {
+        "Action": [
+          "s3:GetObject",
+          "s3:GetObjectTagging"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026/design-uploads/*",
+        "Sid": "DesignFileRead"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "kcmps-staff-api-s3-read",
+  "RoleName": "kcmps-staff-api-lambda-role"
+}

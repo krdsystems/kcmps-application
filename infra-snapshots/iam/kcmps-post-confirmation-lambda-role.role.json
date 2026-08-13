@@ -1,0 +1,26 @@
+{
+  "Role": {
+    "Arn": "arn:aws:iam::600929977538:role/kcmps-post-confirmation-lambda-role",
+    "AssumeRolePolicyDocument": {
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          }
+        }
+      ],
+      "Version": "2012-10-17"
+    },
+    "CreateDate": "2026-08-02T17:22:27+00:00",
+    "MaxSessionDuration": 3600,
+    "Path": "/",
+    "RoleId": "AROAYX2RXYTBP7QQ74TQU",
+    "RoleLastUsed": {
+      "LastUsedDate": "2026-08-07T08:01:22+00:00",
+      "Region": "ap-southeast-1"
+    },
+    "RoleName": "kcmps-post-confirmation-lambda-role"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "Role": {
+    "Arn": "arn:aws:iam::600929977538:role/kcmps-staging-checkout-lambda-role",
+    "AssumeRolePolicyDocument": {
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          }
+        }
+      ],
+      "Version": "2012-10-17"
+    },
+    "CreateDate": "2026-08-05T09:07:45+00:00",
+    "Description": "",
+    "MaxSessionDuration": 3600,
+    "Path": "/",
+    "RoleId": "AROAYX2RXYTBNZURA5I5P",
+    "RoleLastUsed": {
+      "LastUsedDate": "2026-08-08T05:43:56+00:00",
+      "Region": "ap-southeast-1"
+    },
+    "RoleName": "kcmps-staging-checkout-lambda-role"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "ConfigurationSetName": "my-first-configuration-set",
+  "DkimAttributes": {
+    "CurrentSigningKeyLength": "RSA_2048_BIT",
+    "LastKeyGenerationTimestamp": "2026-07-31T16:14:36.517000+08:00",
+    "NextSigningKeyLength": "RSA_2048_BIT",
+    "SigningAttributesOrigin": "AWS_SES",
+    "SigningEnabled": true,
+    "Status": "SUCCESS",
+    "Tokens": [
+      "btzpixjk3e322nzut3zikqz6wiupq4gm",
+      "cqj7lsz2sdafyeszkhjeivit65erovej",
+      "gd4lhxbwhi3uohtdssj4vhgvkuin5oo5"
+    ]
+  },
+  "FeedbackForwardingStatus": true,
+  "IdentityType": "EMAIL_ADDRESS",
+  "MailFromAttributes": {
+    "BehaviorOnMxFailure": "USE_DEFAULT_VALUE"
+  },
+  "Policies": {},
+  "Tags": [],
+  "VerificationInfo": {},
+  "VerificationStatus": "SUCCESS",
+  "VerifiedForSendingStatus": true
+}

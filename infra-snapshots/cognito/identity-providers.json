@@ -1,0 +1,8 @@
+{
+  "Providers": [
+    {
+      "ProviderName": "Google",
+      "ProviderType": "Google"
+    }
+  ]
+}

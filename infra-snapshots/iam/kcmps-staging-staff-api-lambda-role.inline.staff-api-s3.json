@@ -1,0 +1,42 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": "s3:GetObject",
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-staging/payments/*",
+        "Sid": "PaymentProofRead"
+      },
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-staging/correspondence/*",
+        "Sid": "CorrespondenceAttachments"
+      },
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-staging/messages/*",
+        "Sid": "MessageAttachments"
+      },
+      {
+        "Action": [
+          "s3:GetObject",
+          "s3:GetObjectTagging"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-staging/design-uploads/*",
+        "Sid": "DesignFileRead"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "staff-api-s3",
+  "RoleName": "kcmps-staging-staff-api-lambda-role"
+}

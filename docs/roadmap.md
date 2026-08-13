@@ -15,7 +15,7 @@ listed under [Deliberately deferred](#deliberately-deferred) below so nobody "ge
 ## Where we are today (2026-07)
 
 > **[Updated 2026-08-05] Status in this section is stale.** Milestones 1.0–1.5 have shipped —
-> a full payment backend (17 Lambdas, DynamoDB table, observability stack) is deployed and live.
+> a full payment backend (32 Lambdas, DynamoDB table, observability stack) is deployed and live.
 > Sections below are preserved for historical context; current project state → top of this file.
 
 **Done and deployed (`website/`, static, S3):**

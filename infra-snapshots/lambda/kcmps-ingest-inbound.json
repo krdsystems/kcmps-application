@@ -1,0 +1,42 @@
+{
+  "Architectures": [
+    "x86_64"
+  ],
+  "CodeSize": 5640865,
+  "Description": "",
+  "Environment": {
+    "Variables": {
+      "EXPECTED_FORWARDER_HOST": "",
+      "TABLE_NAME": "kcmps",
+      "UPLOADS_BUCKET_NAME": "kcmps-payment-uploads-est-2026"
+    }
+  },
+  "EphemeralStorage": {
+    "Size": 512
+  },
+  "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-ingest-inbound",
+  "FunctionName": "kcmps-ingest-inbound",
+  "Handler": "index.handler",
+  "LastUpdateStatus": "Successful",
+  "LoggingConfig": {
+    "LogFormat": "Text",
+    "LogGroup": "/aws/lambda/kcmps-ingest-inbound"
+  },
+  "MemorySize": 256,
+  "PackageType": "Zip",
+  "Role": "arn:aws:iam::600929977538:role/kcmps-mail-lambda-role",
+  "Runtime": "nodejs24.x",
+  "RuntimeVersionConfig": {
+    "RuntimeVersionArn": "arn:aws:lambda:ap-southeast-1::runtime:adfa9c68b2b34ae1cba34f70c4369649bca17aea5fe29e10414b040bf256e6c6"
+  },
+  "SnapStart": {
+    "ApplyOn": "None",
+    "OptimizationStatus": "Off"
+  },
+  "State": "Active",
+  "Timeout": 30,
+  "TracingConfig": {
+    "Mode": "PassThrough"
+  },
+  "Version": "$LATEST"
+}

@@ -1,0 +1,404 @@
+{
+  "StackResourceSummaries": [
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.817000+00:00",
+      "LogicalResourceId": "AddCorrespondenceErrorsAlarm",
+      "PhysicalResourceId": "kcmps-add-correspondence-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.831000+00:00",
+      "LogicalResourceId": "AddCorrespondenceThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-add-correspondence-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.392000+00:00",
+      "LogicalResourceId": "AdvanceLineItemErrorsAlarm",
+      "PhysicalResourceId": "kcmps-advance-line-item-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.216000+00:00",
+      "LogicalResourceId": "AdvanceLineItemThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-advance-line-item-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:17.909000+00:00",
+      "LogicalResourceId": "AlertsEmailSubscription",
+      "PhysicalResourceId": "arn:aws:sns:ap-southeast-1:600929977538:kcmps-ops-alerts:55d73faa-5686-44ce-a3cf-b1111a43d08d",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::SNS::Subscription"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:16.371000+00:00",
+      "LogicalResourceId": "AlertsTopic",
+      "PhysicalResourceId": "arn:aws:sns:ap-southeast-1:600929977538:kcmps-ops-alerts",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::SNS::Topic"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.827000+00:00",
+      "LogicalResourceId": "CancelOrderErrorsAlarm",
+      "PhysicalResourceId": "kcmps-cancel-order-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.909000+00:00",
+      "LogicalResourceId": "CancelOrderThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-cancel-order-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.558000+00:00",
+      "LogicalResourceId": "CheckoutApi5xxAlarm",
+      "PhysicalResourceId": "kcmps-checkout-api-5xx",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.358000+00:00",
+      "LogicalResourceId": "CreateOrderErrorsAlarm",
+      "PhysicalResourceId": "kcmps-create-order-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.320000+00:00",
+      "LogicalResourceId": "CreateOrderThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-create-order-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.400000+00:00",
+      "LogicalResourceId": "ExpirePendingOrdersErrorsAlarm",
+      "PhysicalResourceId": "kcmps-expire-pending-orders-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.316000+00:00",
+      "LogicalResourceId": "ExpirePendingOrdersThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-expire-pending-orders-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.895000+00:00",
+      "LogicalResourceId": "GetMessagesErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-messages-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.947000+00:00",
+      "LogicalResourceId": "GetMessagesThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-messages-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.392000+00:00",
+      "LogicalResourceId": "GetOrdersErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-orders-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.134000+00:00",
+      "LogicalResourceId": "GetOrdersThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-orders-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.842000+00:00",
+      "LogicalResourceId": "GetUnreadMessagesErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-unread-messages-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.947000+00:00",
+      "LogicalResourceId": "GetUnreadMessagesThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-unread-messages-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:49.018000+00:00",
+      "LogicalResourceId": "HandleScanResultErrorsAlarm",
+      "PhysicalResourceId": "kcmps-handle-scan-result-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.906000+00:00",
+      "LogicalResourceId": "HandleScanResultThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-handle-scan-result-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:34:17.580000+00:00",
+      "LogicalResourceId": "LambdaDlq",
+      "PhysicalResourceId": "https://sqs.ap-southeast-1.amazonaws.com/600929977538/kcmps-lambda-dlq",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::SQS::Queue"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.497000+00:00",
+      "LogicalResourceId": "LambdaDlqDepthAlarm",
+      "PhysicalResourceId": "kcmps-lambda-dlq-depth",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.858000+00:00",
+      "LogicalResourceId": "LookupOrderErrorsAlarm",
+      "PhysicalResourceId": "kcmps-lookup-order-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.842000+00:00",
+      "LogicalResourceId": "LookupOrderThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-lookup-order-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.885000+00:00",
+      "LogicalResourceId": "NotifyUnreadMessagesErrorsAlarm",
+      "PhysicalResourceId": "kcmps-notify-unread-messages-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:49.045000+00:00",
+      "LogicalResourceId": "NotifyUnreadMessagesThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-notify-unread-messages-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.867000+00:00",
+      "LogicalResourceId": "PostConfirmationErrorsAlarm",
+      "PhysicalResourceId": "kcmps-post-confirmation-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:49.025000+00:00",
+      "LogicalResourceId": "PostConfirmationThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-post-confirmation-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.852000+00:00",
+      "LogicalResourceId": "SendMessageErrorsAlarm",
+      "PhysicalResourceId": "kcmps-send-message-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.865000+00:00",
+      "LogicalResourceId": "SendMessageThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-send-message-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.166000+00:00",
+      "LogicalResourceId": "StreamsHandlerErrorsAlarm",
+      "PhysicalResourceId": "kcmps-streams-handler-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.324000+00:00",
+      "LogicalResourceId": "StreamsHandlerIteratorAgeAlarm",
+      "PhysicalResourceId": "kcmps-streams-handler-iterator-age",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.269000+00:00",
+      "LogicalResourceId": "StreamsHandlerThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-streams-handler-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.295000+00:00",
+      "LogicalResourceId": "SubmitPaymentProofErrorsAlarm",
+      "PhysicalResourceId": "kcmps-submit-payment-proof-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.278000+00:00",
+      "LogicalResourceId": "SubmitPaymentProofThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-submit-payment-proof-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.896000+00:00",
+      "LogicalResourceId": "UploadDesignFileErrorsAlarm",
+      "PhysicalResourceId": "kcmps-upload-design-file-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T09:31:48.854000+00:00",
+      "LogicalResourceId": "UploadDesignFileThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-upload-design-file-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.354000+00:00",
+      "LogicalResourceId": "VerifyPaymentErrorsAlarm",
+      "PhysicalResourceId": "kcmps-verify-payment-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-02T06:33:19.173000+00:00",
+      "LogicalResourceId": "VerifyPaymentThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-verify-payment-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    }
+  ]
+}

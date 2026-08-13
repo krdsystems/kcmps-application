@@ -1,0 +1,40 @@
+{
+  "Architectures": [
+    "arm64"
+  ],
+  "CodeSize": 3416218,
+  "Description": "",
+  "Environment": {
+    "Variables": {
+      "TABLE_NAME": "kcmps-staging"
+    }
+  },
+  "EphemeralStorage": {
+    "Size": 512
+  },
+  "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-notify-unread-messages",
+  "FunctionName": "kcmps-staging-notify-unread-messages",
+  "Handler": "index.handler",
+  "LastUpdateStatus": "Successful",
+  "LoggingConfig": {
+    "LogFormat": "Text",
+    "LogGroup": "/aws/lambda/kcmps-staging-notify-unread-messages"
+  },
+  "MemorySize": 256,
+  "PackageType": "Zip",
+  "Role": "arn:aws:iam::600929977538:role/kcmps-staging-jobs-lambda-role",
+  "Runtime": "nodejs24.x",
+  "RuntimeVersionConfig": {
+    "RuntimeVersionArn": "arn:aws:lambda:ap-southeast-1::runtime:b8e18ea517c3a4b8dd61fb8536eb5cff76c10fbbc3fc766e8079f3b873f7fad3"
+  },
+  "SnapStart": {
+    "ApplyOn": "None",
+    "OptimizationStatus": "Off"
+  },
+  "State": "Active",
+  "Timeout": 30,
+  "TracingConfig": {
+    "Mode": "PassThrough"
+  },
+  "Version": "$LATEST"
+}

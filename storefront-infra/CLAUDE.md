@@ -42,13 +42,26 @@ and the hero rotation work end-to-end without AWS.
 
 ## dev.kcmps.com — the dev/staging domain
 
-`dev-domain.cfn.yaml` provisions a **second CloudFront distribution** aliased to
-`dev.kcmps.com`, reusing the same production S3 bucket (`kcmps-online-bucket-est-2026`) and
-the same wildcard ACM cert (`*.kcmps.com`, already issued — no new cert needed), but reading
-from a `dev-site/` origin path instead of the bucket root. Prod's distribution
-(`EY6Q5RSWLDCEF`) is never modified by this stack. Deployed as stack `kcmps-dev-domain` in
-**`us-east-1`** (required — that's where the ACM cert lives and where CloudFront's control
-plane operates from), applied with the `kcmps-claude-priv` profile.
+**`dev-domain.cfn.yaml` describes — but has never actually provisioned — a second CloudFront
+distribution** aliased to `dev.kcmps.com`. The distribution is real and live
+(`E7PDB5JQRZX0E`), reusing the same production S3 bucket (`kcmps-online-bucket-est-2026`) and
+the same wildcard ACM cert (`*.kcmps.com`, already issued — no new cert needed), reading from
+a `dev-site/` origin path instead of the bucket root, in `us-east-1` (required — that's where
+the ACM cert lives and where CloudFront's control plane operates from). Prod's distribution
+(`EY6Q5RSWLDCEF`) is never touched by any of this. **But it was built by hand via the CLI,
+not by deploying this template — there is no `kcmps-dev-domain` CloudFormation stack.**
+`aws cloudformation list-stacks` confirms no stack by that name exists, in any status
+(verified 2026-08-13). This template is reference/planning material for a future import, not
+a description of how the live distribution came to exist.
+
+> **Warning, read before touching dev.kcmps.com during an incident**: because no stack
+> exists, `aws cloudformation deploy --stack-name kcmps-dev-domain --template-file
+> storefront-infra/dev-domain.cfn.yaml ...` would **create a brand-new, second distribution**
+> sitting alongside the real one — not repair or update it. If `dev.kcmps.com` is broken,
+> fix the live CLI-managed distribution/function/policy directly (`aws cloudfront
+> get-distribution-config` / `update-distribution`, etc.), the same way it was built. Only
+> run the deploy command below once someone has deliberately decided to bring the existing
+> distribution under CloudFormation via a stack import — never as an ad hoc "redeploy this."
 
 **Content sync** (same idea as the root `CLAUDE.md`'s prod deploy, different prefix):
 ```bash
@@ -59,11 +72,17 @@ Uses `CachingDisabled` (matches prod) so a sync shows up instantly, no invalidat
 **Basic auth**: a CloudFront Function (`kcmps-dev-basic-auth`) gates every request behind
 HTTP Basic Auth so work-in-progress isn't publicly browsable/indexable (paired with an
 `X-Robots-Tag: noindex` response header as a second layer). The username/password are baked
-into the function's JS source at deploy time via the `BasicAuthUser`/`BasicAuthPassword`
-CloudFormation parameters (`NoEcho`, no default — must be passed via
-`--parameter-overrides`, never committed). **Credentials aren't recoverable from AWS after
-the fact** (`NoEcho` params are masked in `describe-stacks` forever) — whoever sets the
-password needs to save it themselves (password manager, etc.). To rotate it, redeploy:
+into the function's JS source. **Credentials aren't recoverable from AWS after the fact**
+(the live function's source isn't a secret store) — whoever sets the password needs to save
+it themselves (password manager, etc.). Because the live distribution is CLI-managed (see
+the warning above), rotating it *today* means editing and publishing the CloudFront
+Function's JS source directly via the CLI (`aws cloudfront update-function` /
+`publish-function`), not the command below.
+
+**If this is ever formally imported into CloudFormation**, `dev-domain.cfn.yaml` models the
+password as a `BasicAuthUser`/`BasicAuthPassword` parameter pair (`NoEcho`, no default —
+must be passed via `--parameter-overrides`, never committed), and rotation would become a
+redeploy:
 ```bash
 aws cloudformation deploy \
   --template-file storefront-infra/dev-domain.cfn.yaml \
@@ -73,9 +92,13 @@ aws cloudformation deploy \
   --profile kcmps-claude-priv \
   --no-fail-on-empty-changeset
 ```
+This only applies once a `kcmps-dev-domain` stack actually exists — running it against a
+bare AWS account with no such stack creates a **new, second** distribution instead (see the
+warning above).
 
-**IAM**: `kcmps-claude-priv` needs a dedicated inline policy beyond what prod's plain
-`s3 sync` requires — `cloudformation:*` scoped to the `kcmps-dev-domain` stack/changesets,
+**IAM (for the same future-import scenario)**: `kcmps-claude-priv` would need a dedicated
+inline policy beyond what prod's plain `s3 sync` requires —
+`cloudformation:*` scoped to the `kcmps-dev-domain` stack/changesets,
 `cloudfront:Create*` (Resource `"*"` — distribution/response-headers-policy IDs don't exist
 until after creation, so they can't be pre-scoped), `cloudfront:Get/Update/Delete*` scoped to
 the created distribution/function/policy ARNs, and `s3:GetBucketPolicy`/`PutBucketPolicy` on

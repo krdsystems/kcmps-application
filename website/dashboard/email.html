@@ -30,6 +30,7 @@
           <button type="button" class="is-active" data-folder="INBOX">Inbox</button>
           <button type="button" data-folder="SENT">Sent</button>
         </div>
+        <button type="button" class="mail-chip-toggle" id="mail-unread-filter" aria-pressed="false">Unread only</button>
         <div class="mail-search-wrap">
           <input type="search" class="input mail-search" id="mail-search" placeholder="Search" />
           <span class="mail-search-scope" id="mail-search-scope"></span>
@@ -73,6 +74,12 @@
   let replyDraft = "";
   let replyCc = "";
   let showCcField = false;
+  // Client-side "unread only" filter — applied on top of whatever page of
+  // messages is already fetched (same scope as search: current mailbox +
+  // folder), no new API param needed. Persists across mailbox/folder
+  // switches, same as search does, since #mb-unread is already per-mailbox
+  // and this just narrows the same list to match it.
+  let unreadOnly = false;
 
   // List state — accumulated across "Load more" clicks, reset whenever the
   // mailbox, folder, or search term changes (resetListState()). Grouped into
@@ -100,6 +107,7 @@
   const searchEl = document.getElementById("mail-search");
   const scopeEl = document.getElementById("mail-search-scope");
   const folderToggleEl = document.getElementById("mail-folder-toggle");
+  const unreadFilterEl = document.getElementById("mail-unread-filter");
   const refreshEl = document.getElementById("mail-refresh");
   const updatedEl = document.getElementById("mail-updated");
 
@@ -202,12 +210,70 @@
       (idx === activeListIndex ? " is-keyfocus" : "");
     const marks = m.flags.answered ? "replied" : "";
     const countBadge = g.count > 1 ? ' <span class="thread-count">(' + g.count + ")</span>" : "";
+    // Per-row read/unread toggle — a click here mirrors the read-pane's
+    // "Mark as unread"/"Mark as read" button but skips opening the message,
+    // so a staffer can triage a whole list without clicking into each one.
+    // Nested inside the row's own click-to-open target, so its handler
+    // (wired in wireListRows()) must stopPropagation or the row would also
+    // open underneath it.
+    const toggleTitle = unread ? "Mark as read" : "Mark as unread";
+    const markBtn = `<button type="button" class="q-mark-toggle" data-mark-msg="${escapeHtml(m.messageId)}" data-seen="${m.flags.seen ? "1" : "0"}" title="${toggleTitle}" aria-label="${toggleTitle}"><span class="q-mark-dot" aria-hidden="true"></span></button>`;
     return (
       `<div class="${cls}" data-msg="${escapeHtml(m.messageId)}" data-idx="${idx}" role="button" tabindex="0">` +
       `<div class="q-line1"><span>${unread ? '<span class="unread-dot" aria-hidden="true"></span>' : ""}${escapeHtml(senderOf(m))}</span><span class="q-age">${relAge(m.date)}</span></div>` +
-      `<div class="q-line2"><span>${escapeHtml(m.subject)}${countBadge} — ${escapeHtml(m.snippet)}</span><span>${marks}</span></div>` +
+      `<div class="q-line2"><span>${escapeHtml(m.subject)}${countBadge} — ${escapeHtml(m.snippet)}</span><span>${marks}${markBtn}</span></div>` +
       "</div>"
     );
+  }
+
+  // Re-renders from the already-fetched listMessages cache — used both after
+  // a real fetch (renderList() below) and whenever the "Unread only" chip is
+  // toggled, which needs no new network round-trip since it's just narrowing
+  // what's already loaded (same idea as the search-scope hint: honest about
+  // only filtering what the client actually has paged in so far).
+  function renderListFromCache() {
+    if (!listMessages.length) {
+      listEl.innerHTML = '<p class="q-empty">' +
+        (search ? "No messages match that search." : (currentFolder === "SENT" ? "Nothing sent yet." : "Inbox is empty.")) +
+        "</p>";
+      return;
+    }
+
+    let groups = groupThreads(listMessages);
+    if (unreadOnly) groups = groups.filter((g) => !g.latest.flags.seen);
+
+    if (!groups.length) {
+      listEl.innerHTML = '<p class="q-empty">No unread messages' + (search ? " match that search." : ".") + "</p>";
+      return;
+    }
+
+    listEl.innerHTML = groups.map(renderListRow).join("") +
+      (listCursor ? '<button type="button" class="btn btn-secondary list-load-more" id="list-load-more">Load 50 more</button>' : "");
+
+    listEl.querySelectorAll("[data-msg]").forEach((row) => {
+      const open = () => openMessage(row.dataset.msg);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+    listEl.querySelectorAll("[data-mark-msg]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.markMsg;
+        const nowSeen = btn.dataset.seen === "1";
+        withBusy(btn, async () => {
+          await KCMPS_DASH.markMessageRead(currentMailboxId, id, !nowSeen);
+          await renderMailboxSelector();
+          await renderList();
+        });
+      });
+      btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
+    });
+    const loadMoreBtn = document.getElementById("list-load-more");
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener("click", () => {
+        withBusy(loadMoreBtn, () => renderList({ append: true }));
+      });
+    }
   }
 
   async function renderList(opts) {
@@ -238,28 +304,7 @@
     }
     listCursor = res.nextCursor || null;
 
-    if (!listMessages.length) {
-      listEl.innerHTML = '<p class="q-empty">' +
-        (search ? "No messages match that search." : (currentFolder === "SENT" ? "Nothing sent yet." : "Inbox is empty.")) +
-        "</p>";
-      return;
-    }
-
-    const groups = groupThreads(listMessages);
-    listEl.innerHTML = groups.map(renderListRow).join("") +
-      (listCursor ? '<button type="button" class="btn btn-secondary list-load-more" id="list-load-more">Load 50 more</button>' : "");
-
-    listEl.querySelectorAll("[data-msg]").forEach((row) => {
-      const open = () => openMessage(row.dataset.msg);
-      row.addEventListener("click", open);
-      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
-    });
-    const loadMoreBtn = document.getElementById("list-load-more");
-    if (loadMoreBtn) {
-      loadMoreBtn.addEventListener("click", () => {
-        withBusy(loadMoreBtn, () => renderList({ append: true }));
-      });
-    }
+    renderListFromCache();
   }
 
   async function openMessage(messageId) {
@@ -603,10 +648,15 @@
 
     parts.push('<button type="button" class="btn btn-ghost mail-back" id="mail-back">&larr; Back to list</button>');
 
+    const isSeen = !!(m.flags && m.flags.seen);
     parts.push(
       '<div class="ticket-head"><h2 style="margin:0;font-size:19px">' + escapeHtml(m.subject) + "</h2>" +
+      '<div class="ticket-head-actions">' +
       '<span class="status-pill ' + (m.flags.answered ? "st-good" : "st-neutral") + (flash ? " dash-flash" : "") + '">' +
-      (m.flags.answered ? "Replied" : "Read") + "</span></div>"
+      (m.flags.answered ? "Replied" : "Read") + "</span>" +
+      '<button type="button" class="btn btn-ghost mail-mark-toggle-btn" id="mail-mark-toggle" data-seen="' + (isSeen ? "1" : "0") + '">' +
+      (isSeen ? "Mark as unread" : "Mark as read") + "</button>" +
+      "</div></div>"
     );
 
     parts.push('<div class="thread-stack">' +
@@ -635,6 +685,26 @@
     document.getElementById("mail-back").addEventListener("click", () => {
       pane.classList.remove("show-read");
     });
+
+    // Mirrors openMessage()'s implicit mark-as-read call — same
+    // markMessageRead() seam, just with the boolean the other direction
+    // (or back to true, for a message a staffer wants to re-flag as read
+    // without reopening it). Refreshes the mailbox selector (so #mb-unread
+    // and the <option> badge update) and the list (so the row's bold/dot
+    // state and any active "Unread only" filter re-settle), then the read
+    // pane itself so the button's own label flips to match.
+    const markToggleBtn = document.getElementById("mail-mark-toggle");
+    if (markToggleBtn) {
+      markToggleBtn.addEventListener("click", (e) => {
+        withBusy(e.currentTarget, async () => {
+          const nowSeen = markToggleBtn.dataset.seen === "1";
+          await KCMPS_DASH.markMessageRead(currentMailboxId, currentMessageId, !nowSeen);
+          await renderMailboxSelector();
+          await renderList();
+          await renderRead();
+        });
+      });
+    }
 
     const ccToggle = document.getElementById("reply-cc-toggle");
     if (ccToggle) ccToggle.addEventListener("click", () => { showCcField = !showCcField; renderRead(); });
@@ -701,6 +771,13 @@
     pane.classList.remove("show-read");
     resetListState();
     renderAll();
+  });
+
+  unreadFilterEl.addEventListener("click", () => {
+    unreadOnly = !unreadOnly;
+    unreadFilterEl.classList.toggle("is-active", unreadOnly);
+    unreadFilterEl.setAttribute("aria-pressed", String(unreadOnly));
+    renderListFromCache();
   });
 
   folderToggleEl.addEventListener("click", (e) => {

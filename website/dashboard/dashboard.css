@@ -42,6 +42,34 @@ html.dash-ready body { visibility: visible; }
 * , *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background-attachment: fixed; }
 
+/* Reserve a constant vertical-scrollbar gutter on every dashboard page,
+   not just Jobs. Without this, `html`'s clientWidth (and everything
+   downstream — .dash-content, .job-table-scroll, and #job-list-head's own
+   grid track math) is ~15-17px WIDER whenever the page is short enough that
+   the document doesn't need to scroll, and ~15-17px NARROWER the moment
+   enough rows load to need a vertical scrollbar — on any browser/OS that
+   reserves real space for its scrollbar (the Windows-desktop default,
+   unlike this repo's dev sandbox, which renders overlay scrollbars that
+   reserve nothing either way and can't reproduce this bug directly).
+   #job-list-head and every .job-row already share one gridTemplate() call
+   per render() (see jobs.html), so they never drift from EACH OTHER — this
+   was never a header-vs-row mismatch. What drifted was the table's
+   available width against #job-list-card's edge: short job lists (page
+   fits, no scrollbar, full width) rendered the table's already-tight
+   horizontal-scroll math one increment more generous than long job lists
+   (page needs to scroll, scrollbar gutter eats width), so the visible
+   right edge crept depending on row count. `scrollbar-gutter: stable`
+   reserves that space unconditionally, so the width available to the job
+   table (and the rest of the dashboard) is identical whether the page is
+   scrolling or not. Verified directly: this property alone makes
+   `document.documentElement.clientWidth` match exactly between a
+   short-content and a long-content version of the same page, even under
+   this sandbox's non-reserving overlay scrollbars, which don't reserve any
+   gutter on their own. Root selector so it's set once, not re-declared per
+   page; harmless on pages that never scroll (fixed ~15px gutter instead of
+   0, same tradeoff every site using this property accepts). */
+html { scrollbar-gutter: stable; }
+
 .dash-shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
 
 /* — sidebar — */
@@ -383,6 +411,13 @@ select.input { appearance: auto; }
 .status-pill.st-info { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
 
 .ticket-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+/* email.html's read-pane header: status pill + "Mark as unread/read" button
+   grouped together as the head's second flex child, so .ticket-head's own
+   space-between still puts the subject on the left and this pair on the
+   right as one unit, rather than justify-content stranding a 3rd child in
+   the middle of the row. */
+.ticket-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mail-mark-toggle-btn { font-size: 12.5px; white-space: nowrap; }
 /* Order ID — the primary identifier staff cross-reference against GCash
    payments and email, so it needs to read before anything else on the
    ticket, not as a small muted aside next to the line ID. */
@@ -412,8 +447,26 @@ select.input { appearance: auto; }
 /* the generous bottom padding .dash-content uses for scrolling pages would
    push this fixed-height layout past the viewport for no reason */
 .mail-wide { max-width: none; display: flex; flex-direction: column; padding-bottom: var(--space-4); }
-.mail-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+/* margin-bottom is space-4 (not the space-3 every other toolbar/section
+   uses) because .mail-search-scope (below) is now position:absolute,
+   anchored just under the search box — it needs clearance under the row
+   so an active search term's "Searching order@… · Inbox" line doesn't
+   collide with the Shortcuts hint paragraph directly beneath it. */
+.mail-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
 .mail-toolbar select.input { max-width: 260px; }
+/* Toolbar controls were each sized by their own component's defaults
+   (.queue-count's global 22px pill, .btn's ~43px padded button, the
+   folder-toggle's ~28px unpadded buttons, .input's 36px) — align-items:
+   center DOES center each on the row's cross-axis, but a 20px+ spread in
+   height across neighbors still reads as uneven/"clunky" even when
+   centered. Every interactive control in this toolbar is pinned to the
+   same 36px box (matching .input's min-height, since the mailbox <select>
+   and search box set the tallest baseline already) so they sit on one
+   visual line instead of just one shared midpoint. #mb-unread is scoped by
+   ID (not by overriding .queue-count itself) — that class is shared with
+   today.html's/jobs.html's queue cards, which must keep their own 22px
+   sizing untouched. */
+#mb-unread { height: 36px; min-width: 36px; padding: 0 10px; box-sizing: border-box; }
 /* Search's `margin-left: auto` now lives on its wrapper (.mail-search-wrap,
    below, added for the search-scope hint line) rather than the input
    itself. Reload sits at the far right of the toolbar, after that auto
@@ -454,7 +507,11 @@ select.input { appearance: auto; }
 .ck-foot { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
 .mail-notice-warn { background: #fbe6e4; color: #a5271b; font-weight: 600; }
 
-.mail-refresh { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
+/* height:36px + zeroed vertical padding overrides .btn's normal ~43px
+   padded box (border-box, so the explicit height wins outright) — .btn's
+   own align-items:center still centers the icon+label inside it. Scoped to
+   this toolbar only; .mail-refresh isn't reused elsewhere. */
+.mail-refresh { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding-top: 0; padding-bottom: 0; }
 .mail-refresh svg { width: 15px; height: 15px; }
 .mail-updated { font-size: 12px; white-space: nowrap; opacity: 0.75; }
 .mail-3pane { display: grid; grid-template-columns: 340px 1fr; gap: var(--space-3); height: calc(100dvh - 136px); min-height: 420px; }
@@ -476,23 +533,66 @@ select.input { appearance: auto; }
    here should leak onto today.html/jobs.html's queue cards. */
 
 /* toolbar: folder toggle + search-scope hint */
-.mail-folder-toggle { display: inline-flex; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
+/* height:36px on the group + button height:100% (rather than the old
+   padding-only sizing) matches every other toolbar control's box — the
+   group's own default align-items:stretch already fills that height, the
+   buttons just need to be told to center their own text within it since a
+   stretched <button> otherwise top-aligns single-line text. */
+.mail-folder-toggle { display: inline-flex; height: 36px; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; box-sizing: border-box; }
 .mail-folder-toggle button {
-  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; height: 100%;
+  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; padding: 0 14px; cursor: pointer;
   color: color-mix(in srgb, var(--color-text) 60%, transparent);
 }
 .mail-folder-toggle button + button { border-left: 1px solid var(--color-divider); }
 .mail-folder-toggle button.is-active { background: var(--color-accent-2, var(--color-accent)); color: #fff; }
 .mail-folder-toggle button:hover:not(.is-active) { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
-.mail-search-wrap { display: flex; flex-direction: column; gap: 2px; margin-left: auto; max-width: 300px; }
+/* "Unread only" filter chip — same 36px box and pill styling as the folder
+   toggle so it reads as a sibling control, not a stray extra button. */
+.mail-chip-toggle {
+  display: inline-flex; align-items: center; justify-content: center; height: 36px; box-sizing: border-box;
+  flex-shrink: 0; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); background: none;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 0 14px; cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+.mail-chip-toggle:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.mail-chip-toggle.is-active { background: var(--color-accent-2, var(--color-accent)); color: #fff; border-color: transparent; }
+/* The scope hint used to sit in normal flow below the search input,
+   stacked in a flex column — which made .mail-search-wrap ~16px taller
+   than every other toolbar control, so align-items:center on .mail-toolbar
+   centered the WRAPPER but left the input itself sitting ~8px above the
+   row's shared 36px baseline (confirmed by measuring boundingClientRect
+   against the other controls — this was the one real outlier, not a
+   general "align-items:center isn't working" problem). Taking the hint out
+   of flow (position:absolute, anchored under the input) drops the wrap's
+   flex height back to just the input's 36px so it lines up with its
+   siblings, while the hint still renders directly beneath it exactly where
+   it always did. */
+.mail-search-wrap { position: relative; margin-left: auto; max-width: 300px; }
 .mail-search-wrap .mail-search { max-width: none; margin-left: 0; }
-.mail-search-scope { font-size: 11px; color: color-mix(in srgb, var(--color-text) 55%, transparent); padding-left: 2px; min-height: 14px; }
+.mail-search-scope {
+  position: absolute; left: 2px; top: 100%; margin-top: 2px; white-space: nowrap;
+  font-size: 11px; color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
 .mail-kbd-hint { margin: 0 0 var(--space-2); font-size: 11.5px; }
 .mail-kbd-hint kbd {
   font-family: var(--font-heading); font-size: 10.5px; padding: 1px 5px; border-radius: 4px;
   border: 1px solid var(--color-divider); background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 }
 @media (max-width: 900px) { .mail-kbd-hint { display: none; } }
+/* Wrap priority: the "Updated HH:MM" hint is the lowest-priority item in
+   the toolbar (staleness info, not a control) — it collapses out before
+   the row is forced to wrap onto a second line. 1440px was measured, not
+   guessed: with the sidebar's fixed 240px + .dash-content padding taken
+   out, the mailbox <select> + unread count + folder toggle + "Unread
+   only" chip + search box + timestamp + Reload button stop fitting on one
+   line right around a 1400-1440px viewport — dropping the hint there
+   buys roughly another 140px of headroom before the row is forced to
+   wrap regardless (confirmed by measuring #mail-refresh's boundingClientRect
+   against #mb-select's — same y = same line — across a width sweep, both
+   with and without the hint). Below ~1280px it wraps either way; this
+   only delays the first wrap, it doesn't chase every width. */
+@media (max-width: 1440px) { .mail-updated { display: none; } }
 
 /* list rows: unread weight + dot marker + thread-count badge */
 .mail-list .q-item.is-unread .q-line1 > span:first-child { font-weight: 800; }
@@ -502,6 +602,29 @@ select.input { appearance: auto; }
   margin-right: 6px; vertical-align: middle; flex-shrink: 0;
 }
 .thread-count { font-weight: 600; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+/* Per-row read/unread toggle (email.html's renderListRow()) — a small dot
+   button sitting in the row's second line, right-aligned next to the
+   "replied" marker. Deliberately always visible (not hover-revealed like
+   .design-popup's desktop-only affordance): unlike that flyout, this is a
+   primary action a touch user needs just as much as a mouse user, so
+   gating it behind (hover: hover) would leave touch with no way to reach
+   it at all. */
+.q-mark-toggle {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-left: 6px; padding: 0; border: 0; border-radius: 999px;
+  background: none; cursor: pointer; vertical-align: middle;
+}
+.q-mark-toggle:hover { background: color-mix(in srgb, var(--color-text) 10%, transparent); }
+.q-mark-dot {
+  width: 8px; height: 8px; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--color-text) 45%, transparent);
+  box-sizing: border-box;
+}
+.q-mark-toggle[data-seen="0"] .q-mark-dot { background: var(--color-accent); border-color: var(--color-accent); }
+/* .q-line2 is shared with today.html's queue cards (plain two text-span
+   rows there); scoped here rather than on the base .q-item .q-line2 rule
+   since only this page's second span now also holds a 20px button that
+   needs vertical centering against the "replied" text beside it. */
+.mail-list .q-item .q-line2 { align-items: center; }
 .mail-list .q-item.is-keyfocus { outline: 2px solid var(--color-accent-2, var(--color-accent)); outline-offset: -2px; }
 .list-load-more { display: block; width: 100%; margin-top: var(--space-2); font-size: 12.5px; }
 

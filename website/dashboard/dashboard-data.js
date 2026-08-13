@@ -190,6 +190,24 @@
   // terminal states for rollup purposes — §6's two fulfillment branches.
   function isFulfilled(s) { return s === "Delivered" || s === "Picked Up"; }
 
+  // Single shared "already done — don't count toward due/at-risk" set, used
+  // by both decorateLineItem()'s dueRisk and getTodayNumbers()'s
+  // dueTodayList/atRisk. Two independently-maintained inline copies of this
+  // same list (2026-08-13) is exactly how "Picked Up" got left out of both
+  // and the Today tab kept showing stale at-risk hours for orders already
+  // picked up — see backend/lib/constants.js's STATUS enum for the
+  // case-sensitive canonical strings. Deliberately NOT the same set as that
+  // file's TERMINAL_STATUSES: this list also treats "Dispatched" as done
+  // (already out the door, no longer "due"), which isn't a backend terminal
+  // status since Dispatched still transitions to Delivered.
+  const FULFILLED_STATUSES = ["Delivered", "Dispatched", "Picked Up", "Cancelled", "Quote Expired"];
+  // "Still in progress but already at a safe stage" — used alongside
+  // FULFILLED_STATUSES by both dueRisk and atRisk so the two computations
+  // can't silently diverge. Kept separate from FULFILLED_STATUSES on
+  // purpose: these line items aren't done, they're just not "at risk" of
+  // missing their promise date anymore.
+  const SAFE_STAGE_STATUSES = ["In Production", "QC", "Ready for Dispatch"];
+
   function deriveOrderStatus(order) {
     const statuses = order.lineItems.map((li) => li.status);
     if (statuses.every(isFulfilled)) return "Delivered";
@@ -372,7 +390,7 @@
       slaState,
       dueDate,
       dueInDays,
-      dueRisk: dueInDays !== null && dueInDays <= 2 && !["Delivered", "Ready for Dispatch", "Dispatched"].includes(li.status),
+      dueRisk: dueInDays !== null && dueInDays <= 2 && !FULFILLED_STATUSES.includes(li.status) && !SAFE_STAGE_STATUSES.includes(li.status),
       // Payment System file's staff-dashboard spec: "New queue: Pending
       // Verification — shows screenshot, reference number, claimed amount,
       // order ID, timestamp." Lives on order.payment (§ header note above),
@@ -395,8 +413,8 @@
     const dayY = state.metrics.day[yestKey] || { jobsCompleted: 0, unitsOut: 0, spoilageUnits: 0, spoilageValue: 0, reworkOpened: 0, cashCollected: 0 };
     const dayT = state.metrics.day[todayKey] || { spoilageUnits: 0, spoilageValue: 0, reworkOpened: 0 };
     const dueToday = items.filter((li) => li.dueDate ? isoDay(li.order.originalPromisedDate) === todayKey : isoDay(li.order.originalPromisedDate) <= todayKey);
-    const dueTodayList = items.filter((li) => isoDay(li.order.originalPromisedDate) <= todayKey && !["Delivered", "Dispatched", "Cancelled", "Quote Expired"].includes(li.status));
-    const atRisk = dueTodayList.filter((li) => !["In Production", "QC", "Ready for Dispatch"].includes(li.status));
+    const dueTodayList = items.filter((li) => isoDay(li.order.originalPromisedDate) <= todayKey && !FULFILLED_STATUSES.includes(li.status));
+    const atRisk = dueTodayList.filter((li) => !SAFE_STAGE_STATUSES.includes(li.status));
     const wipStatuses = ["Confirmed", "Scheduled", "In Production", "QC", "Rework", "Ready for Dispatch"];
     const wip = items.filter((li) => wipStatuses.includes(li.status));
     return {

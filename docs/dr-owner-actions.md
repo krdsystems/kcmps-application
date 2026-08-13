@@ -1,13 +1,38 @@
-# DR/CI-CD — owner actions (nothing here has been run)
+# DR/CI-CD — owner actions
 
 Companion to [`disaster-recovery-and-cicd-plan.md`](disaster-recovery-and-cicd-plan.md).
-Everything in this file is a **write** against AWS or GitHub, so none of it has been
-executed. The repo-side work (snapshot script, workflows, runbook, doc-drift fixes) is done
-and committed; these are the steps that make it actually run.
 
-Ordered by value-per-effort. Items 1 and 2 are what turn the committed code into a working
-backup system — until they are done, the workflow will fail at credential setup, which is
-the correct loud failure.
+## Status as of 2026-08-13 — most of this is DONE
+
+Executed with the owner's explicit approval on 2026-08-13 and **verified by reading the
+resulting state back**, not by trusting the command's exit code:
+
+| Item | Status | Verified by |
+|---|---|---|
+| §1a OIDC providers, both accounts | **DONE** | ARNs returned for `600929977538` and `260866268499` |
+| §1c `KCMPSSnapshotReader` (infra) | **DONE** | `ReadOnlyAccess` attached, **zero inline policies** |
+| §1d `KCMPSSnapshotReaderDNS` | **DONE** | 3 Route 53 **read** actions only, no managed policies |
+| §1f **backup keypair** | **NOT DONE — still yours** | see below; blocks the table dump only |
+| §2 termination protection ×3 | **DONE** | all three stacks return `True` |
+| §2 mail-bucket versioning | **DONE** | `Enabled` |
+| §2 site-bucket lifecycle | **DONE** | `expire-noncurrent-versions / Enabled / 90` |
+| Observability change-set | **DONE** | `UPDATE_COMPLETE`; `kcmps-ops` dashboard live; 37 → 49 alarms; **0 Lambdas now uncovered** |
+| First snapshot pushed off-machine | **DONE** | branch `claude/dr-backup-cicd` on GitHub |
+
+**One bug was found and fixed during execution.** The DNS role initially trusted only
+GitHub's OIDC provider, but `.github/workflows/infra-snapshot.yml` reaches it by *chaining*
+from the infra role (`credential_source = Environment`). That mismatch would have failed
+with `AccessDenied` on the first nightly run — a backup silently not running, which is the
+exact failure this system exists to prevent. The trust policy now carries two statements:
+`DirectGitHubOIDC` and `ChainFromInfraSnapshotRole`. **The chain has not yet been exercised
+by a real workflow run** — the first `workflow_dispatch` is what proves it.
+
+### What is still outstanding
+
+1. **Generate the backup keypair (§1f)** — the only remaining blocker on the nightly job.
+2. **Trigger the workflow manually once** and confirm it commits. Do not wait for the first
+   scheduled run to discover a problem.
+3. **Rehearse one restore (§3).**
 
 ---
 

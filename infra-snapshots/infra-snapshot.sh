@@ -332,8 +332,13 @@ snap_ses() {
 snap_iam() {
   echo "  iam"
   local roles
+  # Case-INSENSITIVE match. The snapshot's own OIDC roles are named
+  # KCMPSSnapshotReader/KCMPSSnapshotReaderDNS, which a `"kcmps" in name` test
+  # silently misses — so the backup system was not backing up its own access
+  # roles. Found 2026-08-13 by noticing they were absent from the diff after
+  # they were created.
   roles="$(aws_main iam list-roles \
-           | python3 -c 'import sys,json;[print(r["RoleName"]) for r in json.load(sys.stdin)["Roles"] if "kcmps" in r["RoleName"]]')"
+           | python3 -c 'import sys,json;[print(r["RoleName"]) for r in json.load(sys.stdin)["Roles"] if "kcmps" in r["RoleName"].lower()]')"
   while read -r role; do
     [[ -z "$role" ]] && continue
     aws_main iam get-role --role-name "$role" | write "iam/$role.role.json"
@@ -463,7 +468,7 @@ snap_table_data() {
 
   if [[ ! -f "$BACKUP_CERT" ]]; then
     echo "FATAL: $BACKUP_CERT missing — refusing to dump customer data unencrypted." >&2
-    echo "       Generate the keypair first: see docs/dr-owner-actions.md §2." >&2
+    echo "       Generate the keypair first: see docs/dr-owner-actions.md §1f." >&2
     exit 95
   fi
 

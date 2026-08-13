@@ -1,4 +1,13 @@
 {
-  "_absent": true,
-  "_note": "not configured on this bucket"
+  "Rules": [
+    {
+      "Filter": {},
+      "ID": "expire-noncurrent-versions",
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Status": "Enabled"
+    }
+  ],
+  "TransitionDefaultMinimumObjectSize": "all_storage_classes_128K"
 }

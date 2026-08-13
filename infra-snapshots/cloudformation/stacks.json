@@ -166,7 +166,7 @@
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
-      "EnableTerminationProtection": false,
+      "EnableTerminationProtection": true,
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -228,14 +228,17 @@
       "Tags": []
     },
     {
-      "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/add-10-missing-alarms/ba3ae209-3784-4ffd-8838-7f1842dc7a61",
+      "Capabilities": [
+        "CAPABILITY_IAM"
+      ],
+      "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/obs-dashboard-alarms-202608131450/7a17f2f6-75c8-4843-97ef-6a35802756fb",
       "CreationTime": "2026-08-02T06:33:07.923000+00:00",
       "Description": "KCMPS Milestone 1.5 observability ? SNS alert topic, a shared Lambda dead-letter queue, and CloudWatch alarms on every deployed backend Lambda, the Streams handler's IteratorAge, DLQ depth, and the checkout API's 5xx rate. All resources here are new ? nothing pre-existing is imported or modified. See backend/infra/README.md's \"Observability ? Milestone 1.5\" section for the CLI steps that wire this stack's outputs into the existing Streams event source mapping, expire-pending-orders' async invoke config, and the checkout API's stage throttle settings (those touch resources this stack doesn't own, so they stay CLI, not CFN ? same split the rest of backend/infra/ already uses).\n",
       "DisableRollback": false,
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
-      "EnableTerminationProtection": false,
+      "EnableTerminationProtection": true,
       "NotificationARNs": [],
       "Outputs": [
         {
@@ -274,7 +277,7 @@
       "DriftInformation": {
         "StackDriftStatus": "NOT_CHECKED"
       },
-      "EnableTerminationProtection": false,
+      "EnableTerminationProtection": true,
       "NotificationARNs": [],
       "Outputs": [
         {

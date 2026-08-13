@@ -1018,6 +1018,106 @@ invoke config) stay CLI, matching how the rest of `backend/infra/` is split.
   - DLQ's `ApproximateNumberOfMessagesVisible > 0` = 1 alarm
   - `kcmps-checkout-api`'s `5XXError >= 1`/5min = 1 alarm
 
+### The alarm set didn't grow with the Lambda set (found and fixed 2026-08-13)
+
+This stack was written when production had 17 Lambdas and alarmed all 17. Production quietly
+grew to 32 over the following weeks — the entire mail pipeline (`kcmps-ingest-inbound`,
+`kcmps-send-mail-reply`, the 3 mail readers), the whole Asset Library
+(`kcmps-list-designs`/`kcmps-patch-design`/`kcmps-publish-design`/`kcmps-design-upload-url`/
+`kcmps-purge-archived-designs`), `kcmps-staff-pin`, `kcmps-set-order-tags`,
+`kcmps-dashboard-prefs`, and `kcmps-create-manual-order` were all deployed and promoted to
+production with **no Errors/Throttles alarm at all**, because nothing in the deploy checklist
+for a new Lambda touches this stack — it's a separate CloudFormation template someone has to
+remember to extend by hand. Nobody did. That gap existed for roughly the whole run from
+Milestone 1.5 (2026-08-02) to when it was noticed and closed (2026-08-13) — about 11 days
+during which a broken `kcmps-ingest-inbound` (inbound customer mail) or `kcmps-send-mail-reply`
+(staff replies) could have failed silently, with nothing paging anyone until a customer or
+staffer noticed by hand. See `docs/disaster-recovery-and-cicd-plan.md` G11 for the fuller
+writeup; the lesson recorded there is the same one recorded here: **a new Lambda's checklist
+needs to include "did I add it to `observability.cfn.yaml`," because there is no automated
+check that catches its absence.**
+
+Closed by tiering the 15 gapped Lambdas instead of blindly adding an Errors+Throttles pair to
+each (that would have been 30 more alarms, ~US$3.00/mo, ~₱175/mo at the 30 free-alarm-past-10
+rate — the same shape of overspend the model-cost incident warns about, just in alarms instead
+of tokens):
+
+- **Severe — full Errors + Throttles pair** (customer-visible, no other alarm covers the path):
+  `kcmps-ingest-inbound`, `kcmps-send-mail-reply`, `kcmps-create-manual-order`. 3 functions × 2 = 6 alarms.
+- **Moderate — Errors-only** (staff-triggered, low-volume, a throttle here is very unlikely so
+  halving the pair halves the cost): `kcmps-patch-design`, `kcmps-publish-design`,
+  `kcmps-design-upload-url`, `kcmps-staff-pin`. 4 alarms.
+  (New alarm names: `kcmps-create-manual-order-errors`/`-throttles`,
+  `kcmps-ingest-inbound-errors`/`-throttles`, `kcmps-send-mail-reply-errors`/`-throttles`,
+  `kcmps-patch-design-errors`, `kcmps-publish-design-errors`, `kcmps-design-upload-url-errors`,
+  `kcmps-staff-pin-errors`.)
+- **Cosmetic — aggregated metric-math alarms** (a dashboard convenience breaking, not a sale or
+  a reply): `kcmps-mail-read-path-errors` sums Errors across `kcmps-get-mailboxes`,
+  `kcmps-get-mail-message`, `kcmps-get-mail-messages`, `kcmps-mark-mail-read` into ONE alarm
+  (threshold 3 in a 5-minute window, so a single blip on one function doesn't page anyone);
+  `kcmps-dashboard-misc-errors` does the same for `kcmps-list-designs`, `kcmps-set-order-tags`,
+  `kcmps-dashboard-prefs`, `kcmps-purge-archived-designs`. 2 alarms cover 8 functions. Neither
+  alarm tells you *which* function in the group is erroring — check each one's CloudWatch Logs
+  when it fires.
+
+**Net: 12 new alarms (37 → 49), not 30.** At CloudWatch's ~US$0.10/alarm/month past the first
+10 free per account (the account is already well past that with the original 37), 12 alarms is
+roughly **+US$1.20/mo, ~₱70/mo** at a rough ₱58/US$1 rate — against the ₱500/mo soft cap this
+is a small, easily-justified addition. The rejected alternative (30 new alarms, one
+Errors+Throttles pair per gapped Lambda regardless of severity) would have cost roughly
+**+US$3.00/mo, ~₱175/mo** for exactly the same coverage on the functions that actually matter,
+plus noisy per-blip pages on functions where nobody needs to be woken up for a dashboard column
+order failing to save once.
+
+**Rejected alternative, and why**: a uniform Errors+Throttles pair on all 15 was rejected
+because it treats `kcmps-ingest-inbound` (a broken inbound-mail pipeline, fully silent
+otherwise) the same as `kcmps-dashboard-prefs` (a staffer's column order not saving) — same
+alarm count, same monthly cost, same page-worthiness, when the two failure modes aren't
+remotely equivalent in business impact. Tiering costs less AND pages the owner more accurately.
+
+### Ops dashboard (`kcmps-ops`)
+
+One `AWS::CloudWatch::Dashboard` resource in the same template (added 2026-08-13) — a single
+console page grouping all 49 alarms by business capability (Order & Payment, Mail, Asset
+Library + Auth, Staff Jobs & Dashboard) as `alarm`-type widgets, so status reads as red/green
+at a glance without interpreting a graph, plus three metric graphs for the failure modes that
+produce *no* error metric at all: a cron heartbeat graph (`kcmps-expire-pending-orders`,
+`kcmps-notify-unread-messages`, `kcmps-purge-archived-designs` — a cron that silently stops
+firing shows as a flat zero line, not an error spike, so it needs a different kind of watching
+than an alarm), the Streams handler's `IteratorAge` plotted against the DLQ's queue depth, and
+`kcmps-checkout-api`'s traffic/4xx/5xx/latency. Deliberately **one** dashboard, not one per
+subsystem — dashboards are free for the first 3 per account and there was and is no reason to
+use more than 1; check `aws cloudwatch list-dashboards --profile kcmps-claude-priv --region
+ap-southeast-1` before ever adding a second.
+
+**Open it**: [console link](https://ap-southeast-1.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-1#dashboards:name=kcmps-ops)
+(or `CloudWatch → Dashboards → kcmps-ops` in `ap-southeast-1`, account `600929977538`).
+
+**What each alarm group means and the first thing to check when it fires**:
+
+| Group | If it's red, in plain terms | First thing to check |
+|---|---|---|
+| Order & Payment | A customer couldn't place an order, submit GCash proof, look up/cancel an order, or a payment screenshot/design upload isn't scanning/verifying — OR the DynamoDB Streams handler (the only place `orderStatus` is recomputed) is stuck, OR the shared DLQ has a message in it, OR the checkout API itself is 5xx-ing. | CloudWatch Logs for the specific Lambda named in the alarm. For `kcmps-streams-handler-iterator-age`: check the Streams event source mapping isn't disabled. For `kcmps-lambda-dlq-depth`: inspect `kcmps-lambda-dlq` in SQS — a message there is a batch/invoke that exhausted retries and needs a human to look at *why*, not just redrive. |
+| Mail | Inbound customer mail (`order@`/`info@`/`admin@kcmps.com`) may have stopped landing in the staff Email page, or a staff reply failed to send, or the Email page's read/mark-read calls are broken. | `kcmps-ingest-inbound-errors`/`kcmps-send-mail-reply-errors` are the severe ones — check those Lambdas' logs first. For `kcmps-mail-read-path-errors` (aggregated), check `kcmps-get-mailboxes`/`kcmps-get-mail-message`/`kcmps-get-mail-messages`/`kcmps-mark-mail-read` individually — the alarm doesn't say which one. |
+| Asset Library + Auth | Staff can't edit/submit/approve/reject/publish a design, or a new upload's presigned URL is failing, or a new signup isn't landing in the `Customer` Cognito group. | Check the named Lambda's logs. `kcmps-post-confirmation` failures are unusual on their own — that handler is written to swallow every error rather than re-throw (see `backend/CLAUDE.md`), so a hit here means something outside that contract broke, e.g. a bad deploy. |
+| Staff Jobs & Dashboard | A staffer can't advance a line item, log correspondence, send/read an order-thread message, or (aggregated, lower severity) a Tags edit / column-order save / Asset Library grid read / archived-design purge is failing, or a staffer's idle-lock PIN is broken. | Check the named Lambda's logs. `kcmps-dashboard-misc-errors` is aggregated (4 functions) — check each individually. A `kcmps-staff-pin-errors` hit can leave a staffer locked out of their own dashboard session; that's the one in this group worth treating with more urgency than the rest. |
+
+**Apply this stack** (staging-first rule applies the same way it does to every other deploy in
+this repo — this template has no staging/production split of its own since alarms/dashboards
+are account-wide observability, not customer-facing content, but the owner's explicit go-ahead
+is still required before running this against the live `kcmps-observability` stack; **this
+command has been written down, not executed**, exactly per this session's brief):
+```bash
+aws cloudformation deploy \
+  --template-file backend/infra/observability.cfn.yaml \
+  --stack-name kcmps-observability --region ap-southeast-1 \
+  --parameter-overrides AlertEmail=admin@kcmps.com \
+  --no-fail-on-empty-changeset --profile kcmps-claude-priv
+```
+Same idempotent deploy command as the rest of this stack (see below) — CloudFormation diffs the
+template against the live stack and only touches what changed, so this one `deploy` both adds
+the 12 new alarms and creates the `kcmps-ops` dashboard in a single pass.
+
 Deploy/redeploy (idempotent):
 ```bash
 aws cloudformation deploy \

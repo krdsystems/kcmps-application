@@ -678,6 +678,365 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # ---- 2026-08-13 gap-fill: 15 production Lambdas had NO alarm at all (production grew from
+  # 17 to 32 Lambdas after this stack was written and the alarm set never kept pace — see
+  # docs/disaster-recovery-and-cicd-plan.md G11 and backend/CLAUDE.md's infra/ table row).
+  # Tiered by whether a silent failure is customer-visible, not a blind Errors+Throttles pair
+  # on all 15 (that would be 30 more alarms; this is 12):
+  #   - Severe (full Errors+Throttles pair): the mail-ingest/mail-reply/manual-order Lambdas —
+  #     each is a live customer-facing path (inbound mail, staff replies, walk-in orders) with
+  #     no other alarm covering it.
+  #   - Moderate (Errors-only, no Throttles — these are low-volume, staff-triggered writes
+  #     where a throttle is extremely unlikely and halving the alarm count halves the cost):
+  #     the Asset Library write path and staff-pin.
+  #   - Cosmetic (aggregated via a metric-math expression — ONE alarm covers several
+  #     functions' Errors summed together, at a higher threshold, instead of a pair each):
+  #     mail read-only endpoints, and the tags/prefs/list-designs/purge grab-bag. These don't
+  #     block a sale or a reply; they degrade a dashboard convenience. A combined alarm still
+  #     catches "several of these are broken," it just doesn't say which one — check logs
+  #     across the group's functions when it fires.
+
+  CreateManualOrderErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-create-manual-order-errors
+      AlarmDescription: >
+        kcmps-create-manual-order threw an unhandled error — a staffer's walk-in/phone order
+        entry (jobs.html's "+ New manual order") failed. Same order-creation contract as
+        kcmps-create-order, just a different entry point.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-create-manual-order
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  CreateManualOrderThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-create-manual-order-throttles
+      AlarmDescription: kcmps-create-manual-order is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-create-manual-order
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  IngestInboundErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-ingest-inbound-errors
+      AlarmDescription: >
+        kcmps-ingest-inbound threw an unhandled error — this is the ONLY Lambda that parses
+        inbound SES mail off S3 and files it into a mailbox. A sustained failure here means
+        inbound customer mail (order@/info@/admin@) silently stops appearing in the staff
+        Email page, with nothing else to notice — check S3 kcmps-inbound-mail-est-2026 for
+        objects that landed but never produced a MAILBOX# item.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-ingest-inbound
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  IngestInboundThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-ingest-inbound-throttles
+      AlarmDescription: kcmps-ingest-inbound is being throttled — inbound mail ingestion is falling behind.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-ingest-inbound
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  SendMailReplyErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-send-mail-reply-errors
+      AlarmDescription: >
+        kcmps-send-mail-reply threw an unhandled error — a staffer's reply from the Email page
+        (order@/info@/admin@) failed to send. Customer-visible: the customer never gets the
+        reply and staff may not know it silently failed.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-send-mail-reply
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  SendMailReplyThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-send-mail-reply-throttles
+      AlarmDescription: kcmps-send-mail-reply is being throttled.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-send-mail-reply
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  StaffPinErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-staff-pin-errors
+      AlarmDescription: >
+        kcmps-staff-pin threw an unhandled error — the idle-screen privacy lock's set/verify/
+        clear-PIN calls are failing, which can leave a staffer locked out of their own session.
+        Errors-only (moderate tier): low-volume, staff-triggered, a throttle here is very
+        unlikely.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-staff-pin
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  PatchDesignErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-patch-design-errors
+      AlarmDescription: >
+        kcmps-patch-design threw an unhandled error — Asset Library edit/archive/restore/
+        submit/approve/reject/break-glass-publish all route through this one handler.
+        Errors-only (moderate tier).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-patch-design
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  PublishDesignErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-publish-design-errors
+      AlarmDescription: >
+        kcmps-publish-design threw an unhandled error — a new Asset Library upload failed to
+        save as a draft. Errors-only (moderate tier).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-publish-design
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  DesignUploadUrlErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-design-upload-url-errors
+      AlarmDescription: >
+        kcmps-design-upload-url threw an unhandled error — presigned-upload-URL requests for
+        the Asset Library's original/web-ready files are failing. Errors-only (moderate tier).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: kcmps-design-upload-url
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Aggregated (cosmetic tier) — one metric-math alarm covers several low-severity Lambdas'
+  # Errors summed together, at a threshold above 1 so a single blip on one function doesn't
+  # page anyone. Fires on "several of these broke," doesn't say which — check each function's
+  # logs. This is 1 alarm resource (billed once) instead of 4 pairs (8 alarms) — the explicit
+  # cheaper-alternative the root CLAUDE.md's cost-governance rule asks for.
+
+  MailReadPathErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-mail-read-path-errors
+      AlarmDescription: >
+        Combined Errors across the mail-read Lambdas backing the staff Email page
+        (kcmps-get-mailboxes, kcmps-get-mail-message, kcmps-get-mail-messages,
+        kcmps-mark-mail-read) — these read/mark-read the mailboxes ingest-inbound already
+        wrote; a failure here means the Email page itself is broken even though mail is
+        still arriving. Aggregated, threshold raised to 3 in one 5-minute window to avoid
+        paging on a single blip; check CloudWatch Logs for the specific function.
+      Metrics:
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-get-mailboxes
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-get-mail-message
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-get-mail-messages
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m4
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-mark-mail-read
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: e1
+          Expression: "m1+m2+m3+m4"
+          Label: "Combined mail read-path Errors"
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  DashboardMiscErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: kcmps-dashboard-misc-errors
+      AlarmDescription: >
+        Combined Errors across four low-severity, low-volume dashboard convenience Lambdas:
+        kcmps-list-designs (Asset Library grid read), kcmps-set-order-tags (job-detail Tags
+        card), kcmps-dashboard-prefs (per-staffer column order), kcmps-purge-archived-designs
+        (15-min cron, hard-deletes 90-day-archived assets). None of these being briefly broken
+        stops a sale or a reply — worst case a column order doesn't save, or an archived asset
+        isn't purged this cycle (retried next run). Aggregated, threshold raised to 3 in one
+        5-minute window; check CloudWatch Logs for the specific function.
+      Metrics:
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-list-designs
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-set-order-tags
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-dashboard-prefs
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m4
+          MetricStat:
+            Metric:
+              Namespace: AWS/Lambda
+              MetricName: Errors
+              Dimensions:
+                - Name: FunctionName
+                  Value: kcmps-purge-archived-designs
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: e1
+          Expression: "m1+m2+m3+m4"
+          Label: "Combined dashboard-misc Errors"
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   # ---- DLQ depth ----
 
   LambdaDlqDepthAlarm:
@@ -721,6 +1080,164 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
+
+  # ---- Dashboard — one console page for "is the whole system healthy right now" ----
+  #
+  # CloudWatch dashboards are free for the first 3 per account (this is the only one this repo
+  # has ever created — see backend/infra/README.md's Observability section for a `list-
+  # dashboards` check before adding a second). Grouped by BUSINESS CAPABILITY, not by AWS
+  # service or a graph-per-Lambda wall — each row is one of the shop's critical paths, using
+  # `alarm`-type widgets so red/green status reads at a glance without interpreting a graph.
+  # Region is hardcoded to ap-southeast-1 in every metric-widget's `region` property (alarm
+  # widgets carry region in the ARN itself, no separate property needed).
+  OpsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: kcmps-ops
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 2,
+              "properties": {
+                "markdown": "**KCMPS Ops** — alarm status by business capability, ap-southeast-1. Red here means something a customer or staffer can feel is broken. Runbook: backend/infra/README.md, \"Observability — Milestone 1.5\" and \"Ops dashboard (kcmps-ops)\" sections. SNS alerts land in admin@kcmps.com."
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 0, "y": 2, "width": 12, "height": 10,
+              "properties": {
+                "title": "Order & Payment (customer places order + GCash proof)",
+                "alarms": [
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-create-order-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-create-order-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-create-manual-order-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-create-manual-order-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-submit-payment-proof-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-submit-payment-proof-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-verify-payment-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-verify-payment-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-orders-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-orders-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-lookup-order-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-lookup-order-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-cancel-order-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-cancel-order-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-upload-design-file-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-upload-design-file-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-handle-scan-result-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-handle-scan-result-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-expire-pending-orders-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-expire-pending-orders-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-streams-handler-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-streams-handler-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-streams-handler-iterator-age",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-lambda-dlq-depth",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-checkout-api-5xx"
+                ]
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 12, "y": 2, "width": 12, "height": 5,
+              "properties": {
+                "title": "Mail (inbound customer mail arrives, staff replies send)",
+                "alarms": [
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-ingest-inbound-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-ingest-inbound-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-send-mail-reply-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-send-mail-reply-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-mail-read-path-errors"
+                ]
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 12, "y": 7, "width": 12, "height": 5,
+              "properties": {
+                "title": "Asset Library (publish workflow) + Auth",
+                "alarms": [
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-patch-design-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-publish-design-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-design-upload-url-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-post-confirmation-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-post-confirmation-throttles"
+                ]
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 0, "y": 12, "width": 24, "height": 8,
+              "properties": {
+                "title": "Staff Jobs & Dashboard (working jobs, tags, prefs, PIN lock)",
+                "alarms": [
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-advance-line-item-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-advance-line-item-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-add-correspondence-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-add-correspondence-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-send-message-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-send-message-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-messages-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-messages-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-unread-messages-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-get-unread-messages-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-notify-unread-messages-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-notify-unread-messages-throttles",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-staff-pin-errors",
+                  "arn:aws:cloudwatch:ap-southeast-1:${AWS::AccountId}:alarm:kcmps-dashboard-misc-errors"
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "title": "Cron heartbeats (Invocations) — a flat zero line is the failure, not a spike",
+                "region": "ap-southeast-1",
+                "view": "timeSeries",
+                "stacked": false,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "kcmps-expire-pending-orders", {"stat": "Sum", "period": 900, "label": "expire-pending-orders (15min)"}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "kcmps-notify-unread-messages", {"stat": "Sum", "period": 1800, "label": "notify-unread-messages (30min, SES-dark)"}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "kcmps-purge-archived-designs", {"stat": "Sum", "period": 900, "label": "purge-archived-designs (15min)"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "title": "Streams handler lag & DLQ depth",
+                "region": "ap-southeast-1",
+                "view": "timeSeries",
+                "stacked": false,
+                "metrics": [
+                  ["AWS/Lambda", "IteratorAge", "FunctionName", "kcmps-streams-handler", {"stat": "Maximum", "period": 300, "label": "streams-handler IteratorAge (ms)"}],
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "kcmps-lambda-dlq", {"stat": "Maximum", "period": 300, "yAxis": "right", "label": "kcmps-lambda-dlq depth"}]
+                ],
+                "yAxis": { "right": { "min": 0 } }
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 26, "width": 24, "height": 6,
+              "properties": {
+                "title": "kcmps-checkout-api traffic, 4xx/5xx, latency",
+                "region": "ap-southeast-1",
+                "view": "timeSeries",
+                "stacked": false,
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "6msg2uho6c", {"stat": "Sum", "period": 300, "label": "Requests"}],
+                  ["AWS/ApiGateway", "4XXError", "ApiId", "6msg2uho6c", {"stat": "Sum", "period": 300, "label": "4XX"}],
+                  ["AWS/ApiGateway", "5XXError", "ApiId", "6msg2uho6c", {"stat": "Sum", "period": 300, "label": "5XX"}],
+                  ["AWS/ApiGateway", "Latency", "ApiId", "6msg2uho6c", {"stat": "Average", "period": 300, "yAxis": "right", "label": "Avg latency (ms)"}]
+                ],
+                "yAxis": { "right": { "min": 0 } }
+              }
+            }
+          ]
+        }
 
 Outputs:
   AlertsTopicArn:

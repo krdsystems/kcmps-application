@@ -94,6 +94,26 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.511000+00:00",
+      "LogicalResourceId": "CreateManualOrderErrorsAlarm",
+      "PhysicalResourceId": "kcmps-create-manual-order-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.385000+00:00",
+      "LogicalResourceId": "CreateManualOrderThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-create-manual-order-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-02T06:33:19.358000+00:00",
       "LogicalResourceId": "CreateOrderErrorsAlarm",
       "PhysicalResourceId": "kcmps-create-order-errors",
@@ -107,6 +127,26 @@
       "LastUpdatedTimestamp": "2026-08-02T06:33:19.320000+00:00",
       "LogicalResourceId": "CreateOrderThrottlesAlarm",
       "PhysicalResourceId": "kcmps-create-order-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.523000+00:00",
+      "LogicalResourceId": "DashboardMiscErrorsAlarm",
+      "PhysicalResourceId": "kcmps-dashboard-misc-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.395000+00:00",
+      "LogicalResourceId": "DesignUploadUrlErrorsAlarm",
+      "PhysicalResourceId": "kcmps-design-upload-url-errors",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::CloudWatch::Alarm"
     },
@@ -214,6 +254,26 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.636000+00:00",
+      "LogicalResourceId": "IngestInboundErrorsAlarm",
+      "PhysicalResourceId": "kcmps-ingest-inbound-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.594000+00:00",
+      "LogicalResourceId": "IngestInboundThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-ingest-inbound-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-02T06:34:17.580000+00:00",
       "LogicalResourceId": "LambdaDlq",
       "PhysicalResourceId": "https://sqs.ap-southeast-1.amazonaws.com/600929977538/kcmps-lambda-dlq",
@@ -254,6 +314,16 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.420000+00:00",
+      "LogicalResourceId": "MailReadPathErrorsAlarm",
+      "PhysicalResourceId": "kcmps-mail-read-path-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T09:31:48.885000+00:00",
       "LogicalResourceId": "NotifyUnreadMessagesErrorsAlarm",
       "PhysicalResourceId": "kcmps-notify-unread-messages-errors",
@@ -267,6 +337,26 @@
       "LastUpdatedTimestamp": "2026-08-05T09:31:49.045000+00:00",
       "LogicalResourceId": "NotifyUnreadMessagesThrottlesAlarm",
       "PhysicalResourceId": "kcmps-notify-unread-messages-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:03.044000+00:00",
+      "LogicalResourceId": "OpsDashboard",
+      "PhysicalResourceId": "kcmps-ops",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Dashboard"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.434000+00:00",
+      "LogicalResourceId": "PatchDesignErrorsAlarm",
+      "PhysicalResourceId": "kcmps-patch-design-errors",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::CloudWatch::Alarm"
     },
@@ -294,6 +384,36 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.408000+00:00",
+      "LogicalResourceId": "PublishDesignErrorsAlarm",
+      "PhysicalResourceId": "kcmps-publish-design-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.502000+00:00",
+      "LogicalResourceId": "SendMailReplyErrorsAlarm",
+      "PhysicalResourceId": "kcmps-send-mail-reply-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.704000+00:00",
+      "LogicalResourceId": "SendMailReplyThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-send-mail-reply-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T09:31:48.852000+00:00",
       "LogicalResourceId": "SendMessageErrorsAlarm",
       "PhysicalResourceId": "kcmps-send-message-errors",
@@ -307,6 +427,16 @@
       "LastUpdatedTimestamp": "2026-08-05T09:31:48.865000+00:00",
       "LogicalResourceId": "SendMessageThrottlesAlarm",
       "PhysicalResourceId": "kcmps-send-message-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-13T07:10:00.481000+00:00",
+      "LogicalResourceId": "StaffPinErrorsAlarm",
+      "PhysicalResourceId": "kcmps-staff-pin-errors",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::CloudWatch::Alarm"
     },

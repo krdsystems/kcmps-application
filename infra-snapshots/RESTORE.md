@@ -247,7 +247,17 @@ Record each rehearsal here. An untested procedure in this file is a claim, not a
 
 | Date | Procedure | Against | Result | By |
 |---|---|---|---|---|
-| _(none yet)_ | | | | |
+| 2026-08-13 | §4 — decrypt the Layer B dump with the private key | production snapshot | **PASS** — `{"Count": 144, …}` recovered from ciphertext | owner |
+| 2026-08-13 | Full snapshot via CI (OIDC both accounts, encrypt, auto-commit) | live infra | **PASS** — run `31679938179` green after 2 IAM fixes | owner + Claude |
 
-**First rehearsal should be #4 (PITR restore) against `kcmps-staging`** — it is the highest-
-value procedure, entirely reversible, and touches no production resource.
+The decrypt rehearsal matters more than it looks: until it was done, the encryption path had
+only ever been exercised in the **write** direction. A backup that encrypts correctly but
+cannot be decrypted looks identical to a working one from the outside, and the difference
+only surfaces on the day it is needed.
+
+**Next rehearsal: #4's PITR half (restore-to-timestamp) against `kcmps-staging`** — still
+unproven. Entirely reversible, touches no production resource. Delete the restored table
+afterwards so it does not accrue cost.
+
+Also still unproven, in rough priority order: #2 (Lambda config restore from a snapshot env
+map), #5 (rebuilding an API route from JSON), #6 (SES receipt-rule rebuild).

@@ -10,7 +10,7 @@ resulting state back**, not by trusting the command's exit code:
 | Item | Status | Verified by |
 |---|---|---|
 | §1a OIDC providers, both accounts | **DONE** | ARNs returned for `600929977538` and `260866268499` |
-| §1c `KCMPSSnapshotReader` (infra) | **DONE** | `ReadOnlyAccess` attached, **zero inline policies** |
+| §1c `KCMPSSnapshotReader` (infra) | **DONE** | `ReadOnlyAccess` + one inline policy, `sts:AssumeRole` scoped to the single DNS-role ARN (see §1e) |
 | §1d `KCMPSSnapshotReaderDNS` | **DONE** | 3 Route 53 **read** actions only, no managed policies |
 | §1f **backup keypair** | **NOT DONE — still yours** | see below; blocks the table dump only |
 | §2 termination protection ×3 | **DONE** | all three stacks return `True` |
@@ -66,6 +66,37 @@ If one already exists, this errors with `EntityAlreadyExists` — that is fine, 
 Save as `/tmp/trust-infra.json`. **The `sub` condition is the security boundary** — without
 it, *any* GitHub repository in the world could assume this role.
 
+> ## ⚠️ The `sub` claim is NOT `repo:owner/name:*` on this org
+>
+> **This cost two failed workflow runs on 2026-08-13. Read it before copying the policy below.**
+>
+> The `krdsystems` org has GitHub's **immutable subject claim** enabled, so the `sub` GitHub
+> actually sends embeds numeric org and repo IDs:
+>
+> ```
+> repo:krdsystems@310685649/kcmps-application@1307558132:ref:refs/heads/main
+>              ^^^^^^^^^^                ^^^^^^^^^^^^
+> ```
+>
+> Every AWS/GitHub tutorial — and AWS's own console wizard — shows the plain
+> `repo:owner/name:*` form. It does not match here, and the failure is an opaque
+> `Not authorized to perform sts:AssumeRoleWithWebIdentity` that names no claim and
+> suggests no cause.
+>
+> **How to find the real value** (the non-obvious step): the rejected claim is in
+> CloudTrail, in `userIdentity.principalId`:
+>
+> ```bash
+> aws cloudtrail lookup-events \
+>   --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+>   --max-results 5 --profile kcmps-claude-priv
+> ```
+>
+> This is a **good** setting, not a misconfiguration — the IDs are immutable, so renaming
+> the repo or the org cannot silently transfer AWS trust to whoever claims the old name.
+> Keep it. Just write the policy to match reality. Any future OIDC role for this org hits
+> the same thing.
+
 ```json
 {
   "Version": "2012-10-17",
@@ -75,7 +106,7 @@ it, *any* GitHub repository in the world could assume this role.
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-      "StringLike":   { "token.actions.githubusercontent.com:sub": "repo:krdsystems/kcmps-application:*" }
+      "StringLike":   { "token.actions.githubusercontent.com:sub": "repo:krdsystems@310685649/kcmps-application@1307558132:*" }
     }
   }]
 }
@@ -130,6 +161,42 @@ aws iam put-role-policy --role-name KCMPSSnapshotReaderDNS \
   }' \
   --profile default
 ```
+
+### 1d-bis. Cross-account chaining needs a grant on BOTH sides
+
+**The second failure of 2026-08-13.** The workflow reaches the DNS role by *chaining* from
+the infra role (`credential_source = Environment`), and a cross-account `AssumeRole` requires
+two separate permissions that are easy to mistake for one:
+
+1. The **target** role's trust policy must allow the source principal — §1d covers this.
+2. The **source** role's identity policy must grant `sts:AssumeRole` on the target — and
+   **`ReadOnlyAccess` does not include `sts:AssumeRole`.**
+
+Missing #2 gives `User: .../KCMPSSnapshotReader/infra-snapshot is not authorized to perform:
+sts:AssumeRole`, which reads like a trust-policy problem and sends you back to fixing the
+side that was already correct.
+
+```bash
+aws iam put-role-policy --role-name KCMPSSnapshotReader \
+  --policy-name assume-dns-reader \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "ChainIntoDnsAccountReadOnlyRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::260866268499:role/KCMPSSnapshotReaderDNS"
+    }]
+  }' --profile kcmps-claude-priv
+```
+
+Note this is the **one non-read permission** in the whole snapshot system. It is scoped to a
+single role ARN, and that role can only read Route 53. Keep it that narrow — the "read-only
+by construction" claim in `infra-snapshot.sh`'s header depends on it.
+
+The DNS role's trust policy correspondingly carries **two** statements:
+`GitHubOIDCImmutableSubject` (direct OIDC, unused today but kept so the workflow could stop
+chaining) and `ChainFromInfraSnapshotRole` (the path actually in use).
 
 ### 1e. Verify before trusting it
 

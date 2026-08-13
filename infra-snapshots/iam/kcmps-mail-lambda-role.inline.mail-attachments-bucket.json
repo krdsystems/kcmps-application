@@ -1,0 +1,18 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-payment-uploads-est-2026/mail-attachments/*",
+        "Sid": "MailAttachmentsPrefixOnly"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "mail-attachments-bucket",
+  "RoleName": "kcmps-mail-lambda-role"
+}

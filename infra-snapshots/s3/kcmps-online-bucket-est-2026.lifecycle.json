@@ -1,0 +1,13 @@
+{
+  "Rules": [
+    {
+      "Filter": {},
+      "ID": "expire-noncurrent-versions",
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Status": "Enabled"
+    }
+  ],
+  "TransitionDefaultMinimumObjectSize": "all_storage_classes_128K"
+}

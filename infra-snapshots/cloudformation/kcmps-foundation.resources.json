@@ -1,0 +1,64 @@
+{
+  "StackResourceSummaries": [
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:11.922000+00:00",
+      "LogicalResourceId": "AdminGroup",
+      "PhysicalResourceId": "Admin",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:11.779000+00:00",
+      "LogicalResourceId": "CustomerGroup",
+      "PhysicalResourceId": "Customer",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:11.910000+00:00",
+      "LogicalResourceId": "FinanceGroup",
+      "PhysicalResourceId": "Finance",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:13.008000+00:00",
+      "LogicalResourceId": "KcmpsTable",
+      "PhysicalResourceId": "kcmps",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::DynamoDB::Table"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:11.935000+00:00",
+      "LogicalResourceId": "ProductionGroup",
+      "PhysicalResourceId": "Production",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-07-28T03:40:11.557000+00:00",
+      "LogicalResourceId": "SalesGroup",
+      "PhysicalResourceId": "Sales",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    }
+  ]
+}

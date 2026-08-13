@@ -1,0 +1,22 @@
+{
+  "EmailIdentities": [
+    {
+      "IdentityName": "mirror.kcmps.com",
+      "IdentityType": "DOMAIN",
+      "SendingEnabled": true,
+      "VerificationStatus": "SUCCESS"
+    },
+    {
+      "IdentityName": "kcmps.com",
+      "IdentityType": "DOMAIN",
+      "SendingEnabled": true,
+      "VerificationStatus": "SUCCESS"
+    },
+    {
+      "IdentityName": "admin@kcmps.com",
+      "IdentityType": "EMAIL_ADDRESS",
+      "SendingEnabled": true,
+      "VerificationStatus": "SUCCESS"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "Items": [
+    {
+      "AuthorizerId": "sboj1n",
+      "AuthorizerType": "JWT",
+      "IdentitySource": [
+        "$request.header.Authorization"
+      ],
+      "JwtConfiguration": {
+        "Audience": [
+          "2rsbhkjooja4h5e0ijpl4siuug"
+        ],
+        "Issuer": "https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_LHJsFdCgo"
+      },
+      "Name": "kcmps-cognito-jwt"
+    }
+  ]
+}

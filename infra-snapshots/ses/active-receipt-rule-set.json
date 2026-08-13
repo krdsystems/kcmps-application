@@ -1,0 +1,24 @@
+{
+  "Metadata": {
+    "Name": "kcmps-mirror-inbound"
+  },
+  "Rules": [
+    {
+      "Actions": [
+        {
+          "S3Action": {
+            "BucketName": "kcmps-inbound-mail-est-2026",
+            "ObjectKeyPrefix": "inbound/"
+          }
+        }
+      ],
+      "Enabled": true,
+      "Name": "mirror-single-recipient",
+      "Recipients": [
+        "shop@mirror.kcmps.com"
+      ],
+      "ScanEnabled": true,
+      "TlsPolicy": "Optional"
+    }
+  ]
+}

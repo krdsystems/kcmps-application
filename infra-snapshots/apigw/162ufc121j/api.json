@@ -1,0 +1,36 @@
+{
+  "ApiEndpoint": "https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com",
+  "ApiId": "162ufc121j",
+  "ApiKeySelectionExpression": "$request.header.x-api-key",
+  "CorsConfiguration": {
+    "AllowHeaders": [
+      "content-type",
+      "authorization"
+    ],
+    "AllowMethods": [
+      "GET",
+      "POST",
+      "PATCH",
+      "PUT",
+      "DELETE",
+      "OPTIONS"
+    ],
+    "AllowOrigins": [
+      "https://dev.kcmps.com",
+      "http://localhost:5500",
+      "http://localhost:5501"
+    ],
+    "MaxAge": 300
+  },
+  "CreatedDate": "2026-08-05T09:07:44+00:00",
+  "DisableExecuteApiEndpoint": false,
+  "IpAddressType": "ipv4",
+  "Name": "kcmps-checkout-api-staging",
+  "ProtocolType": "HTTP",
+  "RouteSelectionExpression": "$request.method $request.path",
+  "Tags": {
+    "aws:cloudformation:logical-id": "HttpApi",
+    "aws:cloudformation:stack-id": "arn:aws:cloudformation:ap-southeast-1:600929977538:stack/kcmps-backend-staging/1a167f60-90ad-11f1-af38-02f13afc7929",
+    "aws:cloudformation:stack-name": "kcmps-backend-staging"
+  }
+}

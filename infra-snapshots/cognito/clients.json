@@ -1,0 +1,9 @@
+{
+  "UserPoolClients": [
+    {
+      "ClientId": "2rsbhkjooja4h5e0ijpl4siuug",
+      "ClientName": "kcmps-web-client",
+      "UserPoolId": "ap-southeast-1_LHJsFdCgo"
+    }
+  ]
+}

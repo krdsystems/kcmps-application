@@ -1,0 +1,39 @@
+{
+  "Items": [
+    {
+      "AutoDeploy": true,
+      "CreatedDate": "2026-07-31T10:44:28+00:00",
+      "DefaultRouteSettings": {
+        "DetailedMetricsEnabled": false
+      },
+      "DeploymentId": "yvli3z",
+      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'yvli3z'",
+      "LastUpdatedDate": "2026-08-08T10:43:34+00:00",
+      "RouteSettings": {
+        "POST /design-uploads": {
+          "ThrottlingBurstLimit": 20,
+          "ThrottlingRateLimit": 10.0
+        },
+        "POST /orders": {
+          "ThrottlingBurstLimit": 20,
+          "ThrottlingRateLimit": 10.0
+        },
+        "POST /orders/lookup": {
+          "ThrottlingBurstLimit": 10,
+          "ThrottlingRateLimit": 5.0
+        },
+        "POST /orders/{orderId}/cancel": {
+          "ThrottlingBurstLimit": 10,
+          "ThrottlingRateLimit": 5.0
+        },
+        "POST /orders/{orderId}/payment-proof": {
+          "ThrottlingBurstLimit": 20,
+          "ThrottlingRateLimit": 10.0
+        }
+      },
+      "StageName": "$default",
+      "StageVariables": {},
+      "Tags": {}
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "DistributionConfig": {
+    "Aliases": {
+      "Items": [
+        "dev.kcmps.com"
+      ],
+      "Quantity": 1
+    },
+    "CacheBehaviors": {
+      "Quantity": 0
+    },
+    "Comment": "kcmps dev/staging site",
+    "ContinuousDeploymentPolicyId": "",
+    "CustomErrorResponses": {
+      "Quantity": 0
+    },
+    "DefaultCacheBehavior": {
+      "AllowedMethods": {
+        "CachedMethods": {
+          "Items": [
+            "HEAD",
+            "GET"
+          ],
+          "Quantity": 2
+        },
+        "Items": [
+          "HEAD",
+          "GET"
+        ],
+        "Quantity": 2
+      },
+      "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+      "Compress": true,
+      "FieldLevelEncryptionId": "",
+      "FunctionAssociations": {
+        "Items": [
+          {
+            "EventType": "viewer-request",
+            "FunctionARN": "arn:aws:cloudfront::600929977538:function/kcmps-dev-basic-auth"
+          }
+        ],
+        "Quantity": 1
+      },
+      "GrpcConfig": {
+        "Enabled": false
+      },
+      "LambdaFunctionAssociations": {
+        "Quantity": 0
+      },
+      "ResponseHeadersPolicyId": "601b4915-3c07-414f-8a39-47b18a27fb5d",
+      "SmoothStreaming": false,
+      "TargetOriginId": "dev-origin",
+      "TrustedKeyGroups": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "TrustedSigners": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "ViewerProtocolPolicy": "redirect-to-https"
+    },
+    "DefaultRootObject": "index.html",
+    "Enabled": true,
+    "HttpVersion": "http2",
+    "IsIPV6Enabled": true,
+    "Logging": {
+      "Bucket": "",
+      "Enabled": false,
+      "IncludeCookies": false,
+      "Prefix": ""
+    },
+    "OriginGroups": {
+      "Quantity": 0
+    },
+    "Origins": {
+      "Items": [
+        {
+          "ConnectionAttempts": 3,
+          "ConnectionTimeout": 10,
+          "CustomHeaders": {
+            "Quantity": 0
+          },
+          "DomainName": "kcmps-online-bucket-est-2026.s3.ap-southeast-1.amazonaws.com",
+          "Id": "dev-origin",
+          "OriginAccessControlId": "E233V4Y9BPPX6H",
+          "OriginPath": "/dev-site",
+          "OriginShield": {
+            "Enabled": false
+          },
+          "S3OriginConfig": {
+            "OriginAccessIdentity": ""
+          }
+        }
+      ],
+      "Quantity": 1
+    },
+    "PriceClass": "PriceClass_100",
+    "Restrictions": {
+      "GeoRestriction": {
+        "Quantity": 0,
+        "RestrictionType": "none"
+      }
+    },
+    "Staging": false,
+    "ViewerCertificate": {
+      "ACMCertificateArn": "arn:aws:acm:us-east-1:600929977538:certificate/c2758183-3a3a-43b2-bdd6-f6c0848edfb6",
+      "Certificate": "arn:aws:acm:us-east-1:600929977538:certificate/c2758183-3a3a-43b2-bdd6-f6c0848edfb6",
+      "CertificateSource": "acm",
+      "CloudFrontDefaultCertificate": false,
+      "MinimumProtocolVersion": "TLSv1.2_2021",
+      "SSLSupportMethod": "sni-only"
+    },
+    "WebACLId": ""
+  }
+}

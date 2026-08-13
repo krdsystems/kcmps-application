@@ -1,0 +1,16 @@
+{
+  "Rules": [
+    {
+      "Filter": {},
+      "ID": "transition-to-ia-30d",
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"
+        }
+      ]
+    }
+  ],
+  "TransitionDefaultMinimumObjectSize": "all_storage_classes_128K"
+}

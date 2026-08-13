@@ -1,0 +1,52 @@
+{
+  "FunctionList": {
+    "Items": [
+      {
+        "FunctionConfig": {
+          "Runtime": "cloudfront-js-2.0"
+        },
+        "FunctionMetadata": {
+          "CreatedTime": "2026-07-30T09:30:30.592000+00:00",
+          "FunctionARN": "arn:aws:cloudfront::600929977538:function/kcmps-dev-basic-auth",
+          "Stage": "DEVELOPMENT"
+        },
+        "Name": "kcmps-dev-basic-auth"
+      },
+      {
+        "FunctionConfig": {
+          "Runtime": "cloudfront-js-2.0"
+        },
+        "FunctionMetadata": {
+          "CreatedTime": "2026-07-30T09:30:31.102000+00:00",
+          "FunctionARN": "arn:aws:cloudfront::600929977538:function/kcmps-dev-basic-auth",
+          "Stage": "LIVE"
+        },
+        "Name": "kcmps-dev-basic-auth"
+      },
+      {
+        "FunctionConfig": {
+          "Runtime": "cloudfront-js-2.0"
+        },
+        "FunctionMetadata": {
+          "CreatedTime": "2026-07-31T05:12:15.557000+00:00",
+          "FunctionARN": "arn:aws:cloudfront::600929977538:function/site-kcmps-redirect",
+          "Stage": "DEVELOPMENT"
+        },
+        "Name": "site-kcmps-redirect"
+      },
+      {
+        "FunctionConfig": {
+          "Runtime": "cloudfront-js-2.0"
+        },
+        "FunctionMetadata": {
+          "CreatedTime": "2026-07-31T05:18:29.544000+00:00",
+          "FunctionARN": "arn:aws:cloudfront::600929977538:function/site-kcmps-redirect",
+          "Stage": "LIVE"
+        },
+        "Name": "site-kcmps-redirect"
+      }
+    ],
+    "MaxItems": 100,
+    "Quantity": 4
+  }
+}

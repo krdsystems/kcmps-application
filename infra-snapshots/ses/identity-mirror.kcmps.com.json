@@ -1,0 +1,29 @@
+{
+  "DkimAttributes": {
+    "CurrentSigningKeyLength": "RSA_2048_BIT",
+    "LastKeyGenerationTimestamp": "2026-08-06T01:19:40.625000+08:00",
+    "NextSigningKeyLength": "RSA_2048_BIT",
+    "SigningAttributesOrigin": "AWS_SES",
+    "SigningEnabled": true,
+    "Status": "SUCCESS",
+    "Tokens": [
+      "rov2frygzswdjhdfcm5g23km3w44s6gc",
+      "eke5qzn27sd5t5ipb3tmefcenxy4zrgj",
+      "le4ojqtlmrv43fofrpqufzqdnwggzwnw"
+    ]
+  },
+  "FeedbackForwardingStatus": true,
+  "IdentityType": "DOMAIN",
+  "MailFromAttributes": {
+    "BehaviorOnMxFailure": "USE_DEFAULT_VALUE"
+  },
+  "Policies": {},
+  "Tags": [],
+  "VerificationInfo": {
+    "ErrorType": "HOST_NOT_FOUND",
+    "LastCheckedTimestamp": "2026-08-13T10:55:00.926000+08:00",
+    "LastSuccessTimestamp": "2026-08-13T10:55:01.485000+08:00"
+  },
+  "VerificationStatus": "SUCCESS",
+  "VerifiedForSendingStatus": true
+}

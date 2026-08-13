@@ -1,0 +1,35 @@
+{
+  "DedicatedIpAutoWarmupEnabled": true,
+  "Details": {
+    "ContactLanguage": "EN",
+    "MailType": "TRANSACTIONAL",
+    "ReviewDetails": {
+      "CaseId": "178548643300113",
+      "Status": "GRANTED"
+    },
+    "WebsiteURL": "https://kcmps.com"
+  },
+  "EnforcementStatus": "HEALTHY",
+  "ProductionAccessEnabled": true,
+  "SendQuota": {
+    "Max24HourSend": 50000.0,
+    "MaxSendRate": 14.0,
+    "SentLast24Hours": 0.0
+  },
+  "SendingEnabled": true,
+  "SuppressionAttributes": {
+    "SuppressedReasons": [
+      "BOUNCE",
+      "COMPLAINT"
+    ]
+  },
+  "VdmAttributes": {
+    "DashboardAttributes": {
+      "EngagementMetrics": "ENABLED"
+    },
+    "GuardianAttributes": {
+      "OptimizedSharedDelivery": "ENABLED"
+    },
+    "VdmEnabled": "ENABLED"
+  }
+}

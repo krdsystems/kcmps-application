@@ -1,0 +1,92 @@
+{
+  "Table": {
+    "AttributeDefinitions": [
+      {
+        "AttributeName": "GSI1PK",
+        "AttributeType": "S"
+      },
+      {
+        "AttributeName": "GSI1SK",
+        "AttributeType": "S"
+      },
+      {
+        "AttributeName": "PK",
+        "AttributeType": "S"
+      },
+      {
+        "AttributeName": "SK",
+        "AttributeType": "S"
+      }
+    ],
+    "BillingModeSummary": {
+      "BillingMode": "PAY_PER_REQUEST",
+      "LastUpdateToPayPerRequestDateTime": "2026-07-28T11:39:51.203000+08:00"
+    },
+    "CreationDateTime": "2026-07-28T11:39:51.203000+08:00",
+    "DeletionProtectionEnabled": true,
+    "GlobalSecondaryIndexes": [
+      {
+        "IndexArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps/index/GSI1",
+        "IndexName": "GSI1",
+        "IndexSizeBytes": 0,
+        "IndexStatus": "ACTIVE",
+        "ItemCount": 0,
+        "KeySchema": [
+          {
+            "AttributeName": "GSI1PK",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "GSI1SK",
+            "KeyType": "RANGE"
+          }
+        ],
+        "Projection": {
+          "ProjectionType": "ALL"
+        },
+        "ProvisionedThroughput": {
+          "NumberOfDecreasesToday": 0,
+          "ReadCapacityUnits": 0,
+          "WriteCapacityUnits": 0
+        },
+        "WarmThroughput": {
+          "ReadUnitsPerSecond": 12000,
+          "Status": "ACTIVE",
+          "WriteUnitsPerSecond": 4000
+        }
+      }
+    ],
+    "ItemCount": 144,
+    "KeySchema": [
+      {
+        "AttributeName": "PK",
+        "KeyType": "HASH"
+      },
+      {
+        "AttributeName": "SK",
+        "KeyType": "RANGE"
+      }
+    ],
+    "LatestStreamArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps/stream/2026-07-28T03:39:51.203",
+    "LatestStreamLabel": "2026-07-28T03:39:51.203",
+    "ProvisionedThroughput": {
+      "NumberOfDecreasesToday": 0,
+      "ReadCapacityUnits": 0,
+      "WriteCapacityUnits": 0
+    },
+    "StreamSpecification": {
+      "StreamEnabled": true,
+      "StreamViewType": "NEW_AND_OLD_IMAGES"
+    },
+    "TableArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps",
+    "TableId": "37b743a1-ec73-49b6-9859-b5ff51f0f68e",
+    "TableName": "kcmps",
+    "TableSizeBytes": 88208,
+    "TableStatus": "ACTIVE",
+    "WarmThroughput": {
+      "ReadUnitsPerSecond": 12000,
+      "Status": "ACTIVE",
+      "WriteUnitsPerSecond": 4000
+    }
+  }
+}

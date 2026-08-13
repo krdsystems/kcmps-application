@@ -1,0 +1,15 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": "s3:GetObject",
+        "Effect": "Allow",
+        "Resource": "arn:aws:s3:::kcmps-inbound-mail-est-2026/inbound/*",
+        "Sid": "ReadRawMimeOnly"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "mail-inbound-bucket-read",
+  "RoleName": "kcmps-staging-mail-lambda-role"
+}

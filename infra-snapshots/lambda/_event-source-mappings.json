@@ -1,0 +1,64 @@
+{
+  "EventSourceMappings": [
+    {
+      "BatchSize": 10,
+      "BisectBatchOnFunctionError": true,
+      "DestinationConfig": {
+        "OnFailure": {
+          "Destination": "arn:aws:sqs:ap-southeast-1:600929977538:kcmps-staging-lambda-dlq"
+        }
+      },
+      "EventSourceArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps-staging/stream/2026-08-05T08:58:42.425",
+      "EventSourceMappingArn": "arn:aws:lambda:ap-southeast-1:600929977538:event-source-mapping:87987bec-b944-4131-afca-2e391ec5c29f",
+      "FilterCriteria": {
+        "Filters": [
+          {
+            "Pattern": "{\"dynamodb\":{\"Keys\":{\"SK\":{\"S\":[{\"prefix\":\"LINEITEM#\"}]}}}}"
+          }
+        ]
+      },
+      "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-streams-handler",
+      "FunctionResponseTypes": [],
+      "LastProcessingResult": "OK",
+      "MaximumBatchingWindowInSeconds": 0,
+      "MaximumRecordAgeInSeconds": -1,
+      "MaximumRetryAttempts": 3,
+      "ParallelizationFactor": 1,
+      "StartingPosition": "LATEST",
+      "State": "Enabled",
+      "StateTransitionReason": "User action",
+      "TumblingWindowInSeconds": 0,
+      "UUID": "87987bec-b944-4131-afca-2e391ec5c29f"
+    },
+    {
+      "BatchSize": 10,
+      "BisectBatchOnFunctionError": true,
+      "DestinationConfig": {
+        "OnFailure": {
+          "Destination": "arn:aws:sqs:ap-southeast-1:600929977538:kcmps-lambda-dlq"
+        }
+      },
+      "EventSourceArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps/stream/2026-07-28T03:39:51.203",
+      "EventSourceMappingArn": "arn:aws:lambda:ap-southeast-1:600929977538:event-source-mapping:37b3956c-187a-4bd1-9a06-16cf30c5cf17",
+      "FilterCriteria": {
+        "Filters": [
+          {
+            "Pattern": "{\"dynamodb\":{\"Keys\":{\"SK\":{\"S\":[{\"prefix\":\"LINEITEM#\"}]}}}}"
+          }
+        ]
+      },
+      "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-streams-handler",
+      "FunctionResponseTypes": [],
+      "LastProcessingResult": "OK",
+      "MaximumBatchingWindowInSeconds": 0,
+      "MaximumRecordAgeInSeconds": -1,
+      "MaximumRetryAttempts": 3,
+      "ParallelizationFactor": 1,
+      "StartingPosition": "LATEST",
+      "State": "Enabled",
+      "StateTransitionReason": "User action",
+      "TumblingWindowInSeconds": 0,
+      "UUID": "37b3956c-187a-4bd1-9a06-16cf30c5cf17"
+    }
+  ]
+}

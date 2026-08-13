@@ -1,0 +1,26 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": "cognito-idp:AdminAddUserToGroup",
+        "Effect": "Allow",
+        "Resource": [
+          "arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_iDvAEumNp",
+          "arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_LHJsFdCgo"
+        ]
+      },
+      {
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:logs:ap-southeast-1:600929977538:log-group:/aws/lambda/kcmps-post-confirmation*"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "kcmps-post-confirmation-cognito-logs",
+  "RoleName": "kcmps-post-confirmation-lambda-role"
+}

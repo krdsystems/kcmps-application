@@ -1,0 +1,81 @@
+# =============================================================================
+# Snapshot heartbeat — detects a backup system that has silently stopped
+# =============================================================================
+# The failure mode this exists for: the nightly snapshot stops running and
+# NOBODY IS TOLD, because a job that does not run also does not fail, and
+# therefore sends no failure email. That is the worst possible state for a
+# backup — it looks healthy right up until the moment it is needed.
+#
+# Realistic causes, all of which have precedent:
+#   - GitHub disables scheduled workflows on repos with no push activity for
+#     60 days. Silent.
+#   - The OIDC role is deleted or its trust policy changes. Loud once, then
+#     ignored after the third identical email.
+#   - Someone edits the cron expression incorrectly.
+#
+# ── WHY THIS IS A SEPARATE WORKFLOW ──────────────────────────────────────────
+# A heartbeat job inside infra-snapshot.yml would be disabled by exactly the
+# same event that disables the snapshot. A watchdog sharing its subject's fate
+# is not a watchdog. Separate file, separate schedule.
+#
+# ── WHY IT CHECKS RUN HISTORY, NOT COMMITS ───────────────────────────────────
+# The obvious check — "is the newest infra-snapshots/ commit recent?" — is
+# WRONG, and worth spelling out because it is the intuitive thing to write.
+# The snapshot only commits when the infra actually CHANGED. A stable week
+# legitimately produces zero commits, so a commit-freshness check would cry
+# wolf every quiet week and be muted within a month. The question that actually
+# matters is "did the JOB run and succeed", which is run history.
+# =============================================================================
+
+name: infra-snapshot-heartbeat
+
+on:
+  schedule:
+    # 06:40 UTC = 14:40 Asia/Manila — mid-afternoon local, ~12h offset from the
+    # snapshot's 02:10, so a failure surfaces during the owner's working day
+    # rather than overnight.
+    - cron: "40 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert the nightly snapshot ran successfully within 48h
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          LAST_OK="$(gh run list \
+            --workflow infra-snapshot.yml \
+            --status success \
+            --limit 1 \
+            --json updatedAt \
+            --jq '.[0].updatedAt // empty')"
+
+          if [ -z "$LAST_OK" ]; then
+            echo "::error::No successful infra-snapshot run found at all. The backup system is not working."
+            exit 1
+          fi
+
+          LAST_TS=$(date -u -d "$LAST_OK" +%s)
+          AGE_HOURS=$(( ($(date -u +%s) - LAST_TS) / 3600 ))
+          echo "Last successful snapshot: $LAST_OK (${AGE_HOURS}h ago)"
+
+          # 48h, not 24h: one missed night is tolerable (GitHub's scheduler is
+          # best-effort and can skip a run under load — this is documented
+          # behaviour, not a fault). Two consecutive misses is a real signal.
+          if [ "$AGE_HOURS" -gt 48 ]; then
+            echo "::error::Last successful infra snapshot was ${AGE_HOURS}h ago (threshold 48h)."
+            echo "::error::The backup system has stopped. Check the infra-snapshot workflow and the OIDC roles."
+            exit 1
+          fi
+
+          echo "Heartbeat OK."

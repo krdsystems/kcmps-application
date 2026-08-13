@@ -1,0 +1,3 @@
+{
+  "Policy": "{\"Version\":\"2008-10-17\",\"Id\":\"PolicyForCloudFrontPrivateContent\",\"Statement\":[{\"Sid\":\"AllowCloudFrontServicePrincipalProd\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"cloudfront.amazonaws.com\"},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::kcmps-online-bucket-est-2026/*\",\"Condition\":{\"StringEquals\":{\"AWS:SourceArn\":\"arn:aws:cloudfront::600929977538:distribution/EY6Q5RSWLDCEF\"}}},{\"Sid\":\"AllowCloudFrontServicePrincipalDev\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"cloudfront.amazonaws.com\"},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::kcmps-online-bucket-est-2026/*\",\"Condition\":{\"StringEquals\":{\"AWS:SourceArn\":\"arn:aws:cloudfront::600929977538:distribution/E7PDB5JQRZX0E\"}}}]}"
+}

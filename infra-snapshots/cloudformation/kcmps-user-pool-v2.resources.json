@@ -1,0 +1,114 @@
+{
+  "StackResourceSummaries": [
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:28.293000+00:00",
+      "LogicalResourceId": "AdminGroup",
+      "PhysicalResourceId": "Admin",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:16:11.945000+00:00",
+      "LogicalResourceId": "Branding",
+      "PhysicalResourceId": "ap-southeast-1_LHJsFdCgo|e34b7b65-6a43-4617-bf28-07ec5d72ebb1",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::ManagedLoginBranding"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:24.993000+00:00",
+      "LogicalResourceId": "CustomerGroup",
+      "PhysicalResourceId": "Customer",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:06.171000+00:00",
+      "LogicalResourceId": "Domain",
+      "PhysicalResourceId": "kcmps-auth",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolDomain"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:24.989000+00:00",
+      "LogicalResourceId": "FinanceGroup",
+      "PhysicalResourceId": "Finance",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T08:35:27.720000+00:00",
+      "LogicalResourceId": "GoogleIdp",
+      "PhysicalResourceId": "Google",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolIdentityProvider"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:25.082000+00:00",
+      "LogicalResourceId": "ProductionGroup",
+      "PhysicalResourceId": "Production",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:25.033000+00:00",
+      "LogicalResourceId": "SalesGroup",
+      "PhysicalResourceId": "Sales",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:25.029000+00:00",
+      "LogicalResourceId": "StaffGroup",
+      "PhysicalResourceId": "Staff",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T07:08:01.977000+00:00",
+      "LogicalResourceId": "UserPool",
+      "PhysicalResourceId": "ap-southeast-1_LHJsFdCgo",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPool"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-05T08:35:29.903000+00:00",
+      "LogicalResourceId": "WebClient",
+      "PhysicalResourceId": "2rsbhkjooja4h5e0ijpl4siuug",
+      "ResourceStatus": "UPDATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolClient"
+    }
+  ]
+}

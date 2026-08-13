@@ -1,0 +1,32 @@
+{
+  "Role": {
+    "Arn": "arn:aws:iam::600929977538:role/KCMPSSnapshotReader",
+    "AssumeRolePolicyDocument": {
+      "Statement": [
+        {
+          "Action": "sts:AssumeRoleWithWebIdentity",
+          "Condition": {
+            "StringEquals": {
+              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+            },
+            "StringLike": {
+              "token.actions.githubusercontent.com:sub": "repo:krdsystems/kcmps-application:*"
+            }
+          },
+          "Effect": "Allow",
+          "Principal": {
+            "Federated": "arn:aws:iam::600929977538:oidc-provider/token.actions.githubusercontent.com"
+          }
+        }
+      ],
+      "Version": "2012-10-17"
+    },
+    "CreateDate": "2026-08-13T07:11:10+00:00",
+    "Description": "Read-only, GitHub OIDC. Nightly infra snapshot. No write permissions - do not add any.",
+    "MaxSessionDuration": 3600,
+    "Path": "/",
+    "RoleId": "AROAYX2RXYTBCQO4BGYZ3",
+    "RoleLastUsed": {},
+    "RoleName": "KCMPSSnapshotReader"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps-staging"
+      },
+      {
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:logs:ap-southeast-1:600929977538:*"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "mail-table",
+  "RoleName": "kcmps-staging-mail-lambda-role"
+}

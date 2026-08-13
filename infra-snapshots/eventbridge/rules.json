@@ -1,0 +1,113 @@
+{
+  "Rules": [
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-32cfe94851fa076",
+      "Description": "This rule is used to route S3 put object and s3 bucket level event notifications to GuardDuty's S3 Malware Protection Service",
+      "EventBusName": "default",
+      "EventPattern": "{ \"$or\":[ {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"Object Created\"],  \"detail\": {\n       \"bucket\": { \n           \"name\": [\"kcmps-design-originals-staging\"]           }   }}, {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"AWS API Call via CloudTrail\"],  \"detail\": {\n       \"eventSource\": [\"s3.amazonaws.com\"],       \"eventName\": [\"PutBucketNotification\", \"DeleteBucket\"]   }} ] }",
+      "ManagedBy": "malware-protection-plan.guardduty.amazonaws.com",
+      "Name": "DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-32cfe94851fa076",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-72cfed5b64b78fa",
+      "Description": "This rule is used to route S3 put object and s3 bucket level event notifications to GuardDuty's S3 Malware Protection Service",
+      "EventBusName": "default",
+      "EventPattern": "{ \"$or\":[ {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"Object Created\"],  \"detail\": {\n       \"bucket\": { \n           \"name\": [\"kcmps-design-originals-est-2026\"]           }   }}, {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"AWS API Call via CloudTrail\"],  \"detail\": {\n       \"eventSource\": [\"s3.amazonaws.com\"],       \"eventName\": [\"PutBucketNotification\", \"DeleteBucket\"]   }} ] }",
+      "ManagedBy": "malware-protection-plan.guardduty.amazonaws.com",
+      "Name": "DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-72cfed5b64b78fa",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-7acfe6ba55d9edc",
+      "Description": "This rule is used to route S3 put object and s3 bucket level event notifications to GuardDuty's S3 Malware Protection Service",
+      "EventBusName": "default",
+      "EventPattern": "{ \"$or\":[ {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"Object Created\"],  \"detail\": {\n       \"bucket\": { \n           \"name\": [\"kcmps-payment-uploads-est-2026\"]           }   }}, {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"AWS API Call via CloudTrail\"],  \"detail\": {\n       \"eventSource\": [\"s3.amazonaws.com\"],       \"eventName\": [\"PutBucketNotification\", \"DeleteBucket\"]   }} ] }",
+      "ManagedBy": "malware-protection-plan.guardduty.amazonaws.com",
+      "Name": "DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-7acfe6ba55d9edc",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-b2cfe8b34e713ce",
+      "Description": "This rule is used to route S3 put object and s3 bucket level event notifications to GuardDuty's S3 Malware Protection Service",
+      "EventBusName": "default",
+      "EventPattern": "{ \"$or\":[ {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"Object Created\"],  \"detail\": {\n       \"bucket\": { \n           \"name\": [\"kcmps-payment-uploads-staging\"]           }   }}, {  \"source\": [\"aws.s3\"],  \"detail-type\": [\"AWS API Call via CloudTrail\"],  \"detail\": {\n       \"eventSource\": [\"s3.amazonaws.com\"],       \"eventName\": [\"PutBucketNotification\", \"DeleteBucket\"]   }} ] }",
+      "ManagedBy": "malware-protection-plan.guardduty.amazonaws.com",
+      "Name": "DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3-b2cfe8b34e713ce",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-expire-pending-orders-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-expire-pending-orders-schedule",
+      "ScheduleExpression": "rate(15 minutes)",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-guardduty-design-originals-scan-result",
+      "Description": "Filtered to production DesignOriginalsBucket by detail.s3ObjectDetails.bucketName \u2014 one EventBridge bus for the whole account; an unfiltered rule would also match scan events from every other protected bucket.",
+      "EventBusName": "default",
+      "EventPattern": "{\"detail-type\":[\"GuardDuty Malware Protection Object Scan Result\"],\"source\":[\"aws.guardduty\"],\"detail\":{\"s3ObjectDetails\":{\"bucketName\":[\"kcmps-design-originals-est-2026\"]}}}",
+      "Name": "kcmps-guardduty-design-originals-scan-result",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-guardduty-scan-result",
+      "EventBusName": "default",
+      "EventPattern": "{\n  \"source\": [\"aws.guardduty\"],\n  \"detail-type\": [\"GuardDuty Malware Protection Object Scan Result\"],\n  \"detail\": {\"s3ObjectDetails\": {\"bucketName\": [\"kcmps-payment-uploads-est-2026\"]}}\n}\n",
+      "Name": "kcmps-guardduty-scan-result",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-notify-unread-messages-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-notify-unread-messages-schedule",
+      "ScheduleExpression": "rate(30 minutes)",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-purge-archived-designs-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-purge-archived-designs-schedule",
+      "ScheduleExpression": "rate(15 minutes)",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-staging-expire-pending-orders-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-staging-expire-pending-orders-schedule",
+      "ScheduleExpression": "rate(15 minutes)",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-staging-guardduty-design-originals-scan-result",
+      "Description": "Filtered to DesignOriginalsBucket by detail.s3ObjectDetails.bucketName \u2014 same reasoning as GuardDutyScanResultRule (this account has one EventBridge bus; an unfiltered rule would also match scan events from UploadsBucket and production's buckets).\n",
+      "EventBusName": "default",
+      "EventPattern": "{\"detail-type\":[\"GuardDuty Malware Protection Object Scan Result\"],\"source\":[\"aws.guardduty\"],\"detail\":{\"s3ObjectDetails\":{\"bucketName\":[\"kcmps-design-originals-staging\"]}}}",
+      "Name": "kcmps-staging-guardduty-design-originals-scan-result",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-staging-guardduty-scan-result",
+      "Description": "Filtered to UploadsBucket by detail.s3ObjectDetails.bucketName \u2014 without this, this rule (and production's identically-shaped one) both match EVERY GuardDuty malware-scan event account-wide regardless of which bucket/environment it came from, since the account only has one EventBridge bus. Found live 2026-08-05: a production upload's scan event was ALSO processed by this rule before the filter was added, writing a duplicate SCAN# record into this environment's table.\n",
+      "EventBusName": "default",
+      "EventPattern": "{\"detail-type\":[\"GuardDuty Malware Protection Object Scan Result\"],\"source\":[\"aws.guardduty\"],\"detail\":{\"s3ObjectDetails\":{\"bucketName\":[\"kcmps-payment-uploads-staging\"]}}}",
+      "Name": "kcmps-staging-guardduty-scan-result",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-staging-notify-unread-messages-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-staging-notify-unread-messages-schedule",
+      "ScheduleExpression": "rate(30 minutes)",
+      "State": "ENABLED"
+    },
+    {
+      "Arn": "arn:aws:events:ap-southeast-1:600929977538:rule/kcmps-staging-purge-archived-designs-schedule",
+      "EventBusName": "default",
+      "Name": "kcmps-staging-purge-archived-designs-schedule",
+      "ScheduleExpression": "rate(15 minutes)",
+      "State": "ENABLED"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+# =============================================================================
+# Nightly infra snapshot — the KCMPS backup system
+# =============================================================================
+# Runs infra-snapshots/infra-snapshot.sh against both AWS accounts and commits
+# the result. See docs/disaster-recovery-and-cicd-plan.md for the full design.
+#
+# WHY GITHUB ACTIONS AND NOT A LAMBDA:
+#   A backup that lives inside account 600929977538 cannot back up the loss of
+#   account 600929977538. GitHub is outside the blast radius. It is also free
+#   at this volume (~40s/night against a 2,000 min/mo private-repo allowance)
+#   and needs no long-lived AWS credentials — see the OIDC note below.
+#
+# WHY NOT A CRON ON THE OWNER'S LAPTOP:
+#   A backup that only runs when one particular machine is awake is not a
+#   backup.
+#
+# ── CREDENTIALS: OIDC ONLY, READ-ONLY ROLES ──────────────────────────────────
+# No AWS access keys are stored in this repo or in GitHub secrets. Each job
+# assumes a role via GitHub's OIDC provider, scoped to THIS repository. Both
+# roles must be read-only (deny-by-default, get-*/list-*/describe-* only). A
+# backup system holding write credentials to production is a new attack surface
+# pointed directly at the thing it is meant to protect.
+#
+# SETUP REQUIRED BEFORE THIS WORKFLOW CAN RUN — see the plan doc's owner-action
+# list. Two IAM roles must exist, one per account:
+#   600929977538 : KCMPSSnapshotReader     (infra)
+#   260866268499 : KCMPSSnapshotReaderDNS  (route53 read only)
+# Both with a trust policy on token.actions.githubusercontent.com restricted to
+# repo:krdsystems/kcmps-application. Until they exist this workflow will fail
+# at the configure-credentials step — which is the correct, loud failure.
+# =============================================================================
+
+name: infra-snapshot
+
+on:
+  schedule:
+    # 18:10 UTC = 02:10 Asia/Manila. Deliberately off the hour: scheduled
+    # workflows on the hour sit in the longest GitHub queue and can be delayed
+    # or dropped entirely under load.
+    - cron: "10 18 * * *"
+  workflow_dispatch:        # manual run, for rehearsals and after infra changes
+
+permissions:
+  id-token: write           # required for OIDC; grants no AWS access by itself
+  contents: write           # to commit the snapshot back
+
+concurrency:
+  group: infra-snapshot
+  cancel-in-progress: false # never cancel a half-written snapshot
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assume infra reader role (600929977538)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::600929977538:role/KCMPSSnapshotReader
+          aws-region: ap-southeast-1
+          role-session-name: infra-snapshot
+
+      # The DNS zone lives in a DIFFERENT account (260866268499) — the domain's
+      # Route 53 registration was never moved into the infra account. The
+      # snapshot script reads it via a separate profile, so the workflow writes
+      # a profile entry pointing at the second role and lets the CLI chain it
+      # from the ambient OIDC credentials.
+      - name: Configure DNS-account profile
+        run: |
+          mkdir -p ~/.aws
+          cat >> ~/.aws/config <<'EOF'
+          [profile kcmps-dns]
+          role_arn = arn:aws:iam::260866268499:role/KCMPSSnapshotReaderDNS
+          credential_source = Environment
+          region = us-east-1
+          EOF
+
+      - name: Run snapshot
+        env:
+          KCMPS_PROFILE_MAIN: ""          # ambient OIDC creds
+          KCMPS_PROFILE_DNS: kcmps-dns
+          AWS_REGION: ap-southeast-1
+        run: ./infra-snapshots/infra-snapshot.sh
+
+      # The script already self-verifies, but run it again standalone so a
+      # verification failure is a distinct, obvious step in the run log rather
+      # than buried in the snapshot output.
+      - name: Verify snapshot integrity
+        run: ./infra-snapshots/infra-snapshot.sh --verify
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "kcmps-infra-snapshot[bot]"
+          git config user.email "noreply@kcmps.com"
+          git add infra-snapshots/
+          if git diff --cached --quiet; then
+            echo "No infra changes since last snapshot."
+            exit 0
+          fi
+          # The diff summary goes in the commit body so the notification email
+          # alone tells you WHAT changed — the drift-detection half of this
+          # system's value, without opening anything.
+          SUMMARY="$(git diff --cached --stat | tail -40)"
+          git commit -m "infra-snapshot: $(date -u +%Y-%m-%d)" -m "$SUMMARY"
+          git push
+
+# The freshness check deliberately does NOT live here — see
+# .github/workflows/infra-snapshot-heartbeat.yml for why a heartbeat inside the
+# workflow it is monitoring cannot do its job.

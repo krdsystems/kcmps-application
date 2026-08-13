@@ -249,15 +249,60 @@ Record each rehearsal here. An untested procedure in this file is a claim, not a
 |---|---|---|---|---|
 | 2026-08-13 | §4 — decrypt the Layer B dump with the private key | production snapshot | **PASS** — `{"Count": 144, …}` recovered from ciphertext | owner |
 | 2026-08-13 | Full snapshot via CI (OIDC both accounts, encrypt, auto-commit) | live infra | **PASS** — run `31679938179` green after 2 IAM fixes | owner + Claude |
+| 2026-08-13 | §4 — **PITR restore-to-point-in-time**, damage-and-recover | `kcmps-staging` | **PASS**, 4/4 checks — see below | owner + Claude |
 
 The decrypt rehearsal matters more than it looks: until it was done, the encryption path had
 only ever been exercised in the **write** direction. A backup that encrypts correctly but
 cannot be decrypted looks identical to a working one from the outside, and the difference
 only surfaces on the day it is needed.
 
-**Next rehearsal: #4's PITR half (restore-to-timestamp) against `kcmps-staging`** — still
-unproven. Entirely reversible, touches no production resource. Delete the restored table
-afterwards so it does not accrue cost.
+### The 2026-08-13 PITR rehearsal — what it proved, and what it exposed
 
-Also still unproven, in rough priority order: #2 (Lambda config restore from a snapshot env
-map), #5 (rebuilding an API route from JSON), #6 (SES receipt-rule rebuild).
+Deliberately **not** a smoke test. "The restore command succeeded" proves almost nothing;
+the question worth answering is *"can I undo a specific bad thing?"* So staging was damaged
+on purpose and the restore had to reverse it:
+
+1. Enabled PITR on `kcmps-staging` (it was **off** — found at rehearsal time; ~₱0.002/mo at
+   130 KB, now left on permanently so staging resembles production)
+2. Recorded `T0` from `LatestRestorableDateTime` while the table was known intact
+3. **Damaged it**: wrote a `REHEARSAL#…/MARKER` item, deleted 3 real `SCAN#` items
+   (259 → 257)
+4. Waited for `LatestRestorableDateTime` to advance past the damage
+5. Restored to `T0` into `kcmps-staging-restored-20260813`
+
+| Check | Result |
+|---|---|
+| Marker item **absent** from restored table | PASS |
+| 3 deleted items **present** again | PASS |
+| Item count matches pre-damage (259) | PASS |
+| **Exact set equality** — 0 missing, 0 extra | PASS |
+
+Staging was then returned to a byte-identical baseline (verified by full-scan diff: 0
+missing, 0 extra, 0 differing) and the restored table deleted.
+
+### ⚠️ What a restored table does NOT inherit
+
+The real value of the rehearsal. A restored table is **not** a drop-in replacement, and
+these gaps are silent — the data looks perfect while the plumbing around it is missing:
+
+| Setting | Source | Restored | Consequence if unnoticed |
+|---|---|---|---|
+| **DynamoDB Streams** | Enabled | **OFF** | **The most dangerous one.** `streams-handler` is driven by the stream. Repoint the app at a restored table and event processing silently stops — no error, no alarm, just nothing happening. The event source mapping must be recreated and re-pointed. |
+| **PITR** | Enabled | **OFF** | Your restored table has no backup. Re-enable immediately or a second incident has no recovery. |
+| **Deletion protection** | On | **OFF** | Convenient for cleanup, dangerous if the restored table becomes the live one. |
+| GSI1 | Present | **Present, ACTIVE** | Carries over correctly — verified, since several read paths depend on it. |
+| Tags | none | none | n/a here |
+
+**So a real production recovery is not "restore and repoint".** It is: restore → re-enable
+PITR → recreate the stream + event source mapping → re-enable deletion protection → *then*
+repoint. Anything less leaves a table that passes an item count and fails in production.
+
+Also worth knowing: a freshly restored table reports `ItemCount: 0` and `TableSizeBytes: 0`.
+That metadata only refreshes about every 6 hours — **it is not evidence the restore failed.**
+Always verify with an actual `scan`, as above.
+
+### Still unproven
+
+In rough priority order: #2 (Lambda config restore from a snapshot env map), #5 (rebuilding
+an API route from JSON), #6 (SES receipt-rule rebuild), #1 (DNS record restore — owner-only,
+and the highest-stakes of the four).

@@ -22,8 +22,8 @@
   "Tags": [],
   "VerificationInfo": {
     "ErrorType": "HOST_NOT_FOUND",
-    "LastCheckedTimestamp": "2026-08-13T02:55:00.926000+00:00",
-    "LastSuccessTimestamp": "2026-08-13T02:55:01.485000+00:00"
+    "LastCheckedTimestamp": "2026-08-13T14:55:50.272000+00:00",
+    "LastSuccessTimestamp": "2026-08-13T14:55:50.591000+00:00"
   },
   "VerificationStatus": "SUCCESS",
   "VerifiedForSendingStatus": true

@@ -19,7 +19,7 @@
     "Path": "/",
     "RoleId": "AROAYX2RXYTBA2TEA5H5B",
     "RoleLastUsed": {
-      "LastUsedDate": "2026-08-08T06:15:52+00:00",
+      "LastUsedDate": "2026-08-13T09:12:22+00:00",
       "Region": "ap-southeast-1"
     },
     "RoleName": "kcmps-staging-mail-lambda-role"

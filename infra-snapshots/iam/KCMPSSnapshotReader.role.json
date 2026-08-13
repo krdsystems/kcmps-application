@@ -27,7 +27,10 @@
     "MaxSessionDuration": 3600,
     "Path": "/",
     "RoleId": "AROAYX2RXYTBCQO4BGYZ3",
-    "RoleLastUsed": {},
+    "RoleLastUsed": {
+      "LastUsedDate": "2026-08-13T08:01:49+00:00",
+      "Region": "ap-southeast-1"
+    },
     "RoleName": "KCMPSSnapshotReader"
   }
 }

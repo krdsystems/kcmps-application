@@ -1,0 +1,87 @@
+<svg viewBox="0 0 800 690" width="1600" height="1380" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<rect x="0" y="0" width="800" height="690" fill="#FFFFFF"/>
+<text x="24" y="28" font-size="13" font-weight="500" fill="#5F5E5A">Your live system — the thing being protected</text>
+
+<rect x="24" y="42" width="360" height="84" rx="10" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="44" y="70" font-size="14" font-weight="500" fill="#2C2C2A">Infra account · 600929977538</text>
+<text x="44" y="92" font-size="12" fill="#444441">32 Lambdas, API, CloudFront, SES, S3</text>
+<text x="44" y="112" font-size="12" fill="#444441">DynamoDB table (orders + mail)</text>
+
+<rect x="404" y="42" width="372" height="84" rx="10" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="424" y="70" font-size="14" font-weight="500" fill="#2C2C2A">DNS account · 260866268499</text>
+<text x="424" y="92" font-size="12" fill="#444441">Route 53 zone — 21 records</text>
+<text x="424" y="112" font-size="12" fill="#444441">MX, DKIM, SPF, TLS renewal</text>
+
+<path d="M204 126 L204 168" stroke="#0F6E56" stroke-width="1.5"/>
+<path d="M590 126 L590 168" stroke="#0F6E56" stroke-width="1.5"/>
+<text x="216" y="152" font-size="11" fill="#0F6E56">reads only — never writes</text>
+
+
+<rect x="24" y="172" width="586" height="76" rx="10" fill="#E1F5EE" stroke="#1D9E75"/>
+<text x="44" y="200" font-size="14" font-weight="500" fill="#04342C">Nightly snapshot job — GitHub Actions, 02:10 Manila</text>
+<text x="44" y="222" font-size="12" fill="#0F6E56">Runs on GitHub's machines, not your laptop</text>
+<text x="44" y="240" font-size="12" fill="#0F6E56">Signs in with temporary read-only keys (OIDC) — no stored passwords</text>
+
+<rect x="630" y="172" width="146" height="76" rx="10" fill="#FAECE7" stroke="#D85A30"/>
+<text x="650" y="200" font-size="13" font-weight="500" fill="#4A1B0C">Heartbeat</text>
+<text x="650" y="220" font-size="11" fill="#993C1D">Separate job, daily</text>
+<text x="650" y="237" font-size="11" fill="#993C1D">"did it run?"</text>
+<path d="M628 210 L616 210" stroke="#993C1D" stroke-width="1.5"/>
+<polygon points="620,204 620,216 609,210" fill="#993C1D"/>
+
+<path d="M180 248 L180 288" stroke="#0F6E56" stroke-width="1.5"/>
+<path d="M470 248 L470 288" stroke="#0F6E56" stroke-width="1.5"/>
+
+<rect x="24" y="292" width="312" height="88" rx="10" fill="#E1F5EE" stroke="#1D9E75"/>
+<text x="44" y="320" font-size="14" font-weight="500" fill="#04342C">Layer A — configuration</text>
+<text x="44" y="342" font-size="12" fill="#0F6E56">Plain JSON, readable, diffable</text>
+<text x="44" y="360" font-size="12" fill="#0F6E56">No secrets — credentials masked</text>
+
+<rect x="356" y="292" width="312" height="88" rx="10" fill="#E1F5EE" stroke="#1D9E75"/>
+<text x="376" y="320" font-size="14" font-weight="500" fill="#04342C">Layer B — customer data</text>
+<text x="376" y="342" font-size="12" fill="#0F6E56">Encrypted before it leaves the job</text>
+<text x="376" y="360" font-size="12" fill="#0F6E56">Job can write it, cannot read it</text>
+
+<path d="M346 380 L346 418" stroke="#0F6E56" stroke-width="1.5"/>
+
+<rect x="24" y="422" width="752" height="80" rx="10" fill="#EEEDFE" stroke="#7F77DD"/>
+<text x="44" y="450" font-size="14" font-weight="500" fill="#26215C">GitHub repository — the backup itself</text>
+<text x="44" y="472" font-size="12" fill="#534AB7">Off-site: survives losing the AWS account entirely</text>
+<text x="44" y="490" font-size="12" fill="#534AB7">Only commits when something changed — so a new commit means infra drifted</text>
+
+<text x="24" y="546" font-size="13" font-weight="500" fill="#5F5E5A">Defences inside AWS — the fast path, for everyday mistakes</text>
+
+<rect x="24" y="560" width="176" height="86" rx="10" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="42" y="586" font-size="13" font-weight="500" fill="#2C2C2A">PITR</text>
+<text x="42" y="606" font-size="11" fill="#444441">Rewind database to</text>
+<text x="42" y="623" font-size="11" fill="#444441">any second, 35 days</text>
+
+<rect x="216" y="560" width="176" height="86" rx="10" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="234" y="586" font-size="13" font-weight="500" fill="#2C2C2A">S3 versioning</text>
+<text x="234" y="606" font-size="11" fill="#444441">Every past version of</text>
+<text x="234" y="623" font-size="11" fill="#444441">every file, 90 days</text>
+
+<rect x="408" y="560" width="176" height="86" rx="10" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="426" y="586" font-size="13" font-weight="500" fill="#2C2C2A">Delete protection</text>
+<text x="426" y="606" font-size="11" fill="#444441">Table, user pool and</text>
+<text x="426" y="623" font-size="11" fill="#444441">stacks refuse deletion</text>
+
+<rect x="600" y="560" width="176" height="86" rx="10" fill="#FAECE7" stroke="#D85A30"/>
+<text x="618" y="586" font-size="13" font-weight="500" fill="#4A1B0C">Alarms + dashboard</text>
+<text x="618" y="606" font-size="11" fill="#993C1D">49 alarms, all 32</text>
+<text x="618" y="623" font-size="11" fill="#993C1D">Lambdas covered</text>
+
+<circle cx="32" cy="676" r="5" fill="#E1F5EE" stroke="#1D9E75"/>
+<text x="44" y="680" font-size="11" fill="#5F5E5A">backup system</text>
+<circle cx="160" cy="676" r="5" fill="#FAECE7" stroke="#D85A30"/>
+<text x="172" y="680" font-size="11" fill="#5F5E5A">watching / alerting</text>
+<circle cx="300" cy="676" r="5" fill="#F1EFE8" stroke="#B4B2A9"/>
+<text x="312" y="680" font-size="11" fill="#5F5E5A">your infrastructure</text>
+<circle cx="440" cy="676" r="5" fill="#EEEDFE" stroke="#7F77DD"/>
+<text x="452" y="680" font-size="11" fill="#5F5E5A">where backups land</text>
+<polygon points="199,159 209,159 204,168" fill="#0F6E56"/>
+<polygon points="585,159 595,159 590,168" fill="#0F6E56"/>
+<polygon points="175,279 185,279 180,288" fill="#0F6E56"/>
+<polygon points="465,279 475,279 470,288" fill="#0F6E56"/>
+<polygon points="341,409 351,409 346,418" fill="#0F6E56"/>
+</svg>

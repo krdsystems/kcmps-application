@@ -7,7 +7,10 @@ A nightly read-only dump of every piece of KCMPS production configuration that e
 
 - **What breaks without it** → [`RESTORE.md`](RESTORE.md)
 - **Why it is built this way** → [`../docs/disaster-recovery-and-cicd-plan.md`](../docs/disaster-recovery-and-cicd-plan.md)
+  (§0 has the architecture diagram — start there)
 - **What the owner still has to set up** → [`../docs/dr-owner-actions.md`](../docs/dr-owner-actions.md)
+
+![Architecture](../docs/assets/kcmps-backup-architecture.png)
 
 ## Why git and not an AWS backup service
 

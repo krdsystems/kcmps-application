@@ -92,6 +92,7 @@ formula, current spend baseline, and a decision log of past cost calls →
 | ERP architecture (north star) | `project_knowledge/ERP_System_Project_Knowledge.md` — 9-module map, 3-stage scale path, build-vs-integrate (Finance), launch-blocking data conventions |
 | Roadmap / next goals          | `docs/roadmap.md` — current-state → prioritized milestones; current focus is Milestone 1, the simple payment backend |
 | Cost budget / spend history    | `docs/cost-governance.md` |
+| Backup / disaster recovery / CI-CD plan | `docs/disaster-recovery-and-cicd-plan.md` (architecture diagram + the gap analysis + the CI/CD phases) and `docs/dr-owner-actions.md` (the AWS/GitHub setup steps, most already executed). **The backup itself is `infra-snapshots/`** — a nightly read-only dump of everything that exists *only* inside AWS (Route 53, all 64 Lambda env maps, API/CloudFront/SES/IAM), written by `infra-snapshots/infra-snapshot.sh` via `.github/workflows/infra-snapshot.yml` and committed to git. Customer data is encrypted against `infra-snapshots/backup-key.pub.pem` (private key is owner-held, never in this repo). **When a snapshot diff shows a resource added or removed, update the matching row in this table in the same commit** — that habit is what keeps this file from drifting from reality again. Restore procedures + rehearsal log → `infra-snapshots/RESTORE.md` |
 | Design system full reference  | `design-system/KCMPS Redesign/readme.md` (see also its own `CLAUDE.md`) |
 
 Prefer this table + `Grep`/`Glob` over reading whole files or the README for orientation.

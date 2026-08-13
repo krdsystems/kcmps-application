@@ -20,6 +20,76 @@ and anything with a per-resource monthly charge.
 
 ---
 
+## 0. Architecture at a glance
+
+![KCMPS backup and recovery architecture](assets/kcmps-backup-architecture.png)
+
+*(Source: [`assets/kcmps-backup-architecture.svg`](assets/kcmps-backup-architecture.svg) —
+edit the SVG, then re-render with
+`convert -density 200 -background white kcmps-backup-architecture.svg kcmps-backup-architecture.png`.
+Note ImageMagick silently drops SVG `<marker>` arrowheads, which is why the arrows in the
+source are literal `<polygon>` triangles rather than markers.)*
+
+**Two layers, protecting against two different kinds of bad day.** They are not redundant
+with each other — each covers a failure the other cannot.
+
+### The fast path — defences inside AWS
+
+For everyday mistakes: something broke an hour ago and you need it back now.
+
+| | Purpose | Why it exists |
+|---|---|---|
+| **DynamoDB PITR** | Restore the table to any second in the last 35 days | Already on. Covers the common case — a bad bulk write, a script that touched the wrong rows |
+| **S3 versioning** | Every prior version of every object | The site bucket had it; **the raw-mail bucket did not**, so a delete there was permanent — and that bucket is the immutable source every mail feature derives from |
+| **Deletion / termination protection** | Table, user pool and stacks refuse to be destroyed | Cheap insurance against a mistyped command or an over-eager cleanup |
+| **Lifecycle rules** | Expire noncurrent versions at 90 days | Versions were unbounded on the site bucket. Also makes the rollback window explicit rather than accidental |
+
+Fast, but they **live in the same account as the thing they protect**. Lose the account and
+they go with it. That is the gap the second layer exists to fill.
+
+### The slow path — the off-site backup
+
+For the bad day AWS cannot help with: account compromised, closed, or a mistake that
+propagates faster than anyone notices.
+
+- **Layer A — configuration.** Plain, readable, diffable JSON of everything that existed
+  *only* inside AWS. Deployed because none of it was written down anywhere: the Route 53
+  zone (MX, DKIM, and the CNAME that silently renews TLS) had **zero backup of any kind**,
+  and 64 Lambda environment maps existed nowhere but in AWS itself.
+- **Layer B — customer data.** Encrypted before it leaves the runner. Deployed because PITR
+  stops at 35 days and dies with the account. Encryption is asymmetric, so **the job can
+  write a backup it cannot read** — a compromised runner or leaked token yields nothing.
+
+### Why GitHub Actions, and not AWS
+
+The pivotal choice. Three candidates, two disqualified on a single property each:
+
+- **A Lambda inside AWS** — cannot back up the loss of the account it lives in.
+- **Cron on the owner's laptop** — only runs when that laptop is awake. Not a backup.
+- **GitHub Actions** — outside the blast radius, free at this volume, needs no stored AWS
+  credential (OIDC), and lands the result somewhere already versioned.
+
+The side effect turned out to matter as much as the intent: because the job commits **only
+when something changed**, the backup history doubles as an infrastructure change log. Its
+first real run caught an IAM policy created twenty minutes earlier.
+
+### Why a separate heartbeat workflow
+
+The failure that kills backup systems is not breaking loudly — it is **stopping quietly**.
+No run, no error, no email, discovered months later. GitHub disables scheduled workflows in
+repos idle for 60 days, which alone would have silently ended this.
+
+It is a separate file on a separate schedule **on purpose**: a watchdog living inside the
+workflow it watches gets disabled by the same event it exists to catch.
+
+### Why the alarms and dashboard belong in this document
+
+Same principle, different subject. DR is about surviving bad days, and an outage nobody is
+told about is the worst version of one — see G11 below, where the entire mail pipeline was
+unmonitored and its failure mode was silence.
+
+---
+
 ## 1. Current state — what is and isn't protected
 
 ### Protected already (verified 2026-08-13)

@@ -17,6 +17,15 @@ listed under [Deliberately deferred](#deliberately-deferred) below so nobody "ge
 > **[Updated 2026-08-05] Status in this section is stale.** Milestones 1.0–1.5 have shipped —
 > a full payment backend (32 Lambdas, DynamoDB table, observability stack) is deployed and live.
 > Sections below are preserved for historical context; current project state → top of this file.
+>
+> **[Updated 2026-08-13] Backup / DR shipped.** `kcmps.com` going live made "what happens when
+> this breaks" a real question. A nightly off-site backup of everything that existed *only*
+> inside AWS now runs and has been verified end-to-end in **both** directions (write and
+> decrypt). Route 53 — MX, DKIM, and the CNAME that silently renews TLS — previously had zero
+> backup of any kind. Alarm coverage also went 17 → 32 Lambdas; the entire mail pipeline had
+> been unmonitored. Architecture, gap analysis, and the CI/CD phases (Lambda aliases first,
+> since a bad Lambda deploy still has no fast rollback) →
+> [`disaster-recovery-and-cicd-plan.md`](disaster-recovery-and-cicd-plan.md).
 
 **Done and deployed (`website/`, static, S3):**
 - Storefront: catalog, mixed cart (`sku` + `custom`), bulk estimator, hero category priming,

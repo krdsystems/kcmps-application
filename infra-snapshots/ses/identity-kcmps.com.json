@@ -25,8 +25,8 @@
   "Tags": [],
   "VerificationInfo": {
     "ErrorType": "HOST_NOT_FOUND",
-    "LastCheckedTimestamp": "2026-08-16T14:58:42.666000+00:00",
-    "LastSuccessTimestamp": "2026-08-16T14:58:42.997000+00:00",
+    "LastCheckedTimestamp": "2026-08-17T14:59:51.243000+00:00",
+    "LastSuccessTimestamp": "2026-08-17T14:59:51.635000+00:00",
     "SOARecord": {
       "AdminEmail": "awsdns-hostmaster.amazon.com",
       "PrimaryNameServer": "ns-319.awsdns-39.com",

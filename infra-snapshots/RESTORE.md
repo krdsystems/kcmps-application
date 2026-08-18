@@ -252,6 +252,8 @@ Record each rehearsal here. An untested procedure in this file is a claim, not a
 | 2026-08-13 | §4 — **PITR restore-to-point-in-time**, damage-and-recover | `kcmps-staging` | **PASS**, 4/4 checks — see below | owner + Claude |
 | 2026-08-18 | §1 — **DNS record restore**, damage-and-recover via the detect/generate/execute relay | production zone `Z06397161LBTJCRTPLL62` | **PASS** — see below | owner + Claude |
 | 2026-08-18 | §2 — **Lambda config restore**, damage-and-recover, dropped keys + corrupted value | `kcmps-staging-create-order` | **PASS**, 2/2 checks — see below | Claude |
+| 2026-08-18 | §5 — **API route rebuild**, damage-and-recover, deleted route + integration | staging API `162ufc121j` | **PASS** — see below | Claude |
+| 2026-08-18 | §6 — **SES rule rebuild**, structural proof via a throwaway rule set (no live damage) | production SES | **PASS** — see below | Claude |
 
 The decrypt rehearsal matters more than it looks: until it was done, the encryption path had
 only ever been exercised in the **write** direction. A backup that encrypts correctly but
@@ -372,6 +374,90 @@ all** — they are 100% CLI-managed with zero CloudFormation backing — so the 
 CloudFormation stack status stayed `UPDATE_COMPLETE` throughout — the CLI patches didn't
 register as drift against the stack, so no separate reconciliation was needed on staging.
 
+### The 2026-08-18 API route rebuild rehearsal — what it proved, and one real finding
+
+Ran fully agent-side against **staging** (`162ufc121j`), not production — no standing rule
+blocks this, but there's no reason to risk a live route when staging proves the same
+mechanism.
+
+**Target:** `POST /orders/manual`, picked because its integration (`kuhokb4`) was **not**
+shared with any other route — several staff-pin and order-verification routes share a single
+integration across up to 5 routes each, and deleting one of those would have taken out
+multiple endpoints for one test. This one's blast radius was exactly one route.
+
+1. Captured live route + integration, confirmed both **byte-identical** to the committed
+   backup before touching anything
+2. Deleted **both** the route and its integration — the worst realistic case (a bad bulk
+   delete or deploy script wiping both, not just one)
+3. Confirmed `POST /orders/manual` fully gone from `get-routes`
+4. Diffed live route keys against the backup — the missing route was isolated correctly,
+   nothing else flagged
+5. Rebuilt in the order the runbook specifies: **integration first**, then the route pointing
+   at it, with the JWT authorizer (`67s34x`) explicitly reattached
+6. Verified
+
+| Check | Result |
+|---|---|
+| Integration fields match the backup exactly | PASS |
+| Route's `AuthorizationType`/`AuthorizerId`/Lambda target match, after normalizing two fields — see finding below | PASS |
+| Full route count restored (30), 0 missing / 0 extra vs. backup | PASS |
+
+**Finding: a rebuilt route is not byte-identical to the original, even when it's functionally
+correct.** `create-route` doesn't populate `AuthorizationScopes`/`RequestModels` the same way
+a route created through the original tooling did — the field is simply *absent* on the
+rebuild rather than present-as-empty. Behaviorally identical (API Gateway treats a missing
+optional field and an empty one the same way), but a naive byte-diff would report FAIL on a
+functionally perfect restore. Worth knowing before trusting an automated "did it match"
+check for this resource type.
+
+**Also worth knowing: AWS always assigns fresh `RouteId`/`IntegrationId` values on create —
+the original IDs (`ph9ltcn`/`kuhokb4`) cannot be restored, only the content can.** This
+means the committed snapshot goes stale immediately after any real API restore (it still
+references the deleted IDs) until the next snapshot runs. **A fresh snapshot should always
+be triggered manually right after a real API restore**, not left for the nightly schedule —
+done here via `workflow_dispatch`, confirmed green.
+
+### The 2026-08-18 SES rule rebuild rehearsal — deliberately NOT a live-damage test
+
+**This one could not be shaped like the others.** There is exactly **one** SES receipt rule
+set in the entire account — `kcmps-mirror-inbound` — and no staging equivalent exists to
+damage safely. It is the live inbound-mail pipeline for the whole business. Deactivating or
+deleting it, even briefly, risks real customer mail loss during the test window. That is not
+a cost worth paying to prove a point, so the real pipeline was never touched.
+
+Instead: proved the **reconstruction mechanism** without ever putting the real pipeline at
+risk, using the fact that an SES rule set only affects mail routing once explicitly
+activated — an inactive one is completely inert regardless of its content.
+
+1. Confirmed the real rule set was the sole one, active, before starting
+2. Created a **throwaway** rule set (`kcmps-dr-rehearsal-2026-08-18`) reproducing the real
+   rule's exact content byte-for-byte — same recipient, same S3 target, same scan/TLS
+   settings — **never activated**
+3. Confirmed the real active rule set was still `kcmps-mirror-inbound` throughout (proof the
+   throwaway never became live)
+4. Diffed the throwaway's rule content against the backup — **exact match**
+5. Deleted the throwaway
+6. Re-confirmed: exactly one rule set exists, active, content identical to the backup (the
+   only difference is `CreatedTimestamp`, which the backup normalizer deliberately strips as
+   volatile — `Rules`, the part that matters, is untouched)
+
+| Check | Result |
+|---|---|
+| Rebuilt rule content matches the backup exactly | PASS |
+| Real rule set remained the sole active one throughout | PASS |
+| Real rule set's content unchanged after cleanup | PASS |
+
+**Scope, stated as plainly as the DNS rehearsal's:** this proves the reconstruction mechanism
+— the `create-receipt-rule-set` / `create-receipt-rule` calls produce byte-correct structure
+from the backup JSON. It does **not** prove recovering from an actual outage where the real
+rule set is gone and inbound mail is already down — that scenario additionally requires the
+`set-active-receipt-rule-set` activation step, which was deliberately never exercised here
+because there is no safe way to test it without a moment of real risk. Treat activation as
+one documented, unrehearsed step, not an unknown one — see §6 above for the exact command.
+
 ### Still unproven
 
-#5 (rebuilding an API route from JSON), #6 (SES receipt-rule rebuild).
+Nothing on the original list remains. Every documented restore procedure (§1 DNS, §2 Lambda
+config, §4 DynamoDB, §5 API routes, §6 SES) has now been rehearsed at least once. What
+hasn't been rehearsed: §2's *code* rollback path (Lambda aliases, blocked on CI/CD Phase 2
+not being built yet), and SES's activation step specifically (see above).

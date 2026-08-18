@@ -95,6 +95,30 @@
                   <label for="cb-note">Note (optional)</label>
                   <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
                 </div>
+
+                <!-- F5: only meaningful for an Expense linked to a job — an
+                     allocation from stock already owned is never a cash
+                     movement, so it makes no sense on Revenue or with no
+                     order to charge it against. Toggled by updateAllocVisibility(). -->
+                <div class="field cb-alloc-field" id="cb-alloc-field" hidden>
+                  <label class="cb-check" for="cb-affects-cash-no">
+                    <input type="checkbox" id="cb-affects-cash-no" />
+                    <span>This was paid from stock already owned (allocation, not cash)</span>
+                  </label>
+                  <span class="hint" style="font-size:11.5px">Counts against this job's profit, but never touches the cash drawer or month totals.</span>
+                </div>
+                <div class="field cb-qty-field" id="cb-qty-field" hidden>
+                  <label for="cb-qty">Qty (optional)</label>
+                  <input class="input" id="cb-qty" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 150" />
+                </div>
+                <div class="field cb-unit-field" id="cb-unit-field" hidden>
+                  <label for="cb-unit-cost">Unit cost (optional)</label>
+                  <div class="cb-amount-wrap">
+                    <span class="cb-amount-peso" aria-hidden="true">&#8369;</span>
+                    <input class="input cb-amount-input" id="cb-unit-cost" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" />
+                  </div>
+                  <span class="hint" style="font-size:11.5px">Enter both Qty and Unit cost to set the exact amount (qty &times; unit) &mdash; overrides Amount above.</span>
+                </div>
               </details>
 
               <div id="cb-error"></div>
@@ -401,22 +425,38 @@
   // RFC 4180 field quoting: anything containing a comma, a double quote,
   // or a newline must be wrapped in quotes, with internal quotes doubled.
   const CSV_NEEDS_QUOTING_RE = /[",\r\n]/;
-  function csvField(value) {
+  // F6: `opts.numeric` skips the formula-lead guard. Only ever pass it for
+  // a value that already matches D.formatCentavosDecimal()'s output shape
+  // (/^-?\d+\.\d{2}$/, e.g. "-500.00") — that pattern cannot start with
+  // =/+/@ (only ever "-" or a digit) and so is not an injection vector,
+  // but WOULD be corrupted into a text cell ("'-500.00") by the guard,
+  // since F1 means a signed amount can legitimately start with "-".
+  // NEVER pass numeric:true for free text (notes/labels/categories/client
+  // names) — that guard is the injection neutralization and must stay
+  // exactly as it was.
+  function csvField(value, opts) {
     let s = value === null || value === undefined ? "" : String(value);
-    if (CSV_FORMULA_LEAD_RE.test(s)) s = "'" + s;
+    const numeric = !!(opts && opts.numeric);
+    if (!numeric && CSV_FORMULA_LEAD_RE.test(s)) s = "'" + s;
     if (CSV_NEEDS_QUOTING_RE.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
     return s;
   }
-  function csvRow(cells) { return cells.map(csvField).join(","); }
+  // Cells may be a plain value or a [value, opts] pair (for csvField's
+  // numeric mode) — every free-text cell stays a plain value, unaffected.
+  function csvRow(cells) {
+    return cells.map((c) => (Array.isArray(c) ? csvField(c[0], c[1]) : csvField(c))).join(",");
+  }
 
   const CSV_HEADERS = [
     "Date", "Time", "Type", "Category", "Description", "Qty",
-    "Unit amount (PHP)", "Amount (PHP)", "Payment method", "Affects cash",
+    "Unit amount (PHP)", "Amount (PHP)", "Signed amount (PHP)", "Payment method",
+    "Affects cash", "Counts toward totals",
     "Order ID", "Client", "Staffer", "Note", "Voided", "Void reason",
   ];
 
+  const NUM = (v) => [v, { numeric: true }];
+
   function exportRowToCsv(r) {
-    const manilaDateTime = new Date(Date.parse(r.occurredAt));
     return csvRow([
       D.manilaDayOf(r.occurredAt),
       D.manilaTimeLabel(r.occurredAt),
@@ -424,11 +464,13 @@
         : r.direction === "in" ? "revenue" : "expense",
       r.category,
       r.label,
-      r.qty == null ? "" : r.qty,
-      r.unitAmountCentavos == null ? "" : D.formatCentavosDecimal(r.unitAmountCentavos),
-      D.formatCentavosDecimal(r.amountCentavos),
+      r.qty == null ? "" : NUM(r.qty),
+      r.unitAmountCentavos == null ? "" : NUM(D.formatCentavosDecimal(r.unitAmountCentavos)),
+      NUM(D.formatCentavosDecimal(r.amountCentavos)),
+      NUM(D.formatCentavosDecimal(r.signedAmountCentavos)),
       r.method || "",
       r.affectsCash ? "yes" : "no",
+      r.countsTowardTotals ? "yes" : "no",
       r.orderId || "",
       r.clientName || "",
       r.actorName || "",
@@ -470,19 +512,63 @@
     await withBusy($("cb-export-btn"), exportSelectedDayCsv);
   });
 
+  // F7: requires at least one digit somewhere in the string (the
+  // lookahead), so "." alone is rejected instead of surfacing a raw
+  // pesosToCentavos() TypeError. Still permissive about where the digit(s)
+  // land — "1500", "1500.", "1500.07", ".5" all still pass, matching prior
+  // behavior for every real amount a staffer might type.
+  const AMOUNT_RE = /^(?=.*\d)\d*\.?\d{0,2}$/;
+
   /* ---- form ---- */
   document.querySelectorAll('input[name="cb-dir"]').forEach((r) => {
-    r.addEventListener("change", () => { direction = r.value; renderCategories(); });
+    r.addEventListener("change", () => { direction = r.value; renderCategories(); updateAllocVisibility(); });
   });
+
+  // F5: the allocation checkbox + qty/unit fields only make sense for an
+  // Expense linked to a job (see the field's own comment in the markup).
+  // Hiding them otherwise, and clearing any stale values when they're
+  // hidden, keeps a leftover tick/qty from a previous entry silently
+  // applying to an unrelated one.
+  function updateAllocVisibility() {
+    const show = direction === "out" && $("cb-order").value.trim().length > 0;
+    $("cb-alloc-field").hidden = !show;
+    $("cb-qty-field").hidden = !show;
+    $("cb-unit-field").hidden = !show;
+    if (!show) {
+      $("cb-affects-cash-no").checked = false;
+      $("cb-qty").value = "";
+      $("cb-unit-cost").value = "";
+    }
+  }
+  $("cb-order").addEventListener("input", updateAllocVisibility);
 
   $("cb-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("cb-error").innerHTML = "";
-    const raw = $("cb-amount").value.trim().replace(/,/g, "");
-    if (!raw || !/^\d*\.?\d{0,2}$/.test(raw) || Number(raw) <= 0) {
-      showInlineError($("cb-error"), "Enter an amount greater than zero, e.g. 1500.07");
-      $("cb-amount").focus();
-      return;
+
+    const qtyRaw = $("cb-qty").value.trim();
+    const unitRaw = $("cb-unit-cost").value.trim();
+    const hasQtyUnit = qtyRaw !== "" || unitRaw !== "";
+    let raw = "";
+
+    if (hasQtyUnit) {
+      if (!/^\d+$/.test(qtyRaw) || Number(qtyRaw) <= 0) {
+        showInlineError($("cb-error"), "Qty must be a whole number greater than zero.");
+        $("cb-qty").focus();
+        return;
+      }
+      if (!AMOUNT_RE.test(unitRaw) || Number(unitRaw) <= 0) {
+        showInlineError($("cb-error"), "Unit cost must be greater than zero, e.g. 130.00");
+        $("cb-unit-cost").focus();
+        return;
+      }
+    } else {
+      raw = $("cb-amount").value.trim().replace(/,/g, "");
+      if (!raw || !AMOUNT_RE.test(raw) || Number(raw) <= 0) {
+        showInlineError($("cb-error"), "Enter an amount greater than zero, e.g. 1500.07");
+        $("cb-amount").focus();
+        return;
+      }
     }
     if (!category) { showInlineError($("cb-error"), "Pick a category."); return; }
     if (!method) { showInlineError($("cb-error"), "Pick a payment method."); return; }
@@ -495,6 +581,9 @@
           direction, amountPesos: raw, category, method,
           orderId: $("cb-order").value, clientName: $("cb-client").value,
           note: $("cb-note").value, actorName,
+          affectsCash: !$("cb-affects-cash-no").checked,
+          qty: hasQtyUnit ? qtyRaw : null,
+          unitCostPesos: hasQtyUnit ? unitRaw : null,
         });
         // Jump to the day the entry actually landed on (Manila), so a
         // transaction logged while looking at an older day isn't silently
@@ -508,6 +597,10 @@
       $("cb-note").value = "";
       $("cb-order").value = "";
       $("cb-client").value = "";
+      $("cb-qty").value = "";
+      $("cb-unit-cost").value = "";
+      $("cb-affects-cash-no").checked = false;
+      updateAllocVisibility();
       closeSheet();
       await refreshAll();
     });
@@ -516,6 +609,7 @@
   /* ---- first paint ---- */
   renderCategories();
   renderMethods();
+  updateAllocVisibility();
   refreshAll();
 })();
 </script>

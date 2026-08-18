@@ -1002,6 +1002,13 @@ select.input { appearance: auto; }
 .cb-extras[open] summary { margin-bottom: var(--space-2); }
 .cb-form .btn-save { min-height: 48px; width: 100%; }
 
+/* F5: allocation checkbox (affectsCash:false) + qty/unit-cost fields —
+   hidden by default, shown only for Expense + a filled Order/job ID (see
+   updateAllocVisibility() in cashbook.html). min-height: 44px on the whole
+   label keeps the tap target real, not just the tiny native checkbox box. */
+.cb-check { display: flex; align-items: flex-start; gap: 8px; min-height: 44px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--color-text); }
+.cb-check input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--color-accent-2-700); }
+
 /* — bottom bar + sheet chrome (mobile only; display:none until the
      breakpoint, so desktop never hit-tests them). The sheet HEADING stays
      on both layouts — it titles the desktop rail too — and only the grab

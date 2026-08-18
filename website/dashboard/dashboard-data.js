@@ -1400,14 +1400,26 @@
     }
     return Math.round(n * 100);
   }
+  // F7: negatives render as "−₱850.00" (real minus sign U+2212, prefixed
+  // before the currency symbol), never "₱-850.00" — the latter reads as a
+  // developer artifact, not a peso amount.
   function formatCentavos(centavos) {
     if (!Number.isInteger(centavos)) throw new TypeError("Expected integer centavos, got " + JSON.stringify(centavos));
-    return "₱" + (centavos / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const neg = centavos < 0;
+    const abs = Math.abs(centavos);
+    return (neg ? "−" : "") + "₱" + (abs / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   // Signed display for a ledger row: "+₱35,000.00" / "−₱19,500.00" (real
   // minus sign U+2212, not a hyphen — it reads as a number, not a dash).
+  // F1: the glyph is derived from the RESULTING signed value
+  // ((direction === "out" ? -1 : 1) * amountCentavos), not from direction
+  // alone — a refund is direction:"in" with a category-owned negative
+  // amountCentavos (see CASHBOOK_CATEGORIES' `sign`), so a naive
+  // direction-only glyph would show a refund as "+" while it actually
+  // decreases revenue.
   function formatSignedCentavos(centavos, direction) {
-    return (direction === "out" ? "−" : "+") + formatCentavos(Math.abs(centavos));
+    const signedValue = (direction === "out" ? -1 : 1) * centavos;
+    return (signedValue < 0 ? "−" : "+") + formatCentavos(Math.abs(centavos));
   }
   // Plain decimal pesos, no ₱ symbol and no thousands grouping — for CSV
   // export, where the currency belongs in the column header, not the cell
@@ -1435,7 +1447,12 @@
       { id: "print-office", label: "Print / office" },
       { id: "design-service", label: "Design service" },
       { id: "walk-in", label: "Walk-in" },
-      { id: "refund", label: "Refund (negative revenue)" },
+      // F1: the sign is owned by the category, not by staff typing a
+      // minus — staff always type a positive amount, and
+      // logCashbookTransaction() negates it because this category says
+      // to. Generic on purpose so a future sign-carrying category (e.g. a
+      // chargeback) works the same way with no new code path.
+      { id: "refund", label: "Refund (negative revenue)", sign: -1 },
       { id: "other-in", label: "Other" },
     ],
     out: [
@@ -1460,14 +1477,38 @@
     return { in: CASHBOOK_CATEGORIES.in.slice(), out: CASHBOOK_CATEGORIES.out.slice() };
   }
   function getCashbookMethods() { return CASHBOOK_METHODS.slice(); }
+  // Looks a category up by id within one direction's list, returning its
+  // full config entry (not just the label) — used by logCashbookTransaction
+  // to read `sign` (F1).
+  function categoryDef(direction, id) {
+    const list = CASHBOOK_CATEGORIES[direction] || [];
+    return list.find((c) => c.id === id) || null;
+  }
+  // F3: voidCashbookTransaction() writes a reversal that carries the SAME
+  // category id but the FLIPPED direction (a reversed expense is an "in"
+  // row) — so a lookup scoped to only the reversal's own direction misses
+  // every reversed category and falls back to the raw slug ("merch-order"
+  // instead of "Merch order"). Fall back to the OTHER direction's list
+  // before giving up, so screen and CSV both show the human label.
   function cashbookCategoryLabel(direction, id) {
     const list = CASHBOOK_CATEGORIES[direction] || [];
-    const hit = list.find((c) => c.id === id);
+    let hit = list.find((c) => c.id === id);
+    if (!hit) {
+      const other = direction === "in" ? "out" : "in";
+      hit = (CASHBOOK_CATEGORIES[other] || []).find((c) => c.id === id);
+    }
     return hit ? hit.label : id || "Uncategorised";
   }
   function cashbookMethodLabel(id) {
     const hit = CASHBOOK_METHODS.find((m) => m.id === id);
     return hit ? hit.label : id || "—";
+  }
+  // F2: trims and collapses internal whitespace so "Acme Corp" and
+  // "Acme  Corp " group together instead of being treated as two clients.
+  function normalizeClientName(name) {
+    if (!name) return null;
+    const n = String(name).trim().replace(/\s+/g, " ");
+    return n || null;
   }
 
   /* ---- seed: the owner's real totebag job (plan §5) ----
@@ -1622,7 +1663,24 @@
      see T2 for why both are computed anyway. */
   function costingFor(orderId, state) {
     const cb = state || cashbookState();
-    const job = cb.jobs.find((j) => j.orderId === orderId) || { orderId, jobLabel: orderId, clientName: null, qty: null };
+    // F2: a manual entry can carry `clientName` (see logCashbookTransaction)
+    // without ever creating a `cb.jobs` record. The old fallback discarded
+    // that entirely (`clientName: null`), silently dumping the job under
+    // "Unassigned" even though the staffer explicitly typed a client. Derive
+    // both clientName and a better label from the order's own transactions
+    // before falling back to the bare orderId.
+    let job = cb.jobs.find((j) => j.orderId === orderId);
+    if (!job) {
+      const linked = cb.transactions.filter((t) => t.orderId === orderId);
+      const withClient = linked.find((t) => normalizeClientName(t.clientName));
+      const withNote = linked.find((t) => (t.note || "").trim());
+      job = {
+        orderId,
+        jobLabel: withNote ? withNote.note.trim() : orderId,
+        clientName: withClient ? normalizeClientName(withClient.clientName) : null,
+        qty: null,
+      };
+    }
     const revenueRows = cb.transactions.filter((t) => t.orderId === orderId && t.direction === "in" && countsTowardTotals(t));
     const revenueCentavos = revenueRows.reduce((sum, t) => sum + t.amountCentavos, 0);
     const lines = cb.costLines.filter((c) => c.orderId === orderId && !c.voided);
@@ -1668,7 +1726,9 @@
     const jobs = Array.from(ids).map((id) => costingFor(id, cb));
     const byClient = {};
     jobs.forEach((j) => {
-      const key = j.clientName || "Unassigned";
+      // F2: normalize before grouping so "Acme Corp" and "Acme  Corp " (or
+      // trailing whitespace from a typed field) don't split into two rows.
+      const key = normalizeClientName(j.clientName) || "Unassigned";
       if (!byClient[key]) byClient[key] = { clientName: key, jobs: [], revenueCentavos: 0, totalCostCentavos: 0, profitCentavos: 0 };
       const c = byClient[key];
       c.jobs.push(j);
@@ -1687,47 +1747,95 @@
   }
 
   /* Logs one cash movement.
-     `amountPesos` is the ONLY float that enters — converted once, here.
-     An expense linked to an order also writes the matching COST# line, so
-     the job view sees it without staff entering the same money twice. That
+     `amountPesos` is the ONLY float that enters — converted once, here
+     (F5's qty/unitCostPesos path is the other; see below). An expense
+     linked to an order also writes the matching COST# line, so the job
+     view sees it without staff entering the same money twice. That
      mirrors the real backend's co-located ORDER#/COST# write (plan §4);
      here the two objects are appended in one save() so they cannot land
-     half-written. */
+     half-written.
+
+     F1: sign is owned by the CATEGORY, never by staff typing a minus.
+     Staff always type/derive a positive amount; if the chosen category has
+     `sign: -1` (currently only `refund`), the stored txn amountCentavos is
+     negated. Cost lines never carry this sign — they're always a positive
+     magnitude, matching how costingFor() sums them.
+
+     F5: `affectsCash` (an allocation from stock already owned, not a real
+     cash movement) means NO cash transaction is written at all — only the
+     COST# line, mirroring the seed's `txnId: null` shape. When qty AND
+     unitCostPesos are both given, the amount is their EXACT product
+     (integer centavos, no rounding-then-remultiply — see the doc's §4
+     amendment); when only the plain amount is given, that total stays
+     authoritative and unit cost is derived for display elsewhere. */
   async function logCashbookTransaction(input) {
     const direction = input.direction === "out" ? "out" : "in";
-    const amountCentavos = pesosToCentavos(input.amountPesos);
+
+    const hasQtyUnit = input.qty != null && input.qty !== "" &&
+      input.unitCostPesos != null && input.unitCostPesos !== "";
+    let qty = null, unitCostCentavos = null, amountCentavos;
+    if (hasQtyUnit) {
+      qty = Number(input.qty);
+      if (!Number.isInteger(qty) || qty <= 0) {
+        throw new Error("Qty must be a whole number greater than zero.");
+      }
+      unitCostCentavos = pesosToCentavos(input.unitCostPesos);
+      if (!Number.isInteger(unitCostCentavos) || unitCostCentavos <= 0) {
+        throw new Error("Unit cost must be greater than zero.");
+      }
+      amountCentavos = qty * unitCostCentavos; // exact by construction — D3/F5
+    } else {
+      amountCentavos = pesosToCentavos(input.amountPesos);
+    }
     if (!Number.isInteger(amountCentavos) || amountCentavos <= 0) {
       throw new Error("Enter an amount greater than zero.");
     }
     if (!input.category) throw new Error("Pick a category.");
     if (!input.method) throw new Error("Pick a payment method.");
+
+    const catDef = categoryDef(direction, input.category);
+    const sign = catDef && catDef.sign === -1 ? -1 : 1;
+    const storedAmountCentavos = amountCentavos * sign;
+
     const state = load();
     const cb = state.cashbook;
     const orderId = (input.orderId || "").trim() || null;
-    const txnId = newCashbookId("TXN");
+    const clientName = (input.clientName || "").trim() || null;
+    const note = (input.note || "").trim();
+    const affectsCash = input.affectsCash !== false; // T2 — defaults true
+    const occurredAt = nowIso();
+
     let costId = null;
+    let txnId = affectsCash ? newCashbookId("TXN") : null;
 
     if (direction === "out" && orderId) {
       costId = newCashbookId("COST");
       cb.costLines.push({
-        costId, orderId, label: (input.note || "").trim() || cashbookCategoryLabel("out", input.category),
-        category: input.category, qty: null, amountCentavos,
-        affectsCash: input.affectsCash !== false, // T2 — defaults true
-        incurredAt: nowIso(), actorName: input.actorName || "Staff", source: "manual",
+        costId, orderId, label: note || cashbookCategoryLabel("out", input.category),
+        category: input.category, qty, unitCostCentavos, amountCentavos,
+        affectsCash,
+        incurredAt: occurredAt, actorName: input.actorName || "Staff", source: "manual",
         txnId, voided: false,
       });
     }
-    const txn = {
-      txnId, direction, amountCentavos,
-      category: input.category, method: input.method,
-      orderId, clientName: (input.clientName || "").trim() || null,
-      note: (input.note || "").trim(),
-      occurredAt: nowIso(), actorName: input.actorName || "Staff",
-      source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
-    };
-    cb.transactions.push(txn);
+
+    let txn = null;
+    if (affectsCash) {
+      txn = {
+        txnId, direction, amountCentavos: storedAmountCentavos,
+        category: input.category, method: input.method,
+        orderId, clientName,
+        note,
+        occurredAt, actorName: input.actorName || "Staff",
+        source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
+      };
+      cb.transactions.push(txn);
+    }
     save(state);
-    return txn;
+    // affectsCash:false never creates a txn row (F5) — callers (cashbook.html)
+    // only read `occurredAt`/`orderId` off the return value in that case, to
+    // jump to the right day, so a minimal stand-in is enough.
+    return txn || { txnId: null, direction, amountCentavos: storedAmountCentavos, occurredAt, orderId, costId };
   }
 
   /* D2: a correction is a REVERSAL, not an edit. The original keeps its
@@ -1778,13 +1886,26 @@
          means neither is ever hidden from a "complete record" export.
        - a cash-affecting expense linked to a job also carries that cost
          line's qty/unit cost, so the export reads like the job table.
-       - a job cost line that does NOT move cash (T2, affectsCash:false —
-         none exist in today's seed, but the plan calls for the split) is
-         included as its own row with no payment method, since it was
+       - a job cost line that does NOT move cash (T2, affectsCash:false)
+         is included as its own row with no payment method, since it was
          never a cash movement and would otherwise be silently dropped
          from a day that claims to be the "complete record".
      Money stays integer centavos here; cashbook.html does the
-     centavos->decimal-string formatting at the display/write edge (D3). */
+     centavos->decimal-string formatting at the display/write edge (D3).
+
+     F4: two columns encode the netting convention so the CSV can be summed
+     without double-counting:
+       - `countsTowardTotals` (!voided && !isReversal, AND only for rows
+         that are an actual cash movement — a voided original is excluded
+         because it's voided, its reversal is excluded because excluding
+         the pair is the same arithmetic as netting them, and an
+         affectsCash:false allocation is excluded because it never moved
+         cash at all and would corrupt a cash-net sum).
+       - `signedAmountCentavos`: revenue positive, expense negative,
+         using the SAME (direction === "out" ? -1 : 1) * amountCentavos
+         convention as formatSignedCentavos's glyph — so
+         SUM(signedAmountCentavos WHERE countsTowardTotals) equals the
+         day's cash net. */
   async function getCashbookDayExport(dayKey) {
     const key = dayKey || manilaToday();
     const cb = cashbookState();
@@ -1796,13 +1917,23 @@
     const rows = sortNewestFirst(cb.transactions.filter((t) => manilaDayOf(t.occurredAt) === key))
       .map((t) => {
         const cost = t.costId ? costById[t.costId] : null;
+        const job = t.orderId ? jobById[t.orderId] : null;
+        // F4: a job's REVENUE row never has a linked cost line (costId is
+        // only ever set on the expense side), so qty/unit was always blank
+        // here even though the on-screen job table shows it (from the job
+        // record's qty). Fall back to the linked job's qty for "in" rows.
+        const qty = cost ? cost.qty : (t.direction === "in" && job && job.qty ? job.qty : null);
+        const unitAmountCentavos = cost && cost.qty
+          ? cost.amountCentavos / cost.qty
+          : (qty ? t.amountCentavos / qty : null);
+        const isReversal = !!t.reversesTxnId;
         return {
           occurredAt: t.occurredAt,
           direction: t.direction,
           category: cashbookCategoryLabel(t.direction, t.category),
           label: cost ? cost.label : cashbookCategoryLabel(t.direction, t.category),
-          qty: cost ? cost.qty : null,
-          unitAmountCentavos: cost && cost.qty ? cost.amountCentavos / cost.qty : null,
+          qty,
+          unitAmountCentavos,
           amountCentavos: t.amountCentavos,
           method: cashbookMethodLabel(t.method),
           affectsCash: true,
@@ -1812,7 +1943,9 @@
           note: t.note,
           voided: t.voided,
           voidReason: t.voidReason,
-          isReversal: !!t.reversesTxnId,
+          isReversal,
+          countsTowardTotals: !t.voided && !isReversal,
+          signedAmountCentavos: (t.direction === "out" ? -1 : 1) * t.amountCentavos,
         };
       });
 
@@ -1839,6 +1972,9 @@
           voided: c.voided,
           voidReason: null,
           isReversal: false,
+          // Never a cash movement — excluded from the cash-net sum (F4).
+          countsTowardTotals: false,
+          signedAmountCentavos: -c.amountCentavos,
         });
       });
 

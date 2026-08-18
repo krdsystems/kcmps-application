@@ -150,6 +150,21 @@ Store **qty and unit cost**, not just a total — this is what yields per-unit e
   incurredAt, actorSub, source }
 ```
 
+**[amended, prototype build 2026-08-18] Which field is authoritative depends on which one
+staff actually typed — never round-trip through the other:**
+
+- **Staff enter qty × unit cost:** store all three, with `amountCentavos = qty *
+  unitCostCentavos` computed exactly, in integer centavos. This is exact by construction —
+  there is no rounding step at all.
+- **Staff enter only a total:** store the total as authoritative and derive `unitCostCentavos`
+  for *display only* (`amountCentavos / qty`, rounded once, at render time).
+- **Never store a rounded unit cost and re-multiply it back into an amount.** ₱1,960 ÷ 150 =
+  ₱13.0666…, which rounds to ₱13.07 for display; ₱13.07 × 150 = ₱1,960.50, not ₱1,960 — a
+  46-centavo silent corruption of a real total the owner actually paid, purely from picking the
+  wrong field as authoritative. The prototype's seed data hits exactly this trap (the owner's
+  real totebag figures don't divide cleanly) and is the reason the derived-unit rule above
+  exists — see `dashboard-data.js`'s `CASHBOOK_DEMO_ORDER` seed comment for the worked case.
+
 ---
 
 ## 5. Worked example — the owner's real totebag job
@@ -229,7 +244,17 @@ Beyond what the owner described. Grouped by necessity.
 - **Expense categories** — supplies, rent, utilities, salaries, transport, equipment, misc.
   Without these the month view is a single meaningless number.
 - **Refunds as negative revenue**, never as an expense — otherwise both sides inflate and
-  margin lies.
+  margin lies. **[amended, prototype build 2026-08-18]** Concretely: a refund is a
+  **Revenue-side category** (`direction: "in"`) whose stored `amountCentavos` is **negated**,
+  and that sign is owned by the category's own config (`{ id: "refund", ..., sign: -1 }`),
+  never by a staffer typing a minus into the amount field. Staff always type a positive number;
+  the write path looks up the chosen category's `sign` and negates at that point. This keeps
+  the amount input's validation simple ("must be > 0" always holds) and makes the behavior
+  generic — any future sign-carrying revenue category (e.g. a chargeback) works the same way
+  with no new code path. A display consequence falls out of this for free: the +/− glyph on a
+  ledger row must be derived from the *resulting signed value*
+  (`(direction === "out" ? -1 : 1) * amountCentavos`), not from `direction` alone, or a refund
+  (still `direction: "in"`) would render with a "+" while actually decreasing revenue.
 - **Staffer attribution** from the JWT `sub` (same pattern as `correspondenceLog`); voids
   require a reason.
 - **Categories as config**, not hardcoded — `CONFIG#TXN_CATEGORIES`, seeded from catalog
@@ -240,7 +265,29 @@ Beyond what the owner described. Grouped by necessity.
   record variance. This is the actual reason shops keep a cash book.
 - **Receipt photo** on expenses — reuses the existing presigned-upload + GuardDuty scan path
   (design uploads / payment proof), including its fail-closed "no verdict, no download" rule.
-- **CSV export** — the handoff to the accounting platform (§1).
+- **CSV export** — the handoff to the accounting platform (§1). **[amended, prototype build
+  2026-08-18]** All amount cells are stored as positive magnitudes except where a category's
+  sign already applies (refunds — see above), so a plain `SUM()` over the amount column
+  double-counts every voided/reversed row. The export encodes a netting convention via two
+  columns so the file can be safely summed without staff needing to know the internal void
+  model:
+  - **`Counts toward totals`** — `yes`/`no`, `true` only for a row that is `!voided &&
+    !isReversal` **and** is an actual cash movement (`affectsCash`). A voided original is
+    excluded because it's voided; its reversing entry is excluded because excluding the pair
+    together is the same arithmetic as netting them and easier to audit; a non-cash allocation
+    line (Trap 2, `affectsCash: false`) is excluded because it never moved cash and would
+    corrupt a cash-net sum even though it's real for job-profit purposes.
+  - **`Signed amount (PHP)`** — revenue positive, expense negative
+    (`(direction === "out" ? -1 : 1) * amountCentavos`, the same convention the on-screen
+    ledger's +/− glyph uses). `SUM(Signed amount WHERE Counts toward totals = yes)` over a day's
+    export equals that day's cash net exactly.
+  - Numeric cells (`Amount (PHP)`, `Signed amount (PHP)`, `Unit amount (PHP)`) are exempted from
+    the CSV formula-injection guard (which prefixes a leading `=`/`+`/`-`/`@` with a literal
+    quote) — a legitimately negative amount like `-500.00` matches
+    `/^-?\d+\.\d{2}$/`, which cannot itself be an injected formula, but WOULD be silently turned
+    into a text cell by the guard, breaking `SUM()` for every spreadsheet reader. Free-text
+    cells (notes, labels, category names, client names) keep the guard applied exactly as
+    before — it is still load-bearing there.
 - **Cost templates** — "Totebag + DTF" prefills the standard lines; staff edit amounts. On
   mobile this is the difference between costs being logged and not bothering.
 - **Estimated vs actual cost** — store the cost assumed at quoting time. After a handful of

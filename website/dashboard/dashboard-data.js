@@ -1409,6 +1409,20 @@
   function formatSignedCentavos(centavos, direction) {
     return (direction === "out" ? "−" : "+") + formatCentavos(Math.abs(centavos));
   }
+  // Plain decimal pesos, no ₱ symbol and no thousands grouping — for CSV
+  // export, where the currency belongs in the column header, not the cell
+  // (a "₱35,000.00" string is not a number to a spreadsheet's SUM()).
+  // Rounds ONCE (centavos may be a non-integer per-unit ratio, e.g. a cost
+  // line's amount/qty) via integer div/mod — never a float divide-then-
+  // toFixed, which is exactly the kind of float arithmetic D3 forbids.
+  function formatCentavosDecimal(centavos) {
+    const rounded = Math.round(centavos);
+    const neg = rounded < 0;
+    const abs = Math.abs(rounded);
+    const pesos = Math.floor(abs / 100);
+    const cents = abs % 100;
+    return (neg ? "-" : "") + pesos + "." + String(cents).padStart(2, "0");
+  }
 
   /* ---- categories + methods (§8 "Must have") ----
      Config-shaped, NOT hardcoded into the page: the real backend serves
@@ -1753,6 +1767,85 @@
     return reversal;
   }
 
+  /* ---- day export (plan §8 "Should have" — CSV handoff) ----
+     Flattens ONE day into a single row shape cashbook.html can turn
+     straight into CSV, so the export logic (which fields exist, how a
+     cost line's qty/unit-cost joins onto its cash leg) lives on this side
+     of the seam, not in the page. Deliberately covers MORE than
+     getCashbookDay()'s `transactions` list:
+       - every cash movement for the day (revenue + expense), including
+         voided originals AND their reversing entries — D2 append-only
+         means neither is ever hidden from a "complete record" export.
+       - a cash-affecting expense linked to a job also carries that cost
+         line's qty/unit cost, so the export reads like the job table.
+       - a job cost line that does NOT move cash (T2, affectsCash:false —
+         none exist in today's seed, but the plan calls for the split) is
+         included as its own row with no payment method, since it was
+         never a cash movement and would otherwise be silently dropped
+         from a day that claims to be the "complete record".
+     Money stays integer centavos here; cashbook.html does the
+     centavos->decimal-string formatting at the display/write edge (D3). */
+  async function getCashbookDayExport(dayKey) {
+    const key = dayKey || manilaToday();
+    const cb = cashbookState();
+    const costById = {};
+    cb.costLines.forEach((c) => { costById[c.costId] = c; });
+    const jobById = {};
+    cb.jobs.forEach((j) => { jobById[j.orderId] = j; });
+
+    const rows = sortNewestFirst(cb.transactions.filter((t) => manilaDayOf(t.occurredAt) === key))
+      .map((t) => {
+        const cost = t.costId ? costById[t.costId] : null;
+        return {
+          occurredAt: t.occurredAt,
+          direction: t.direction,
+          category: cashbookCategoryLabel(t.direction, t.category),
+          label: cost ? cost.label : cashbookCategoryLabel(t.direction, t.category),
+          qty: cost ? cost.qty : null,
+          unitAmountCentavos: cost && cost.qty ? cost.amountCentavos / cost.qty : null,
+          amountCentavos: t.amountCentavos,
+          method: cashbookMethodLabel(t.method),
+          affectsCash: true,
+          orderId: t.orderId,
+          clientName: t.clientName,
+          actorName: t.actorName,
+          note: t.note,
+          voided: t.voided,
+          voidReason: t.voidReason,
+          isReversal: !!t.reversesTxnId,
+        };
+      });
+
+    // Non-cash cost lines incurred this day — never had a txn, so they're
+    // not in cb.transactions at all and must be pulled in separately.
+    cb.costLines
+      .filter((c) => !c.txnId && !c.affectsCash && manilaDayOf(c.incurredAt) === key)
+      .forEach((c) => {
+        const job = jobById[c.orderId];
+        rows.push({
+          occurredAt: c.incurredAt,
+          direction: "out",
+          category: cashbookCategoryLabel("out", c.category),
+          label: c.label,
+          qty: c.qty,
+          unitAmountCentavos: c.qty ? c.amountCentavos / c.qty : null,
+          amountCentavos: c.amountCentavos,
+          method: null,
+          affectsCash: false,
+          orderId: c.orderId,
+          clientName: job ? job.clientName : null,
+          actorName: c.actorName,
+          note: null,
+          voided: c.voided,
+          voidReason: null,
+          isReversal: false,
+        });
+      });
+
+    rows.sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
+    return { dayKey: key, dayLabel: manilaDayLabel(key), rows };
+  }
+
   /* ---- staff idle-screen PIN (server-verified since 2026-08-07) ----
      Gates dashboard-shell.js's SESSION_GUARD idle overlay. The PIN now
      lives ONLY on the backend — backend/staff-api/staff-pin.js stores a
@@ -1848,13 +1941,13 @@
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
-    getJobCosting, getJobCostingList,
+    getJobCosting, getJobCostingList, getCashbookDayExport,
     // Manila-date + centavo helpers. Exported so cashbook.html never
     // reimplements either — a second copy of the +8 shift or the
     // float->int conversion is exactly how the two drift apart.
     manilaToday, manilaDayOf, manilaShiftDay, manilaMonthOf,
     manilaDayLabel, manilaTimeLabel, manilaMonthLabel,
-    pesosToCentavos, formatCentavos, formatSignedCentavos,
+    pesosToCentavos, formatCentavos, formatSignedCentavos, formatCentavosDecimal,
     resetSeed,
     hasStaffPin, setStaffPin, verifyStaffPin, clearStaffPin,
     staffPinStatusKnown, getStaffPinStatus, prefetchStaffPinStatus,

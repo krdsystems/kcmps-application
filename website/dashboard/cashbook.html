@@ -115,6 +115,13 @@
               <input class="input" type="date" id="cb-datepick" aria-label="Jump to a date" />
             </div>
 
+            <div class="cb-export-row">
+              <button type="button" class="btn btn-secondary cb-export-btn" id="cb-export-btn">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0ZM133.66,157.66a8,8,0,0,1-11.32,0l-40-40a8,8,0,0,1,11.32-11.32L120,132.69V32a8,8,0,0,1,16,0V132.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                Export day (.csv)
+              </button>
+            </div>
+
             <div class="card">
               <div class="cb-txlist" id="cb-txlist"></div>
             </div>
@@ -371,6 +378,96 @@
     if (!e.target.value) return;
     selectedDay = e.target.value;
     await Promise.all([renderDay(), renderMonth()]);
+  });
+
+  /* ---- CSV export (plan §8 "Should have") ----
+     Client-side Blob + object-URL download, no backend involved. Exports
+     the CURRENTLY SELECTED day's complete record — every cash movement
+     (revenue + expense), voided originals AND their reversing entries,
+     and any job cost line that never moved cash (affectsCash: false) —
+     via D.getCashbookDayExport(), which does the data assembly so this
+     page stays a pure renderer (same seam discipline as everywhere else
+     on this page). */
+
+  // CSV/formula-injection guard (OWASP): a cell whose text starts with
+  // =, +, -, or @ is executed as a formula by Excel/Sheets the moment the
+  // file is opened. Every field below is free text a staffer typed
+  // (note, category label, client name...) so this runs on ALL of them,
+  // not just the ones that look risky today. Prefixing with a bare
+  // single quote is the standard neutralizer — Excel/Sheets render the
+  // cell as literal text starting with that character, quote included is
+  // safe since it's now inside the (possibly re-quoted) field below.
+  const CSV_FORMULA_LEAD_RE = /^[=+\-@]/;
+  // RFC 4180 field quoting: anything containing a comma, a double quote,
+  // or a newline must be wrapped in quotes, with internal quotes doubled.
+  const CSV_NEEDS_QUOTING_RE = /[",\r\n]/;
+  function csvField(value) {
+    let s = value === null || value === undefined ? "" : String(value);
+    if (CSV_FORMULA_LEAD_RE.test(s)) s = "'" + s;
+    if (CSV_NEEDS_QUOTING_RE.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function csvRow(cells) { return cells.map(csvField).join(","); }
+
+  const CSV_HEADERS = [
+    "Date", "Time", "Type", "Category", "Description", "Qty",
+    "Unit amount (PHP)", "Amount (PHP)", "Payment method", "Affects cash",
+    "Order ID", "Client", "Staffer", "Note", "Voided", "Void reason",
+  ];
+
+  function exportRowToCsv(r) {
+    const manilaDateTime = new Date(Date.parse(r.occurredAt));
+    return csvRow([
+      D.manilaDayOf(r.occurredAt),
+      D.manilaTimeLabel(r.occurredAt),
+      r.isReversal ? (r.direction === "in" ? "revenue (reversal)" : "expense (reversal)")
+        : r.direction === "in" ? "revenue" : "expense",
+      r.category,
+      r.label,
+      r.qty == null ? "" : r.qty,
+      r.unitAmountCentavos == null ? "" : D.formatCentavosDecimal(r.unitAmountCentavos),
+      D.formatCentavosDecimal(r.amountCentavos),
+      r.method || "",
+      r.affectsCash ? "yes" : "no",
+      r.orderId || "",
+      r.clientName || "",
+      r.actorName || "",
+      r.note || "",
+      r.voided ? "yes" : "no",
+      r.voidReason || "",
+    ]);
+  }
+
+  async function exportSelectedDayCsv() {
+    const day = await D.getCashbookDayExport(selectedDay);
+    // UTF-8 BOM (\uFEFF) so Excel reads the file as UTF-8 rather than
+    // guessing a legacy codepage — without it, non-ASCII staff notes
+    // (and any accented characters) render as mojibake on open. The
+    // peso sign itself is deliberately kept OUT of the cell values
+    // (see the "Amount (PHP)" header) so this is really only load-
+    // bearing for accented characters in free-text notes, but the BOM
+    // costs nothing and removes the ambiguity either way.
+    const lines = [csvRow(CSV_HEADERS)].concat(day.rows.map(exportRowToCsv));
+    const csv = "\uFEFF" + lines.join("\r\n") + "\r\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kcmps-cashbook-" + day.dayKey + ".csv";
+    // Not attached to the DOM on some mobile browsers without this —
+    // Safari/Chrome on iOS/Android only honour a synthetic click on an
+    // <a download> that's actually in the document.
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on a delay, not immediately — some mobile browsers hand the
+    // blob off to a share sheet / "Files" save flow asynchronously, and
+    // revoking the URL before that read completes empties the download.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  $("cb-export-btn").addEventListener("click", async () => {
+    await withBusy($("cb-export-btn"), exportSelectedDayCsv);
   });
 
   /* ---- form ---- */

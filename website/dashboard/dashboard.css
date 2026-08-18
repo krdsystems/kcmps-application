@@ -924,6 +924,10 @@ select.input { appearance: auto; }
 .cb-daynav:disabled { opacity: 0.4; cursor: not-allowed; }
 .cb-datestrip .input[type="date"] { flex: none; width: auto; min-height: 44px; }
 
+/* — day export (CSV) — */
+.cb-export-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
+.cb-export-btn { min-height: 44px; }
+
 /* — transaction rows — */
 .cb-txlist { display: flex; flex-direction: column; gap: 6px; }
 .cb-tx {
@@ -1111,6 +1115,7 @@ select.input { appearance: auto; }
   .cb-void-btn, .cb-extras summary { min-height: 44px; }
   .cb-void-btn { padding: 10px 12px; }
   .cb-datestrip .input[type="date"] { flex: 1; min-width: 0; }
+  .cb-export-btn { width: 100%; }
 }
 
 @media (max-width: 480px) {

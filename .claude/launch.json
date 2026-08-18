@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "website",
+      "name": "repo-root",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "5501", "--directory", "website"],
+      "runtimeArgs": ["-m", "http.server", "5501"],
       "port": 5501
     }
   ]

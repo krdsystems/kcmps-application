@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KCMPS — Design subsection wizard (v2, on the real front-end)</title>
+
+<!-- Same font pair as website/index.html — styles.css expects these families. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<!-- THE REAL DESIGN SYSTEM. Not a copy — the deployed stylesheet, by relative
+     path. If a token or component changes in website/, this mockup changes
+     with it. That is the whole point of v2. -->
+<link rel="stylesheet" href="../../website/styles.css" />
+
+<!-- rnd-only additions: the demo chrome, the wizard grid, the object picker
+     sheet and the composite shirt stage. Everything else below reuses
+     styles.css classes (.btn / .card / .seg / .shirt-color-pick / …). -->
+<link rel="stylesheet" href="wizard.css" />
+</head>
+<body>
+
+<div class="demo-bar">
+  <div class="wrap">
+    <span><b>R&amp;D MOCKUP v2</b> — same wizard as v1, rebuilt on the real
+      <code>styles.css</code>, real <code>products.js</code> catalog and real
+      <code>store.js</code> cart. Outbound API calls are blocked.</span>
+    <span class="demo-bar-actions">
+      <button type="button" id="demo-clear">Clear cart</button>
+      <button type="button" id="demo-replay">↻ Replay from start</button>
+    </span>
+  </div>
+</div>
+
+<!-- Minimal nav. The two ids below are the ones store.js binds itself to
+     (cart-btn opens its self-injected drawer, cart-badge is its counter) —
+     keep them or the real cart stops working here. -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <span class="nav-brand"><img src="../../website/assets/logo-mark.png" alt="" /> KCMPS</span>
+    <button type="button" id="cart-btn" class="btn btn-icon btn-secondary" aria-label="Cart" title="Cart">
+      <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M222.14,58.87A8,8,0,0,0,216,56H54.68L49.79,29.14A16,16,0,0,0,34.05,16H16a8,8,0,0,0,0,16h18l25.16,138.28A24,24,0,0,0,82.76,190H197.2a24,24,0,0,0,23.6-19.71l12.16-66.86A8,8,0,0,0,222.14,58.87ZM96,224a16,16,0,1,1-16-16A16,16,0,0,1,96,224Zm104,0a16,16,0,1,1-16-16A16,16,0,0,1,200,224Z"/></svg>
+      <span id="cart-badge" class="is-hidden">0</span>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="wiz-hero">
+    <span class="card-kicker">Design</span>
+    <h1>Pick a design, we'll press it</h1>
+    <p class="text-muted" id="wiz-blurb">
+      Ready-to-press graphics on the shirt you choose. Bulk pricing kicks in
+      automatically at 10+ pcs — the same ladder the shop cards use.
+    </p>
+  </section>
+
+  <div class="wiz-strip">
+    <div class="wiz-chips" id="wiz-chips"></div>
+    <span class="tag tag-neutral" id="wiz-count"></span>
+  </div>
+
+  <!-- Deliberately NOT .design-grid-full: that class is sized for the deployed
+       picker's 88px image-only thumbs, so reusing it collapsed these cards to
+       a third of their intended width. The wizard tile is its own component. -->
+  <div class="wiz-grid" id="wiz-grid"></div>
+</main>
+
+<!-- ---------- object picker (entry step) ---------- -->
+<div class="wiz-backdrop" id="obj-backdrop" aria-hidden="true">
+  <div class="wiz-sheet card" role="dialog" aria-modal="true" aria-labelledby="obj-title">
+    <h2 class="card-title" id="obj-title">What are we making?</h2>
+    <p class="card-body">Pick what you want it printed on — we'll quietly pick the right process for you.</p>
+    <div class="obj-grid" id="obj-grid"></div>
+    <button type="button" class="btn btn-ghost" id="obj-browse">Just browse everything →</button>
+  </div>
+</div>
+
+<!-- ---------- design lightbox ---------- -->
+<div class="wiz-backdrop" id="lb-backdrop" aria-hidden="true">
+  <div class="wiz-lb" role="dialog" aria-modal="true" aria-labelledby="lb-name">
+    <div class="lb-stage">
+      <button type="button" class="lightbox-close" id="lb-close" aria-label="Close">
+        <span class="lightbox-close-icon">&times;</span>
+      </button>
+
+      <!-- Preview A: the real catalog photograph. -->
+      <div class="lb-photo" id="lb-photo"><img id="lb-photo-img" alt="" /></div>
+
+      <!-- Preview B: the composite. Recolourable, but driven by PLACEHOLDER
+           transfer art from v1 — the real catalog images are photos of
+           finished shirts and cannot be recoloured or re-placed. The caption
+           under it says so; do not remove it. -->
+      <div class="lb-composite" id="lb-composite" hidden>
+        <div class="shirt" id="shirt">
+          <div class="shirt-color" id="shirt-color"></div>
+          <img class="shirt-shade" id="shirt-shade" alt="" />
+          <div class="print-guide" id="print-guide"></div>
+          <div class="shirt-print" id="shirt-print"><img id="print-img" alt="" /></div>
+        </div>
+        <p class="lb-composite-note">
+          Approximate — placeholder artwork on a generated blank, for colour and
+          placement only. Not a render of what you'll receive.
+        </p>
+      </div>
+
+      <div class="lb-stage-foot">
+        <div class="seg lb-preview-seg" id="lb-preview-seg" role="group" aria-label="Preview mode">
+          <button type="button" class="seg-opt is-on" data-preview="photo">Catalog photo</button>
+          <button type="button" class="seg-opt" data-preview="composite">On my shirt colour</button>
+        </div>
+        <div class="seg lb-view-seg" id="lb-view-seg" role="group" aria-label="Shirt view" hidden>
+          <button type="button" class="seg-opt is-on" data-view="front">Front</button>
+          <button type="button" class="seg-opt" data-view="back">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="lb-panel">
+      <span class="card-kicker" id="lb-kicker">Pre-made</span>
+      <h3 class="card-title" id="lb-name">Design</h3>
+      <p class="card-body" id="lb-blurb"></p>
+
+      <div class="field">
+        <label>Shirt</label>
+        <div class="shirt-row" id="lb-shirt-row"></div>
+      </div>
+
+      <div class="field">
+        <label>Placement</label>
+        <div class="seg" id="lb-placement" role="group" aria-label="Placement">
+          <button type="button" class="seg-opt is-on" data-place="front">Front</button>
+          <button type="button" class="seg-opt" data-place="back">Back</button>
+          <button type="button" class="seg-opt" data-place="both">Both</button>
+        </div>
+        <p class="wiz-note" id="lb-place-note" hidden></p>
+      </div>
+
+      <div class="field">
+        <label>Print size</label>
+        <div class="seg" id="lb-sizes" role="group" aria-label="Print size"></div>
+        <p class="wiz-note" id="lb-size-note" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="lb-qty">Quantity</label>
+        <div class="qty-stepper">
+          <button type="button" id="lb-minus" aria-label="Decrease quantity">−</button>
+          <input class="qval" id="lb-qty" type="number" min="1" value="1" inputmode="numeric" />
+          <button type="button" id="lb-plus" aria-label="Increase quantity">+</button>
+        </div>
+        <p class="wiz-bulk" id="lb-bulk" hidden></p>
+      </div>
+
+      <p class="wiz-note wiz-note-warn" id="lb-guard" hidden></p>
+
+      <div class="lb-foot">
+        <div class="product-price" id="lb-price"></div>
+        <button type="button" class="btn btn-primary" id="lb-add">Add to cart</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wiz-toast" id="wiz-toast" role="status" aria-live="polite"></div>
+
+<!-- Load order matters: the outbound-call guard must be installed before
+     store.js gets a chance to fetch anything. -->
+<script src="guard.js"></script>
+<script src="../../website/products.js"></script>
+<script src="../../website/store.js"></script>
+<script src="wizard.js"></script>
+</body>
+</html>

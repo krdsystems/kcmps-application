@@ -5,6 +5,11 @@ Clickable prototype of the proposed Design-subsection flow:
 
 Not deployed, not wired to anything. Nothing here belongs in `website/`.
 
+> **See [`../design-wizard-v2/`](../design-wizard-v2/) first.** Same flow and layout, rebuilt on
+> the real `styles.css`, the real `products.js` catalog and the real `store.js` cart. This v1
+> folder is kept for its shirt blanks and placeholder transfers (v2 reuses them) and as the
+> record of the original modelling decisions.
+
 ## Files
 
 | File | What it is |

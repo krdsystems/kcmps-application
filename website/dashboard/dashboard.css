@@ -325,8 +325,32 @@ select.input { appearance: auto; }
    up (this file, ~line 71) for the sidebar grid — the identical flex/grid
    "auto-minimum-size" trap, one nesting level deeper. */
 .job-table-scroll { overflow-x: auto; min-width: 0; }
+/* width:max-content + min-width:100% is what stops the table "bleeding" out
+   of the card as you zoom IN (reported 2026-08-13, live). A block-level grid
+   takes its CONTAINER's width, not its tracks' width: with fixed-px tracks
+   (jobs.html's gridTemplate(), 1284px for the default 6 columns) every row
+   box stayed exactly as wide as .job-table-scroll while its cells were laid
+   out well past that edge. Everything the row paints on its OWN box — the
+   background, the hover/active band, the border-bottom rule, the 12px right
+   padding — therefore stopped short, and the cells beyond it floated on the
+   bare card with no row under them. Measured on the shipped build at a
+   1512x900 window: at 80% zoom the container is 1232px and the cells run to
+   1272px, so 40px of every row is unbacked; at 100% it is 103px; the deeper
+   you zoom in the narrower the container gets and the wider that unbacked
+   band grows, which is exactly the "looks fine zoomed out, bleeds when I
+   zoom in" symptom. Nothing to do with subpixel rounding, and not caused by
+   the scrollbar-gutter: stable fix above (that rule only shifts the
+   threshold ~15px earlier by reserving the gutter unconditionally) — this
+   is the pre-existing grid sizing, made obvious once the viewport is small
+   enough relative to the fixed tracks. max-content sizes each row to its own
+   tracks so the paint always covers the cells; min-width:100% keeps a row
+   spanning the full card when the table DOES fit, so the header rule and
+   hover band still reach the right edge and the flush-edge alignment the
+   scrollbar-gutter fix restored is unaffected. #job-list-head and .job-row
+   share this rule, so they still grow in lockstep and cannot drift. */
 .job-row {
   display: grid; column-gap: var(--space-3); align-items: center;
+  width: max-content; min-width: 100%;
   padding: 10px 12px; border-radius: var(--radius-md); transition: background-color 120ms ease;
   border-bottom: 1px solid var(--color-divider);
 }

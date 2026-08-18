@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Cash Book — KCMPS Ops</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content cb-page">
+      <p class="demo-notice"><strong>Preview — not connected to the backend yet.</strong>
+        Every figure on this page comes from sample data in your browser, not from real money.
+        It is seeded with the worked totebag example from the plan so the shape of the numbers is
+        real, but nothing logged here reaches anyone else's device. Do not use it as a record.</p>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Cash book</h2>
+          <span class="hint">Cash-basis — recorded when money actually moves. Entries can be voided, never edited</span>
+        </div>
+
+        <!-- ONE DOM, TWO LAYOUTS. Desktop: sticky entry rail on the left,
+             ledger on the right. Mobile (≤760px): the ledger comes first
+             (flex `order`) and this same .cb-entry becomes a bottom sheet.
+             The markup is never reordered — see dashboard.css's CASH BOOK
+             block, and the mobile-hero precedent in ../styles.css. -->
+        <div class="cb-layout">
+
+          <section class="card cb-entry" id="cb-entry" aria-labelledby="cb-entry-title">
+            <div class="cb-sheet-grip" aria-hidden="true"></div>
+            <div class="cb-sheet-head">
+              <h3 id="cb-entry-title">Log transaction</h3>
+              <button type="button" class="cb-sheet-close" id="cb-sheet-close" aria-label="Close">&times;</button>
+            </div>
+
+            <form class="cb-form" id="cb-form" novalidate>
+              <!-- 1. Sign. First, because it re-colours everything after it. -->
+              <div class="seg cb-seg" role="radiogroup" aria-label="Revenue or expense">
+                <label class="seg-opt"><input type="radio" name="cb-dir" value="in" checked /><span>Revenue</span></label>
+                <label class="seg-opt"><input type="radio" name="cb-dir" value="out" /><span>Expense</span></label>
+              </div>
+
+              <!-- 2. Amount, autofocused when the sheet opens. inputmode
+                   ="decimal" gives the numeric keypad with no spinners. -->
+              <div class="field">
+                <label for="cb-amount">Amount</label>
+                <div class="cb-amount-wrap">
+                  <span class="cb-amount-peso" aria-hidden="true">&#8369;</span>
+                  <input class="input cb-amount-input" id="cb-amount" type="text" inputmode="decimal"
+                         autocomplete="off" placeholder="0.00" aria-describedby="cb-amount-hint" />
+                </div>
+                <span class="hint" id="cb-amount-hint" style="font-size:11.5px">Pesos and centavos, e.g. 1500.07</span>
+              </div>
+
+              <!-- 3. Category chips, NOT a <select> — the owner rejected a
+                   select on the bulk-quote picker as too hard to use. -->
+              <div class="field">
+                <label id="cb-cat-label">Category</label>
+                <div class="cb-chipset" id="cb-categories" role="group" aria-labelledby="cb-cat-label"></div>
+              </div>
+
+              <!-- 4. Payment method — without it the drawer can't be reconciled (plan §8). -->
+              <div class="field">
+                <label id="cb-method-label">Payment method</label>
+                <div class="cb-chipset" id="cb-methods" role="group" aria-labelledby="cb-method-label"></div>
+              </div>
+
+              <!-- 5. Optional extras, collapsed so the fast path stays four taps. -->
+              <details class="cb-extras">
+                <summary>Link to a job, add a note</summary>
+                <div class="field">
+                  <label for="cb-order">Order / job ID (optional)</label>
+                  <input class="input" id="cb-order" placeholder="e.g. ORD-DEMO-TOTEBAG" autocomplete="off" />
+                  <span class="hint" style="font-size:11.5px">An expense linked to a job also becomes a cost line on that job's profit.</span>
+                </div>
+                <div class="field">
+                  <label for="cb-client">Client (optional)</label>
+                  <input class="input" id="cb-client" placeholder="e.g. Bayanihan Co-op" autocomplete="off" />
+                </div>
+                <div class="field">
+                  <label for="cb-note">Note (optional)</label>
+                  <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
+                </div>
+              </details>
+
+              <div id="cb-error"></div>
+              <button type="submit" class="btn btn-primary btn-save" id="cb-save">Save</button>
+            </form>
+          </section>
+
+          <section class="cb-ledger">
+            <div class="cb-monthstrip" id="cb-monthstrip"></div>
+
+            <div class="cb-datestrip">
+              <button type="button" class="cb-daynav" id="cb-prev" aria-label="Previous day">&#8249;</button>
+              <div class="cb-dayname" aria-live="polite">
+                <b id="cb-dayname">&nbsp;</b>
+                <span id="cb-daysub">&nbsp;</span>
+              </div>
+              <button type="button" class="cb-daynav" id="cb-next" aria-label="Next day">&#8250;</button>
+              <input class="input" type="date" id="cb-datepick" aria-label="Jump to a date" />
+            </div>
+
+            <div class="card">
+              <div class="cb-txlist" id="cb-txlist"></div>
+            </div>
+          </section>
+
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Job &amp; client profit</h2>
+          <span class="hint">Per-unit profit is the number that answers &ldquo;should we take the next job like this&rdquo;</span>
+        </div>
+        <div id="cb-jobs"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- Mobile-only chrome. Both are display:none above 760px, so desktop
+     never hit-tests them (an invisible full-width element over the page is
+     a click sink, not a decoration — see CLAUDE.md's shirt-colour gotcha). -->
+<div class="cb-scrim" id="cb-scrim"></div>
+<div class="cb-bottombar">
+  <button type="button" class="btn btn-primary" id="cb-open-sheet">&#65291; Log transaction</button>
+</div>
+
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("cashbook");
+  if (!claims) return;
+  const { escapeHtml, showInlineError, withBusy } = KCMPS_DASH_SHELL;
+  // Money + Manila-date helpers come from the data layer, never
+  // reimplemented here — a second copy of the +8 shift or the float->int
+  // conversion is exactly how the two drift apart.
+  const D = KCMPS_DASH;
+  const actorName = claims.name || claims.email || "Staff";
+
+  /* ---- page state ---- */
+  let selectedDay = D.manilaToday();
+  let direction = "in";
+  let category = null;
+  let method = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  // perUnit figures are exact ratios (₱76.9333/bag is a real number, not a
+  // rounding error) — round ONCE here, at the display edge, never before.
+  const fmtRatio = (c) => D.formatCentavos(Math.round(c));
+
+  /* ---- month strip: in / out / net ---- */
+  async function renderMonth() {
+    const m = await D.getCashbookMonth(D.manilaMonthOf(selectedDay));
+    const netCls = m.netCentavos > 0 ? "pos" : m.netCentavos < 0 ? "neg" : "";
+    $("cb-monthstrip").innerHTML =
+      `<div><div class="cb-ms-label">In</div><div class="cb-ms-value pos">${D.formatCentavos(m.inCentavos)}</div></div>` +
+      `<div><div class="cb-ms-label">Out</div><div class="cb-ms-value neg">${D.formatCentavos(m.outCentavos)}</div></div>` +
+      `<div><div class="cb-ms-label">Net</div><div class="cb-ms-value ${netCls}">${D.formatCentavos(m.netCentavos)}</div></div>` +
+      `<div class="cb-ms-caption">${escapeHtml(m.monthLabel)} &middot; ${m.txnCount} transaction${m.txnCount === 1 ? "" : "s"}</div>`;
+  }
+
+  /* ---- day list ---- */
+  function txRow(t) {
+    const cls = "cb-tx dir-" + t.direction +
+      (t.voided ? " is-voided" : "") + (t.reversesTxnId ? " is-reversal" : "");
+    const title = D.cashbookCategoryLabel(t.direction, t.category);
+    const meta = [D.manilaTimeLabel(t.occurredAt), escapeHtml(t.actorName || "—")];
+    if (t.orderId) meta.push(escapeHtml(t.orderId));
+    // Voids and reversals stay in the list — that is the point of an
+    // append-only record — but are visually demoted and never counted.
+    const flag = t.voided
+      ? `<div class="cb-tx-note"><strong>Voided</strong> &mdash; ${escapeHtml(t.voidReason || "")}</div>`
+      : t.reversesTxnId ? `<div class="cb-tx-note">Reversing entry</div>` : "";
+    const voidBtn = (!t.voided && !t.reversesTxnId)
+      ? `<button type="button" class="btn btn-ghost cb-void-btn" data-void="${escapeHtml(t.txnId)}">Void</button>` : "";
+    return (
+      `<div class="${cls}">` +
+        `<div class="cb-tx-main">` +
+          `<div class="cb-tx-title">${escapeHtml(title)}</div>` +
+          (t.note ? `<div class="cb-tx-note">${escapeHtml(t.note)}</div>` : "") + flag +
+          `<div class="cb-tx-meta">${meta.map((m) => `<span>${m}</span>`).join("<span>&middot;</span>")}</div>` +
+        `</div>` +
+        `<div class="cb-tx-side">` +
+          `<span class="cb-amount ${t.direction === "in" ? "pos" : "neg"}">${D.formatSignedCentavos(t.amountCentavos, t.direction)}</span>` +
+          `<span class="cb-methodchip m-${escapeHtml(t.method)}">${escapeHtml(D.cashbookMethodLabel(t.method))}</span>` +
+          voidBtn +
+        `</div>` +
+      `</div>`
+    );
+  }
+
+  async function renderDay() {
+    const day = await D.getCashbookDay(selectedDay);
+    $("cb-dayname").textContent = day.dayLabel;
+    $("cb-daysub").textContent = day.isToday
+      ? "Today · " + D.formatCentavos(day.netCentavos) + " net"
+      : D.formatCentavos(day.netCentavos) + " net";
+    $("cb-datepick").value = selectedDay;
+    // A future day is reachable (a date picker can land there) but is never
+    // the default, and "next" stops at today — a cash book has nothing to
+    // say about tomorrow.
+    $("cb-next").disabled = selectedDay >= D.manilaToday();
+
+    $("cb-txlist").innerHTML = day.transactions.length
+      ? day.transactions.map(txRow).join("")
+      : `<p class="q-empty">Nothing logged on this day yet.</p>`;
+
+    $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const reason = window.prompt("Why is this being voided? A void writes a reversing entry — the original stays on the record.");
+        if (reason === null) return;
+        try {
+          await D.voidCashbookTransaction(btn.dataset.void, reason, actorName);
+        } catch (err) {
+          showInlineError($("cb-error"), err.message);
+          return;
+        }
+        await refreshAll();
+      });
+    });
+  }
+
+  /* ---- job / client profit ---- */
+  function jobCard(j) {
+    const lines = j.costLines.map((c) => (
+      `<tr>` +
+        `<td>${escapeHtml(c.label)}` +
+          (c.affectsCash ? "" : ` <span class="cb-alloc-flag">allocation &mdash; estimated</span>`) +
+        `</td>` +
+        `<td>Cost &middot; ${escapeHtml(c.categoryLabel)}</td>` +
+        `<td class="num">${c.qty ? c.qty : "&mdash;"}</td>` +
+        `<td class="num">${c.unitCostCentavos != null ? fmtRatio(c.unitCostCentavos) : "&mdash;"}</td>` +
+        `<td class="num">${D.formatSignedCentavos(c.amountCentavos, "out")}</td>` +
+      `</tr>`
+    )).join("");
+
+    const marginTone = j.marginPct == null ? "" : j.marginPct >= 25 ? "good" : j.marginPct < 10 ? "bad" : "";
+    const tiles =
+      `<div class="cb-profit-tile ${j.profitCentavos >= 0 ? "good" : "bad"}"><div class="t-label">Profit</div><div class="t-value">${D.formatCentavos(j.profitCentavos)}</div></div>` +
+      `<div class="cb-profit-tile ${marginTone}"><div class="t-label">Margin</div><div class="t-value">${j.marginPct != null ? j.marginPct.toFixed(2) + "%" : "&mdash;"}</div></div>` +
+      (j.perUnit
+        ? `<div class="cb-profit-tile"><div class="t-label">Profit / unit</div><div class="t-value">${fmtRatio(j.perUnit.profitCentavos)}</div></div>` +
+          `<div class="cb-profit-tile"><div class="t-label">Cost / unit</div><div class="t-value">${fmtRatio(j.perUnit.costCentavos)}</div></div>`
+        : "") +
+      `<div class="cb-profit-tile"><div class="t-label">Net cash</div><div class="t-value">${D.formatCentavos(j.netCashCentavos)}</div></div>`;
+
+    // Profit counts every cost line; net cash counts only affectsCash ones.
+    // They agree today (labor is piece-rate) — the note explains why both
+    // are shown anyway rather than leaving a duplicate-looking number.
+    const cashNote = j.netCashCentavos === j.profitCentavos
+      ? `<p class="cb-approx">Net cash equals profit here because every cost line on this job was a real cash movement. They diverge the moment a cost is an internal allocation &mdash; salaried labour, or material drawn from stock bought earlier.</p>`
+      : `<p class="cb-approx">Net cash differs from profit because ${D.formatCentavos(j.totalCostCentavos - j.cashCostCentavos)} of cost was an internal allocation, not money that left the business.</p>`;
+
+    return (
+      `<div class="card cb-jobcard">` +
+        `<div class="cb-jobhead"><h3>${escapeHtml(j.jobLabel)}</h3>` +
+        `<span class="cb-client">${escapeHtml(j.clientName || "Unassigned")} &middot; ${escapeHtml(j.orderId)}</span></div>` +
+        `<div class="cb-scroll-x"><table class="cb-costtable">` +
+          `<thead><tr><th>Line</th><th>Type</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>` +
+          `<tbody>` +
+            `<tr class="cb-revenue"><td>Revenue received</td><td>Revenue</td>` +
+              `<td class="num">${j.qty || "&mdash;"}</td>` +
+              `<td class="num">${j.perUnit ? fmtRatio(j.perUnit.revenueCentavos) : "&mdash;"}</td>` +
+              `<td class="num">${D.formatSignedCentavos(j.revenueCentavos, "in")}</td></tr>` +
+            lines +
+          `</tbody>` +
+          `<tfoot><tr><td colspan="4">Total cost</td><td class="num">${D.formatSignedCentavos(j.totalCostCentavos, "out")}</td></tr></tfoot>` +
+        `</table></div>` +
+        `<div class="cb-profit-row">${tiles}</div>` +
+        cashNote +
+      `</div>`
+    );
+  }
+
+  async function renderJobs() {
+    const clients = await D.getJobCostingList();
+    if (!clients.length) {
+      $("cb-jobs").innerHTML = `<div class="card"><p class="q-empty">No job has money against it yet. Link a transaction to an order ID and it appears here.</p></div>`;
+      return;
+    }
+    $("cb-jobs").innerHTML = clients.map((c) => (
+      `<section style="margin-bottom:var(--space-4)">` +
+        `<div class="dsec-head" style="margin-bottom:var(--space-2)">` +
+          `<h3 style="margin:0;font-size:15px">${escapeHtml(c.clientName)}</h3>` +
+          `<span class="hint">${c.jobs.length} job${c.jobs.length === 1 ? "" : "s"} &middot; ` +
+          `${D.formatCentavos(c.revenueCentavos)} revenue &middot; ${D.formatCentavos(c.profitCentavos)} profit` +
+          `${c.marginPct != null ? " &middot; " + c.marginPct.toFixed(2) + "% margin" : ""}</span>` +
+        `</div>` +
+        c.jobs.map(jobCard).join("") +
+      `</section>`
+    )).join("");
+  }
+
+  async function refreshAll() {
+    await Promise.all([renderMonth(), renderDay(), renderJobs()]);
+  }
+
+  /* ---- chips ---- */
+  function renderChips(host, items, selectedId, onPick) {
+    host.innerHTML = items.map((it) => (
+      `<button type="button" class="cb-chip" data-id="${escapeHtml(it.id)}" aria-pressed="${it.id === selectedId}">${escapeHtml(it.label)}</button>`
+    )).join("");
+    host.querySelectorAll(".cb-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        onPick(btn.dataset.id);
+        host.querySelectorAll(".cb-chip").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+      });
+    });
+  }
+  function renderCategories() {
+    const cats = D.getCashbookCategories()[direction];
+    // Switching sign invalidates the category — a revenue category on an
+    // expense would be silently wrong rather than obviously wrong.
+    if (!cats.some((c) => c.id === category)) category = null;
+    renderChips($("cb-categories"), cats, category, (id) => { category = id; });
+  }
+  function renderMethods() {
+    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
+  }
+
+  /* ---- bottom sheet (mobile) ---- */
+  const entry = $("cb-entry");
+  const scrim = $("cb-scrim");
+  function openSheet() {
+    entry.classList.add("is-open");
+    scrim.classList.add("is-open");
+    // Amount-first is the fastest possible entry — focus it, don't make
+    // them reach for it.
+    $("cb-amount").focus();
+  }
+  function closeSheet() {
+    entry.classList.remove("is-open");
+    scrim.classList.remove("is-open");
+  }
+  $("cb-open-sheet").addEventListener("click", openSheet);
+  $("cb-sheet-close").addEventListener("click", closeSheet);
+  scrim.addEventListener("click", closeSheet);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+
+  /* ---- date navigation ---- */
+  $("cb-prev").addEventListener("click", async () => {
+    selectedDay = D.manilaShiftDay(selectedDay, -1);
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+  $("cb-next").addEventListener("click", async () => {
+    if (selectedDay >= D.manilaToday()) return;
+    selectedDay = D.manilaShiftDay(selectedDay, 1);
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+  $("cb-datepick").addEventListener("change", async (e) => {
+    if (!e.target.value) return;
+    selectedDay = e.target.value;
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+
+  /* ---- form ---- */
+  document.querySelectorAll('input[name="cb-dir"]').forEach((r) => {
+    r.addEventListener("change", () => { direction = r.value; renderCategories(); });
+  });
+
+  $("cb-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("cb-error").innerHTML = "";
+    const raw = $("cb-amount").value.trim().replace(/,/g, "");
+    if (!raw || !/^\d*\.?\d{0,2}$/.test(raw) || Number(raw) <= 0) {
+      showInlineError($("cb-error"), "Enter an amount greater than zero, e.g. 1500.07");
+      $("cb-amount").focus();
+      return;
+    }
+    if (!category) { showInlineError($("cb-error"), "Pick a category."); return; }
+    if (!method) { showInlineError($("cb-error"), "Pick a payment method."); return; }
+
+    // withBusy disables the button for the duration — the double-tap guard
+    // the plan calls for (the real backend also carries an idempotency key).
+    await withBusy($("cb-save"), async () => {
+      try {
+        const txn = await D.logCashbookTransaction({
+          direction, amountPesos: raw, category, method,
+          orderId: $("cb-order").value, clientName: $("cb-client").value,
+          note: $("cb-note").value, actorName,
+        });
+        // Jump to the day the entry actually landed on (Manila), so a
+        // transaction logged while looking at an older day isn't silently
+        // filed somewhere the staffer can't see it.
+        selectedDay = D.manilaDayOf(txn.occurredAt);
+      } catch (err) {
+        showInlineError($("cb-error"), err.message);
+        return;
+      }
+      $("cb-amount").value = "";
+      $("cb-note").value = "";
+      $("cb-order").value = "";
+      $("cb-client").value = "";
+      closeSheet();
+      await refreshAll();
+    });
+  });
+
+  /* ---- first paint ---- */
+  renderCategories();
+  renderMethods();
+  refreshAll();
+})();
+</script>
+</body>
+</html>

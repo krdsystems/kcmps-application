@@ -182,6 +182,11 @@
       inventory: [],
       clients: [],
       stations: STATIONS,
+      // Cash Book prototype (see the CASH BOOK section far below). Unlike
+      // orders, this one IS seeded — it's a mock-data preview page whose
+      // whole point is the owner's worked totebag example, and an empty
+      // ledger would demonstrate nothing.
+      cashbook: buildCashbookSeed(),
       seededAt: nowIso(),
     };
   }
@@ -244,6 +249,14 @@
     state.orders.forEach((o) => {
       if (!Array.isArray(o.correspondenceLog)) { o.correspondenceLog = []; dirty = true; }
     });
+    /* Cash Book (2026-08-18). ADDITIVE — a pre-existing blob has no
+       `cashbook` key at all, and bumping STORAGE_KEY to "fix" that would
+       throw away every tester's advanced jobs / logged spoilage / blockers
+       for a feature unrelated to any of them. Its three collections
+       (transactions, costLines, jobs) sit under ONE guard on purpose: a
+       partial backfill could produce cost lines with no job to attribute
+       them to, which reads as data loss rather than a missing feature. */
+    if (state.cashbook === undefined) { state.cashbook = buildCashbookSeed(); dirty = true; }
     if (dirty) save(state);
     return state;
   }
@@ -1303,6 +1316,443 @@
     });
   }
 
+  /* ============================================================
+     CASH BOOK + JOB COSTING  (MOCK — no backend exists yet)
+     ============================================================
+     Frontend prototype for docs/cashbook-job-costing-plan-2026-08-18.md.
+     Everything below reads/writes the localStorage blob, but every
+     signature and return shape mirrors what the real API will hand back
+     (§4 of the plan) so cashbook.html never changes when the Lambdas land
+     — the same "one seam" contract the rest of this file follows.
+
+     Four rules from the plan are load-bearing here, not stylistic:
+
+     D3 MONEY IS INTEGER CENTAVOS. pesosToCentavos() is the ONLY float->int
+        conversion, applied once at the input edge (mirrors
+        backend/lib/money.js's toCentavos). Nothing below ever adds,
+        multiplies or stores a peso float. Percentages are the one place a
+        float appears, and only as a derived display value.
+
+     D4 DATES ARE ASIA/MANILA (fixed +8, no DST). A naive
+        new Date().toISOString().slice(0,10) files every evening
+        transaction under TOMORROW — 16:00 UTC onward is already the next
+        Manila day. manilaDayOf() shifts before slicing. Same fixed-offset
+        approach as backend/lib/business-hours.js, which is why no timezone
+        library is needed.
+
+     D2 APPEND-ONLY. There is no edit and no delete. voidTransaction()
+        writes a REVERSING entry and flags the original `voided: true`;
+        the original row is never mutated beyond that flag. Rollups are
+        recomputed from non-voided rows, so a void can never leave a total
+        disagreeing with the rows that produced it.
+
+     T2 EVERY COST LINE CARRIES affectsCash. Job profit counts ALL cost
+        lines; the cash book counts only affectsCash:true ones. Today every
+        line is cash (labor is piece-rate, D7) so the two agree — the split
+        is built now because retrofitting it means re-deriving which
+        historical lines were cash, and that information is gone.
+     ============================================================ */
+
+  const MANILA_OFFSET_MS = 8 * 3600 * 1000;
+
+  // ISO instant -> "YYYY-MM-DD" in Asia/Manila. See D4 above.
+  function manilaDayOf(dateLike) {
+    const t = dateLike == null ? Date.now() : new Date(dateLike).getTime();
+    return new Date(t + MANILA_OFFSET_MS).toISOString().slice(0, 10);
+  }
+  function manilaToday() { return manilaDayOf(null); }
+  function manilaMonthOf(dayKey) { return String(dayKey).slice(0, 7); }
+  // Day-key arithmetic done on the key itself (UTC midnight + n days), never
+  // on a local Date — so it can't drift across a Manila/UTC boundary.
+  function manilaShiftDay(dayKey, deltaDays) {
+    const t = Date.parse(dayKey + "T00:00:00Z") + deltaDays * 86400000;
+    return new Date(t).toISOString().slice(0, 10);
+  }
+  // "YYYY-MM-DD" + "HH:MM" Manila -> a real UTC ISO instant. Used by the
+  // seed so demo rows land at plausible shop hours on the right Manila day.
+  function manilaIsoAt(dayKey, hhmm) {
+    return new Date(Date.parse(dayKey + "T" + hhmm + ":00+08:00")).toISOString();
+  }
+  function manilaDayLabel(dayKey) {
+    // Rendered from the +08:00 instant so the weekday is Manila's, not the
+    // viewer's — a staffer's phone travelling is not a reason for the
+    // ledger's day label to change.
+    const d = new Date(Date.parse(dayKey + "T12:00:00+08:00"));
+    return d.toLocaleDateString("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "Asia/Manila" });
+  }
+  function manilaTimeLabel(iso) {
+    return new Date(iso).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
+  }
+  function manilaMonthLabel(monthKey) {
+    return new Date(Date.parse(monthKey + "-01T12:00:00+08:00"))
+      .toLocaleDateString("en-PH", { month: "long", year: "numeric", timeZone: "Asia/Manila" });
+  }
+
+  /* ---- money (mirrors backend/lib/money.js exactly) ----
+     Reimplemented rather than imported because website/ has no module
+     system (CLAUDE.md: no build step, no bundler). The SEMANTICS must stay
+     identical to backend/lib/money.js — if that file's rounding changes,
+     change this too. */
+  function pesosToCentavos(pesos) {
+    const n = typeof pesos === "string" ? Number(pesos) : pesos;
+    if (typeof n !== "number" || !Number.isFinite(n)) {
+      throw new TypeError("Expected a finite peso amount, got " + JSON.stringify(pesos));
+    }
+    return Math.round(n * 100);
+  }
+  function formatCentavos(centavos) {
+    if (!Number.isInteger(centavos)) throw new TypeError("Expected integer centavos, got " + JSON.stringify(centavos));
+    return "₱" + (centavos / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Signed display for a ledger row: "+₱35,000.00" / "−₱19,500.00" (real
+  // minus sign U+2212, not a hyphen — it reads as a number, not a dash).
+  function formatSignedCentavos(centavos, direction) {
+    return (direction === "out" ? "−" : "+") + formatCentavos(Math.abs(centavos));
+  }
+
+  /* ---- categories + methods (§8 "Must have") ----
+     Config-shaped, NOT hardcoded into the page: the real backend serves
+     these from CONFIG#TXN_CATEGORIES and Settings will edit them. The page
+     only ever reads getCashbookCategories()/getCashbookMethods(), so the
+     swap is a body change here. */
+  const CASHBOOK_CATEGORIES = {
+    in: [
+      { id: "merch-order", label: "Merch order" },
+      { id: "print-office", label: "Print / office" },
+      { id: "design-service", label: "Design service" },
+      { id: "walk-in", label: "Walk-in" },
+      { id: "refund", label: "Refund (negative revenue)" },
+      { id: "other-in", label: "Other" },
+    ],
+    out: [
+      { id: "materials", label: "Materials" },
+      { id: "supplies", label: "Supplies" },
+      { id: "labor", label: "Labor" },
+      { id: "service", label: "Outsourced service" },
+      { id: "transport", label: "Transport" },
+      { id: "utilities", label: "Utilities" },
+      { id: "rent", label: "Rent" },
+      { id: "equipment", label: "Equipment" },
+      { id: "other-out", label: "Other" },
+    ],
+  };
+  const CASHBOOK_METHODS = [
+    { id: "cash", label: "Cash" },
+    { id: "gcash", label: "GCash" },
+    { id: "bank", label: "Bank" },
+    { id: "card", label: "Card" },
+  ];
+  function getCashbookCategories() {
+    return { in: CASHBOOK_CATEGORIES.in.slice(), out: CASHBOOK_CATEGORIES.out.slice() };
+  }
+  function getCashbookMethods() { return CASHBOOK_METHODS.slice(); }
+  function cashbookCategoryLabel(direction, id) {
+    const list = CASHBOOK_CATEGORIES[direction] || [];
+    const hit = list.find((c) => c.id === id);
+    return hit ? hit.label : id || "Uncategorised";
+  }
+  function cashbookMethodLabel(id) {
+    const hit = CASHBOOK_METHODS.find((m) => m.id === id);
+    return hit ? hit.label : id || "—";
+  }
+
+  /* ---- seed: the owner's real totebag job (plan §5) ----
+     Seeded so the prototype is meaningful on first load rather than an
+     empty page. Amounts are the owner's actual figures; the 150 qty is
+     illustrative (the plan says so) and exists to make the per-unit
+     economics — the number that answers "should we take the next job like
+     this" — real rather than notional.
+
+     WHY amountCentavos IS AUTHORITATIVE AND unit cost IS DERIVED: the
+     owner's totals and the illustrative qty don't divide cleanly for every
+     line (₱1,960 ÷ 150 = ₱13.0666…, which the plan rounds to ₱13.07 for
+     display; ₱13.07 × 150 = ₱1,960.50, not ₱1,960). Storing a rounded
+     unitCostCentavos and multiplying it back would silently change the
+     owner's real total, and would break the ₱11,540 profit the whole demo
+     turns on. So the TOTAL is stored and the unit is computed for display
+     only. The real backend should store both (plan §4) because a staffer
+     will type qty × unit there and the product will be exact by
+     construction — this is a seed-data accommodation, noted rather than
+     hidden.
+
+     Seed timestamps are anchored to the Manila day the blob was first
+     created. A tester returning days later sees an empty "today" and has
+     to page back — correct for an append-only ledger (rewriting history so
+     it always looks like today is exactly what an append-only record must
+     never do). */
+  const CASHBOOK_DEMO_ORDER = {
+    orderId: "ORD-DEMO-TOTEBAG",
+    jobLabel: "Totebag order — 150 pcs, 1-colour DTF",
+    clientName: "Bayanihan Co-op",
+    qty: 150,
+  };
+
+  function buildCashbookSeed() {
+    const today = manilaToday();
+    const yesterday = manilaShiftDay(today, -1);
+    const txns = [];
+    const costs = [];
+    let n = 0;
+    const seedId = (prefix) => prefix + "-DEMO-" + String(++n).padStart(3, "0");
+
+    // 1. The job's revenue.
+    txns.push({
+      txnId: seedId("TXN"), direction: "in", amountCentavos: 3500000,
+      category: "merch-order", method: "gcash",
+      orderId: CASHBOOK_DEMO_ORDER.orderId, clientName: CASHBOOK_DEMO_ORDER.clientName,
+      note: "Totebag order — 150 pcs, paid in full on collection",
+      occurredAt: manilaIsoAt(today, "09:40"), actorName: "Ken",
+      source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId: null,
+    });
+
+    // 2. The job's four cost lines. Each affectsCash:true line ALSO writes
+    //    the matching cash-out transaction — one source array so the cost
+    //    view and the cash view can never disagree about the same money.
+    [
+      { label: "Totebag blanks", category: "materials", qty: 150, amountCentavos: 1950000, method: "cash", time: "10:05", note: "Supplier pickup, Divisoria" },
+      { label: "DTF transfers", category: "materials", qty: 150, amountCentavos: 196000, method: "gcash", time: "10:20", note: "Outsourced print (see plan O2)" },
+      { label: "Rush fee", category: "service", qty: null, amountCentavos: 50000, method: "gcash", time: "11:00", note: "Supplier rush charge" },
+      { label: "Labor", category: "labor", qty: null, amountCentavos: 150000, method: "cash", time: "17:30", note: "Piece-rate, paid on completion (D7)" },
+    ].forEach((c) => {
+      const costId = seedId("COST");
+      const txnId = c.affectsCash === false ? null : seedId("TXN");
+      costs.push({
+        costId, orderId: CASHBOOK_DEMO_ORDER.orderId, label: c.label, category: c.category,
+        qty: c.qty, amountCentavos: c.amountCentavos,
+        affectsCash: c.affectsCash !== false, // T2 — defaults true
+        incurredAt: manilaIsoAt(today, c.time), actorName: "Ken", source: "manual",
+        txnId, voided: false,
+      });
+      if (txnId) {
+        txns.push({
+          txnId, direction: "out", amountCentavos: c.amountCentavos,
+          category: c.category, method: c.method,
+          orderId: CASHBOOK_DEMO_ORDER.orderId, clientName: CASHBOOK_DEMO_ORDER.clientName,
+          note: c.label + " — " + c.note,
+          occurredAt: manilaIsoAt(today, c.time), actorName: "Ken",
+          source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
+        });
+      }
+    });
+
+    // 3. Ordinary shop traffic, so the day list isn't one job's five rows.
+    [
+      { direction: "in", amountCentavos: 18500, category: "walk-in", method: "cash", note: "Photocopying — 74 pages B/W", time: "08:15", day: today, actorName: "Mika" },
+      { direction: "in", amountCentavos: 125000, category: "print-office", method: "gcash", note: "Tarpaulin 3x5 ft, 1 pc", time: "14:10", day: today, actorName: "Mika" },
+      { direction: "out", amountCentavos: 240000, category: "supplies", method: "cash", note: "Bond paper, 10 reams", time: "15:25", day: today, actorName: "Ken" },
+      { direction: "in", amountCentavos: 32000, category: "walk-in", method: "cash", note: "Photocopying + lamination", time: "16:40", day: yesterday, actorName: "Mika" },
+      { direction: "out", amountCentavos: 85000, category: "transport", method: "cash", note: "Grab — courier drop, 2 orders", time: "17:05", day: yesterday, actorName: "Mika" },
+    ].forEach((t) => {
+      txns.push({
+        txnId: seedId("TXN"), direction: t.direction, amountCentavos: t.amountCentavos,
+        category: t.category, method: t.method, orderId: null, clientName: null,
+        note: t.note, occurredAt: manilaIsoAt(t.day, t.time), actorName: t.actorName,
+        source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId: null,
+      });
+    });
+
+    return {
+      transactions: txns,
+      costLines: costs,
+      jobs: [Object.assign({}, CASHBOOK_DEMO_ORDER)],
+      seededAt: nowIso(),
+    };
+  }
+
+  /* ---- reads ---- */
+  function cashbookState() {
+    const state = load();
+    return state.cashbook;
+  }
+  // A voided row and its reversal both stay visible in the LIST (that is the
+  // point of an append-only record) but neither counts toward a total: the
+  // original is excluded because it was voided, the reversal because
+  // excluding the pair together is the same arithmetic as netting them and
+  // is far easier to read in a rollup.
+  function countsTowardTotals(t) { return !t.voided && !t.reversesTxnId; }
+
+  function rollup(txns) {
+    let inC = 0, outC = 0;
+    txns.forEach((t) => {
+      if (!countsTowardTotals(t)) return;
+      if (t.direction === "in") inC += t.amountCentavos;
+      else outC += t.amountCentavos;
+    });
+    return { inCentavos: inC, outCentavos: outC, netCentavos: inC - outC };
+  }
+
+  // Newest-first, matching the plan's mobile list order.
+  function sortNewestFirst(list) {
+    return list.slice().sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
+  }
+
+  async function getCashbookDay(dayKey) {
+    const key = dayKey || manilaToday();
+    const all = cashbookState().transactions;
+    const rows = sortNewestFirst(all.filter((t) => manilaDayOf(t.occurredAt) === key));
+    return Object.assign({ dayKey: key, dayLabel: manilaDayLabel(key), isToday: key === manilaToday(), transactions: rows }, rollup(rows));
+  }
+
+  async function getCashbookMonth(monthKey) {
+    const key = monthKey || manilaMonthOf(manilaToday());
+    const rows = cashbookState().transactions.filter((t) => manilaMonthOf(manilaDayOf(t.occurredAt)) === key);
+    return Object.assign(
+      { monthKey: key, monthLabel: manilaMonthLabel(key), txnCount: rows.filter(countsTowardTotals).length },
+      rollup(rows)
+    );
+  }
+
+  /* ---- job costing (plan §5) ----
+     profitCentavos counts EVERY cost line (affectsCash or not).
+     cashOutCentavos counts only affectsCash:true ones. Today they agree;
+     see T2 for why both are computed anyway. */
+  function costingFor(orderId, state) {
+    const cb = state || cashbookState();
+    const job = cb.jobs.find((j) => j.orderId === orderId) || { orderId, jobLabel: orderId, clientName: null, qty: null };
+    const revenueRows = cb.transactions.filter((t) => t.orderId === orderId && t.direction === "in" && countsTowardTotals(t));
+    const revenueCentavos = revenueRows.reduce((sum, t) => sum + t.amountCentavos, 0);
+    const lines = cb.costLines.filter((c) => c.orderId === orderId && !c.voided);
+    const totalCostCentavos = lines.reduce((sum, c) => sum + c.amountCentavos, 0);
+    const cashCostCentavos = lines.reduce((sum, c) => sum + (c.affectsCash ? c.amountCentavos : 0), 0);
+    const profitCentavos = revenueCentavos - totalCostCentavos;
+    const qty = job.qty && job.qty > 0 ? job.qty : null;
+    return {
+      orderId, jobLabel: job.jobLabel, clientName: job.clientName, qty,
+      revenueCentavos, totalCostCentavos, cashCostCentavos, profitCentavos,
+      // Net cash is revenue actually received minus only the cash cost
+      // lines — identical to profit today, deliberately computed apart.
+      netCashCentavos: revenueCentavos - cashCostCentavos,
+      // Derived display floats. Never stored, never fed back into money math.
+      marginPct: revenueCentavos > 0 ? (profitCentavos / revenueCentavos) * 100 : null,
+      // Per-unit figures are CENTAVOS-VALUED but not integers (₱76.9333/bag
+      // is a real per-unit number, not a rounding error) — they are
+      // formatted, never accumulated. Kept as exact ratios so the display
+      // rounds once, at the end.
+      perUnit: qty ? {
+        revenueCentavos: revenueCentavos / qty,
+        costCentavos: totalCostCentavos / qty,
+        profitCentavos: profitCentavos / qty,
+      } : null,
+      costLines: lines.slice().sort((a, b) => new Date(a.incurredAt) - new Date(b.incurredAt)).map((c) => Object.assign({}, c, {
+        // Same derived-unit rule as the seed's header comment.
+        unitCostCentavos: c.qty && c.qty > 0 ? c.amountCentavos / c.qty : null,
+        categoryLabel: cashbookCategoryLabel("out", c.category),
+      })),
+    };
+  }
+
+  async function getJobCosting(orderId) { return costingFor(orderId); }
+
+  // Every job that has any money against it, grouped by client — the
+  // client-side aggregation the plan's §7 "Now" row calls for (there is no
+  // real Client entity and no GSI2, so grouping happens here).
+  async function getJobCostingList() {
+    const cb = cashbookState();
+    const ids = new Set(cb.jobs.map((j) => j.orderId));
+    cb.transactions.forEach((t) => { if (t.orderId) ids.add(t.orderId); });
+    cb.costLines.forEach((c) => { if (c.orderId) ids.add(c.orderId); });
+    const jobs = Array.from(ids).map((id) => costingFor(id, cb));
+    const byClient = {};
+    jobs.forEach((j) => {
+      const key = j.clientName || "Unassigned";
+      if (!byClient[key]) byClient[key] = { clientName: key, jobs: [], revenueCentavos: 0, totalCostCentavos: 0, profitCentavos: 0 };
+      const c = byClient[key];
+      c.jobs.push(j);
+      c.revenueCentavos += j.revenueCentavos;
+      c.totalCostCentavos += j.totalCostCentavos;
+      c.profitCentavos += j.profitCentavos;
+    });
+    return Object.values(byClient).map((c) => Object.assign(c, {
+      marginPct: c.revenueCentavos > 0 ? (c.profitCentavos / c.revenueCentavos) * 100 : null,
+    }));
+  }
+
+  /* ---- writes (append-only) ---- */
+  function newCashbookId(prefix) {
+    return prefix + "-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
+  }
+
+  /* Logs one cash movement.
+     `amountPesos` is the ONLY float that enters — converted once, here.
+     An expense linked to an order also writes the matching COST# line, so
+     the job view sees it without staff entering the same money twice. That
+     mirrors the real backend's co-located ORDER#/COST# write (plan §4);
+     here the two objects are appended in one save() so they cannot land
+     half-written. */
+  async function logCashbookTransaction(input) {
+    const direction = input.direction === "out" ? "out" : "in";
+    const amountCentavos = pesosToCentavos(input.amountPesos);
+    if (!Number.isInteger(amountCentavos) || amountCentavos <= 0) {
+      throw new Error("Enter an amount greater than zero.");
+    }
+    if (!input.category) throw new Error("Pick a category.");
+    if (!input.method) throw new Error("Pick a payment method.");
+    const state = load();
+    const cb = state.cashbook;
+    const orderId = (input.orderId || "").trim() || null;
+    const txnId = newCashbookId("TXN");
+    let costId = null;
+
+    if (direction === "out" && orderId) {
+      costId = newCashbookId("COST");
+      cb.costLines.push({
+        costId, orderId, label: (input.note || "").trim() || cashbookCategoryLabel("out", input.category),
+        category: input.category, qty: null, amountCentavos,
+        affectsCash: input.affectsCash !== false, // T2 — defaults true
+        incurredAt: nowIso(), actorName: input.actorName || "Staff", source: "manual",
+        txnId, voided: false,
+      });
+    }
+    const txn = {
+      txnId, direction, amountCentavos,
+      category: input.category, method: input.method,
+      orderId, clientName: (input.clientName || "").trim() || null,
+      note: (input.note || "").trim(),
+      occurredAt: nowIso(), actorName: input.actorName || "Staff",
+      source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
+    };
+    cb.transactions.push(txn);
+    save(state);
+    return txn;
+  }
+
+  /* D2: a correction is a REVERSAL, not an edit. The original keeps its
+     amount and its place in the day; a new opposite-direction row carries
+     the same amount and points back at it. Any linked cost line is flagged
+     voided too, so job profit follows the same correction. */
+  async function voidCashbookTransaction(txnId, reason, actorName) {
+    const trimmed = (reason || "").trim();
+    if (!trimmed) throw new Error("A void needs a reason — that's the whole audit trail.");
+    const state = load();
+    const cb = state.cashbook;
+    const original = cb.transactions.find((t) => t.txnId === txnId);
+    if (!original) throw new Error("That transaction no longer exists.");
+    if (original.voided) throw new Error("That transaction is already voided.");
+    if (original.reversesTxnId) throw new Error("A reversing entry can't itself be voided.");
+    original.voided = true;
+    original.voidReason = trimmed;
+    original.voidedBy = actorName || "Staff";
+    original.voidedAt = nowIso();
+    if (original.costId) {
+      const line = cb.costLines.find((c) => c.costId === original.costId);
+      if (line) line.voided = true;
+    }
+    const reversal = {
+      txnId: newCashbookId("TXN"),
+      direction: original.direction === "in" ? "out" : "in",
+      amountCentavos: original.amountCentavos,
+      category: original.category, method: original.method,
+      orderId: original.orderId, clientName: original.clientName,
+      note: "Void — " + trimmed,
+      occurredAt: nowIso(), actorName: actorName || "Staff",
+      source: "manual", voided: false, voidReason: null,
+      reversesTxnId: original.txnId, costId: null,
+    };
+    cb.transactions.push(reversal);
+    save(state);
+    return reversal;
+  }
+
   /* ---- staff idle-screen PIN (server-verified since 2026-08-07) ----
      Gates dashboard-shell.js's SESSION_GUARD idle overlay. The PIN now
      lives ONLY on the backend — backend/staff-api/staff-pin.js stores a
@@ -1395,6 +1845,16 @@
     setOrderTags, getDefaultOrderTags,
     getOrderMessages, sendOrderMessage, getUnreadMessageSummary, markMessagesRead,
     createManualOrder,
+    // Cash Book + job costing (mock — see the CASH BOOK section above).
+    getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
+    getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
+    getJobCosting, getJobCostingList,
+    // Manila-date + centavo helpers. Exported so cashbook.html never
+    // reimplements either — a second copy of the +8 shift or the
+    // float->int conversion is exactly how the two drift apart.
+    manilaToday, manilaDayOf, manilaShiftDay, manilaMonthOf,
+    manilaDayLabel, manilaTimeLabel, manilaMonthLabel,
+    pesosToCentavos, formatCentavos, formatSignedCentavos,
     resetSeed,
     hasStaffPin, setStaffPin, verifyStaffPin, clearStaffPin,
     staffPinStatusKnown, getStaffPinStatus, prefetchStaffPinStatus,

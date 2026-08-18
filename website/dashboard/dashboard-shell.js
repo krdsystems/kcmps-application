@@ -105,6 +105,7 @@
     { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling", soon: true },
     { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin", soon: true },
     { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
+    { key: "cashbook", href: "cashbook.html", label: "Cash Book", hint: "Money in, money out, job profit", soon: true },
     { key: "clients", href: "clients.html", label: "Clients", hint: "CRM", soon: true },
     { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
@@ -133,6 +134,10 @@
       week: '<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/>',
       month: '<path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Z"/>',
       jobs: '<path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Z"/>',
+      // Phosphor "notebook" (regular), copied verbatim from
+      // phosphor-icons/core assets/regular/notebook.svg — never hand-write
+      // path data.
+      cashbook: '<path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/>',
       clients: '<path d="M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92Z"/>',
       // Phosphor "envelope-simple" / "images-square" (regular), copied verbatim
       // from phosphor-icons/core assets/regular/*.svg — never hand-write path data.

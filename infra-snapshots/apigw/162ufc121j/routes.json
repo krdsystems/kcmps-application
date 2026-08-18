@@ -238,16 +238,6 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
-      "RouteId": "ph9ltcn",
-      "RouteKey": "POST /orders/manual",
-      "Target": "integrations/kuhokb4"
-    },
-    {
-      "ApiKeyRequired": false,
-      "AuthorizationScopes": [],
-      "AuthorizationType": "JWT",
-      "AuthorizerId": "67s34x",
-      "RequestModels": {},
       "RouteId": "rlqp0gp",
       "RouteKey": "POST /orders/{orderId}/tags",
       "Target": "integrations/xdt2c9v"
@@ -271,6 +261,14 @@
       "RouteId": "slan9lk",
       "RouteKey": "GET /orders",
       "Target": "integrations/am5i45r"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RouteId": "xyvwu4m",
+      "RouteKey": "POST /orders/manual",
+      "Target": "integrations/zwiepdt"
     },
     {
       "ApiKeyRequired": false,

@@ -3158,3 +3158,76 @@ rather than "fixed" by redeploying it, since `user-pool-v2.cfn.yaml` already own
 identically-named groups on the new pool and a redeploy would hit a same-name conflict and
 fail. The disaster-recovery templates' old-pool references (not deployed, so lower stakes) were
 updated to point at the new pool and its schema.
+
+### 71. Dashboard fix batch — Today at-risk count, Jobs header alignment (plus a zoom-bleed regression it exposed), Email unread state (two bugs) (2026-08-13)
+
+Three small, independently-scoped dashboard bugs from an owner brain-dump, shipped in sequence
+with two follow-on regressions caught live on production the same day — a good example of how
+a "small, isolated" fix can still surface a pre-existing bug the moment it changes what's
+visible.
+
+**Today tab — Picked Up not excluded from at-risk.** dashboard-data.js's getTodayNumbers()
+and decorateLineItem()'s dueRisk each carried their own inline exclusion list for "already
+fulfilled" statuses, and both independently omitted Picked Up — so an order marked picked up
+in production kept inflating the Today tab's due-today/at-risk hour counts. Unified into shared
+FULFILLED_STATUSES/SAFE_STAGE_STATUSES constants so the two computations can no longer
+silently drift apart the way they just had.
+
+**Jobs tab — header/row right-edge misalignment.** #job-list-head and .job-row already
+computed identical grid-template-columns per render — never a header-vs-row mismatch. The
+actual cause: html's clientWidth (and everything downstream) varies by ~15-17px depending on
+whether the page currently needs a vertical scrollbar, so the table's tight horizontal-scroll
+math drifted against the card's edge purely based on row count. Fixed with
+html { scrollbar-gutter: stable; }, reserving that space unconditionally.
+
+**Regression, same day: Jobs table content bleeding out of its card when zoomed in.** Reported
+by the owner within hours of the alignment fix shipping to production. Root cause was unrelated
+to scrollbar-gutter (confirmed by measurement, not assumption) — .job-row/#job-list-head
+are block-level CSS grids, and a block-level grid sizes its box to its container, not to its
+own fixed-px tracks (1284px total for the default 6 columns). So each row's background,
+border-bottom, hover band, and right padding stopped at the container edge while the row's own
+cells kept laying out past it — an unbacked overflow band invisible at 100% zoom (~103px,
+easy to miss) that grew to 240px at 110% and 607px at 150%, because zooming in shrinks the
+container in CSS pixels while the fixed-px tracks stay fixed. scrollbar-gutter: stable didn't
+cause this — it just narrowed the container enough to cross the threshold sooner. Fixed with one
+declaration, .job-row { width: max-content; min-width: 100%; }, so a row always sizes to cover
+its own cells. Verified via a real zoom sweep (headless Chromium, CDP pageScaleFactor, 80%
+through 150%) rather than trusting the fix by inspection.
+
+**Email tab — two related unread-state bugs, both found live on production by the owner.**
+Building "mark as unread" + an "Unread only" filter (this batch's third piece — reuses the
+existing bidirectional markMessageRead(), adds a filter chip) exposed a pre-existing gap in
+groupThreads()'s thread-collapse logic that had been invisible until there was a filter to
+expose it:
+
+1. **Filter/row-unread state only checked the thread's latest message.** A thread with an
+   older unread message under an already-read newer reply rendered as fully read and vanished
+   under "Unread only" — while the mailbox badge (get-mailboxes.js, unthreaded, counts every
+   individual message) still correctly counted it. Fixed by tracking unreadCount per thread
+   in groupThreads() (any unseen message in the group, not just the latest) and using that for
+   both the row's bold/dot indicator and the filter.
+2. **Opening a thread didn't mark it read**, once bug 1 made these threads visible for the first
+   time. openMessage() only ever marked the single clicked message-id read, and a thread row's
+   data-msg is always the latest message's id — so opening a thread whose unread message was
+   an older one displayed that message on screen (via renderRead()'s full-thread getThread()
+   fetch) without ever marking it read server-side. The badge never cleared no matter how many
+   times the owner opened the thread. Fixed with markThreadRead(): fetches the full thread and
+   marks every currently-unread message in it, not just the clicked one.
+
+Both email fixes were verified against the real reported symptom before shipping — a synthetic
+groupThreads() repro for bug 1 (old logic surfaced 0 of 2 actually-unread threads matching the
+badge; fixed logic surfaces 2 of 2), and the owner's own live retest on production for bug 2.
+
+**Process note, not a code note:** the remote Claude Code session that produced these fixes had
+no GitHub write access (403 Resource not accessible by integration on every push/branch-
+create/PR-create attempt, confirmed via both raw git push and the GitHub API) — a gap traced
+to the repo having been auto-attached read-only at that session's start, which short-circuits
+add_repo's push-authorization check on later calls rather than re-running it. Landing these
+commits ultimately required a local session to make the same edits directly, since manual
+patch-file hand-off (download + git am) kept failing on download/filename mechanics. Worth
+fixing (attach the repo fresh with push access from a session's first tool call, or grant the
+App broader permissions directly) before the next session that needs to land commits.
+
+All four fixes (Today, Jobs alignment, Jobs zoom-bleed, both Email bugs) went through the
+repo's standard staging-first gate — dev.kcmps.com sync and owner verification before each
+production promotion — and are live in production as of this entry.

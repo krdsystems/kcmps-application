@@ -124,6 +124,22 @@ Line numbers drift; the function/constant names above are stable anchors — gre
   at 320px and `.dash-content` caps width at 1320px — both fight a full-height mail pane, so
   `dashboard.css` overrides them under `.mail-list`/`.mail-wide` only. Unscoping either one
   silently reflows every queue card on `today.html`/`jobs.html`.
+- **`.job-row`/`#job-list-head` need `width: max-content; min-width: 100%`, not just a shared
+  `grid-template-columns`.** A block-level CSS grid sizes its own box to its container, not to
+  its fixed-px tracks — so without this, each row's background/border-bottom/hover band/padding
+  stop at the container edge while the row's own cells keep laying out past it. Invisible at
+  100% zoom (the gap was small enough to miss) but grows fast on zoom-in, since the container
+  shrinks in CSS px while the fixed-px tracks don't — reported live in production as job rows
+  "bleeding" out of the card once zoomed in. See `docs/history.md` entry 71.
+- **Email `groupThreads()`'s thread-collapse must track unread state per-thread, not off the
+  latest message alone — for BOTH the unread indicator and for marking read.** A thread with an
+  older unread message under an already-read newer reply used to (a) render as fully read and
+  vanish from "Unread only" even though the mailbox's unthreaded badge counted it, and (b) even
+  after fixing (a), stay unread forever once opened — `openMessage()` only marked the clicked
+  message read, and a thread row's `data-msg` is always the latest message's id, never an older
+  one. Fixed by tracking `unreadCount` per thread group, and by `markThreadRead()` marking every
+  unread message in the full thread (via `getThread()`), not just the one that was clicked. See
+  `docs/history.md` entry 71.
 - **Bulk-quote product picker** (`index.html` `#estimator`, replaced a plain `<select>` — owner
   found it too hard to use): the hidden `<select id="est-product">` is still the only thing
   `currentOption()`/pricing/`addToCart()` read from. `selectOption(id)` is the single place that

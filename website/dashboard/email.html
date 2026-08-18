@@ -192,9 +192,10 @@
       const key = m.threadId || m.messageId;
       const g = byThread.get(key);
       if (!g) {
-        byThread.set(key, { threadId: key, latest: m, count: 1 });
+        byThread.set(key, { threadId: key, latest: m, count: 1, unreadCount: m.flags.seen ? 0 : 1 });
       } else {
         g.count += 1;
+        if (!m.flags.seen) g.unreadCount += 1;
         if (new Date(m.date) > new Date(g.latest.date)) g.latest = m;
       }
     }
@@ -203,7 +204,21 @@
 
   function renderListRow(g, idx) {
     const m = g.latest;
-    const unread = !m.flags.seen;
+    // Thread-level unread state, not just the latest message's flag — a
+    // thread can have an older unread message under an already-read latest
+    // reply (e.g. staff opened the newest message but never the one before
+    // it), and the mailbox-wide unread badge (#mb-unread, computed
+    // server-side over every individual message — see get-mailboxes.js)
+    // counts that older message regardless of thread position. Using only
+    // m.flags.seen here made the "Unread only" filter and this row's
+    // bold/dot indicator silently disagree with that badge: the count said
+    // N unread while the (thread-collapsed) list showed none. The per-row
+    // mark-as-unread/read toggle below still targets m (the latest
+    // message) specifically, since that's the only message a single click
+    // here can address — clicking it doesn't resolve an unread message
+    // buried earlier in the thread, only re-derives whether any remain via
+    // the next fetch/render.
+    const unread = g.unreadCount > 0;
     const cls = "q-item" +
       (unread ? " sla-warn is-unread" : "") +
       (m.messageId === currentMessageId ? " is-open" : "") +
@@ -240,7 +255,7 @@
     }
 
     let groups = groupThreads(listMessages);
-    if (unreadOnly) groups = groups.filter((g) => !g.latest.flags.seen);
+    if (unreadOnly) groups = groups.filter((g) => g.unreadCount > 0);
 
     if (!groups.length) {
       listEl.innerHTML = '<p class="q-empty">No unread messages' + (search ? " match that search." : ".") + "</p>";
@@ -314,10 +329,33 @@
     showCcField = false;
     readEl.innerHTML = mailReadSkeleton();
     pane.classList.add("show-read");
-    await KCMPS_DASH.markMessageRead(currentMailboxId, messageId, true);
+    await markThreadRead(messageId);
     await renderMailboxSelector();
     await renderList();
     await renderRead();
+  }
+
+  // Opening a row renders EVERY message in that thread (renderRead()'s
+  // allThread, via getThread()) — but a thread row's data-msg only ever
+  // carries its LATEST message's id (renderListRow()), so marking just
+  // that one id read left an older unread message, now visibly displayed
+  // in the thread view, still flagged unseen server-side. The mailbox's
+  // unread badge (get-mailboxes.js, unthreaded, counts every individual
+  // message) never cleared even though the staffer had just read the
+  // whole thread on screen. Marks every unread message in the thread,
+  // not only the one that was clicked.
+  async function markThreadRead(messageId) {
+    let threadId = null;
+    const cached = listMessages.find((m) => m.messageId === messageId);
+    if (cached) threadId = cached.threadId;
+    if (!threadId) {
+      const m = await KCMPS_DASH.getMessage(currentMailboxId, messageId);
+      threadId = m && m.threadId;
+    }
+    const thread = threadId ? await KCMPS_DASH.getThread(currentMailboxId, threadId) : [];
+    const unreadIds = new Set(thread.filter((t) => t.flags && t.flags.seen === false).map((t) => t.messageId));
+    unreadIds.add(messageId);
+    await Promise.all(Array.from(unreadIds).map((id) => KCMPS_DASH.markMessageRead(currentMailboxId, id, true)));
   }
 
   function mailReadSkeleton() {

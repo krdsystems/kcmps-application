@@ -250,6 +250,7 @@ Record each rehearsal here. An untested procedure in this file is a claim, not a
 | 2026-08-13 | §4 — decrypt the Layer B dump with the private key | production snapshot | **PASS** — `{"Count": 144, …}` recovered from ciphertext | owner |
 | 2026-08-13 | Full snapshot via CI (OIDC both accounts, encrypt, auto-commit) | live infra | **PASS** — run `31679938179` green after 2 IAM fixes | owner + Claude |
 | 2026-08-13 | §4 — **PITR restore-to-point-in-time**, damage-and-recover | `kcmps-staging` | **PASS**, 4/4 checks — see below | owner + Claude |
+| 2026-08-18 | §1 — **DNS record restore**, damage-and-recover via the detect/generate/execute relay | production zone `Z06397161LBTJCRTPLL62` | **PASS** — see below | owner + Claude |
 
 The decrypt rehearsal matters more than it looks: until it was done, the encryption path had
 only ever been exercised in the **write** direction. A backup that encrypts correctly but
@@ -301,8 +302,39 @@ Also worth knowing: a freshly restored table reports `ItemCount: 0` and `TableSi
 That metadata only refreshes about every 6 hours — **it is not evidence the restore failed.**
 Always verify with an actual `scan`, as above.
 
+### The 2026-08-18 DNS restore rehearsal — what it proved, and its scope
+
+**This is the one procedure agents cannot execute end-to-end by design** — the standing rule
+(§1 above) is that Route 53 writes are owner-only. So the rehearsal shape is different from
+the DynamoDB one: it proves the **detect → diff → generate → execute → verify relay**, with
+the owner performing both writes and Claude performing everything else.
+
+1. Owner ran a `CREATE` for a throwaway TXT record (`dr-rehearsal-2026-08-18.kcmps.com`) —
+   an isolated subdomain, nothing live depends on it
+2. Claude re-read the live zone (read-only) and confirmed drift: 21 → 22 records
+3. Claude diffed live against `route53/kcmps.com.zonefile.txt` — the diff isolated **exactly
+   the one changed line**, nothing else
+4. Claude generated the restore `DELETE` change-batch **from the live read, not from
+   memory** — matching name/type/TTL/value exactly, since Route 53 requires an exact match
+   to delete a record
+5. Owner ran the generated `DELETE`
+6. Claude re-read and diffed again: **0 missing, 0 extra, exit code 0** — zone is
+   byte-identical to the snapshot baseline
+
+| Check | Result |
+|---|---|
+| Drift detected correctly (21→22, isolated to the 1 real change) | PASS |
+| Restore change-batch generated from live data, not guessed | PASS |
+| Zone returns to exact snapshot baseline post-restore | PASS |
+
+**Scope, stated plainly:** this proved the *mechanism* — the generation logic is identical
+regardless of which record it targets, since it always derives the change-batch from a live
+read rather than from memory. It did **not** rehearse recovering a genuinely critical record
+(MX, a DKIM CNAME, or the ACM validation CNAME) — deliberately breaking one of those even
+briefly isn't a test worth running. Treat the mechanism as proven; treat "restoring MX under
+real pressure" as one inference away from proven, not identical to it.
+
 ### Still unproven
 
 In rough priority order: #2 (Lambda config restore from a snapshot env map), #5 (rebuilding
-an API route from JSON), #6 (SES receipt-rule rebuild), #1 (DNS record restore — owner-only,
-and the highest-stakes of the four).
+an API route from JSON), #6 (SES receipt-rule rebuild).

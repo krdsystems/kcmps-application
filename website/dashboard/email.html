@@ -210,10 +210,10 @@
     // it), and the mailbox-wide unread badge (#mb-unread, computed
     // server-side over every individual message — see get-mailboxes.js)
     // counts that older message regardless of thread position. Using only
-    // m.flags.seen here made the "Unread only" filter and this row's
+    // `m.flags.seen` here made the "Unread only" filter and this row's
     // bold/dot indicator silently disagree with that badge: the count said
     // N unread while the (thread-collapsed) list showed none. The per-row
-    // mark-as-unread/read toggle below still targets m (the latest
+    // mark-as-unread/read toggle below still targets `m` (the latest
     // message) specifically, since that's the only message a single click
     // here can address — clicking it doesn't resolve an unread message
     // buried earlier in the thread, only re-derives whether any remain via
@@ -336,7 +336,7 @@
   }
 
   // Opening a row renders EVERY message in that thread (renderRead()'s
-  // allThread, via getThread()) — but a thread row's data-msg only ever
+  // `allThread`, via getThread()) — but a thread row's data-msg only ever
   // carries its LATEST message's id (renderListRow()), so marking just
   // that one id read left an older unread message, now visibly displayed
   // in the thread view, still flagged unseen server-side. The mailbox's

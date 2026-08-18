@@ -339,7 +339,7 @@ select.input { appearance: auto; }
    you zoom in the narrower the container gets and the wider that unbacked
    band grows, which is exactly the "looks fine zoomed out, bleeds when I
    zoom in" symptom. Nothing to do with subpixel rounding, and not caused by
-   the scrollbar-gutter: stable fix above (that rule only shifts the
+   the `scrollbar-gutter: stable` fix above (that rule only shifts the
    threshold ~15px earlier by reserving the gutter unconditionally) — this
    is the pre-existing grid sizing, made obvious once the viewport is small
    enough relative to the fixed tracks. max-content sizes each row to its own

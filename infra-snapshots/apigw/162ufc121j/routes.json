@@ -72,6 +72,26 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "9vxt4mh",
+      "RouteKey": "POST /cashbook/transactions/{txnId}/void",
+      "Target": "integrations/0rz2n0k"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "a7jqyum",
+      "RouteKey": "GET /cashbook/categories",
+      "Target": "integrations/vy8qb2q"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "a8g3l57",
       "RouteKey": "GET /mail/mailboxes",
       "Target": "integrations/yz5sfg6"
@@ -98,6 +118,16 @@
     },
     {
       "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "c7tqair",
+      "RouteKey": "GET /cashbook/month/{month}",
+      "Target": "integrations/n35rl08"
+    },
+    {
+      "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
@@ -121,9 +151,39 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "hm382xh",
+      "RouteKey": "POST /orders/{orderId}/costs",
+      "Target": "integrations/3yoa6rm"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "i5zbmy8",
       "RouteKey": "GET /staff/pin",
       "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "ixljpzl",
+      "RouteKey": "POST /cashbook/transactions",
+      "Target": "integrations/payoysk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "jfx6zgs",
+      "RouteKey": "GET /cashbook/day/{day}",
+      "Target": "integrations/fp4cw5u"
     },
     {
       "ApiKeyRequired": false,
@@ -269,6 +329,16 @@
       "RouteId": "xyvwu4m",
       "RouteKey": "POST /orders/manual",
       "Target": "integrations/zwiepdt"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "y6abeh1",
+      "RouteKey": "GET /orders/{orderId}/costing",
+      "Target": "integrations/v1z4xue"
     },
     {
       "ApiKeyRequired": false,

@@ -4,7 +4,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.914000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.914000+00:00",
       "LogicalResourceId": "AddCorrespondenceFunction",
       "PhysicalResourceId": "kcmps-staging-add-correspondence",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -34,7 +34,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.025000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.455000+00:00",
       "LogicalResourceId": "AdvanceLineItemFunction",
       "PhysicalResourceId": "kcmps-staging-advance-line-item",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -64,7 +64,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.721000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.217000+00:00",
       "LogicalResourceId": "CancelOrderFunction",
       "PhysicalResourceId": "kcmps-staging-cancel-order",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -104,10 +104,10 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T06:13:24.723000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.484000+00:00",
       "LogicalResourceId": "CreateManualOrderFunction",
       "PhysicalResourceId": "kcmps-staging-create-manual-order",
-      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceStatus": "UPDATE_COMPLETE",
       "ResourceType": "AWS::Lambda::Function"
     },
     {
@@ -134,7 +134,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.652000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.175000+00:00",
       "LogicalResourceId": "CreateOrderFunction",
       "PhysicalResourceId": "kcmps-staging-create-order",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -164,10 +164,10 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:23:26.020000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.936000+00:00",
       "LogicalResourceId": "DashboardPrefsFunction",
       "PhysicalResourceId": "kcmps-staging-dashboard-prefs",
-      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceStatus": "UPDATE_COMPLETE",
       "ResourceType": "AWS::Lambda::Function"
     },
     {
@@ -204,7 +204,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.916000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.911000+00:00",
       "LogicalResourceId": "DesignUploadUrlFunction",
       "PhysicalResourceId": "kcmps-staging-design-upload-url",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -244,7 +244,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.950000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.534000+00:00",
       "LogicalResourceId": "ExpirePendingOrdersFunction",
       "PhysicalResourceId": "kcmps-staging-expire-pending-orders",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -274,7 +274,127 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:12.139000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.240000+00:00",
+      "LogicalResourceId": "GetCashbookCategoriesFunction",
+      "PhysicalResourceId": "kcmps-staging-get-cashbook-categories",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:59.038000+00:00",
+      "LogicalResourceId": "GetCashbookCategoriesIntegration",
+      "PhysicalResourceId": "vy8qb2q",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.296000+00:00",
+      "LogicalResourceId": "GetCashbookCategoriesLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-get-cashbook-categories",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.164000+00:00",
+      "LogicalResourceId": "GetCashbookDayFunction",
+      "PhysicalResourceId": "kcmps-staging-get-cashbook-day",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.660000+00:00",
+      "LogicalResourceId": "GetCashbookDayIntegration",
+      "PhysicalResourceId": "fp4cw5u",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.240000+00:00",
+      "LogicalResourceId": "GetCashbookDayLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-get-cashbook-day",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.073000+00:00",
+      "LogicalResourceId": "GetCashbookMonthFunction",
+      "PhysicalResourceId": "kcmps-staging-get-cashbook-month",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.659000+00:00",
+      "LogicalResourceId": "GetCashbookMonthIntegration",
+      "PhysicalResourceId": "n35rl08",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.232000+00:00",
+      "LogicalResourceId": "GetCashbookMonthLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-get-cashbook-month",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.281000+00:00",
+      "LogicalResourceId": "GetJobCostingFunction",
+      "PhysicalResourceId": "kcmps-staging-get-job-costing",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.944000+00:00",
+      "LogicalResourceId": "GetJobCostingIntegration",
+      "PhysicalResourceId": "v1z4xue",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.298000+00:00",
+      "LogicalResourceId": "GetJobCostingLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-get-job-costing",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.016000+00:00",
       "LogicalResourceId": "GetMailMessageFunction",
       "PhysicalResourceId": "kcmps-staging-get-mail-message",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -304,7 +424,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:06.187000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.920000+00:00",
       "LogicalResourceId": "GetMailMessagesFunction",
       "PhysicalResourceId": "kcmps-staging-get-mail-messages",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -334,7 +454,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:06.236000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.939000+00:00",
       "LogicalResourceId": "GetMailboxesFunction",
       "PhysicalResourceId": "kcmps-staging-get-mailboxes",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -364,7 +484,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.759000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.403000+00:00",
       "LogicalResourceId": "GetMessagesFunction",
       "PhysicalResourceId": "kcmps-staging-get-messages",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -394,7 +514,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.001000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.556000+00:00",
       "LogicalResourceId": "GetOrdersFunction",
       "PhysicalResourceId": "kcmps-staging-get-orders",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -424,7 +544,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.092000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.478000+00:00",
       "LogicalResourceId": "GetUnreadMessagesFunction",
       "PhysicalResourceId": "kcmps-staging-get-unread-messages",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -474,7 +594,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.210000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.679000+00:00",
       "LogicalResourceId": "HandleScanResultFunction",
       "PhysicalResourceId": "kcmps-staging-handle-scan-result",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -514,7 +634,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:11.862000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.051000+00:00",
       "LogicalResourceId": "IngestInboundFunction",
       "PhysicalResourceId": "kcmps-staging-ingest-inbound",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -564,7 +684,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.888000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.543000+00:00",
       "LogicalResourceId": "ListDesignsFunction",
       "PhysicalResourceId": "kcmps-staging-list-designs",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -594,7 +714,67 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.691000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.302000+00:00",
+      "LogicalResourceId": "LogJobCostFunction",
+      "PhysicalResourceId": "kcmps-staging-log-job-cost",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.822000+00:00",
+      "LogicalResourceId": "LogJobCostIntegration",
+      "PhysicalResourceId": "3yoa6rm",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.321000+00:00",
+      "LogicalResourceId": "LogJobCostLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-log-job-cost",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.476000+00:00",
+      "LogicalResourceId": "LogTransactionFunction",
+      "PhysicalResourceId": "kcmps-staging-log-transaction",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:57.070000+00:00",
+      "LogicalResourceId": "LogTransactionIntegration",
+      "PhysicalResourceId": "payoysk",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.533000+00:00",
+      "LogicalResourceId": "LogTransactionLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-log-transaction",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.189000+00:00",
       "LogicalResourceId": "LookupOrderFunction",
       "PhysicalResourceId": "kcmps-staging-lookup-order",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -634,7 +814,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:06.204000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.054000+00:00",
       "LogicalResourceId": "MarkMailReadFunction",
       "PhysicalResourceId": "kcmps-staging-mark-mail-read",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -664,7 +844,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.085000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.703000+00:00",
       "LogicalResourceId": "NotifyUnreadMessagesFunction",
       "PhysicalResourceId": "kcmps-staging-notify-unread-messages",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -694,7 +874,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.010000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.394000+00:00",
       "LogicalResourceId": "PatchDesignFunction",
       "PhysicalResourceId": "kcmps-staging-patch-design",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -804,6 +984,46 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.716000+00:00",
+      "LogicalResourceId": "PermGetCashbookCategories",
+      "PhysicalResourceId": "kcmps-backend-staging-PermGetCashbookCategories-MulUPmzhqiJq",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.527000+00:00",
+      "LogicalResourceId": "PermGetCashbookDay",
+      "PhysicalResourceId": "kcmps-backend-staging-PermGetCashbookDay-MWefJypeBIQ2",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.472000+00:00",
+      "LogicalResourceId": "PermGetCashbookMonth",
+      "PhysicalResourceId": "kcmps-backend-staging-PermGetCashbookMonth-Y44P5p7eVEWc",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.815000+00:00",
+      "LogicalResourceId": "PermGetJobCosting",
+      "PhysicalResourceId": "kcmps-backend-staging-PermGetJobCosting-zf3Oq8ImD9CM",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T17:43:58.767000+00:00",
       "LogicalResourceId": "PermGetMailMessage",
       "PhysicalResourceId": "kcmps-backend-staging-PermGetMailMessage-FMae0N2FFGPD",
@@ -898,6 +1118,26 @@
       "LogicalResourceId": "PermListDesigns",
       "PhysicalResourceId": "kcmps-backend-staging-PermListDesigns-gaxGfIfzuNHt",
       "ResourceStatus": "UPDATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.677000+00:00",
+      "LogicalResourceId": "PermLogJobCost",
+      "PhysicalResourceId": "kcmps-backend-staging-PermLogJobCost-0pIYy9VCwEnx",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.857000+00:00",
+      "LogicalResourceId": "PermLogTransaction",
+      "PhysicalResourceId": "kcmps-backend-staging-PermLogTransaction-6Jk3MMqMfOKq",
+      "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::Lambda::Permission"
     },
     {
@@ -1054,7 +1294,17 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.566000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.752000+00:00",
+      "LogicalResourceId": "PermVoidTransaction",
+      "PhysicalResourceId": "kcmps-backend-staging-PermVoidTransaction-DgD6pELLCyrf",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Permission"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.057000+00:00",
       "LogicalResourceId": "PostConfirmationFunction",
       "PhysicalResourceId": "kcmps-staging-post-confirmation",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1084,7 +1334,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.005000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.332000+00:00",
       "LogicalResourceId": "PublishDesignFunction",
       "PhysicalResourceId": "kcmps-staging-publish-design",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1124,7 +1374,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.223000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.806000+00:00",
       "LogicalResourceId": "PurgeArchivedDesignsFunction",
       "PhysicalResourceId": "kcmps-staging-purge-archived-designs",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1234,6 +1484,46 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-18T14:53:00.578000+00:00",
+      "LogicalResourceId": "RouteGetCashbookCategories",
+      "PhysicalResourceId": "a7jqyum",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.353000+00:00",
+      "LogicalResourceId": "RouteGetCashbookDay",
+      "PhysicalResourceId": "jfx6zgs",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.255000+00:00",
+      "LogicalResourceId": "RouteGetCashbookMonth",
+      "PhysicalResourceId": "c7tqair",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.345000+00:00",
+      "LogicalResourceId": "RouteGetJobCosting",
+      "PhysicalResourceId": "y6abeh1",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T17:44:00.362000+00:00",
       "LogicalResourceId": "RouteGetMailMessage",
       "PhysicalResourceId": "obnrs81",
@@ -1298,6 +1588,26 @@
       "LogicalResourceId": "RouteListDesigns",
       "PhysicalResourceId": "8jpvwl6",
       "ResourceStatus": "UPDATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.526000+00:00",
+      "LogicalResourceId": "RouteLogJobCost",
+      "PhysicalResourceId": "hm382xh",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.472000+00:00",
+      "LogicalResourceId": "RouteLogTransaction",
+      "PhysicalResourceId": "ixljpzl",
+      "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::ApiGatewayV2::Route"
     },
     {
@@ -1454,7 +1764,17 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:18:06.177000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:58.150000+00:00",
+      "LogicalResourceId": "RouteVoidTransaction",
+      "PhysicalResourceId": "9vxt4mh",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Route"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.855000+00:00",
       "LogicalResourceId": "SendMailReplyFunction",
       "PhysicalResourceId": "kcmps-staging-send-mail-reply",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1484,7 +1804,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.899000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.425000+00:00",
       "LogicalResourceId": "SendMessageFunction",
       "PhysicalResourceId": "kcmps-staging-send-message",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1514,7 +1834,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.036000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.574000+00:00",
       "LogicalResourceId": "SetOrderTagsFunction",
       "PhysicalResourceId": "kcmps-staging-set-order-tags",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1554,10 +1874,10 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:58.548000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.475000+00:00",
       "LogicalResourceId": "StaffPinFunction",
       "PhysicalResourceId": "kcmps-staging-staff-pin",
-      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceStatus": "UPDATE_COMPLETE",
       "ResourceType": "AWS::Lambda::Function"
     },
     {
@@ -1594,7 +1914,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.630000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.751000+00:00",
       "LogicalResourceId": "StreamsHandlerFunction",
       "PhysicalResourceId": "kcmps-staging-streams-handler",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1614,7 +1934,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:49.208000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.206000+00:00",
       "LogicalResourceId": "SubmitPaymentProofFunction",
       "PhysicalResourceId": "kcmps-staging-submit-payment-proof",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1644,7 +1964,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.718000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.425000+00:00",
       "LogicalResourceId": "UploadDesignFileFunction",
       "PhysicalResourceId": "kcmps-staging-upload-design-file",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1674,7 +1994,7 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
-      "LastUpdatedTimestamp": "2026-08-08T05:17:48.960000+00:00",
+      "LastUpdatedTimestamp": "2026-08-18T14:52:45.925000+00:00",
       "LogicalResourceId": "VerifyPaymentFunction",
       "PhysicalResourceId": "kcmps-staging-verify-payment",
       "ResourceStatus": "UPDATE_COMPLETE",
@@ -1697,6 +2017,36 @@
       "LastUpdatedTimestamp": "2026-08-05T09:07:52.095000+00:00",
       "LogicalResourceId": "VerifyPaymentLogGroup",
       "PhysicalResourceId": "/aws/lambda/kcmps-staging-verify-payment",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Logs::LogGroup"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:55.146000+00:00",
+      "LogicalResourceId": "VoidTransactionFunction",
+      "PhysicalResourceId": "kcmps-staging-void-transaction",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Lambda::Function"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:56.553000+00:00",
+      "LogicalResourceId": "VoidTransactionIntegration",
+      "PhysicalResourceId": "0rz2n0k",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::ApiGatewayV2::Integration"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-18T14:52:46.348000+00:00",
+      "LogicalResourceId": "VoidTransactionLogGroup",
+      "PhysicalResourceId": "/aws/lambda/kcmps-staging-void-transaction",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::Logs::LogGroup"
     }

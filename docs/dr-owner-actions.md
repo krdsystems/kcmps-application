@@ -2,37 +2,41 @@
 
 Companion to [`disaster-recovery-and-cicd-plan.md`](disaster-recovery-and-cicd-plan.md).
 
-## Status as of 2026-08-13 — most of this is DONE
+## Status as of 2026-08-18 — the backup/DR system is COMPLETE
 
-Executed with the owner's explicit approval on 2026-08-13 and **verified by reading the
-resulting state back**, not by trusting the command's exit code:
+Everything in this document has been executed, verified, and — as of 2026-08-18 — every
+documented restore procedure has been rehearsed at least once. Nothing below is a to-do
+list anymore; it's kept as the historical record of what was done and how it was checked,
+since that's what a future incident or a future engineer would actually need to trust it.
 
 | Item | Status | Verified by |
 |---|---|---|
 | §1a OIDC providers, both accounts | **DONE** | ARNs returned for `600929977538` and `260866268499` |
 | §1c `KCMPSSnapshotReader` (infra) | **DONE** | `ReadOnlyAccess` + one inline policy, `sts:AssumeRole` scoped to the single DNS-role ARN (see §1e) |
 | §1d `KCMPSSnapshotReaderDNS` | **DONE** | 3 Route 53 **read** actions only, no managed policies |
-| §1f **backup keypair** | **NOT DONE — still yours** | see below; blocks the table dump only |
+| §1f **backup keypair** | **DONE** | owner-generated; decrypt tested against a real snapshot, `{"Count": 144, …}` recovered |
 | §2 termination protection ×3 | **DONE** | all three stacks return `True` |
 | §2 mail-bucket versioning | **DONE** | `Enabled` |
 | §2 site-bucket lifecycle | **DONE** | `expire-noncurrent-versions / Enabled / 90` |
-| Observability change-set | **DONE** | `UPDATE_COMPLETE`; `kcmps-ops` dashboard live; 37 → 49 alarms; **0 Lambdas now uncovered** |
-| First snapshot pushed off-machine | **DONE** | branch `claude/dr-backup-cicd` on GitHub |
+| Observability change-set | **DONE** | `UPDATE_COMPLETE`; `kcmps-ops` dashboard live; 37 → 49 alarms; 0 Lambdas uncovered |
+| Nightly snapshot in production | **DONE** | green every night 2026-08-13 → 2026-08-18, no gaps, heartbeat watching it |
+| **All 6 restore procedures rehearsed** | **DONE** | see [`infra-snapshots/RESTORE.md`](../infra-snapshots/RESTORE.md)'s rehearsal log — decrypt, PITR, DNS, Lambda config, API route, SES rule, all PASS |
 
-**One bug was found and fixed during execution.** The DNS role initially trusted only
-GitHub's OIDC provider, but `.github/workflows/infra-snapshot.yml` reaches it by *chaining*
-from the infra role (`credential_source = Environment`). That mismatch would have failed
-with `AccessDenied` on the first nightly run — a backup silently not running, which is the
-exact failure this system exists to prevent. The trust policy now carries two statements:
-`DirectGitHubOIDC` and `ChainFromInfraSnapshotRole`. **The chain has not yet been exercised
-by a real workflow run** — the first `workflow_dispatch` is what proves it.
+**Two bugs were found and fixed during first execution**, both worth remembering since they're
+exactly the class of failure this whole system exists to catch:
 
-### What is still outstanding
+1. The DNS role initially trusted only GitHub's OIDC provider, but the workflow reaches it by
+   *chaining* from the infra role. Fixed with a two-statement trust policy
+   (`DirectGitHubOIDC` + `ChainFromInfraSnapshotRole`) — now exercised nightly without issue.
+2. GitHub's **immutable subject claim** means this org's OIDC `sub` is
+   `repo:krdsystems@<org-id>/kcmps-application@<repo-id>:*`, not the `repo:owner/name:*` form
+   every tutorial shows. See §1b for the CloudTrail lookup that found it.
 
-1. **Generate the backup keypair (§1f)** — the only remaining blocker on the nightly job.
-2. **Trigger the workflow manually once** and confirm it commits. Do not wait for the first
-   scheduled run to discover a problem.
-3. **Rehearse one restore (§3).**
+### What's genuinely still open — not blockers, just not built yet
+
+The CI/CD hardening phases (§4 below) were always scoped as *later* work, separate from the
+backup/DR system itself. None of them are required for the backup to function; they reduce
+how much a bad deploy can hurt. Priority order unchanged from when this was written.
 
 ---
 
@@ -213,7 +217,7 @@ broken.**
 
 ---
 
-## 1f. Generate the backup encryption keypair — **required; the snapshot fails without it**
+## 1f. Generate the backup encryption keypair — **DONE, kept for reference**
 
 The production table holds real customer data — mail items with full `bodyText` and sender
 addresses, order records with correspondence logs. That is encrypted before it ever reaches
@@ -253,10 +257,9 @@ Then:
    ```
    Record the result in `infra-snapshots/RESTORE.md`'s rehearsal log.
 
-> **The encryption path has NOT been executed end-to-end yet** — it could not be, since the
-> keypair does not exist. The code is written and the fail-closed guard is in place, but
-> step 4 above is the first real proof it works. Treat this layer as unverified until you
-> have done it.
+> **Step 4 was completed 2026-08-13** — decrypting a real production snapshot returned
+> `{"Count": 144, …}`, confirming the round trip works end to end. See
+> `infra-snapshots/RESTORE.md`'s rehearsal log.
 
 **Why the CI job needs no secret at all:** encryption is asymmetric. The workflow has the
 public cert and can *write* a backup it cannot *read*. A compromised runner or leaked GitHub
@@ -319,14 +322,15 @@ git diff infra-snapshots/
 
 ---
 
-## 3. Rehearse one restore — the step that converts plan into capability
+## 3. Rehearse the restores — DONE, all six
 
-Do **procedure #4** from [`infra-snapshots/RESTORE.md`](../infra-snapshots/RESTORE.md)
-(PITR restore) against `kcmps-staging`. Entirely reversible, touches no production resource,
-and it is the procedure most likely to be needed under real pressure.
-
-Record the result in that file's rehearsal log. Delete the restored table afterwards so it
-does not accrue cost.
+Every documented procedure in [`infra-snapshots/RESTORE.md`](../infra-snapshots/RESTORE.md)
+has been rehearsed at least once: encrypted-backup decrypt, DynamoDB PITR, DNS record
+restore, Lambda config restore, API Gateway route rebuild, and SES rule rebuild. All PASS.
+See that file's rehearsal log for what each one actually proved, plus the honest scope
+caveats on the two that couldn't be full damage-and-recover tests (DNS writes are
+owner-only by standing rule; SES has no staging equivalent and is the live mail pipeline,
+so that one proved the reconstruction mechanism without ever risking the real pipeline).
 
 ---
 

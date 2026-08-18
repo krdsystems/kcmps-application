@@ -26,6 +26,14 @@ listed under [Deliberately deferred](#deliberately-deferred) below so nobody "ge
 > been unmonitored. Architecture, gap analysis, and the CI/CD phases (Lambda aliases first,
 > since a bad Lambda deploy still has no fast rollback) →
 > [`disaster-recovery-and-cicd-plan.md`](disaster-recovery-and-cicd-plan.md).
+>
+> **[Updated 2026-08-18] All six restore procedures rehearsed, all PASS.** The backup/DR
+> system is no longer a hypothesis — decrypt, DynamoDB PITR, DNS, Lambda config, API routes,
+> and SES rules have each been proven with a real damage-and-recover test (or, for DNS and
+> SES specifically, the closest safe equivalent — see `infra-snapshots/RESTORE.md`'s
+> rehearsal log for the scope caveats on those two). The CI/CD hardening phases (Lambda
+> aliases, the frontend pipeline, CFN imports) remain unbuilt — that work is unrelated to
+> whether backups exist and work, which they now provably do.
 
 **Done and deployed (`website/`, static, S3):**
 - Storefront: catalog, mixed cart (`sku` + `custom`), bulk estimator, hero category priming,

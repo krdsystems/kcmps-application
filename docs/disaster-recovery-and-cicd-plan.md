@@ -531,21 +531,24 @@ for free), and a second Route 53 hosted zone.
 
 ## 6. Suggested order of work
 
-0. **The D1–D5 doc fixes** (§1b) — minutes, zero risk, and they are the reference material
-   a recovery would actually be run from. D2 especially, before anyone can act on it.
-1. **Phase 0 hardening** — hours, no pipeline needed, closes G6/G7/G9
-2. **Layer A snapshot script**, run manually first to confirm output, then wire the
-   nightly workflow — closes G1 (the worst gap) and G2's env-var half
-3. **Layer B data dump** — same workflow, one more step
-4. **`RESTORE.md` + one rehearsed restore against staging** — this is the step that
-   converts the plan into an actual guarantee; don't skip it
-5. **Phase 2 Lambda aliases** — biggest operational win
-6. **Phase 1 frontend pipeline**
-7. **Phase 3 CFN imports** — gradually, lowest-risk resources first
+0. ✅ **The D1–D5 doc fixes** (§1b) — done 2026-08-13.
+1. ✅ **Phase 0 hardening** — done 2026-08-13, closed G6/G7/G9.
+2. ✅ **Layer A snapshot script** — done, running nightly since 2026-08-13, no gaps.
+3. ✅ **Layer B data dump** — done, encrypted, decrypt verified against real data.
+4. ✅ **`RESTORE.md` + rehearsed restores** — done 2026-08-13 through 2026-08-18. Not just
+   "one restore" as originally scoped — **all six documented procedures** ended up rehearsed:
+   encrypted-backup decrypt, DynamoDB PITR, DNS record restore, Lambda config restore, API
+   route rebuild, SES rule rebuild. All PASS. See `infra-snapshots/RESTORE.md`'s rehearsal
+   log for what each one actually proved and the honest scope caveats on the two that
+   couldn't be full damage-and-recover tests.
+5. **Phase 2 Lambda aliases** — biggest operational win, **not yet built**.
+6. **Phase 1 frontend pipeline** — **not yet built**.
+7. **Phase 3 CFN imports** — **not yet built**, gradually, lowest-risk resources first.
 
-Items 1–4 are the backup system. Items 5–7 are the CI/CD system. They share the OIDC setup
-from item 2, which is why item 2 comes before item 5 even though item 5 has the higher
-day-to-day payoff.
+Items 1–4 are the backup system — **complete**. Items 5–7 are the CI/CD system — still open,
+and were always scoped separately from the backup work. They share the OIDC setup from item
+2, which is why item 2 came before item 5 even though item 5 has the higher day-to-day
+payoff.
 
 ---
 

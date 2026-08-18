@@ -1,8 +1,10 @@
 # RESTORE — how to use this snapshot when something is broken
 
-**A backup nobody has restored is a hypothesis.** Rehearse the procedures marked
-`REHEARSABLE` against staging at least once, before you need them. A restore first
-attempted during an outage is a restore being debugged during an outage.
+**A backup nobody has restored is a hypothesis.** As of 2026-08-18, every procedure below
+has been rehearsed at least once — see the rehearsal log in §4 for what each one actually
+proved, and the honest scope caveats on the two (DNS, SES) that couldn't be full
+damage-and-recover tests. A restore first attempted during an outage is a restore being
+debugged during an outage; that's no longer the position this repo is in.
 
 Design and rationale: [`docs/disaster-recovery-and-cicd-plan.md`](../docs/disaster-recovery-and-cicd-plan.md).
 
@@ -133,7 +135,7 @@ rollback is also available if you need to be surgical.
 
 ---
 
-## 4. Data corruption or a bad bulk write — `REHEARSABLE`
+## 4. Data corruption or a bad bulk write — rehearsed 2026-08-13, PASS
 
 **PITR is the primary path.** 35-day window, restore-to-timestamp, minutes.
 

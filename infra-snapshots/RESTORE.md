@@ -251,6 +251,7 @@ Record each rehearsal here. An untested procedure in this file is a claim, not a
 | 2026-08-13 | Full snapshot via CI (OIDC both accounts, encrypt, auto-commit) | live infra | **PASS** — run `31679938179` green after 2 IAM fixes | owner + Claude |
 | 2026-08-13 | §4 — **PITR restore-to-point-in-time**, damage-and-recover | `kcmps-staging` | **PASS**, 4/4 checks — see below | owner + Claude |
 | 2026-08-18 | §1 — **DNS record restore**, damage-and-recover via the detect/generate/execute relay | production zone `Z06397161LBTJCRTPLL62` | **PASS** — see below | owner + Claude |
+| 2026-08-18 | §2 — **Lambda config restore**, damage-and-recover, dropped keys + corrupted value | `kcmps-staging-create-order` | **PASS**, 2/2 checks — see below | Claude |
 
 The decrypt rehearsal matters more than it looks: until it was done, the encryption path had
 only ever been exercised in the **write** direction. A backup that encrypts correctly but
@@ -334,7 +335,43 @@ read rather than from memory. It did **not** rehearse recovering a genuinely cri
 briefly isn't a test worth running. Treat the mechanism as proven; treat "restoring MX under
 real pressure" as one inference away from proven, not identical to it.
 
+### The 2026-08-18 Lambda config restore rehearsal — what it proved
+
+Unlike DNS, no standing rule blocks agents from executing Lambda config changes — so this
+one ran fully agent-side, against staging rather than production to keep it low-stakes and
+reversible.
+
+**Target:** `kcmps-staging-create-order`, picked deliberately because its environment is
+richer (4 keys) than the first candidate tried (`kcmps-staging-dashboard-prefs`, 1 key) — a
+thin env doesn't exercise the "dropped key among several" trap convincingly.
+
+**Worth knowing before reading the steps:** this function's env vars are actually defined in
+`backend-lambdas.cfn.yaml` (the `kcmps-backend-staging` stack owns it), so for *staging*
+specifically, a full `cloudformation deploy` would also have fixed this. The CLI-based
+restore below was rehearsed anyway because **production Lambdas have no such template at
+all** — they are 100% CLI-managed with zero CloudFormation backing — so the CLI path is the
+*only* option there, and is the one that actually needed proving.
+
+1. Read live config, confirmed **byte-identical** to the committed snapshot before touching
+   anything
+2. Damaged it with one `update-function-configuration --environment` call, recreating two
+   real failure modes at once: dropped `COGNITO_CLIENT_ID` and `UPLOADS_BUCKET` entirely,
+   corrupted `TABLE_NAME` to `kcmps-WRONG-TABLE`
+3. Diffed live against `lambda/kcmps-staging-create-order.json` — **all three problems
+   isolated correctly**, nothing missed, nothing spurious
+4. Restored using the **complete** map read from the snapshot file, not a patch of just the
+   broken keys — this is the actual point of the rehearsal, since `--environment` replaces
+   the whole map and a partial fix would silently re-drop whatever it didn't mention
+5. Verified
+
+| Check | Result |
+|---|---|
+| Restored env vars match the snapshot exactly | PASS |
+| Nothing else on the function drifted (Timeout/MemorySize/Runtime/Role unchanged) | PASS |
+
+CloudFormation stack status stayed `UPDATE_COMPLETE` throughout — the CLI patches didn't
+register as drift against the stack, so no separate reconciliation was needed on staging.
+
 ### Still unproven
 
-In rough priority order: #2 (Lambda config restore from a snapshot env map), #5 (rebuilding
-an API route from JSON), #6 (SES receipt-rule rebuild).
+#5 (rebuilding an API route from JSON), #6 (SES receipt-rule rebuild).

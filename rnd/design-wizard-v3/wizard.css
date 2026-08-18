@@ -1,0 +1,185 @@
+/* ============================================================================
+   R&D v3 — Design subsection wizard styles.
+
+   Loads AFTER styles.css and builds on it: colours, radii, shadows and fonts
+   all come from the design system's tokens, and .btn / .card / .tag / .field /
+   .seg-opt / .qty-stepper / the whole .shirt-color-* family are reused as-is.
+   Nothing here restates a token value literally.
+
+   NOTE on .seg-opt: in styles.css it is a <label> wrapping a radio and its
+   selected state is `:has(input:checked)`. The wizard uses plain buttons
+   (state lives in JS), so selection is `.is-on`, styled to match that rule.
+   ============================================================================ */
+
+/* ---------- panel header ---------- */
+.dw-head { margin: var(--space-2) 0 var(--space-4); }
+.dw-title {
+  font-family: var(--font-heading); font-weight: 800;
+  font-size: clamp(28px, 3.6vw, 42px); letter-spacing: -.8px;
+  margin: 6px 0 0; line-height: 1.08;
+}
+.dw-sub { color: var(--color-neutral-600); max-width: 56ch; margin: 10px 0 0; line-height: 1.55; }
+
+.dw-strip { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.dw-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.dw-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #fff; border: 1px solid var(--color-neutral-300);
+  border-radius: 999px; padding: 7px 14px; font-size: 13.5px; font-weight: 600;
+}
+.dw-chip .sw { width: 14px; height: 14px; border-radius: 5px; border: 1px solid rgba(0,0,0,.18); }
+.dw-chip button {
+  font: inherit; cursor: pointer; border: 0; background: none; padding: 0;
+  font-size: 12px; color: var(--color-neutral-600); text-decoration: underline;
+}
+.dw-chip button:hover { color: var(--color-accent-600); }
+.dw-count { flex: none; }
+
+/* ---------- design grid ----------
+   Deliberately NOT styles.css's .design-grid-full — that is tuned for the
+   deployed picker's 88px image-only thumbs and squashes a card that carries a
+   name/price row. `min-width: 0` on the children for the same reason
+   .offer-grid needs it: a grid item defaults to min-width:auto and can
+   otherwise blow past its 1fr track on mobile. */
+.dw-grid {
+  display: grid; gap: 16px; padding-bottom: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+}
+.dw-grid > * { min-width: 0; }
+
+.dw-tile {
+  font: inherit; text-align: left; cursor: pointer; padding: 0; overflow: hidden;
+  background: #fff; border: 1px solid var(--color-neutral-300); border-radius: var(--radius-md);
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s, border-color .18s;
+}
+.dw-tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--color-neutral-400); }
+.dw-tile:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.dw-tile-img { position: relative; aspect-ratio: 1; background: var(--color-neutral-200); }
+.dw-tile-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dw-tile-meta { padding: 12px 14px 15px; border-top: 1px solid var(--color-neutral-200); }
+.dw-tile-meta strong { display: block; font-family: var(--font-heading); font-size: 14.5px; }
+.dw-tile-meta span { display: block; margin-top: 3px; font-size: 12.5px; color: var(--color-neutral-600); }
+.dw-tile.is-unavailable { opacity: .45; }
+.dw-tile-flag {
+  position: absolute; left: 10px; top: 10px; z-index: 1;
+  background: color-mix(in srgb, var(--color-accent-2-900) 85%, transparent); color: #fff;
+  font-size: 11px; font-weight: 600; border-radius: 999px; padding: 4px 9px;
+}
+
+/* ---------- shared backdrop ----------
+   z-index sits above the cart drawer's overlay (100) and drawer (101) so a
+   wizard modal opened over an open drawer isn't buried by it. */
+.dw-backdrop {
+  position: fixed; inset: 0; z-index: 130;
+  background: color-mix(in srgb, var(--color-accent-2-900) 62%, transparent);
+  display: grid; place-items: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity .22s;
+}
+.dw-backdrop.is-open { opacity: 1; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .dw-backdrop { transition: none; } }
+
+/* ---------- object picker ---------- */
+.dw-sheet { max-width: 760px; width: 100%; padding: 30px; box-shadow: var(--shadow-lg); }
+.dw-sheet .card-title { font-size: 24px; letter-spacing: -.4px; }
+.dw-obj-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 20px 0 6px; }
+.dw-obj {
+  font: inherit; cursor: pointer; text-align: center;
+  border: 1.5px solid var(--color-neutral-300); background: #fff;
+  border-radius: var(--radius-md); padding: 22px 16px; transition: .16s;
+}
+.dw-obj:hover:not(:disabled) { border-color: var(--color-accent); transform: translateY(-3px); box-shadow: var(--shadow-md); }
+.dw-obj:disabled { background: var(--color-neutral-100); cursor: not-allowed; }
+.dw-obj .ico { display: block; font-size: 36px; line-height: 1; }
+.dw-obj strong { display: block; margin-top: 12px; font-family: var(--font-heading); font-size: 16px; }
+.dw-obj .sub { display: block; color: var(--color-neutral-600); font-size: 12.5px; margin-top: 4px; }
+.dw-soon { margin-top: 10px; }
+.dw-browse { margin-top: 12px; }
+
+/* ---------- lightbox ----------
+   Left = the catalog photograph, at the largest size the sheet allows. It is
+   the only high-quality asset that exists, so it gets the room; the composite
+   preview v2 tried to fake here is gone (see wizard.js's header). */
+.dw-lb {
+  background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  max-width: 1040px; width: 100%; max-height: 92vh; overflow: hidden;
+  display: grid; grid-template-columns: 1.05fr .95fr;
+  transform: translateY(14px) scale(.98); transition: transform .28s cubic-bezier(.2,.9,.25,1);
+}
+.dw-backdrop.is-open .dw-lb { transform: none; }
+@media (prefers-reduced-motion: reduce) { .dw-lb { transition: none; } }
+
+.dw-lb-stage {
+  position: relative; padding: 24px; display: grid; place-items: center;
+  background: linear-gradient(170deg, var(--color-neutral-200), var(--color-neutral-300));
+}
+.dw-lb-photo {
+  max-width: 100%; max-height: min(560px, 78vh);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md); display: block;
+}
+.dw-lb-close {
+  position: absolute; right: 12px; top: 12px; z-index: 3;
+  width: 34px; height: 34px; border: 0; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--color-accent-2-900) 55%, transparent); color: #fff;
+  font-size: 20px; line-height: 1;
+}
+.dw-lb-close:hover { background: var(--color-accent-2-900); }
+
+.dw-lb-panel { padding: 26px 26px 0; display: flex; flex-direction: column; overflow: auto; }
+.dw-lb-title { font-family: var(--font-heading); font-size: 23px; letter-spacing: -.3px; margin: 5px 0 4px; }
+.dw-lb-blurb { color: var(--color-neutral-600); font-size: 13.5px; line-height: 1.55; margin: 0 0 var(--space-4); }
+.dw-lb-panel .field { margin-bottom: var(--space-3); }
+.dw-lb-panel .field > label {
+  display: block; text-transform: uppercase; letter-spacing: .05em;
+  font-size: 11.5px; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 7px;
+}
+
+/* button-driven .seg — mirrors styles.css's checked-radio appearance */
+.dw-seg .seg-opt { font: inherit; cursor: pointer; border: 0; background: none; text-align: center; flex: 1; justify-content: center; }
+.dw-seg .seg-opt.is-on { background: var(--color-accent); color: #fff; }
+.dw-seg .seg-opt:not(.is-on):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.dw-seg .seg-opt:disabled { opacity: .4; cursor: not-allowed; }
+
+.dw-note { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--color-neutral-600); }
+.dw-note-warn { color: var(--color-accent-600); font-weight: 600; }
+.dw-note-warn a { color: inherit; }
+.dw-bulk {
+  margin: 9px 0 0; border-radius: var(--radius-sm); padding: 9px 12px; font-size: 12.5px; font-weight: 600;
+  background: color-mix(in srgb, var(--color-green) 12%, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-green) 35%, #fff);
+  color: color-mix(in srgb, var(--color-green) 75%, #000);
+}
+.dw-bulk s { font-weight: 500; opacity: .7; }
+
+.dw-lb-foot {
+  position: sticky; bottom: 0; margin: auto -26px 0; padding: 15px 26px 18px;
+  background: #fff; border-top: 1px solid var(--color-neutral-200);
+  display: flex; align-items: center; gap: 14px;
+}
+.dw-price { font-family: var(--font-heading); font-size: 25px; font-weight: 800; letter-spacing: -.5px; line-height: 1.15; }
+.dw-price small {
+  display: block; font-family: var(--font-body); font-size: 11.5px; font-weight: 500;
+  color: var(--color-neutral-600); letter-spacing: 0; margin-top: 3px;
+}
+.dw-lb-foot .btn { margin-left: auto; flex: none; }
+
+/* ---------- toast ---------- */
+.dw-toast {
+  position: fixed; left: 50%; bottom: 26px; z-index: 200;
+  transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .25s;
+  background: var(--color-accent-2-900); color: #fff;
+  padding: 12px 20px; border-radius: var(--radius-md); font-size: 14px; font-weight: 600;
+  max-width: min(520px, calc(100vw - 32px)); text-align: center;
+}
+.dw-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .dw-toast { transition: none; } }
+
+@media (max-width: 860px) {
+  .dw-lb { grid-template-columns: 1fr; max-height: 94vh; }
+  .dw-lb-stage { padding: 16px; }
+  .dw-lb-photo { max-height: 34vh; }
+  .dw-obj-grid { grid-template-columns: 1fr; }
+  .dw-sheet { padding: 22px; }
+}
+@media (max-width: 480px) {
+  .dw-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+}

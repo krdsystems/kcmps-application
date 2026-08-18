@@ -1,0 +1,2644 @@
+<!-- @template name="Landing" description="The KCMPS studio site: hero, capability pillars, offerings catalog, a live cost estimator and contact/location" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- ============================================================
+     SECURITY HEADERS (static-site enforceable subset)
+     Content-Security-Policy limits where scripts/styles/images may
+     load from and — importantly — where the page may SEND data
+     (connect-src), so an injected script cannot exfiltrate tokens to
+     an attacker-controlled host. Origins are the exact ones this page
+     already uses: Cognito (token exchange), Google Fonts, the base44
+     image CDN, and the checkout API (store.js's submitOrder(), see
+     docs/roadmap.md Milestone 1.1 — kcmps-checkout-api, HTTP API id
+     6msg2uho6c in ap-southeast-1, routes POST /orders and
+     POST /orders/{orderId}/payment-proof). Referrer-Policy keeps the
+     OAuth ?code=/&state= in the redirect URL from leaking to third
+     parties via Referer.
+     NOTE: frame-ancestors and X-Frame-Options are ignored in a <meta>
+     tag — set them as real response headers at CloudFront for full
+     clickjacking protection.
+     ============================================================ -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https://media.base44.com data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://cognito-idp.ap-southeast-1.amazonaws.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-est-2026.s3.ap-southeast-1.amazonaws.com https://kcmps-payment-uploads-staging.s3.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+
+<title>KCMPS — Kaalyados Creatives</title>
+<meta name="description" content="KCMPS (Kaalyados Creatives) — custom apparel printing, merchandise and design services in Manila. Get a quote, browse the shop, and order online." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="KCMPS — Kaalyados Creatives" />
+<meta property="og:title" content="KCMPS — Kaalyados Creatives" />
+<meta property="og:description" content="Custom apparel printing, merchandise and design services in Manila. Get a quote, browse the shop, and order online." />
+<meta property="og:url" content="https://kcmps.com/" />
+<meta property="og:image" content="https://kcmps.com/assets/og-image.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="KCMPS — Kaalyados Creatives" />
+<meta name="twitter:description" content="Custom apparel printing, merchandise and design services in Manila. Get a quote, browse the shop, and order online." />
+<meta name="twitter:image" content="https://kcmps.com/assets/og-image.jpg" />
+<link rel="icon" href="../../website/assets/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" href="../../website/assets/favicon.png" />
+<link rel="apple-touch-icon" href="../../website/assets/apple-touch-icon.png" />
+<link rel="stylesheet" href="styles.css" />
+<!-- R&D v3: Design-subsection wizard. Loaded after styles.css so it can build
+     on the design system rather than fight it. -->
+<link rel="stylesheet" href="wizard.css" />
+<style>
+:root { --edge: clamp(20px, 5vw, 72px); --measure: 62ch; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; text-wrap: pretty; }
+html { overflow-x: hidden; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--edge); }
+/* Mobile: reserve a right-edge gutter for the fixed scroll-position rail
+   (.scroll-indicator, styles.css) so page content doesn't run underneath it.
+   Desktop centers the content well inside the 1240px max-width, so the rail
+   already clears it there and no extra padding is needed. */
+@media (max-width: 760px) { .wrap { padding-right: calc(var(--edge) + 20px); } }
+.nav {
+  position: sticky; top: 0; z-index: 20;
+  padding-inline: max(var(--edge), calc((100% - 1240px) / 2 + var(--edge)));
+  background: color-mix(in srgb, var(--color-bg) 0%, transparent);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: 0 1px 0 0 transparent;
+  transition: background-color 0.25s ease, backdrop-filter 0.25s ease, box-shadow 0.25s ease;
+}
+.nav.is-scrolled {
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 0 var(--color-divider), 0 4px 16px -4px rgba(0,0,0,0.12);
+}
+@media (prefers-reduced-motion: reduce) { .nav { transition: none; } }
+.nav-brand { display: flex; align-items: center; gap: 10px; }
+.nav-brand img { height: 28px; width: auto; display: block; }
+.nav-links { display: flex; align-items: center; gap: var(--space-4); margin-left: auto; }
+.nav-links a { font-weight: 500; white-space: nowrap; }
+.nav-links { flex-wrap: nowrap; }
+.btn .nav-icon { display: none; width: 18px; height: 18px; flex: none; }
+/* Collapse the wordmark to just "KCMPS" at the SAME breakpoint the nav
+   collapses at (1200px), not 1000px. The long form is
+   "Kaalyados Creatives Merchandise and Printing Services" — at 1024px
+   (a very common tablet width) it was still rendering in full while the
+   account buttons had already been squeezed to icons, so the brand ate the
+   row and pushed everything else into itself. */
+.lbl-short { display: none; }
+/* Below 1200px the full text nav (marketing links + My Orders + Dashboard +
+   cart + account) no longer fits in ONE row — it silently overflowed past the
+   viewport (clipped by html's overflow-x:hidden, see docs/history.md step 12)
+   rather than wrapping, which is what made the buttons look cut off and
+   jammed together.
+   The fix is to give it a second row rather than to delete things: the brand
+   gets line one to itself, the action buttons get line two, evenly
+   distributed. Nothing is hidden to make room, so the full
+   "KCMPS | Kaalyados Creatives Merchandise and Printing Services" wordmark
+   stays visible at every width — the nav simply gets taller, and --nav-h is
+   measured in JS (see the setFixedBarHeights IIFE) rather than hardcoded, so
+   every scroll-margin and the scroll-indicator rail follow it automatically. */
+@media (max-width: 1200px) {
+  .nav { flex-direction: column; align-items: stretch; gap: 4px; }
+  /* Row 1 — branding. .nav-brand IS the <a> (logo img + one text span as
+     direct children, no wrapper element) — the text span goes column
+     (KCMPS, then the full name below it) and align-items:flex-start on the
+     row keeps the logo pinned level with the KCMPS line specifically,
+     rather than centred against the whole two-line block, which is what
+     was asked for: "logo | KCMPS (then the full name on its own line)". */
+  .nav-brand { margin-right: 0; justify-content: flex-start; align-items: flex-start; flex-wrap: nowrap; gap: 8px; }
+  .nav-brand > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .brand-sep { display: none; }
+  .brand-long { display: block; white-space: normal; }
+  /* Row 2 — actions, spread evenly across the full width instead of bunched
+     at one edge. space-evenly (not space-between) keeps equal air at the
+     outer edges too, so the row reads as centred rather than stretched. */
+  .nav-links { margin-left: 0; width: 100%; justify-content: space-evenly; }
+  .nav-links a:not(.btn) { display: none; }
+  .nav-links .btn-primary { display: none; }
+  /* Compact icon+label buttons, not the default-size .btn. Global a11y rule
+     elsewhere (styles.css, .btn under this same breakpoint) enforces a
+     44px MIN-HEIGHT as a touch-target floor — that's deliberate and this
+     does not fight it (min-height always wins over a smaller explicit
+     height, so setting height here would have been a no-op; the visual
+     bulk was coming from width/padding/icon/label size, not from height,
+     so those are what shrink). A bare icon is also a guessing game ("is
+     that My Orders or the cart?"), so the label stays, just smaller. */
+  #orders-link, #dashboard-link, #track-order-link {
+    width: auto; padding: 2px 6px; flex-direction: column; justify-content: center; gap: 0;
+  }
+  #orders-link .lbl, #dashboard-link .lbl, #track-order-link .lbl { display: none; }
+  #orders-link .lbl-short, #dashboard-link .lbl-short, #track-order-link .lbl-short {
+    display: block; font-size: 8.5px; line-height: 1.1; font-weight: 700;
+    letter-spacing: 0.01em; white-space: nowrap;
+  }
+  #orders-link.btn .nav-icon, #dashboard-link.btn .nav-icon, #track-order-link.btn .nav-icon { display: block; width: 14px; height: 14px; }
+}
+@media (max-width: 760px) {
+  .nav { gap: 4px; padding-block: 10px; }
+  .nav-brand { gap: 6px; }
+  .nav-brand img { height: 22px; }
+  .brand-short { font-size: 16px; }
+  .brand-long { font-size: 10.5px; line-height: 1.25; }
+  /* Row 2: the signed-in name is dropped here (only here) so the action
+     buttons get the full width to distribute across. Orders and Dashboard
+     only appear when signed in, so the state is already obvious without it,
+     and keeping it would squeeze the buttons it sits beside. */
+  .nav-links { gap: 2px; }
+  .auth-user-name { display: none; }
+  #logout-btn, .auth-user .btn { padding: 0 var(--space-2); }
+  #orders-link, #dashboard-link, #track-order-link { padding: 2px 5px; }
+}
+
+.kicker-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.03em; color: var(--color-accent-2-700); background: var(--color-accent-2-100);
+  padding: 6px 14px; border-radius: 999px; margin: 0 0 var(--space-3); }
+.kicker-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); }
+
+.hero { padding: calc(var(--space-8) * 1.6) 0 var(--space-8); display: grid; grid-template-columns: minmax(0,6fr) minmax(0,5fr); gap: var(--space-8); align-items: center; }
+.hero h1 { font-size: clamp(38px, 5.4vw, 64px); line-height: 1.06; letter-spacing: -0.02em; margin: 0 0 var(--space-3); color: var(--color-accent-2-800); }
+.hero h1 span { display: block; }
+.hero h1 .warm { color: var(--color-accent-700); }
+.hero p.sub { font-size: 17px; line-height: 1.6; max-width: 46ch; color: color-mix(in srgb, var(--color-text) 80%, transparent); margin: 0 0 var(--space-4); }
+.hero .row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.hero-figure { aspect-ratio: 4/5; }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-figure { aspect-ratio: 16/10; order: -1; } }
+
+/* ── Mobile hero (≤760px): full-bleed photo + overlapping copy card ────────
+   Text is NOT overlaid on the photo. Earlier revisions did that and it never
+   worked: the hero carousel pulls from a rotating pool of real product shots
+   (some near-black, some blown-out white), so the only way to keep white
+   copy readable over ALL of them was a ~0.6-alpha navy scrim across the
+   entire image — which muddied every photo into grey and still clipped the
+   sub-line on narrow screens. Instead the photo runs clean edge-to-edge and
+   the copy sits in a card that overlaps its bottom edge, so contrast is
+   inherited from the page's own light surface and is photo-independent.
+
+   The card is `.hero > div:first-child`, the existing DOM wrapper — it is no
+   longer `display: contents`, so it becomes the card box itself, and its
+   children are re-sequenced with flex `order` (CTA above the checklist,
+   which is the mobile priority) rather than by grid-row assignment.
+   DOM order is untouched, so desktop rendering is unaffected. */
+@media (max-width: 760px) {
+  .hero {
+    /* Bottom padding lives on the card below, so the card's opaque surface
+       runs to the end of the section rather than stopping at the last chip. */
+    padding: 0;
+    gap: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    /* Full-bleed: cancel .wrap's edge padding (the right side carries the
+       extra +20px gutter reserved for the fixed .scroll-indicator rail). */
+    margin-inline: calc(var(--edge) * -1) calc((var(--edge) + 20px) * -1);
+    /* How far the copy card rides up over the photo. Referenced by the card
+       and by the carousel dots, which must clear it. */
+    --hero-card-overlap: 28px;
+  }
+  .hero-figure {
+    grid-column: 1; grid-row: 1; order: initial;
+    aspect-ratio: 4/3;
+    /* Square corners — the photo now touches both screen edges, where a
+       radius would read as a rendering seam rather than a card. */
+    border-radius: 0;
+  }
+  /* Dots sit above the card's overlap so they stay visible. */
+  .hero-figure .carousel-dots { bottom: calc(var(--hero-card-overlap) + 14px); }
+
+  .hero > div:first-child {
+    grid-column: 1; grid-row: 2;
+    position: relative; z-index: 2;
+    margin-top: calc(var(--hero-card-overlap) * -1);
+    display: flex; flex-direction: column;
+    /* --color-bg is deliberately translucent (α .92); layering it over an
+       opaque neutral makes the card itself opaque so the photo underneath
+       the 28px overlap doesn't ghost through, while still rendering the
+       exact page-background colour. */
+    background: linear-gradient(var(--color-bg), var(--color-bg)), var(--color-neutral-100);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    /* Restores the .wrap gutters the negative margin above stripped off. */
+    padding: var(--space-4) calc(var(--edge) + 20px) var(--space-6) var(--edge);
+  }
+  .hero-copy { order: 1; }
+  /* Stacked full-width buttons. Side-by-side halves are ~150px on a 375px
+     screen, which wraps the longer CTA labels ("Get an instant quote", set
+     per category by PAGE_VARIANTS) onto two lines inside the button. */
+  .hero > div:first-child > .row {
+    order: 2; margin: 0 0 var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-2);
+  }
+  .hero > div:first-child > .row .btn { width: 100%; justify-content: center; }
+  .hero-checklist { order: 3; margin: 0 0 var(--space-3); }
+  .trust-row { order: 4; margin: 0; }
+
+  /* Type scale: the desktop clamp bottoms out at 38px, too heavy for a
+     360px-wide column once the headline wraps to three lines. */
+  .hero-copy h1 { font-size: clamp(29px, 8.4vw, 38px); line-height: 1.12; margin-bottom: var(--space-2); }
+  /* Kicker drops the pill chrome on mobile and becomes a plain eyebrow
+     label. The category kickers run up to ~51 characters ("Networking gear
+     & storage hardware · sourced & ready"), which overflows a 315px content
+     column and wraps a *pill* onto two lines — a two-line label reads as
+     editorial, a two-line pill reads as broken. */
+  .hero-copy .kicker-pill {
+    display: flex; align-items: flex-start; gap: 6px;
+    background: none; padding: 0; border-radius: 0;
+    color: var(--color-accent-2-700);
+    font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; line-height: 1.45;
+    margin-bottom: var(--space-2);
+  }
+  .hero-copy .kicker-pill .dot { margin-top: 5px; }
+  .hero-copy .price-anchor { margin-bottom: var(--space-2); }
+  /* `p.sub` in the selector, not just `.sub` — the desktop rule is
+     `.hero p.sub`, which outranks a two-class selector on the element column. */
+  .hero-copy p.sub { font-size: 15.5px; line-height: 1.55; margin-bottom: var(--space-4); }
+}
+
+.capstrip { padding: var(--space-4) 0 var(--space-6); display: flex; gap: 10px; flex-wrap: wrap; }
+
+.pillars { padding: var(--space-8) 0; }
+.section-head { max-width: 60ch; margin-bottom: var(--space-6); }
+.section-head h2 { font-size: clamp(28px, 3.4vw, 38px); letter-spacing: -0.015em; color: var(--color-accent-2-800); margin: 0 0 var(--space-2); }
+.section-head p { font-size: 16px; color: color-mix(in srgb, var(--color-text) 78%, transparent); margin: 0; }
+.pillar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.pillar { padding: var(--space-4); }
+.pillar .num { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--color-accent-700); }
+.pillar .icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-accent-2-100); color: var(--color-accent-2-700); margin: var(--space-2) 0 var(--space-3); }
+.pillar h3 { font-size: 19px; margin: 0 0 var(--space-2); }
+.pillar p { font-size: 14.5px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+@media (max-width: 900px) { .pillar-grid { grid-template-columns: 1fr; } }
+
+.catalog { padding: var(--space-8) 0; }
+/* Native scroll-margin instead of manual anchor-scroll math, so every
+   in-page anchor lands clear of the sticky nav without each caller
+   re-deriving the offset. */
+#storefront, #estimator, #value, #how, #faq, #contact {
+  scroll-margin-top: calc(var(--nav-h, 64px) + 12px);
+}
+.offer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+/* Grid items default to min-width:auto, so a card with enough content
+   (e.g. print-office's bulk-tier segmented control + note) can blow out
+   past its 1fr track instead of shrinking to it — on mobile that pushed
+   the card's right edge past the scroll-indicator rail. Applies to every
+   leaf (print/design/merch) since they all share this grid. */
+.offer-grid > * { min-width: 0; }
+.offer .card-title { margin-top: 2px; }
+.offer .price { margin-top: auto; font-size: 13px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+@media (max-width: 900px) { .offer-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .offer-grid { grid-template-columns: 1fr; } }
+
+.estimator { padding: var(--space-8) 0; }
+.est-grid { display: grid; grid-template-columns: minmax(0,7fr) minmax(0,5fr); gap: var(--space-6); align-items: start; }
+@media (max-width: 900px) { .est-grid { grid-template-columns: 1fr; } }
+.est-panel { padding: var(--space-4); }
+.est-step { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-700); margin: 0 0 var(--space-2); }
+.est-panel + .est-panel { margin-top: var(--space-3); }
+.seg { width: 100%; }
+.seg-opt { flex: 1; justify-content: center; }
+.est-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
+.est-row input[type=range] { accent-color: var(--color-accent); width: 100%; }
+.est-row .val { font-weight: 700; font-family: var(--font-heading); min-width: 2.5ch; text-align: right; }
+.est-qty-num { width: 5.5ch; padding: 6px 8px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); background: var(--color-bg); color: var(--color-text); }
+.est-qty-num:focus { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+/* Step 01 product picker — one tab per catalog leaf (reusing the site's
+   .tabs/.tab-btn/.tab-panel pattern, see the generic [data-tabs] handler
+   script) so tapping a category narrows the grid to a handful of
+   thumbnail+name+price cards; replaces a plain <select> so a product can be
+   identified and chosen without leaving this card or scrolling elsewhere on
+   the page. The real <select id="est-product"> stays in the DOM (hidden) as
+   the single source of truth the rest of the estimator script reads. */
+.est-product-tabs { gap: var(--space-2); }
+.est-product-tabs .tab-list { padding: 3px; }
+.est-product-tabs .tab-btn { font-size: 12.5px; padding: 6px 12px; }
+.est-product-tabs .tab-btn[aria-selected='true'] { background: var(--color-accent); }
+.est-product-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px;
+  max-height: 256px; overflow-y: auto; padding: 2px 2px 4px; align-content: start;
+}
+.est-product-pick { border: 2px solid transparent; border-radius: var(--radius-md); padding: 6px 6px 8px; background: var(--color-surface); cursor: pointer; text-align: left; transition: border-color 0.15s ease; }
+.est-product-pick .product-thumb { width: 100%; margin-bottom: 4px; }
+.est-product-pick:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, transparent); }
+.est-product-pick:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.est-product-pick.is-selected { border-color: var(--color-accent); background: var(--color-accent-100); }
+.est-product-pick-name { display: block; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
+.est-product-pick-price { display: block; font-size: 10.5px; color: var(--color-accent-700); font-weight: 700; margin-top: 2px; }
+.finish-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
+.finish { cursor: pointer; }
+.finish input { position: absolute; opacity: 0; width: 0; height: 0; }
+.finish span { display: inline-flex; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-divider); font-size: 13px; }
+.finish input:checked + span { background: var(--color-accent-2); border-color: var(--color-accent-2); color: #fff; }
+.quote-card { background: var(--color-accent-2-800); color: #fff; border-radius: var(--radius-lg); padding: var(--space-4); position: sticky; top: 88px; }
+.quote-card h4 { color: color-mix(in srgb, #fff 65%, transparent); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 var(--space-3); font-weight: 700; }
+.quote-line { display: flex; justify-content: space-between; font-size: 14px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, #fff 14%, transparent); }
+.quote-total { display: flex; justify-content: space-between; font-family: var(--font-heading); font-size: 26px; font-weight: 800; padding-top: var(--space-3); }
+.quote-note { font-size: 12px; color: color-mix(in srgb, #fff 60%, transparent); margin: var(--space-2) 0 var(--space-4); }
+.quote-card .btn-block { background: var(--color-accent); color: #fff; }
+.quote-card .btn-block:hover { background: var(--color-accent-600); }
+.quote-card .btn-secondary { border-color: color-mix(in srgb, #fff 30%, transparent); color: #fff; }
+
+.contact { padding: var(--space-8) 0 calc(var(--space-8) * 1.2); }
+.contact-grid { display: grid; grid-template-columns: minmax(0,5fr) minmax(0,7fr); gap: var(--space-6); align-items: center; }
+@media (max-width: 900px) { .contact-grid { grid-template-columns: 1fr; } .contact-figure { order: -1; } }
+.contact-figure { aspect-ratio: 4/3; }
+.status-row { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--color-green); margin-bottom: var(--space-3); }
+.status-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-green); }
+/* Closed / closing-soon states for the live studio status. Colour is not the
+   only signal — the label itself always says open or closed, so this still
+   reads correctly for a colour-blind visitor or in forced-colours mode. */
+.status-row.is-closed { color: var(--color-neutral-600); }
+.status-row.is-closed .dot { background: var(--color-neutral-500); }
+.status-row.is-soon { color: var(--color-accent-800); }
+.status-row.is-soon .dot { background: var(--color-accent-500); }
+.info-block { margin-bottom: var(--space-4); }
+.info-block h4 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin: 0 0 6px; }
+.info-block p { margin: 0; font-size: 15px; line-height: 1.6; }
+.note-card { padding: var(--space-3); background: var(--color-surface); border-radius: var(--radius-md); font-size: 13.5px; color: color-mix(in srgb, var(--color-text) 80%, transparent); }
+
+footer { padding: var(--space-6) 0 var(--space-8); }
+.foot-top { display: grid; grid-template-columns: minmax(0,5fr) minmax(0,7fr); gap: var(--space-6); padding-bottom: var(--space-4); }
+.foot-brand { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-2); }
+.foot-brand img { height: 24px; }
+.foot-brand span { font-family: var(--font-heading); font-weight: 700; color: var(--color-accent-2); }
+footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 70%, transparent); max-width: 42ch; margin: 0; }
+.foot-links { display: flex; gap: var(--space-6); flex-wrap: wrap; }
+.foot-links a { font-size: 14px; }
+@media (max-width: 760px) { .foot-top { grid-template-columns: 1fr; gap: var(--space-3); } }
+.foot-bottom { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding-top: var(--space-4); border-top: 1px solid var(--color-divider); font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+</style>
+
+<!-- ============================================================
+     AUTH POPUP DETECTION — runs BEFORE the body is parsed.
+     When this page load is actually one of our auth popups landing
+     back (a login redirect carrying ?code=, or the logout popup
+     identified by its window.name), we tag <html> so the CSS below
+     hides the normal storefront chrome and shows a small status
+     screen instead — otherwise the popup briefly paints the whole
+     homepage before our script closes it.
+     ============================================================ -->
+<script>
+  (function () {
+    var isLoginRedirect = /[?&](code|error)=/.test(location.search);
+    var isAuthPopup = window.name === "kcmps-login" || window.name === "kcmps-logout";
+    if (isLoginRedirect || isAuthPopup) {
+      document.documentElement.classList.add("auth-popup");
+    }
+  })();
+</script>
+<style>
+  /* In auth-popup mode, hide everything except the status screen. */
+  html.auth-popup body > *:not(#auth-status) { display: none !important; }
+  #auth-status { display: none; }
+  html.auth-popup #auth-status {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--space-2); position: fixed; inset: 0; text-align: center; padding: var(--space-4);
+    font-family: var(--font-body); background: var(--color-bg); color: var(--color-text);
+  }
+  #auth-status .spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid var(--color-divider); border-top-color: var(--color-accent);
+    animation: auth-spin 0.8s linear infinite;
+  }
+  @keyframes auth-spin { to { transform: rotate(360deg); } }
+  #auth-status .msg { font-size: 15px; font-weight: 600; font-family: var(--font-heading); }
+
+  /* Auth nav bits */
+  .is-hidden { display: none !important; }
+  .auth-user { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .auth-user-name { font-family: var(--font-heading); font-weight: 600; font-size: 14px; color: var(--color-accent-2); white-space: nowrap; }
+  #cart-btn { position: relative; }
+  #cart-badge {
+    position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; line-height: 1; color: #fff;
+    background: var(--color-accent); border-radius: 999px; font-family: var(--font-heading);
+    transition: transform 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  #cart-badge.is-pulsing { transform: scale(1.3); }
+  @media (prefers-reduced-motion: reduce) { #cart-badge { transition: none; } }
+</style>
+<link rel="canonical" href="https://kcmps.com/" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "KCMPS",
+  "alternateName": "Kaalyados Creatives",
+  "url": "https://kcmps.com",
+  "email": "info@kcmps.com",
+  "address": {
+    "@type": "PostalAddress",
+    "addressCountry": "PH",
+    "addressLocality": "Manila",
+    "addressRegion": "NCR"
+  },
+  "image": "https://kcmps.com/assets/og-image.jpg"
+}
+</script>
+</head>
+<body>
+
+<!-- Status screen shown ONLY inside the auth popups (see head script/CSS).
+     Default state is a "working" spinner; the auth script swaps in the final
+     success/error message before the popup closes. -->
+<div id="auth-status">
+  <div class="spinner" id="auth-status-spinner"></div>
+  <div class="msg" id="auth-status-msg">Signing you in&hellip;</div>
+</div>
+
+<nav class="nav">
+  <a href="#top" class="nav-brand" style="text-decoration:none">
+    <img src="../../website/assets/logo-mark.png" alt="" />
+    <span style="margin:0">
+      <span class="brand-short">KCMPS</span><span class="brand-sep" aria-hidden="true">|</span><span class="brand-long">Kaalyados Creatives Merchandise and Printing Services</span>
+    </span>
+  </a>
+  <div class="nav-links">
+    <a href="#storefront">Shop</a>
+    <a href="#how">How it works</a>
+    <a href="#faq">FAQ</a>
+    <a href="#contact">Contact</a>
+    <a href="#storefront" class="btn btn-primary">Start your order</a>
+
+    <!-- My Orders — shown for any logged-in user, staff or not. Icon +
+         .lbl so it can collapse to icon-only under 1200px (see the
+         @media (max-width: 1200px) rule above) instead of vanishing. -->
+    <a href="orders.html" id="orders-link" class="btn btn-ghost is-hidden" aria-label="My Orders" title="My Orders">
+      <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M200,24H56A16,16,0,0,0,40,40V224a8,8,0,0,0,11.58,7.16L64,224.94l12.42,6.22a8,8,0,0,0,7.16,0L96,224.94l12.42,6.22a8,8,0,0,0,7.16,0L128,224.94l12.42,6.22a8,8,0,0,0,7.16,0L160,224.94l12.42,6.22a8,8,0,0,0,7.16,0L192,224.94l12.42,6.22A8,8,0,0,0,216,224V40A16,16,0,0,0,200,24Zm0,177.06-4.42-2.22a8,8,0,0,0-7.16,0L176,205.06l-12.42-6.22a8,8,0,0,0-7.16,0L144,205.06l-12.42-6.22a8,8,0,0,0-7.16,0L112,205.06,99.58,198.84a8,8,0,0,0-7.16,0L80,205.06,67.58,198.84a8,8,0,0,0-7.16,0L56,201.06V40H200ZM80,88a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,88Zm0,40a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H88A8,8,0,0,1,80,128Z"/></svg>
+      <span class="lbl">My Orders</span><span class="lbl-short" aria-hidden="true">Orders</span>
+    </a>
+
+    <!-- Track an order — guest lookup (no account needed), shown only when
+         logged out; renderLoggedIn()/renderLoggedOut() below toggle it the
+         same way as #orders-link, just inverted. -->
+    <a href="track-order.html" id="track-order-link" class="btn btn-ghost" aria-label="Track an order" title="Track an order">
+      <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+      <span class="lbl">Track an order</span><span class="lbl-short" aria-hidden="true">Track</span>
+    </a>
+
+    <!-- Dashboard link — shown only for users in the "Staff" Cognito group. -->
+    <a href="#" id="dashboard-link" class="btn btn-ghost is-hidden" aria-label="Dashboard" title="Dashboard">
+      <svg class="nav-icon" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M112,32H48A16,16,0,0,0,32,48v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V48A16,16,0,0,0,112,32Zm0,80H48V48h64v64Zm96-80H144a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,80H144V48h64v64ZM112,144H48a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V160A16,16,0,0,0,112,144Zm0,80H48V160h64v64Zm96-80H144a16,16,0,0,0-16,16v64a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V160A16,16,0,0,0,208,144Zm0,80H144V160h64v64Z"/></svg>
+      <span class="lbl">Dashboard</span><span class="lbl-short" aria-hidden="true">Dashboard</span>
+    </a>
+
+    <!-- Cart button — stubbed. See CART INTEGRATION POINT in the auth script
+         for where real (DynamoDB-backed) cart data plugs in later. -->
+    <button type="button" id="cart-btn" class="btn btn-icon btn-secondary" aria-label="Cart" title="Cart">
+      <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M222.14,58.87A8,8,0,0,0,216,56H54.68L49.79,29.14A16,16,0,0,0,34.05,16H16a8,8,0,0,0,0,16h18l25.16,138.28A24,24,0,0,0,82.76,190H197.2a24,24,0,0,0,23.6-19.71l12.16-66.86A8,8,0,0,0,222.14,58.87ZM96,224a16,16,0,1,1-16-16A16,16,0,0,1,96,224Zm104,0a16,16,0,1,1-16-16A16,16,0,0,1,200,224Z"/></svg>
+      <span id="cart-badge" class="is-hidden">0</span>
+    </button>
+
+    <!-- Auth area: swaps between the "Login / Sign-up" button and the
+         logged-in user's name + logout. Populated by the auth script. -->
+    <span id="auth-area">
+      <button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>
+    </span>
+  </div>
+</nav>
+
+<!-- Shown when orders.html/order-detail.html redirect here with
+     ?login=required because the visitor had no session — previously this
+     param was silently dropped and the visitor just landed on the
+     homepage with no explanation. See initAuth()'s Case 3 below. -->
+<div id="login-required-banner" class="is-hidden" style="background:var(--color-accent-100);color:var(--color-accent-800);padding:var(--space-2) var(--space-4);text-align:center;font-size:13.5px">
+  Sign in to see your orders. <button type="button" id="login-required-btn" class="btn btn-ghost" style="padding:2px 8px">Sign in</button>
+</div>
+
+<script>
+(() => {
+  const nav = document.querySelector('.nav');
+  const navBrand = document.querySelector('.nav-brand');
+  const THRESHOLD = 8;
+  function update() {
+    nav.classList.toggle('is-scrolled', window.scrollY > THRESHOLD);
+  }
+  update();
+  window.addEventListener('scroll', update, { passive: true });
+
+  // Logo tap ("go home"): a plain #top anchor jump leaves the sticky nav
+  // pinned at top:0 while the browser scrolls the hero into place, so the
+  // nav ends up overlapping the top of the hero for a moment (the target's
+  // document offset briefly equals the nav's own height, mid-scroll). Force
+  // an instant, synchronous scroll to the true top instead, then recompute
+  // is-scrolled immediately so the nav's transparency state isn't stale.
+  if (navBrand) {
+    navBrand.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      update();
+      if (location.hash) history.pushState(null, '', location.pathname + location.search);
+    });
+  }
+})();
+</script>
+
+<div class="wrap" id="top">
+  <section class="hero" id="hero">
+    <div>
+      <div class="hero-copy">
+        <span class="kicker-pill"><span class="dot"></span><span id="hero-kicker-text">Custom shirts &amp; prints · made in Manila</span></span>
+        <h1 id="hero-h1"><span>Your design, on a</span><span class="warm">premium shirt</span><span>— ready to wear.</span></h1>
+        <div class="price-anchor">
+          <span class="from" id="hero-anchor-from">From</span><span class="amount" id="hero-anchor-amount">₱160</span><span class="was" id="hero-anchor-was">design + shirt, all-in</span>
+        </div>
+        <p class="sub" id="hero-sub">Pick a ready-made design or upload your own — we print it on premium DTF and press it onto a quality shirt. No minimums, no design fee.</p>
+      </div>
+      <ul class="hero-checklist">
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Free design file check &amp; prep — we fix it before we print</li>
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Reprint-free guarantee if the print isn't right</li>
+        <li><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></svg>Made in-house — no middleman, no long waits</li>
+      </ul>
+      <div class="row">
+        <a href="#storefront" class="btn btn-primary" id="hero-cta">Shop designs</a>
+        <a href="#how" class="btn btn-secondary" id="hero-how-it-works-btn">How it works</a>
+      </div>
+      <div class="trust-row">
+        <span class="trust-chip"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z"/></svg>Reprint guarantee</span>
+        <span class="trust-chip">Bulk discounts, automatic</span>
+        <span class="trust-chip">Custom: pay after approval</span>
+      </div>
+    </div>
+    <div class="hero-figure hero-carousel duotone" id="hero-carousel" aria-roledescription="carousel" aria-label="KCMPS studio photos">
+      <div class="carousel-track" id="carousel-track">
+        <figure class="carousel-slide"><img src="../../website/assets/design/apparel/sublimation/street-statment/02-BTS SHIRT 1.jpg" alt="Street statement sublimation print design, ready to press" fetchpriority="high" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="../../website/assets/design/apparel/dtf/clean-logo-transfer/04-LEGENDS SHIRT.jpg" alt="Clean logo DTF transfer design, ready to press" loading="lazy" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="../../website/assets/design/apparel/dtf/typographic-quoteprint/03-baybayin MAHARLIKA shirt.jpg" alt="Typographic quote DTF transfer design, ready to press" loading="lazy" decoding="async" /></figure>
+        <figure class="carousel-slide"><img src="../../website/assets/leaves/subli.jpg" alt="Full-color sublimation printing on fabric at KCMPS" loading="lazy" decoding="async" /></figure>
+      </div>
+      <button type="button" class="carousel-arrow prev" id="carousel-prev" aria-label="Previous photo">
+        <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/></svg>
+      </button>
+      <button type="button" class="carousel-arrow next" id="carousel-next" aria-label="Next photo">
+        <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>
+      </button>
+      <div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Choose photo">
+        <button type="button" class="carousel-dot" data-slide="0" aria-label="Photo 1"></button>
+        <button type="button" class="carousel-dot" data-slide="1" aria-label="Photo 2"></button>
+        <button type="button" class="carousel-dot" data-slide="2" aria-label="Photo 3"></button>
+        <button type="button" class="carousel-dot" data-slide="3" aria-label="Photo 4"></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="catalog" id="storefront">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Shop</span>
+      <h2>Pick a design — or start a custom order</h2>
+      <p>Buy a ready-made design at a fixed price, or add a <strong>custom design request</strong> to your cart. Custom items are ₱0 now — you're only billed after we review and you approve.</p>
+    </div>
+    <div class="tabs" data-tabs>
+      <div class="tab-list" role="tablist">
+        <button type="button" class="tab-btn" data-tab-target="panel-print-office" aria-selected="true">Printing &amp; Office Supplies</button>
+        <button type="button" class="tab-btn" data-tab-target="panel-design" aria-selected="false">Design</button>
+        <button type="button" class="tab-btn" data-tab-target="panel-merch" aria-selected="false">Merch</button>
+      </div>
+      <div class="tab-panels">
+
+        <div class="tab-panel is-active" id="panel-print-office">
+          <div data-products-leaf="print-office"></div>
+        </div>
+
+        <!-- ============================================================
+             R&D v3 — the Design subsection IS the wizard.
+
+             Upstream this panel is a two-level tab tree (Apparel / 3D Print /
+             Souvenir, then DTF / Subli / Hotmelt). All of it is gone here on
+             purpose: the process tabs made the shopper choose DTF vs
+             sublimation, which is a production decision they have no way to
+             make. v3 merges every apparel leaf into ONE grid and picks the
+             process itself from the design's own leaf.
+
+             The panel is only a mount point — wizard.js builds the header,
+             the object chip and the grid into it, and the other two objects
+             become the object picker rather than sibling tabs. Nothing else
+             in this file's shop section changes, so Print & Office and Merch
+             still render through store.js's normal renderCatalog().
+             ============================================================ -->
+        <div class="tab-panel" id="panel-design">
+          <div id="design-wizard"></div>
+        </div>
+
+        <div class="tab-panel" id="panel-merch">
+          <div class="tabs" data-tabs>
+            <div class="tab-list" role="tablist">
+              <button type="button" class="tab-btn" data-tab-target="panel-network" aria-selected="true">Network</button>
+              <button type="button" class="tab-btn" data-tab-target="panel-storage" aria-selected="false">Storage</button>
+            </div>
+            <div class="tab-panels">
+              <div class="tab-panel is-active" id="panel-network">
+                <div data-products-leaf="network"></div>
+              </div>
+              <div class="tab-panel" id="panel-storage">
+                <div data-products-leaf="storage"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="capstrip" aria-label="Capabilities">
+    <span class="tag tag-accent-2">Silkscreen printing</span>
+    <span class="tag tag-accent-2">3D prototyping — PLA/PETG</span>
+    <span class="tag tag-accent-2">Custom flash drives &amp; SSDs</span>
+    <span class="tag tag-accent-2">Bookbinding &amp; editorial design</span>
+    <span class="tag tag-accent-2">Packaging &amp; lamination</span>
+    <span class="tag tag-accent-2">Commercial branding</span>
+  </section>
+
+  <section class="estimator" id="estimator">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Bulk &amp; custom</span>
+      <h2 id="est-h2">Ordering in bulk?</h2>
+      <p id="est-p">Pick a real product, set your quantity, and see exact catalog pricing — bulk discounts on eligible products apply automatically as you scale up. Add it straight to your cart, no back-and-forth required.</p>
+    </div>
+    <div class="est-grid">
+      <div>
+        <div class="card est-panel">
+          <p class="est-step">Step 01 · Product</p>
+          <div class="est-product-picker" id="est-product-picker" role="listbox" aria-label="Choose a product"></div>
+          <select id="est-product" style="display:none" aria-hidden="true" tabindex="-1"></select>
+        </div>
+        <div class="card est-panel">
+          <p class="est-step">Step 02 · Quantity &amp; add-ons</p>
+          <div class="est-row">
+            <label for="qty-num" style="font-size:14px">Quantity</label>
+            <input type="number" inputmode="numeric" id="qty-num" class="val est-qty-num" min="1" max="2000" step="1" value="50" aria-label="Quantity (type a number)" />
+          </div>
+          <input id="qty" type="range" min="1" max="500" value="50" style="width:100%;margin-top:6px" aria-label="Quantity (drag to adjust)" />
+          <p style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent);margin:6px 0 0" id="est-bulk-note">Pick a product to see its bulk-discount ladder.</p>
+          <div class="finish-grid" id="est-addons"></div>
+        </div>
+      </div>
+      <div class="quote-card">
+        <h4>Quotation · PHP (₱)</h4>
+        <div class="quote-line"><span>Unit price</span><span id="q-base">₱0.00</span></div>
+        <div class="quote-line"><span>Quantity</span><span id="q-mult">× 0</span></div>
+        <div class="quote-line"><span>Add-ons</span><span id="q-fin">₱0.00</span></div>
+        <div class="quote-line" id="q-discount-row" style="display:none"><span id="q-discount-label">Bulk discount</span><span id="q-discount">−₱0.00</span></div>
+        <div class="quote-total"><span>Total</span><span id="q-total">₱0.00</span></div>
+        <p class="quote-note">Exact pricing from our real catalog — no hidden fees. Reprint-free guarantee applies; pay when you check out.</p>
+        <button type="button" class="btn btn-block" id="est-add-cart">Add to cart</button>
+        <button type="button" class="btn btn-secondary btn-block" id="copy-spec">Copy spec to clipboard</button>
+        <p class="quote-note" id="est-merch-note" style="display:none">Need bulk networking gear or storage? <a href="#storefront" id="est-merch-link">Request a custom quote</a> — priced individually after we review your specs.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VALUE STACK — makes the ₱160 feel small ============
+       OWNER: the peso "value" amounts below are editable placeholders meant to
+       reflect what each inclusion is really worth. Adjust to your real numbers.
+       The DTF-transfer and shirt-press lines mirror the real checkout prices
+       (products.js's cheapest DTF/subli variant + window.KCMPS_STORE_DATA.shirtAddon.price)
+       so the "all-in from" anchor stays accurate — don't let these two drift
+       from those real values without also updating the anchor math below. -->
+  <section class="valuestack" id="value">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Everything you get</span>
+      <h2 id="vs-h2">One low price. Everything included.</h2>
+      <p id="vs-p">Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:</p>
+    </div>
+    <div class="card vstack-card" id="vstack-card">
+      <div class="vstack-line"><span class="label">Premium DTF transfer of your design</span><span class="val">₱80</span></div>
+      <div class="vstack-line"><span class="label">Heat-pressed onto a quality shirt</span><span class="val">₱110</span></div>
+      <div class="vstack-line"><span class="label">Design file check &amp; print-prep <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Color &amp; placement layout assistance <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-line"><span class="label">Reprint-free guarantee if it's not right <span class="badge-soon">included</span></span><span class="val free">FREE</span></div>
+      <div class="vstack-total"><span>Typical value elsewhere</span><span class="val">₱450</span></div>
+      <div class="vstack-pay"><span class="lbl">You pay, all-in from</span><span class="amt">₱160</span></div>
+      <!-- Presentation only (2026-08-06): a struck-through comparison figure with
+           no stated basis reads as a former KCMPS price, which it is not. This
+           caption says what it actually is. It introduces no new number and no
+           new promise — both are still the owner-editable placeholders above. -->
+      <p class="vstack-note">Comparison figure is what these inclusions typically cost when bought separately elsewhere — not a previous KCMPS price.</p>
+    </div>
+  </section>
+
+  <!-- ============ GUARANTEE — removes the risk ============
+       OWNER: confirm the exact guarantee terms you want to stand behind. -->
+  <div class="guarantee">
+    <div class="g-icon"><svg width="30" height="30" viewBox="0 0 256 256" fill="currentColor"><path d="M208,40H48A16,16,0,0,0,32,56v58.78c0,89.61,75.82,119.34,91,124.39a15.53,15.53,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A16,16,0,0,0,208,40Z" opacity="0.25"/><path d="M208,32H48A24,24,0,0,0,24,56v58.77c0,89.61,75.82,119.34,91,124.39a16,16,0,0,0,10,0c15.2-5.05,91-34.78,91-124.39V56A24,24,0,0,0,208,32Zm0,82.77c0,78.42-66.35,104.62-80,109.18-13.53-4.51-80-30.69-80-109.18V56a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8ZM173.66,98.34a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32,0l-20-20a8,8,0,0,1,11.32-11.32L128,132.69l34.34-34.35A8,8,0,0,1,173.66,98.34Z"/></svg></div>
+    <div class="g-body">
+      <h3>Love it, or we reprint it — free.</h3>
+      <p>If your print comes out wrong on our end, we redo it at no cost until it's right. No stress, no runaround — that's our promise on every order.</p>
+    </div>
+  </div>
+
+  <!-- ============ HOW IT WORKS — reduces effort/time ============ -->
+  <section class="how" id="how">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>How it works</span>
+      <h2>Three steps to done.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="card how-step">
+        <span class="step-num">STEP 01</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M164.44,105.34,152.05,80.61a8,8,0,0,0-7.16-4.61H111.11a8,8,0,0,0-7.16,4.61L91.56,105.34Z" opacity="0.2"/><path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Zm8,120a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80a8,8,0,0,0,7.16-4.42L99.22,60h57.56l12.06,23.58A8,8,0,0,0,176,88h40a8,8,0,0,1,8,8ZM128,100a44,44,0,1,0,44,44A44.05,44.05,0,0,0,128,100Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,128,172Z"/></svg></div>
+        <h3 id="how-1-h3">Pick or upload a design</h3>
+        <p id="how-1-p">Choose a ready-made design and your size, or start a custom request and send us your artwork.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 02</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M96,120a80,80,0,1,1,80,80A80,80,0,0,1,96,120Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/></svg></div>
+        <h3 id="how-2-h3">We produce in-house</h3>
+        <p id="how-2-p">We prep your file, print premium DTF and press it onto your shirt. For custom work, we quote it — you only pay once you approve.</p>
+      </div>
+      <div class="card how-step">
+        <span class="step-num">STEP 03</span>
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M223.68,66.15,135.68,18a15.94,15.94,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.94,15.94,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15Z" opacity="0.2"/><path d="M228.62,58.83,140.62,10.65a24,24,0,0,0-23.24,0L29.38,58.83A23.94,23.94,0,0,0,17,80.18v95.64a23.94,23.94,0,0,0,12.35,21.35l88,48.18a24,24,0,0,0,23.24,0l88-48.18A23.94,23.94,0,0,0,241,175.82V80.18A23.94,23.94,0,0,0,228.62,58.83ZM128,120,47.29,74.68l83.65-45.79.06,0,80.71,45ZM120,232.25,32,183.94V88.66l88,48.15ZM224,183.94l-88,48.31V136.81l88-48.15Z"/></svg></div>
+        <h3 id="how-3-h3">Pick up or get it delivered</h3>
+        <p id="how-3-p">Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ — kills the last hesitation ============ -->
+  <section class="faq" id="faq">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Questions</span>
+      <h2>Everything you might be wondering</h2>
+    </div>
+    <details class="faq-item" open>
+      <summary>How does a custom design request work?</summary>
+      <p>Add “Custom design request” to your cart and check out — it's ₱0 up front. We review your idea, send you a quote, and only once you approve do you pay. No commitment, no surprise charges.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What files do you accept for my design?</summary>
+      <p>PNG, JPG, PDF, SVG or AI — the higher resolution the better. Not sure if your file is print-ready? Send it anyway. We check and prep every file for free before we print.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Is there a minimum order?</summary>
+      <p>No minimum on shirts, DTF/sublimation designs, and hardware — order a single piece if that's all you need. A few print &amp; office items (Document Printing, Business Cards, Stickers &amp; Labels) carry a small minimum to keep per-order costs down, and bulk pricing kicks in automatically once you order more. For bulk runs, use the estimator below for a directional quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How fast will I get it?</summary>
+      <p>Ready-made designs are typically produced within the same or next business day. Custom work depends on the design — we'll tell you the turnaround when we send your quote.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How and when do I pay?</summary>
+      <p>Ready-made priced items are settled when you place the order. Custom items are billed only after you approve the quote — we coordinate payment with you right after checkout.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Pickup or delivery?</summary>
+      <p>Both. Pick up at our Manila studio, or ask for delivery at checkout and we'll arrange it.</p>
+    </details>
+  </section>
+
+  <section class="mission-vision">
+    <div class="section-head">
+      <span class="kicker-pill"><span class="dot"></span>Who we are</span>
+      <h2>Vision &amp; mission</h2>
+    </div>
+    <div class="mv-grid">
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M128,56a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Z" opacity="0.2"/><path d="M247.4,116.5c-.6-1.4-15.4-33.8-48.5-56.9C165.4,36.4,120.2,26.7,128,26.7s-37.4,9.7-70.9,32.9C24,82.7,9.2,115.1,8.6,116.5a8,8,0,0,0,0,7c.6,1.4,15.4,33.8,48.5,56.9,33.5,23.2,78.7,32.9,70.9,32.9s37.4-9.7,70.9-32.9c33.1-23.1,47.9-55.5,48.5-56.9A8,8,0,0,0,247.4,116.5ZM128,184a64,64,0,1,1,64-64A64.07,64.07,0,0,1,128,184Z"/></svg></div>
+        <h3>Vision</h3>
+        <p>To be the premier creative hub that seamlessly bridges digital art, custom merchandise, and technology, empowering individuals and businesses to bring their unique visions to life.</p>
+      </div>
+      <div class="card pillar">
+        <div class="icon"><svg width="22" height="22" viewBox="0 0 256 256" fill="currentColor"><path d="M232,64,168,40,128,64,64,40,24,64V216l40-24,64,24,40-24,64,24Z" opacity="0.2"/><path d="M235.71,58.13a8,8,0,0,0-7.35-.89l-60.71,23-62.63-23.5a8,8,0,0,0-5.6.05l-64,24A8,8,0,0,0,30.05,74a8,8,0,0,0-2.06,5.42v152a8,8,0,0,0,7.36,7.98,7.9,7.9,0,0,0,5.96-2.15L120,213l62.34,23.38A8,8,0,0,0,192,232l64-24a8,8,0,0,0,5.29-7.53V63.55A8,8,0,0,0,235.71,58.13ZM48,84.94l48-18v133.9l-48,18Zm64-18,48,18v133.9l-48-18ZM224,196.14l-48,18V80.24l48-18Z"/></svg></div>
+        <h3>Mission</h3>
+        <p>At KCMPS, our mission is to deliver exceptional printing services, innovative digital artistry, high-quality custom apparel, and curated tech gadgets. We are committed to fostering lasting partnerships with our clients by providing reliable solutions, creative excellence, and accessible technology that inspires connection and celebrates every milestone.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="contact" id="contact">
+    <div class="contact-grid">
+      <div>
+        <!-- Filled in by the operating-hours script near the bottom of this file.
+             The static text here is the no-JS fallback: it states the schedule
+             rather than claiming a live status, because "currently active" that
+             cannot update is a lie at 2am. -->
+        <span class="status-row" id="studio-status"><span class="dot"></span>Open weekdays 9:00 AM – 6:00 PM</span>
+        <div class="section-head" style="margin-bottom:var(--space-4)">
+          <span class="kicker-pill"><span class="dot"></span>04 · Location</span>
+          <h2>Manila HQ</h2>
+        </div>
+        <div class="info-block">
+          <h4>Studio address</h4>
+          <p>15A Imugan St., Santol, Quezon City, Metro Manila, 1113</p>
+        </div>
+        <div class="info-block">
+          <h4>Studio hours</h4>
+          <!-- Rendered from the same OPERATING_HOURS constant that drives the live
+               status above, so the schedule and the open/closed badge can never
+               disagree. Static text is the no-JS fallback. -->
+          <p id="studio-hours">Monday – Friday, 9:00 AM – 6:00 PM<br />Saturday, 9:00 AM – 2:00 PM<br />Closed Sundays &amp; holidays</p>
+        </div>
+        <div class="info-block">
+          <h4>Contact channels</h4>
+          <p>Production desk: <a href="mailto:info@kcmps.com">info@kcmps.com</a><br />Administrative office: HQ, walk-in</p>
+        </div>
+        <div class="note-card">Walk-in consultations are welcome. Run the estimator above to pre-generate layout specs before visiting — directions are shared instantly on a validated quote.</div>
+      </div>
+      <figure class="contact-figure duotone">
+        <img src="https://media.base44.com/images/public/6a57033f17d456e3c7978236/b808ffe8e_generated_image.png" alt="3D printing studio floor" loading="lazy" decoding="async" />
+      </figure>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div>
+        <div class="foot-brand"><img src="../../website/assets/logo-mark.png" alt="" loading="lazy" decoding="async" /><span>KCMPS</span></div>
+        <p class="tagline">Kaalyados Creatives — merchandise and printing services. High-fidelity print, pre-press drafting, precision 3D fabrication and curated hardware storage, made in Manila.</p>
+      </div>
+      <div class="foot-links">
+        <a href="#storefront">Shop</a>
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
+        <a href="#contact">Contact</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="refunds.html">Refunds</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>All prices are directional estimates in PHP (₱), subject to stock and queue availability.</span>
+      <span>© 2026 KCMPS — Kaalyados Creatives. Manila, Philippines.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- Scroll position indicator — right-edge rail, one line per major section.
+     Fixed on desktop, pinned between the nav and the mobile Shop/View Cart
+     bar on small screens (see .scroll-indicator in styles.css). -->
+<nav class="scroll-indicator" aria-label="Jump to section">
+  <button type="button" class="scroll-indicator-item" data-target="hero" aria-label="Jump to Hero">
+    <span class="scroll-indicator-label">Hero</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="storefront" aria-label="Jump to Shop">
+    <span class="scroll-indicator-label">Shop</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="estimator" aria-label="Jump to Bulk quote">
+    <span class="scroll-indicator-label">Bulk quote</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="how" aria-label="Jump to How it works">
+    <span class="scroll-indicator-label">How it works</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="faq" aria-label="Jump to FAQ">
+    <span class="scroll-indicator-label">FAQ</span><span class="scroll-indicator-line"></span>
+  </button>
+  <button type="button" class="scroll-indicator-item" data-target="contact" aria-label="Jump to Contact">
+    <span class="scroll-indicator-label">Contact</span><span class="scroll-indicator-line"></span>
+  </button>
+</nav>
+
+<!-- Persistent mobile buy bar — hidden on desktop and inside auth popups. -->
+<div class="sticky-cta">
+  <a href="#storefront" class="btn btn-secondary">Shop</a>
+  <button type="button" class="btn btn-primary" id="sticky-cart">View cart</button>
+</div>
+
+<script>
+/* Publishes --nav-h/--stickycta-h: the real, measured heights of the two
+   fixed bars (sticky nav, mobile Shop/View Cart bar). Consumed by
+   .scroll-indicator (mobile) to sit exactly between them, and reused by the
+   indicator's click-to-scroll offset below.
+   (This used to also publish --hero-overlay-max, capping a text overlay on
+   the mobile hero photo. That overlay is gone — the mobile hero copy now
+   sits in a card below the photo, in normal flow, so nothing needs capping.) */
+(() => {
+  const nav = document.querySelector('.nav');
+  const stickyCta = document.querySelector('.sticky-cta');
+  function setFixedBarHeights() {
+    const navH = nav ? nav.getBoundingClientRect().height : 0;
+    const ctaH = stickyCta ? stickyCta.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--nav-h', navH + 'px');
+    document.documentElement.style.setProperty('--stickycta-h', ctaH + 'px');
+  }
+  setFixedBarHeights();
+  window.addEventListener('resize', setFixedBarHeights);
+  window.addEventListener('orientationchange', setFixedBarHeights);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', setFixedBarHeights);
+})();
+</script>
+
+<script>
+/* Scroll position indicator behavior. Uses IntersectionObserver (not scroll
+   position math) to track which section is in view — cheaper and more
+   accurate than computing offsets on every scroll event. Click scrolls to
+   the target via native scrollIntoView; the nav offset comes from the
+   sections' own scroll-margin-top (inline <style>), not from math here. */
+(() => {
+  const rail = document.querySelector('.scroll-indicator');
+  if (!rail) return;
+  const items = Array.from(rail.querySelectorAll('.scroll-indicator-item'));
+  const sections = items
+    .map((item) => ({ item, el: document.getElementById(item.dataset.target) }))
+    .filter((s) => s.el);
+  if (!sections.length) return;
+
+  function setActive(id) {
+    items.forEach((item) => item.classList.toggle('is-active', item.dataset.target === id));
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      // Pick the entry closest to the top of the viewport among those
+      // currently intersecting, so the "active" segment matches what the
+      // user is actually reading rather than whichever fired last.
+      const visible = entries.filter((e) => e.isIntersecting);
+      if (!visible.length) return;
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      setActive(visible[0].target.id);
+    },
+    { rootMargin: '-35% 0px -55% 0px', threshold: 0 }
+  );
+  sections.forEach((s) => observer.observe(s.el));
+
+  let tapFlashTimer = null;
+  items.forEach((item) => {
+    item.addEventListener('click', () => {
+      const target = document.getElementById(item.dataset.target);
+      if (!target) return;
+      // Touch has no hover, so flash the label briefly on tap instead —
+      // confirms what was tapped without leaving labels on screen
+      // permanently (they're wide enough to overlap page content on
+      // narrow viewports). No-op on desktop, where :hover already reveals it.
+      clearTimeout(tapFlashTimer);
+      items.forEach((i) => i.classList.remove('is-tapped'));
+      item.classList.add('is-tapped');
+      tapFlashTimer = setTimeout(() => item.classList.remove('is-tapped'), 900);
+      item.blur(); // drop any lingering :focus-visible so the label doesn't stay stuck open
+      // Native scrollIntoView so the sections' scroll-margin-top does the
+      // nav offset consistently for every target, #hero included now that
+      // it's back in normal document flow.
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  // Keep the rail clear of the cart drawer, which also docks on the right
+  // edge and would otherwise sit under/over the indicator while open. The
+  // drawer is injected into <body> lazily by store.js (not present at load),
+  // so watch the whole body rather than the drawer node itself.
+  const toggleForDrawer = () => {
+    const drawer = document.querySelector('.cart-drawer');
+    rail.classList.toggle('is-hidden', !!drawer && drawer.classList.contains('is-open'));
+  };
+  new MutationObserver(toggleForDrawer).observe(document.body, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['class'],
+  });
+})();
+</script>
+
+<!-- Storefront data + cart logic (static, front-end only). Loaded before the
+     auth script so window.KCMPS_STORE exists when the auth flow refreshes the
+     cart badge (see the CART INTEGRATION POINT in the auth script below). -->
+<!-- guard.js MUST stay ahead of store.js — store.js's CHECKOUT_API_BASE resolves
+     to PRODUCTION on any host that isn't dev.kcmps.com, localhost included. -->
+<script src="guard.js"></script>
+<script src="../../website/products.js"></script>
+<script src="../../website/store.js"></script>
+<script src="wizard.js"></script>
+
+<script>
+/* Bulk & custom estimator — sources every product/price from
+   window.KCMPS_STORE_DATA (products.js) instead of hardcoded numbers, so it
+   can't drift from the real catalog. Only leaves with actual priced SKUs
+   (today: print-office, dtf) get a calculator; leaves that are still
+   comingSoon (network, storage, etc.) have no real price to show, so they're
+   pointed at the shop's existing custom-request flow instead of a fabricated
+   number. "Add to cart" goes through the SAME cart as the shop cards
+   (window.KCMPS_STORE.addToCart) — not a separate mailto — so it participates
+   in checkout, the cart badge, and the hero category-priming sticky state
+   (see the priming script below) exactly like any other purchase. */
+(() => {
+  const DATA = window.KCMPS_STORE_DATA;
+  const productSel = document.getElementById('est-product');
+  const productPicker = document.getElementById('est-product-picker');
+  const qty = document.getElementById('qty');
+  const qtyNum = document.getElementById('qty-num');
+  const addonsWrap = document.getElementById('est-addons');
+  const q_base = document.getElementById('q-base');
+  const q_mult = document.getElementById('q-mult');
+  const q_fin = document.getElementById('q-fin');
+  const q_discountRow = document.getElementById('q-discount-row');
+  const q_discountLabel = document.getElementById('q-discount-label');
+  const q_discount = document.getElementById('q-discount');
+  const q_total = document.getElementById('q-total');
+  const bulkNote = document.getElementById('est-bulk-note');
+  const addCartBtn = document.getElementById('est-add-cart');
+  const copyBtn = document.getElementById('copy-spec');
+  const merchNote = document.getElementById('est-merch-note');
+  const merchLink = document.getElementById('est-merch-link');
+  if (!DATA || !productSel || !qty || !qtyNum) return;
+
+  const LEAF_LABEL = { 'print-office': 'Printing & Office', dtf: 'Apparel · DTF', subli: 'Apparel · Sublimation' };
+  const fmt = (n) => DATA.currency + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Flatten every priced SKU (and each of its variants) into one option list —
+  // this is the literal same data the shop product cards render from.
+  const options = [];
+  DATA.products.forEach((p) => {
+    // quoteOnRequest products (e.g. binding, bookmarks) have no confirmed
+    // price yet — leave them out rather than fabricate a ₱0 estimator line.
+    if (p.quoteOnRequest) return;
+    // noOnlineOrder (e.g. Photocopying) has no cart path at all — this
+    // estimator's "Add to cart" goes straight to window.KCMPS_STORE.addToCart.
+    // requiresCartProduct (e.g. Lamination/Binding) is gated behind already
+    // having a Document Printing line — the estimator can't express or
+    // enforce that gate, so both are left out here; order them from their
+    // own shop cards instead.
+    if (p.noOnlineOrder || p.requiresCartProduct) return;
+    (p.variants || [{ label: '', price: p.price || 0 }]).forEach((v) => {
+      options.push({
+        id: p.id + (v.label ? '|' + v.label : ''),
+        leaf: p.leaf,
+        name: p.name + (v.label ? ' — ' + v.label : ''),
+        unitPrice: v.price,
+        shirtAddon: !!p.shirtAddon,
+        bulkTiers: p.bulkTiers || null,
+        softCap: p.softCap || null,
+        minQty: p.minQty || 1,
+        // Same fallback order as store.js's thumbImage(): the product's own
+        // image wins, else its leaf's representative photo, else no thumb.
+        image: p.image || (DATA.leaves[p.leaf] && DATA.leaves[p.leaf].image) || null,
+      });
+    });
+  });
+
+  if (!options.length) {
+    // No priced SKUs anywhere in the catalog yet — nothing honest to calculate.
+    document.querySelector('.est-grid').style.display = 'none';
+    if (merchNote) { merchNote.textContent = 'Every category is custom-quote right now — add a request from the shop above.'; merchNote.style.display = ''; }
+    return;
+  }
+
+  const groups = {};
+  options.forEach((o) => { (groups[o.leaf] = groups[o.leaf] || []).push(o); });
+  const leaves = Object.keys(groups);
+  productSel.innerHTML = leaves.map((leaf) =>
+    `<optgroup label="${LEAF_LABEL[leaf] || leaf}">` +
+    groups[leaf].map((o) => `<option value="${o.id}">${o.name} — ${fmt(o.unitPrice)}</option>`).join('') +
+    `</optgroup>`
+  ).join('');
+
+  // Default to whichever product matches the category already primed for this
+  // visitor (see the hero-priming script below) — same storage key, read
+  // directly since this script runs before that one defines it. Falls back to
+  // the first available option/leaf if nothing's primed yet (first-ever
+  // pageview). Computed before the picker below so its default tab can open
+  // on the right category from the start, instead of always the first one.
+  function readPrimedCategory() {
+    try {
+      const local = JSON.parse(localStorage.getItem('kcmps_hero_category') || 'null');
+      if (local && local.sticky && local.category) return local.category;
+    } catch { /* corrupt value — ignore */ }
+    try {
+      const sess = JSON.parse(sessionStorage.getItem('kcmps_hero_category') || 'null');
+      if (sess && sess.category) return sess.category;
+    } catch { /* corrupt value — ignore */ }
+    return null;
+  }
+  const CATEGORY_TO_LEAF = { 'print-office': 'print-office', design: 'dtf' };
+  const primed = readPrimedCategory();
+  const primedLeaf = primed && CATEGORY_TO_LEAF[primed];
+  const defaultLeaf = (primedLeaf && groups[primedLeaf]) ? primedLeaf : leaves[0];
+  if (primed === 'merch' && merchNote) merchNote.style.display = '';
+
+  // Visual picker — the hidden <select> above stays the single source of
+  // truth; clicking a card just drives it, so every downstream reader
+  // (currentOption() etc.) is unaffected. Grouped into one tab per catalog
+  // leaf (reusing the site's existing [data-tabs]/.tab-btn/.tab-panel
+  // pattern and its generic click-handler script further down) so tapping a
+  // category narrows the grid to a handful of thumbnail+name+price cards
+  // instead of one long scrolling/wrapping list — each panel caps its own
+  // height with internal scroll if a category still has a lot of variants
+  // (same bounded-grid idea as store.js's buildDesignGrid()). escapeHtml
+  // guards product names (owner-editable copy) from breaking the markup.
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function initialsOf(name) { return name.split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join('').toUpperCase(); }
+  function cardHtml(o) {
+    return `
+      <button type="button" class="est-product-pick" data-opt-id="${o.id}" role="option" aria-selected="false">
+        <div class="product-thumb">${o.image ? `<img src="${o.image}" alt="" loading="lazy" decoding="async" />` : `<span class="mono">${escapeHtml(initialsOf(o.name))}</span>`}</div>
+        <span class="est-product-pick-name">${escapeHtml(o.name)}</span>
+        <span class="est-product-pick-price">${fmt(o.unitPrice)}</span>
+      </button>`;
+  }
+  function selectOption(id, { silent } = {}) {
+    productSel.value = id;
+    productPicker.querySelectorAll('.est-product-pick').forEach((card) => {
+      const selected = card.dataset.optId === id;
+      card.classList.toggle('is-selected', selected);
+      card.setAttribute('aria-selected', String(selected));
+    });
+    if (!silent) productSel.dispatchEvent(new Event('change'));
+  }
+  if (productPicker) {
+    productPicker.innerHTML = leaves.length > 1
+      ? `<div class="tabs est-product-tabs" data-tabs>
+          <div class="tab-list" role="tablist">
+            ${leaves.map((leaf) => `<button type="button" class="tab-btn" data-tab-target="est-panel-${leaf}" aria-selected="${leaf === defaultLeaf}">${escapeHtml(LEAF_LABEL[leaf] || leaf)}</button>`).join('')}
+          </div>
+          <div class="tab-panels">
+            ${leaves.map((leaf) => `<div class="tab-panel${leaf === defaultLeaf ? ' is-active' : ''}" id="est-panel-${leaf}"><div class="est-product-grid">${groups[leaf].map(cardHtml).join('')}</div></div>`).join('')}
+          </div>
+        </div>`
+      : `<div class="est-product-grid">${options.map(cardHtml).join('')}</div>`;
+    productPicker.addEventListener('click', (e) => {
+      const card = e.target.closest('.est-product-pick');
+      if (card) selectOption(card.dataset.optId);
+    });
+  }
+  selectOption(groups[defaultLeaf][0].id, { silent: true });
+
+  /* Scroll affordance for the capped product grid (A10 in
+     docs/conversion-audit-2026-08-06.md). The 256px max-height is deliberate —
+     CLAUDE.md records that an uncapped grid pushes Step 02 off the page — but at
+     375px the grid holds ~1549px of content, so >80% of the catalog sat behind
+     an internal scroll with no cue at all. styles.css fades the bottom edge by
+     default; this only removes the fade once there's genuinely nothing more
+     below, since a permanent fade over the final row just looks like a bug.
+     Purely visual: no layout shift, nothing to gate on prefers-reduced-motion. */
+  function syncGridFade(grid) {
+    const atEnd = grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 2;
+    grid.classList.toggle('is-scrolled-end', atEnd);
+  }
+  document.querySelectorAll('#estimator .est-product-grid').forEach((grid) => {
+    syncGridFade(grid);
+    grid.addEventListener('scroll', () => syncGridFade(grid), { passive: true });
+  });
+
+  if (merchLink) {
+    merchLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tabBtn = document.querySelector('.tab-btn[data-tab-target="panel-merch"]');
+      if (tabBtn) tabBtn.click();
+      document.getElementById('storefront')?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  function currentOption() { return options.find((o) => o.id === productSel.value) || options[0]; }
+
+  function buildAddons() {
+    const opt = currentOption();
+    addonsWrap.innerHTML = '';
+    const defs = [];
+    if (opt.leaf === 'print-office') {
+      defs.push({ key: 'lamination', label: 'Lamination', kind: 'pct', value: 0.15 });
+      defs.push({ key: 'foil', label: 'Foil / emboss', kind: 'pct', value: 0.25 });
+    }
+    if (opt.shirtAddon) {
+      defs.push({ key: 'shirt', label: `Press onto shirts (+${fmt(DATA.shirtAddon.price)}/pc)`, kind: 'flat', value: DATA.shirtAddon.price });
+    }
+    defs.push({ key: 'rush', label: 'Rush delivery', kind: 'pct', value: 0.10 });
+    defs.forEach((d) => {
+      const lab = document.createElement('label'); lab.className = 'finish';
+      const inp = document.createElement('input');
+      inp.type = 'checkbox'; inp.dataset.kind = d.kind; inp.dataset.value = String(d.value); inp.dataset.key = d.key;
+      const sp = document.createElement('span'); sp.textContent = d.label;
+      inp.addEventListener('change', recalc);
+      lab.appendChild(inp); lab.appendChild(sp); addonsWrap.appendChild(lab);
+    });
+  }
+
+  // Reads the SAME per-product bulkTiers (products.js) and the SAME
+  // discount math (bulkUnitPrice) the shop's product cards use — see
+  // store.js's window.KCMPS_STORE.bulkTier/bulkUnitPrice — so this estimator
+  // can never quote a different bulk price than what "Add to cart" charges.
+  function bulkDiscountPct(opt, q) {
+    const tier = window.KCMPS_STORE.bulkTier(q, opt.bulkTiers);
+    return tier ? tier.discountPct / 100 : 0;
+  }
+
+  function updateBulkNote() {
+    const opt = currentOption();
+    if (!bulkNote) return;
+    const priceText = (!opt.bulkTiers || !opt.bulkTiers.length)
+      ? 'This product is priced flat regardless of quantity.'
+      : 'Bulk discount applies automatically: ' +
+        opt.bulkTiers.map((t) => `${t.discountPct}% at ${t.minQty}+`).join(', ') + '.';
+    // Capacity soft-cap (products.js softCap) — same 4-person-team throttle
+    // as the shop cards; see store.js's capacity soft-cap section.
+    const capText = opt.softCap
+      ? ` Orders above ${opt.softCap} need extra lead time from our small team — you'll get a heads-up before confirming.`
+      : '';
+    bulkNote.textContent = priceText + capText;
+  }
+
+  // Routes the current typed/dragged qty through the shared capacity-cap
+  // popup (window.KCMPS_STORE.requestQty) — called on commit (blur/Enter,
+  // slider release, product switch), not on every keystroke/drag tick, so
+  // it doesn't interrupt the shopper mid-input.
+  function enforceQtyCap() {
+    const opt = currentOption();
+    qtyNum.min = String(opt.minQty || 1);
+    const typed = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    const requested = Math.max(opt.minQty || 1, typed);
+    if (!window.KCMPS_STORE || !window.KCMPS_STORE.requestQty) return;
+    // Keyed by opt.id so agreeing to a big order for one catalog product here
+    // carries over to that same product's shop card/cart line, but not to a
+    // different product picked in Step 01.
+    window.KCMPS_STORE.requestQty(opt.softCap, requested, (finalQty) => {
+      if (finalQty !== typed) syncQty(finalQty);
+    }, opt.id);
+  }
+
+  function computeQuote() {
+    const opt = currentOption();
+    const q = Math.max(1, parseInt(qtyNum.value, 10) || 1);
+    const base = opt.unitPrice;
+    const subtotal = base * q;
+    let addonAmt = 0;
+    [...addonsWrap.querySelectorAll('input:checked')].forEach((inp) => {
+      addonAmt += inp.dataset.kind === 'pct' ? subtotal * parseFloat(inp.dataset.value) : parseFloat(inp.dataset.value) * q;
+    });
+    const preDiscount = subtotal + addonAmt;
+    const discountPct = bulkDiscountPct(opt, q);
+    const discountAmt = preDiscount * discountPct;
+    const total = preDiscount - discountAmt;
+    return { opt, q, base, addonAmt, discountPct, discountAmt, total };
+  }
+
+  function recalc() {
+    const r = computeQuote();
+    q_base.textContent = fmt(r.base);
+    q_mult.textContent = '× ' + r.q;
+    q_fin.textContent = fmt(r.addonAmt);
+    if (r.discountPct > 0) {
+      q_discountRow.style.display = '';
+      q_discountLabel.textContent = `Bulk discount (${Math.round(r.discountPct * 100)}%)`;
+      q_discount.textContent = '−' + fmt(r.discountAmt);
+    } else {
+      q_discountRow.style.display = 'none';
+    }
+    q_total.textContent = fmt(r.total);
+  }
+
+  // Range slider and number input drive the same value, kept in sync both ways.
+  // Slider tops out at 500 (its usable drag range) but the number field
+  // accepts up to 2000 directly — real bulk/enterprise print runs shouldn't
+  // hit an artificial online-ordering ceiling.
+  function syncQty(value) {
+    const clamped = Math.min(2000, Math.max(1, parseInt(value, 10) || 1));
+    qty.value = String(Math.min(500, clamped));
+    qtyNum.value = String(clamped);
+    recalc();
+  }
+  // Cap enforcement runs on commit only (slider release / blur / Enter /
+  // switching products) — not on every 'input' tick — so a mid-drag or
+  // mid-keystroke value never pops the confirmation out from under the
+  // shopper before they've finished adjusting it.
+  qty.addEventListener('input', () => syncQty(qty.value));
+  qty.addEventListener('change', enforceQtyCap);
+  qtyNum.addEventListener('input', () => syncQty(qtyNum.value));
+  qtyNum.addEventListener('blur', enforceQtyCap);
+  qtyNum.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); qtyNum.blur(); } });
+  productSel.addEventListener('change', () => { buildAddons(); updateBulkNote(); recalc(); enforceQtyCap(); });
+
+  buildAddons();
+  updateBulkNote();
+  recalc();
+
+  copyBtn.addEventListener('click', () => {
+    const r = computeQuote();
+    const spec = `KCMPS bulk estimate — ${r.opt.name} × ${r.q} — ${fmt(r.total)} total`;
+    navigator.clipboard?.writeText(spec);
+    copyBtn.textContent = 'Copied';
+    setTimeout(() => { copyBtn.textContent = 'Copy spec to clipboard'; }, 1500);
+  });
+
+  addCartBtn.addEventListener('click', () => {
+    const r = computeQuote();
+    const addonKeys = [...addonsWrap.querySelectorAll('input:checked')].map((i) => i.dataset.key);
+    const unitAfter = Math.round(r.total / r.q);
+    window.KCMPS_STORE?.addToCart({
+      key: 'bulk|' + r.opt.id + '|' + r.q + '|' + addonKeys.join(','),
+      id: 'bulk-' + r.opt.id,
+      name: 'Bulk: ' + r.opt.name,
+      leaf: r.opt.leaf,
+      type: 'sku',
+      variantLabel: addonKeys.length ? addonKeys.join(', ') : '',
+      shirt: addonKeys.includes('shirt'),
+      unitPrice: unitAfter,
+      qty: r.q,
+    });
+    window.KCMPS_STORE?.open();
+    const orig = addCartBtn.textContent;
+    addCartBtn.textContent = 'Added ✓'; addCartBtn.disabled = true;
+    setTimeout(() => { addCartBtn.textContent = orig; addCartBtn.disabled = false; }, 1100);
+  });
+})();
+
+(() => {
+  document.querySelectorAll('[data-tabs]').forEach((group) => {
+    const tabList = group.querySelector(':scope > .tab-list');
+    const panelWrap = group.querySelector(':scope > .tab-panels');
+    if (!tabList || !panelWrap) return;
+    tabList.querySelectorAll(':scope > .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tabList.querySelectorAll(':scope > .tab-btn').forEach((b) => b.setAttribute('aria-selected', 'false'));
+        panelWrap.querySelectorAll(':scope > .tab-panel').forEach((p) => p.classList.remove('is-active'));
+        btn.setAttribute('aria-selected', 'true');
+        const target = document.getElementById(btn.dataset.tabTarget);
+        if (target) target.classList.add('is-active');
+      });
+    });
+  });
+})();
+</script>
+
+<script>
+/* Page-wide category priming — Hormozi "no-brainer offer" copy, one variant
+   per top-level catalog category (print-office / design / merch), selected
+   once and kept consistent across the ENTIRE page (hero, value stack, how-it-
+   works, and which shop tab is pre-selected) so the customer isn't shown
+   three different pitches (this is priming/consistency, not personalization
+   — selection is random, not based on who the visitor is).
+
+   State machine (source of truth: STORAGE_KEY, read in this priority order):
+     1. localStorage[STORAGE_KEY] — "sticky" state. Written the moment the
+        customer adds ANY item to cart or submits a custom/quote request
+        (store.js's addToCart covers both — custom items ARE the quote flow
+        here, see the "custom" item type). Survives closed tabs, expires
+        after STICKY_MS.
+     2. sessionStorage[STORAGE_KEY] — pre-commitment state. Keeps the same
+        category consistent for the lifetime of this tab (so a visitor
+        scrolling/reading isn't shown a different pitch mid-visit), but a
+        genuinely new visit (new tab/session, or after sticky expiry) rolls a
+        fresh random category. To see the randomization, open a new tab/
+        incognito window per roll — reloading THIS tab intentionally keeps
+        the same category, that consistency is the point of the feature.
+     3. Neither present/valid — roll uniformly at random.
+
+   Cross-device sync decision (v1): NOT implemented. A logged-in customer on
+   a second device would get a fresh roll rather than their primed category,
+   even within the 7-day window. Doing this properly needs a server-side
+   CUSTOMER#<sub> attribute (see ops-dashboard/infra/backend-infra-to-deploy.md),
+   which doesn't exist yet — per this project's "manual-first, automate on
+   signal" approach, ship client-side-only for v1 and only build server sync
+   if usage data justifies it.
+
+   Analytics: dispatches DOM CustomEvents ('kcmps:hero-metric') rather than
+   calling a real endpoint — there's no backend yet. Event shape is chosen to
+   map 1:1 onto the ops dashboard's existing METRIC# rollup pattern
+   (METRIC#DAY#<date> / PILLAR#<PRINT|STUDIO|HARDWARE>, see
+   ops-dashboard/infra/logic-inputs/streams-handler.js) so wiring a real
+   beacon later is a one-line swap of logMetric(), not a redesign. */
+(() => {
+  const STORAGE_KEY = 'kcmps_hero_category';
+  const STICKY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  const PAGE_VARIANTS = {
+    'print-office': {
+      hero: {
+        kicker: 'Bulk printing & office supplies · 2–3 day turnaround',
+        headline: ['Your bulk print job,', 'done in days', '— not weeks.'],
+        anchor: { from: 'Turnaround', amount: '2–3 days', was: 'clear pricing, no back-and-forth' },
+        // Measured at 375px, the previous 236-character version ran 6 lines
+        // (144px tall) and pushed the primary CTA to y=781 of an 812px
+        // viewport. Same three promises — speed, automatic bulk pricing, right
+        // the first time — in half the lines. See
+        // docs/conversion-audit-2026-08-06.md finding A8.
+        sub: "Send your file, get a quote back in minutes, and pick it up in 2–3 business days. Bulk discounts apply automatically — printed right the first time.",
+        cta: 'Get an instant quote',
+        tabTarget: 'panel-print-office',
+      },
+      valuestack: {
+        h2: 'One flat quote. Nothing hidden.',
+        p: 'Most print shops charge extra for file fixes and reprints. Every KCMPS bulk print job already includes:',
+        lines: [
+          { label: 'File check &amp; print-ready prep', free: true },
+          { label: 'Color-accurate proof before the full run', free: true },
+          { label: 'Bulk-quantity discount, applied automatically', free: true },
+        ],
+        payLabel: 'You pay, all-in',
+        payAmt: 'Just your quote',
+      },
+      how: [
+        { h3: 'Send your file or specs', p: 'Documents, forms, packaging — upload what you need printed, digital file or physical copy.' },
+        { h3: 'We prep, proof and print in-house', p: 'File checked, proof approved, then printed at bulk-run pricing — rush delivery available.' },
+        { h3: 'Pick up or get it delivered in 2–3 days', p: 'Grab it at our Manila studio or have it delivered — fast.' },
+      ],
+    },
+    design: {
+      hero: {
+        kicker: 'Design + print, one team · Launch Kit',
+        headline: ['One decision,', 'not three quotes.', 'Your brand, launched.'],
+        anchor: { from: 'From', amount: '₱160', was: 'design + shirt, all-in' },
+        sub: "Stop collecting quotes from three different shops. One team designs it, prints it, and hands you a finished piece — logo, layout and production all under one roof.",
+        cta: 'Start my design',
+        tabTarget: 'panel-design',
+      },
+      valuestack: {
+        h2: 'One low price. Everything included.',
+        p: 'Most shops charge for the extras. With KCMPS, a finished custom shirt already includes all of this:',
+        lines: [
+          { label: 'Premium DTF transfer of your design', val: '₱80' },
+          { label: 'Heat-pressed onto a quality shirt', val: '₱110' },
+          { label: 'Design file check &amp; print-prep', free: true },
+          { label: 'Color &amp; placement layout assistance', free: true },
+          { label: "Reprint-free guarantee if it's not right", free: true },
+        ],
+        totalLabel: 'Typical value elsewhere',
+        totalVal: '₱450',
+        payLabel: 'You pay, all-in from',
+        payAmt: '₱160',
+      },
+      how: [
+        { h3: 'Tell us your idea', p: 'Pick a ready-made design or send us yours — one form covers it.' },
+        { h3: 'One team designs, prints and finishes it', p: 'No juggling three vendors — we prep the file, print premium DTF, and press it onto your shirt in-house.' },
+        { h3: 'Pick up or get it delivered', p: 'Grab it at our Manila studio or have it delivered. Fast turnaround, no minimum order.' },
+      ],
+    },
+    merch: {
+      hero: {
+        kicker: 'Networking gear & storage hardware · sourced & ready',
+        headline: ['Hold your hardware', 'in your hands', '— this week.'],
+        anchor: { from: 'From', amount: '1 piece', was: 'no minimum, no bulk lock-in' },
+        sub: "Flash drives, SSDs and networking gear — sourced, checked, and ready faster than a factory minimum-order run. See and hold the real thing before you commit to a bulk buy.",
+        cta: 'Get my hardware',
+        tabTarget: 'panel-merch',
+      },
+      valuestack: {
+        h2: 'One piece. Everything checked.',
+        p: 'Most hardware shops just drop-ship it. Every KCMPS order already includes:',
+        lines: [
+          { label: 'Spec &amp; capacity match to your needs', free: true },
+          { label: 'Functionality check before pickup', free: true },
+          { label: 'Quality check before pickup', free: true },
+        ],
+        totalLabel: 'Typical setup fee elsewhere',
+        totalVal: '₱300',
+        payLabel: 'You pay, no bulk minimum',
+        payAmt: 'From 1 piece',
+      },
+      how: [
+        { h3: 'Tell us your setup or capacity needs', p: 'Networking gear, flash drives, or SSDs — tell us what you need and how much.' },
+        { h3: 'We source and check it in-house', p: 'Every piece is sourced, tested and inspected before it ships — no factory minimums.' },
+        { h3: 'Hold it or get it delivered', p: 'Pick it up at our Manila studio or have it delivered — see the real thing before committing to bulk.' },
+      ],
+    },
+  };
+  // Revenue-generating subcategories only — merch stays in PAGE_VARIANTS (data
+  // kept in case it's needed again) but is excluded from the priming rotation
+  // per owner direction. readValid() below also gates on this list, so a
+  // stale sticky "merch" value from before this change gets rejected and
+  // re-rolled rather than rendered.
+  const ACTIVE_CATEGORIES = ['print-office', 'design'];
+
+  function pickRandom() { return ACTIVE_CATEGORIES[Math.floor(Math.random() * ACTIVE_CATEGORIES.length)]; }
+
+  function readValid(storage, wantSticky) {
+    try {
+      const raw = storage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      if (v && ACTIVE_CATEGORIES.includes(v.category) && !!v.sticky === wantSticky &&
+          (!wantSticky || (typeof v.expiresAt === 'number' && v.expiresAt > Date.now()))) {
+        return v;
+      }
+      if (wantSticky && v) storage.removeItem(STORAGE_KEY); // expired/invalid sticky state — clean up
+    } catch { /* corrupt value — ignore, treat as absent */ }
+    return null;
+  }
+
+  let state = readValid(localStorage, true) || readValid(sessionStorage, false);
+  let isFreshRoll = false;
+  if (!state) {
+    state = { category: pickRandom(), primedAt: Date.now(), expiresAt: null, sticky: false };
+    isFreshRoll = true;
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* private browsing/quota — priming still holds for this pageview */ }
+  }
+
+  function logMetric(event) {
+    document.dispatchEvent(new CustomEvent('kcmps:hero-metric', { detail: { category: state.category, event } }));
+  }
+
+  function promoteToSticky() {
+    if (state.sticky) return; // already committed this window
+    state = { category: state.category, primedAt: state.primedAt, expiresAt: Date.now() + STICKY_MS, sticky: true };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch { /* private browsing/quota — priming still holds for this pageview, just won't survive reopening */ }
+    logMetric('cart-add');
+  }
+
+  function activateTab(tabTarget) {
+    const tabBtn = document.querySelector(`.tab-btn[data-tab-target="${tabTarget}"]`);
+    if (tabBtn) tabBtn.click(); // reuses the existing tab-switch listener (see the [data-tabs] IIFE above)
+  }
+
+  function applyVariant(category) {
+    const variant = PAGE_VARIANTS[category];
+
+    /* ---- hero ---- */
+    const v = variant.hero;
+    const kicker = document.getElementById('hero-kicker-text');
+    const h1 = document.getElementById('hero-h1');
+    const from = document.getElementById('hero-anchor-from');
+    const amount = document.getElementById('hero-anchor-amount');
+    const was = document.getElementById('hero-anchor-was');
+    const sub = document.getElementById('hero-sub');
+    const cta = document.getElementById('hero-cta');
+    if (kicker && h1 && from && amount && was && sub && cta) {
+      kicker.textContent = v.kicker;
+      h1.innerHTML = '';
+      v.headline.forEach((text, i) => {
+        const span = document.createElement('span');
+        if (i === 1) span.className = 'warm';
+        span.textContent = text;
+        h1.appendChild(span);
+      });
+      from.textContent = v.anchor.from;
+      amount.textContent = v.anchor.amount;
+      was.textContent = v.anchor.was;
+      sub.textContent = v.sub;
+      cta.textContent = v.cta;
+      cta.onclick = () => activateTab(v.tabTarget); // .onclick, not addEventListener — applyVariant can re-run (test button)
+    }
+
+    /* ---- value stack ("Everything you get") ---- */
+    const vs = variant.valuestack;
+    const vsH2 = document.getElementById('vs-h2');
+    const vsP = document.getElementById('vs-p');
+    const vsCard = document.getElementById('vstack-card');
+    if (vsH2 && vsP && vsCard) {
+      vsH2.textContent = vs.h2;
+      vsP.textContent = vs.p;
+      vsCard.innerHTML =
+        vs.lines.map((line) =>
+          `<div class="vstack-line"><span class="label">${line.label}</span><span class="val${line.free ? ' free' : ''}">${line.free ? 'FREE' : line.val}</span></div>`
+        ).join('') +
+        (vs.totalLabel ? `<div class="vstack-total"><span>${vs.totalLabel}</span><span class="val">${vs.totalVal}</span></div>` : '') +
+        `<div class="vstack-pay"><span class="lbl">${vs.payLabel}</span><span class="amt">${vs.payAmt}</span></div>` +
+        // Must be repeated here, not only in the static markup: this renderer
+        // replaces #vstack-card's entire innerHTML on every category prime, so
+        // a caption that lived only in index.html's source would be wiped the
+        // moment PAGE_VARIANTS applied. Only rendered when there IS a
+        // struck-through comparison figure to explain.
+        (vs.totalLabel ? `<p class="vstack-note">Comparison figure is what these inclusions typically cost when bought separately elsewhere — not a previous KCMPS price.</p>` : '');
+    }
+
+    /* ---- how it works ---- */
+    variant.how.forEach((step, i) => {
+      const h3 = document.getElementById(`how-${i + 1}-h3`);
+      const p = document.getElementById(`how-${i + 1}-p`);
+      if (h3) h3.textContent = step.h3;
+      if (p) p.textContent = step.p;
+    });
+
+    /* ---- shop pre-selection: activate this category's top-level tab (and,
+       for print-office, that's the whole leaf — design/merch already default
+       to a sensible sub-tab — apparel/DTF, network — in the markup) ---- */
+    activateTab(v.tabTarget);
+  }
+
+  applyVariant(state.category);
+  logMetric(isFreshRoll ? 'primed' : 'primed-restored');
+  document.addEventListener('kcmps:cart-add', promoteToSticky);
+})();
+</script>
+
+<script>
+/* Hero carousel — continuously, slowly drifts right-to-left: each slide
+   glides into the next over ~2.5s (matches the CSS transition duration in
+   styles.css) so the motion never sits static, then immediately glides on
+   to the following slide. Prev/next arrows, dot indicators, and touch/swipe
+   are layered on top; any manual interaction pauses autoplay briefly so it
+   doesn't fight the user, then resumes the drift.
+
+   Image pool: loaded from HERO_MANIFEST_URL (see
+   storefront-infra/assets-bucket-structure.md for the real bucket/manifest
+   plan — until that Lambda is deployed this reads the hand-maintained
+   sample at website/assets/manifest.json). The pool prefers featured:true
+   images across ALL categories (cross-category product exposure, not
+   locked to any one primed category — kept decoupled from any headline/copy
+   personalization elsewhere on the page), falling back to every image if
+   none are flagged featured. If the manifest can't be loaded at all, this
+   falls back to the four <figure> slides already in the markup below, so
+   the carousel still works with zero JS network dependency. */
+(() => {
+  const root = document.getElementById('hero-carousel');
+  const track = document.getElementById('carousel-track');
+  const dotsWrap = document.getElementById('carousel-dots');
+  if (!root || !track || !dotsWrap) return;
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const AUTO_MS = 5500; // 4s slide + ~1.5s pause; keep slide duration in sync with styles.css .carousel-track transition
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const HERO_MANIFEST_URL = '../../website/assets/manifest.json';
+  const SESSION_KEY = 'kcmps_hero_pool_v1';
+
+  // Captured before any DOM rebuild — the ultimate fallback pool.
+  const fallbackPool = [...track.children].map((fig) => {
+    const img = fig.querySelector('img');
+    return { src: img.getAttribute('src'), alt: img.getAttribute('alt') || '' };
+  });
+
+  let basePool = fallbackPool; // the full (unordered) set of eligible images
+  let order = fallbackPool;    // current shuffled viewing sequence
+  let index = 0;
+  let timer = null;
+
+  function persist() {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ order: order.map((s) => s.src), index }));
+    } catch { /* sessionStorage unavailable (private browsing, quota) — just skip persistence */ }
+  }
+
+  function shuffle(pool) {
+    const a = pool.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildDom() {
+    track.innerHTML = '';
+    dotsWrap.innerHTML = '';
+    order.forEach((slide, i) => {
+      const fig = document.createElement('figure');
+      fig.className = 'carousel-slide';
+      const img = document.createElement('img');
+      img.src = slide.src;
+      img.alt = slide.alt;
+      img.loading = i === 0 ? 'eager' : 'lazy'; // eager for the current slide, lazy for the rest (preloadNext tops up the next 1-2)
+      fig.appendChild(img);
+      track.appendChild(fig);
+
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'carousel-dot';
+      dot.dataset.slide = String(i);
+      dot.setAttribute('aria-label', `Photo ${i + 1}`);
+      dot.addEventListener('click', () => { goTo(i); restartAuto(); });
+      dotsWrap.appendChild(dot);
+    });
+  }
+
+  function preloadNext() {
+    [1, 2].forEach((ahead) => {
+      const slide = order[(index + ahead) % order.length];
+      if (slide) { const im = new Image(); im.src = slide.src; }
+    });
+  }
+
+  function render() {
+    track.style.transform = `translateX(-${index * 100}%)`;
+    [...dotsWrap.children].forEach((d, i) => d.classList.toggle('is-active', i === index));
+  }
+
+  // Advance sequentially through the current shuffle; only reshuffle once the
+  // pool is fully exhausted (wrapping past the last slide), so every image is
+  // shown once before any repeat.
+  function next() {
+    if (index >= order.length - 1) {
+      order = shuffle(basePool);
+      index = 0;
+      buildDom();
+    } else {
+      index++;
+    }
+    persist();
+    render();
+  }
+  function prev() { index = (index - 1 + order.length) % order.length; persist(); render(); }
+  function goTo(i) { index = ((i % order.length) + order.length) % order.length; persist(); render(); }
+
+  function stopAuto() { if (timer) { clearInterval(timer); timer = null; } }
+  function startAuto() {
+    if (reduceMotion) return; // respect reduced-motion: no autoplay, manual controls still work
+    stopAuto();
+    timer = setInterval(next, AUTO_MS);
+  }
+  // Manual interaction pauses autoplay, then resumes after a breather.
+  function restartAuto() { stopAuto(); startAuto(); }
+
+  nextBtn.addEventListener('click', () => { next(); preloadNext(); restartAuto(); });
+  prevBtn.addEventListener('click', () => { prev(); preloadNext(); restartAuto(); });
+
+  // Pause on hover/focus so it doesn't move while a visitor is reading it.
+  root.addEventListener('mouseenter', stopAuto);
+  root.addEventListener('mouseleave', startAuto);
+  root.addEventListener('focusin', stopAuto);
+  root.addEventListener('focusout', startAuto);
+
+  // Touch swipe (right-to-left swipe = next, left-to-right = previous).
+  let touchStartX = null;
+  root.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    stopAuto();
+    root.classList.add('is-dragging');
+  }, { passive: true });
+  root.addEventListener('touchend', (e) => {
+    root.classList.remove('is-dragging');
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx < -40) next();
+    else if (dx > 40) prev();
+    touchStartX = null;
+    preloadNext();
+    startAuto();
+  });
+
+  function buildPoolFromManifest(manifest) {
+    const all = [];
+    for (const [category, skus] of Object.entries(manifest.categories || {})) {
+      for (const item of skus || []) {
+        if (!item || !item.primary) continue;
+        const title = window.KCMPS_TEXT ? window.KCMPS_TEXT.titleFromFilename(item.primary) : String(item.sku || '').replace(/-/g, ' ');
+        all.push({
+          src: item.primary,
+          alt: `${category.replace(/-/g, ' ')} — ${title}`,
+          featured: !!item.featured,
+        });
+      }
+    }
+    // Return EVERY image, not just the featured ones. This was previously
+    //     const featured = all.filter((s) => s.featured);
+    //     return featured.length ? featured : all;
+    // which quietly meant "if anyone has ever ticked featured, show ONLY
+    // those". Exactly 4 of the 38 manifest entries are featured, so the hero
+    // rotated through the same 4 shots forever and read as broken/static —
+    // the `featured` flag was acting as a hard filter, not a preference.
+    //
+    // Deliberately NOT re-adding a featured-leads-first rule here: init()
+    // below does `order = shuffle(basePool)` on every fresh load, so any
+    // ordering imposed at this point is immediately discarded. Ordering
+    // belongs in init(), not here. The flag is still parsed onto each slide
+    // above so a future "featured opens the carousel" tweak has it available.
+    return all;
+  }
+
+  async function init() {
+    try {
+      const res = await fetch(HERO_MANIFEST_URL, { cache: 'no-store' });
+      if (res.ok) {
+        const manifest = await res.json();
+        const pool = buildPoolFromManifest(manifest);
+        if (pool.length) basePool = pool;
+      }
+    } catch { /* manifest not reachable (infra not deployed yet, offline, etc.) — use fallbackPool */ }
+
+    // Restore an in-progress shuffle from this session if it matches the current pool
+    // (same images, just reordered) so a refresh mid-session doesn't reset progress.
+    let restored = false;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+      if (saved && Array.isArray(saved.order) && saved.order.length === basePool.length &&
+          saved.order.every((src) => basePool.some((s) => s.src === src))) {
+        order = saved.order.map((src) => basePool.find((s) => s.src === src));
+        index = Number.isInteger(saved.index) ? ((saved.index % order.length) + order.length) % order.length : 0;
+        restored = true;
+      }
+    } catch { /* corrupt session state — fall through to a fresh shuffle */ }
+
+    if (!restored) {
+      order = shuffle(basePool);
+      index = 0;
+    }
+
+    buildDom();
+    render();
+    preloadNext();
+    startAuto();
+  }
+
+  init();
+})();
+</script>
+
+<!-- ============================================================
+     COGNITO AUTH — Hosted UI popup login (Authorization Code + PKCE)
+     Originally ported from a standalone login-test.html proof-of-concept
+     (removed 2026-08-05 once no longer needed). See docs/history.md for
+     the full write-up of the flow, config requirements, and security notes.
+     ============================================================ -->
+<script>
+/* ---- Cognito config (specific to this User Pool / App Client) ---- */
+const COGNITO_CONFIG = {
+  userPoolId:  "ap-southeast-1_LHJsFdCgo",
+  region:      "ap-southeast-1",
+  domain:      "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
+  clientId:    "2rsbhkjooja4h5e0ijpl4siuug",
+  // Must EXACTLY match an allowed callback/sign-out URL on the app client.
+  // We use origin + "/" (not origin + pathname) so it resolves to the
+  // registered root URL — https://site.kcmps.com/ in prod, http://localhost:5500/
+  // locally — regardless of whether the page was opened as "/" or "/index.html".
+  redirectUri: window.location.origin + "/",
+  // kcmps-web-client's AllowedOAuthScopes on kcmps-user-pool-v2 is
+  // email/openid/profile only — no "phone" (this client never collects a
+  // phone attribute). Requesting an unsupported scope fails the whole
+  // Hosted UI redirect with invalid_scope.
+  scopes:      "email openid profile",
+  // Exact Cognito Group name that unlocks the staff dashboard UI (case-sensitive).
+  staffGroupName: "Staff",
+  // Public storefront auth entry points — ON everywhere as of launch:
+  // production (kcmps.com / www / site), dev/staging, and local dev. Keyed
+  // on hostname rather than a build flag because `website/` is synced
+  // verbatim to both the production bucket root and the dev-site/ prefix
+  // with no build step — the hostname list below is the only switch, and any
+  // hostname not on it (e.g. a raw CloudFront/S3 URL) keeps the auth entry
+  // points hidden.
+  //
+  // When false this hides BOTH entry points: the nav "Login / Sign-up" button
+  // and the ?login=required "Sign in" banner that dashboard-shell.js and
+  // orders-data.js redirect into. Hiding only the first would leave a live
+  // login path reachable from any stale orders.html link.
+  //
+  // Deliberately narrow: entry points only. An existing session still
+  // restores and still renders the user's name, My Orders and (for
+  // Staff/Admin) the Dashboard link, and the OAuth popup callback still
+  // completes. Nothing server-side is disabled — the pool still permits
+  // self-registration, which the custom sign-up form depends on — so this is
+  // a UI gate, NOT a security control.
+  authUiEnabled: ["kcmps.com", "www.kcmps.com", "site.kcmps.com", "dev.kcmps.com", "localhost", "127.0.0.1"].includes(window.location.hostname),
+  // Any of these groups unlocks the dashboard — mirrors backend/lib/auth.js's
+  // STAFF_ROLES: Staff (dashboard-only), Admin (founders), plus the three
+  // department roles (Production/Sales/Finance) reserved for the first
+  // non-founder hire. Keep in sync with dashboard/dashboard-shell.js's copy.
+  dashboardGroupNames: ["Staff", "Admin", "Production", "Sales", "Finance"],
+};
+
+function log(...args) { console.log("[auth]", ...args); }
+
+/* ---- PKCE helpers (public client, no secret) ---- */
+function base64UrlEncode(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomString(length = 64) {
+  const arr = new Uint8Array(length);
+  crypto.getRandomValues(arr);
+  return base64UrlEncode(arr.buffer);
+}
+async function sha256(plain) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(plain));
+}
+async function createPkcePair() {
+  const codeVerifier = randomString(64);
+  const codeChallenge = base64UrlEncode(await sha256(codeVerifier));
+  return { codeVerifier, codeChallenge };
+}
+
+/* ---- JWT decode (read-only, NOT signature verification) ----
+   Decodes the ID token payload to read claims (name, cognito:groups) for
+   UI purposes only. Any backend that receives this token later MUST verify
+   its signature against Cognito's JWKS — never trust client-decoded claims
+   server-side. ---- */
+function decodeJwt(token) {
+  const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+  const json = decodeURIComponent(
+    atob(base64).split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")
+  );
+  return JSON.parse(json);
+}
+
+/* ---- Token storage ----
+   sessionStorage (survives refresh, cleared on tab close). Deliberately NOT
+   localStorage for the tokens themselves (which persists indefinitely,
+   maximizing XSS exposure). The strictly safer option — refresh token in an
+   httpOnly cookie via a Backend-for-Frontend — needs a server we don't have
+   as a static site. Revisit once API Gateway/Lambda exist. ---- */
+const TOKEN_STORAGE_KEY = "kcmps_tokens";
+function saveTokens(tokens) { sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens)); }
+function loadTokens() {
+  const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { clearTokens(); return null; }
+}
+function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+
+/* ---- Build the Hosted UI authorize URL ----
+   response_type=code (Authorization Code flow). The Hosted UI page shows both
+   the email/password form AND "Continue with Google" (Google is configured as
+   a federated IdP on the app client — nothing extra needed here). ---- */
+async function buildAuthorizeUrl() {
+  const { codeVerifier, codeChallenge } = await createPkcePair();
+  const state = randomString(32);
+  // localStorage (not sessionStorage): the popup is a SEPARATE window and
+  // needs to read these back to complete the flow.
+  localStorage.setItem("pkce_code_verifier", codeVerifier);
+  localStorage.setItem("oauth_state", state);
+  const params = new URLSearchParams({
+    client_id: COGNITO_CONFIG.clientId,
+    response_type: "code",
+    scope: COGNITO_CONFIG.scopes,
+    redirect_uri: COGNITO_CONFIG.redirectUri,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+  return `${COGNITO_CONFIG.domain}/oauth2/authorize?${params.toString()}`;
+}
+
+const AUTH_RESULT_KEY = "kcmps_auth_result";
+
+// Update the popup's status screen. state: "working" | "success" | "error".
+function showAuthStatus(message, state = "working") {
+  const spinner = document.getElementById("auth-status-spinner");
+  const msg = document.getElementById("auth-status-msg");
+  if (!msg) return;
+  msg.textContent = message;
+  if (state === "success") {
+    msg.style.color = "var(--color-green)";
+    if (spinner) spinner.outerHTML = '<div style="font-size:32px;line-height:1">✅</div>';
+  } else if (state === "error") {
+    msg.style.color = "#c0392b";
+    if (spinner) spinner.outerHTML = '<div style="font-size:32px;line-height:1">⚠️</div>';
+  }
+}
+
+function isAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  return params.has("code") || params.has("error");
+}
+
+/* ---- Popup landing: exchange the code for tokens, hand result to the
+   main window via localStorage, show a message, then close. ---- */
+async function handleAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  // Scrub the authorization code/state out of the address bar and history
+  // immediately after reading them. A one-time-use `code` in the URL can
+  // otherwise linger in the popup's history and be sent as a same-origin
+  // Referer on subsequent subresource loads. We keep the pathname only.
+  try { history.replaceState(null, "", window.location.pathname); } catch {}
+  let result;
+  if (params.has("error")) {
+    result = { type: "error", error: params.get("error_description") || params.get("error") };
+  } else if (params.get("state") !== localStorage.getItem("oauth_state")) {
+    result = { type: "error", error: "OAuth state mismatch — possible CSRF, aborting." };
+  } else {
+    try {
+      const tokens = await exchangeCodeForTokens(params.get("code"));
+      result = { type: "success", tokens };
+    } catch (err) {
+      result = { type: "error", error: err.message };
+    }
+  }
+  // Writing this key fires a `storage` event in the main window (that's how
+  // it learns the outcome — see openLoginPopup).
+  localStorage.setItem(AUTH_RESULT_KEY, JSON.stringify(result));
+  localStorage.removeItem("pkce_code_verifier");
+  localStorage.removeItem("oauth_state");
+  showAuthStatus(
+    result.type === "success" ? "Login successful!" : "Sign-in failed. You can close this window.",
+    result.type === "success" ? "success" : "error"
+  );
+  setTimeout(() => window.close(), 1300);
+}
+
+/* ---- Open the login popup and wait for its result ----
+   We learn the outcome from the `storage` event (fires here when the popup
+   writes its result), NOT from popup.closed — Cognito's Cross-Origin-Opener-
+   Policy header severs the opener link and can make popup.closed spuriously
+   report `true` mid-login. See docs/history.md's auth implementation notes. ---- */
+function openLoginPopup() {
+  return new Promise(async (resolve, reject) => {
+    // Open synchronously (before any await) so the browser treats it as a
+    // user-initiated popup and doesn't block it.
+    const width = 480, height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const popup = window.open("about:blank", "kcmps-login",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top}`);
+    if (!popup) {
+      reject(new Error("Popup was blocked by the browser. Please allow popups for this site."));
+      return;
+    }
+    try { popup.focus(); } catch {}
+    localStorage.removeItem(AUTH_RESULT_KEY);
+
+    const authorizeUrl = await buildAuthorizeUrl();
+    log("Opening Hosted UI popup:", authorizeUrl);
+    popup.location.href = authorizeUrl;
+    try { popup.focus(); } catch {}
+
+    let done = false;
+    function finish(fn, arg) {
+      if (done) return;
+      done = true;
+      window.removeEventListener("storage", onStorage);
+      clearInterval(fallbackPoll);
+      clearTimeout(timeoutId);
+      fn(arg);
+    }
+    function consumeResult() {
+      const raw = localStorage.getItem(AUTH_RESULT_KEY);
+      if (!raw) return;
+      localStorage.removeItem(AUTH_RESULT_KEY);
+      let result;
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        // Malformed value on the relay key — ignore rather than let the
+        // exception escape the storage-event handler and wedge the flow.
+        return;
+      }
+      if (result && result.type === "success") finish(resolve, result.tokens);
+      else finish(reject, new Error((result && result.error) || "Unknown error from Hosted UI."));
+    }
+    function onStorage(event) {
+      if (event.key === AUTH_RESULT_KEY && event.newValue) consumeResult();
+    }
+    window.addEventListener("storage", onStorage);
+    const fallbackPoll = setInterval(consumeResult, 500); // backup if the event is missed
+    const timeoutId = setTimeout(() => {
+      finish(reject, new Error("Login timed out or was cancelled. Please try again."));
+    }, 3 * 60 * 1000);
+  });
+}
+
+/* ---- Exchange the authorization code for tokens (public client + PKCE) ---- */
+async function exchangeCodeForTokens(code) {
+  const codeVerifier = localStorage.getItem("pkce_code_verifier"); // read in the popup
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: COGNITO_CONFIG.clientId,
+    code,
+    redirect_uri: COGNITO_CONFIG.redirectUri,
+    code_verifier: codeVerifier,
+  });
+  const res = await fetch(`${COGNITO_CONFIG.domain}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange failed (${res.status}): ${await res.text()}`);
+  return res.json(); // { id_token, access_token, refresh_token, expires_in, token_type }
+}
+
+/* ---- UI updates (site design system) ---- */
+function renderLoggedOut() {
+  const area = document.getElementById("auth-area");
+  // authUiEnabled: false leaves the auth area empty rather than rendering a
+  // disabled-looking button — a greyed-out control invites "is it broken?",
+  // whereas an absent one reads as "not offered yet".
+  area.innerHTML = COGNITO_CONFIG.authUiEnabled
+    ? '<button type="button" id="auth-btn" class="btn btn-secondary">Login / Sign-up</button>'
+    : "";
+  document.getElementById("auth-btn")?.addEventListener("click", openAuthModal);
+  document.getElementById("dashboard-link").classList.add("is-hidden");
+  document.getElementById("orders-link").classList.add("is-hidden");
+  document.getElementById("track-order-link")?.classList.remove("is-hidden");
+}
+
+function renderLoggedIn(claims) {
+  const name = claims.name || claims.email || "Account";
+  const area = document.getElementById("auth-area");
+  area.innerHTML =
+    '<span class="auth-user">' +
+      '<span class="auth-user-name"></span>' +
+      '<button type="button" id="logout-btn" class="btn btn-ghost">Logout</button>' +
+    '</span>';
+  area.querySelector(".auth-user-name").textContent = name; // textContent = safe, no escaping
+  document.getElementById("logout-btn").addEventListener("click", logout);
+
+  // My Orders is visible to every logged-in user, staff or not.
+  document.getElementById("orders-link").classList.remove("is-hidden");
+  document.getElementById("track-order-link")?.classList.add("is-hidden");
+
+  // Group-based UI branching: any staff role (see dashboardGroupNames) => show the Dashboard link.
+  const groups = claims["cognito:groups"] || [];
+  const dashboardLink = document.getElementById("dashboard-link");
+  if (COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) {
+    dashboardLink.classList.remove("is-hidden");
+    dashboardLink.href = "dashboard/today.html";
+    dashboardLink.onclick = null; // real navigation now — the dashboard re-checks group membership itself on load
+  } else {
+    dashboardLink.classList.add("is-hidden");
+  }
+}
+
+/* ---- Custom sign-up (Cognito IdP API, separate from the Hosted UI flow) ----
+   Every field this form asks for is a field the pool actually requires:
+   username, email, first name, last name, password. That wasn't true before
+   — the original pool (ap-southeast-1_LHJsFdCgo) also required middle_name,
+   `name` and preferred_username, and since Required flags are immutable
+   after pool creation, the only fix was a new pool. See backend/infra/
+   user-pool-v2.cfn.yaml and docs/history.md entry 64.
+
+   This form is kept (rather than handing sign-up to the Hosted UI, which
+   would now ask for the same short list) because it stays on-brand, inside
+   the page, and shares the auth-choice modal with login. It calls the same
+   public, secretless SPA client as the Hosted UI flow above — only the
+   network endpoint differs (regional IdP JSON API vs the Hosted UI domain).
+   Login stays exactly as it was: the existing Hosted UI popup. ---- */
+const IDP_ENDPOINT = `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/`;
+
+async function idpRequest(target, body) {
+  const res = await fetch(IDP_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-amz-json-1.1",
+      "X-Amz-Target": `AWSCognitoIdentityProviderService.${target}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(idpErrorMessage(data));
+  return data;
+}
+
+function idpErrorMessage(data) {
+  const type = (data.__type || "").split("#").pop();
+  const known = {
+    // Cognito raises this for a taken username OR an already-registered email
+    // alias, and PreventUserExistenceErrors means we can't tell which — so the
+    // copy has to cover both without confirming either exists.
+    UsernameExistsException: "That username or email is already taken — try another, or log in instead.",
+    InvalidPasswordException: "Password must be at least 8 characters and include upper/lowercase letters, a number, and a symbol.",
+    InvalidParameterException: "Please check your email and password and try again.",
+    CodeMismatchException: "That code doesn't match. Please check it and try again.",
+    ExpiredCodeException: "That code has expired — request a new one.",
+    LimitExceededException: "Too many attempts — please wait a bit and try again.",
+    TooManyRequestsException: "Too many attempts — please wait a bit and try again.",
+    UserNotFoundException: "We couldn't find that account.",
+  };
+  return known[type] || data.message || "Something went wrong. Please try again.";
+}
+
+// The customer picks their own username, and can sign in afterwards with
+// EITHER it or their email (the pool sets AliasAttributes: [email], so both
+// are valid sign-in identifiers).
+//
+// The one hard rule: a Username can never be email-SHAPED. Because email is
+// an alias, Cognito rejects an email-formatted Username outright with
+// InvalidParameterException — so an "@" here is a client-side error, not
+// something to pass through and let the API reject with a cryptic message.
+const USERNAME_RE = /^[a-zA-Z0-9._-]{3,30}$/;
+
+function usernameError(username) {
+  if (!username) return "Please choose a username.";
+  if (username.includes("@")) return "Usernames can't contain “@”. You'll be able to sign in with your email address as well.";
+  if (!USERNAME_RE.test(username)) return "Usernames are 3–30 characters, using letters, numbers, dots, dashes or underscores.";
+  return null;
+}
+
+function escapeAuthHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function signUpCustomer(username, email, password, firstName, lastName) {
+  // email/given_name/family_name are the pool's three required attributes.
+  // `name` is optional but set anyway so renderLoggedIn()'s
+  // `claims.name || claims.email` greets a person by name, not an address.
+  await idpRequest("SignUp", {
+    ClientId: COGNITO_CONFIG.clientId,
+    Username: username,
+    Password: password,
+    UserAttributes: [
+      { Name: "email", Value: email },
+      { Name: "name", Value: `${firstName} ${lastName}`.trim() },
+      { Name: "given_name", Value: firstName },
+      { Name: "family_name", Value: lastName },
+    ],
+  });
+  return username;
+}
+
+function confirmSignUp(username, code) {
+  return idpRequest("ConfirmSignUp", { ClientId: COGNITO_CONFIG.clientId, Username: username, ConfirmationCode: code });
+}
+
+function resendSignUpCode(username) {
+  return idpRequest("ResendConfirmationCode", { ClientId: COGNITO_CONFIG.clientId, Username: username });
+}
+
+/* ---- Auth modal shell (choice -> create account -> confirm code -> done) ----
+   Same lazy-build convention as store.js's order-popup/cap-popup: built
+   once on first open, title/body/actions swapped per step via innerHTML
+   (a plain replace drops any stale listeners from the previous step for
+   free — nothing here needs manual cleanup). ---- */
+let authModal, authModalTitle, authModalBody, authModalActions;
+
+function ensureAuthModalShell() {
+  if (authModal) return;
+  const backdrop = document.createElement("div");
+  backdrop.className = "auth-modal-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
+  backdrop.innerHTML =
+    '<div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">' +
+      '<h3 class="dialog-title" id="auth-modal-title"></h3>' +
+      '<div class="dialog-body" id="auth-modal-body"></div>' +
+      '<div class="dialog-actions" id="auth-modal-actions"></div>' +
+    "</div>";
+  document.body.appendChild(backdrop);
+
+  // Click-outside-to-close, guarded on the press STARTING on the backdrop too.
+  //
+  // A `click` fires on the nearest common ancestor of its mousedown and mouseup
+  // targets — so a press that begins inside the dialog (dragging to select text
+  // in a field, releasing over a browser autofill suggestion, a touch that
+  // drifts) and ends outside it retargets the click to the backdrop. Testing
+  // `e.target === backdrop` alone therefore closed the dialog *while the user
+  // was typing*, wiping a half-filled sign-up form. Requiring the press to have
+  // started on the backdrop makes "outside click" mean an actual outside click.
+  let pressStartedOnBackdrop = false;
+  backdrop.addEventListener("pointerdown", (e) => {
+    pressStartedOnBackdrop = e.target === backdrop;
+  });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop && pressStartedOnBackdrop) closeAuthModal();
+    pressStartedOnBackdrop = false;
+  });
+  authModal = backdrop;
+  authModalTitle = backdrop.querySelector("#auth-modal-title");
+  authModalBody = backdrop.querySelector("#auth-modal-body");
+  authModalActions = backdrop.querySelector("#auth-modal-actions");
+}
+
+function openAuthModal() {
+  ensureAuthModalShell();
+  renderAuthChoiceStep();
+  authModal.classList.add("is-open");
+  authModal.setAttribute("aria-hidden", "false");
+}
+
+function closeAuthModal() {
+  if (!authModal) return;
+  // Move focus out BEFORE hiding: aria-hidden on an ancestor of the focused
+  // element hides a focused control from assistive tech, which browsers now
+  // warn about and refuse to apply. Closing while a field had focus (the
+  // common case) triggered exactly that.
+  if (authModal.contains(document.activeElement)) document.activeElement.blur();
+  authModal.classList.remove("is-open");
+  authModal.setAttribute("aria-hidden", "true");
+}
+
+function renderAuthChoiceStep() {
+  authModalTitle.textContent = "Log in or create an account";
+  authModalBody.innerHTML =
+    '<button type="button" class="auth-choice-btn" id="auth-choice-login">' +
+      "<strong>Log in</strong><span>Already have an account</span>" +
+    "</button>" +
+    '<button type="button" class="auth-choice-btn" id="auth-choice-signup" style="margin-top:var(--space-2)">' +
+      "<strong>Create account</strong><span>New to KCMPS — just your email and a password</span>" +
+    "</button>";
+  authModalActions.innerHTML = '<button type="button" class="btn btn-ghost" id="auth-modal-cancel">Cancel</button>';
+  authModalActions.querySelector("#auth-modal-cancel").addEventListener("click", closeAuthModal);
+  authModalBody.querySelector("#auth-choice-login").addEventListener("click", () => {
+    closeAuthModal();
+    startLogin();
+  });
+  authModalBody.querySelector("#auth-choice-signup").addEventListener("click", renderSignUpStep);
+}
+
+function renderSignUpStep() {
+  authModalTitle.textContent = "Create your account";
+  authModalBody.innerHTML =
+    '<div class="field"><label for="su-first-name">First Name</label><input class="input" id="su-first-name" type="text" autocomplete="given-name" /></div>' +
+    '<div class="field"><label for="su-last-name">Last Name</label><input class="input" id="su-last-name" type="text" autocomplete="family-name" /></div>' +
+    '<div class="field"><label for="su-username">Username</label><input class="input" id="su-username" type="text" autocomplete="username" /></div>' +
+    '<p style="font-size:12px;opacity:0.7;margin-top:-4px">You can sign in with either your username or your email.</p>' +
+    '<div class="field"><label for="su-email">Email</label><input class="input" id="su-email" type="email" autocomplete="email" /></div>' +
+    '<div class="field"><label for="su-password">Password</label><input class="input" id="su-password" type="password" autocomplete="new-password" /></div>' +
+    '<p style="font-size:12px;opacity:0.7;margin-top:-4px">At least 8 characters, with upper and lowercase letters, a number, and a symbol.</p>' +
+    '<p id="su-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>';
+  authModalActions.innerHTML =
+    '<button type="button" class="btn btn-ghost" id="auth-modal-back">Back</button>' +
+    '<button type="button" class="btn btn-primary" id="auth-modal-submit-signup">Create account</button>';
+  authModalActions.querySelector("#auth-modal-back").addEventListener("click", renderAuthChoiceStep);
+  authModalActions.querySelector("#auth-modal-submit-signup").addEventListener("click", submitSignUp);
+}
+
+async function submitSignUp() {
+  const firstNameEl = document.getElementById("su-first-name");
+  const lastNameEl = document.getElementById("su-last-name");
+  const usernameEl = document.getElementById("su-username");
+  const emailEl = document.getElementById("su-email");
+  const passwordEl = document.getElementById("su-password");
+  const errorEl = document.getElementById("su-error");
+  const firstName = firstNameEl.value.trim();
+  const lastName = lastNameEl.value.trim();
+  const username = usernameEl.value.trim();
+  const email = emailEl.value.trim();
+  const password = passwordEl.value;
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+  errorEl.style.display = "none";
+
+  if (!firstName) { showError("Please enter your first name."); return; }
+  if (!lastName) { showError("Please enter your last name."); return; }
+  const unErr = usernameError(username);
+  if (unErr) { showError(unErr); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError("Please enter a valid email address."); return; }
+  if (!password) { showError("Please enter a password."); return; }
+
+  const btn = document.getElementById("auth-modal-submit-signup");
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Creating account…";
+  try {
+    await signUpCustomer(username, email, password, firstName, lastName);
+    renderConfirmStep(username, email);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+function renderConfirmStep(username, email) {
+  authModalTitle.textContent = "Check your email";
+  authModalBody.innerHTML =
+    "<p>We sent a 6-digit code to <strong>" + escapeAuthHtml(email) + "</strong>. Enter it below to finish creating your account.</p>" +
+    '<div class="field"><label for="su-code">Confirmation code</label><input class="input" id="su-code" inputmode="numeric" autocomplete="one-time-code" /></div>' +
+    '<p id="su-confirm-error" style="display:none;color:#c0392b;font-size:13px;margin:4px 0 0"></p>' +
+    '<p style="font-size:12.5px;margin-top:var(--space-2)"><a href="#" id="su-resend">Resend code</a></p>';
+  authModalActions.innerHTML = '<button type="button" class="btn btn-primary" id="auth-modal-submit-confirm">Confirm</button>';
+  authModalActions.querySelector("#auth-modal-submit-confirm").addEventListener("click", () => submitConfirm(username, email));
+  const resendLink = authModalBody.querySelector("#su-resend");
+  resendLink.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const original = resendLink.textContent;
+    resendLink.textContent = "Sending…";
+    try {
+      await resendSignUpCode(username);
+      resendLink.textContent = "Code sent!";
+    } catch {
+      resendLink.textContent = original; // best-effort — a failed resend isn't worth blocking the flow over
+    }
+  });
+}
+
+async function submitConfirm(username, email) {
+  const codeEl = document.getElementById("su-code");
+  const errorEl = document.getElementById("su-confirm-error");
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = ""; }
+  errorEl.style.display = "none";
+  const code = codeEl.value.trim();
+  if (!code) { showError("Please enter the confirmation code."); return; }
+
+  const btn = document.getElementById("auth-modal-submit-confirm");
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "Confirming…";
+  try {
+    await confirmSignUp(username, code);
+    renderSignUpDoneStep(email);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+function renderSignUpDoneStep(email) {
+  authModalTitle.textContent = "Account created";
+  authModalBody.innerHTML = "<p>You're all set, " + escapeAuthHtml(email) + ". Log in to continue.</p>";
+  authModalActions.innerHTML = '<button type="button" class="btn btn-primary" id="auth-modal-login-now">Log in now</button>';
+  authModalActions.querySelector("#auth-modal-login-now").addEventListener("click", () => {
+    closeAuthModal();
+    startLogin();
+  });
+}
+
+/* ---- Cart ----
+   The cart button + badge are now driven by store.js (a real, static,
+   localStorage-backed cart shared by guests and logged-in users alike — see
+   products.js/store.js). store.js binds the click listener itself and exposes
+   window.KCMPS_STORE.refreshBadge() so auth events below can re-sync the badge.
+
+   CART INTEGRATION POINT (future backend phase): once a real cart backend
+   exists (e.g. API Gateway + Lambda over a DynamoDB table keyed by the user's
+   `sub` claim), have store.js fetch from that API using the access token in
+   the Authorization header instead of localStorage — nothing here changes. ---- */
+function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
+
+/* ---- Login orchestration ---- */
+async function startLogin() {
+  // Optional-chained: with authUiEnabled false there is no #auth-btn to put
+  // into a pending state, and startLogin() is still reachable from the auth
+  // modal if something re-enables it mid-session.
+  const btn = document.getElementById("auth-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+  }
+  try {
+    const tokens = await openLoginPopup(); // resolves with tokens (popup does the exchange)
+    log("Token exchange succeeded.");
+    saveTokens(tokens);
+    const claims = decodeJwt(tokens.id_token);
+    log("Decoded ID token claims:", claims);
+    renderLoggedIn(claims);
+    refreshCartBadge();
+  } catch (err) {
+    console.error(err);
+    alert("Login failed: " + err.message);
+    renderLoggedOut();
+  }
+}
+
+/* ---- Logout ----
+   Clears the local session AND ends the Cognito Hosted UI session via a small
+   popup, so the next login shows the form instead of silently re-using the
+   old session. (Cognito's /logout blocks iframe embedding — confirmed by
+   testing — hence a popup, identified on return by window.name.) ---- */
+function logout() {
+  clearTokens();
+  renderLoggedOut();
+  const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
+    client_id: COGNITO_CONFIG.clientId,
+    logout_uri: COGNITO_CONFIG.redirectUri,
+  }).toString()}`;
+  const popup = window.open("", "kcmps-logout", "width=300,height=140");
+  if (popup) {
+    popup.document.write(
+      '<div style="font:15px system-ui,sans-serif;display:flex;height:100%;' +
+      'align-items:center;justify-content:center;color:#374151;text-align:center;">' +
+      "Logging you out&hellip;</div>"
+    );
+    popup.location.href = logoutUrl;
+  }
+}
+
+/* ---- Entry point ---- */
+(function initAuth() {
+  // Case 1: this load is the login popup redirected back with a code/error.
+  if (isAuthRedirect()) { handleAuthRedirect(); return; }
+
+  // Case 2: this load is the logout popup returning from Cognito (identified
+  // by window.name, since COOP may have severed window.opener).
+  if (window.name === "kcmps-logout") {
+    showAuthStatus("You've been logged out.", "success");
+    setTimeout(() => window.close(), 1800);
+    return;
+  }
+
+  // Case 3: normal page load — restore any existing session.
+  const tokens = loadTokens();
+  if (tokens) {
+    try {
+      renderLoggedIn(decodeJwt(tokens.id_token));
+      log("Restored session from sessionStorage.");
+    } catch { clearTokens(); renderLoggedOut(); }
+  } else {
+    renderLoggedOut();
+  }
+  refreshCartBadge();
+
+  // orders.html/order-detail.html redirect here with ?login=required when
+  // there's no session. If one exists now (rare race — e.g. two tabs), just
+  // send them back; otherwise show the banner and route "Sign in" straight
+  // into the same popup login as the nav button.
+  if (new URLSearchParams(window.location.search).get("login") === "required") {
+    try { history.replaceState(null, "", window.location.pathname); } catch {}
+    if (tokens) {
+      window.location.href = "orders.html";
+    } else if (COGNITO_CONFIG.authUiEnabled) {
+      // Suppressed when authUiEnabled is false — this banner is the second
+      // storefront login entry point, and leaving it would let a stale
+      // orders.html link reopen the flow the nav button no longer offers.
+      const banner = document.getElementById("login-required-banner");
+      banner.classList.remove("is-hidden");
+      document.getElementById("login-required-btn").addEventListener("click", async () => {
+        await startLogin();
+        if (loadTokens()) window.location.href = "orders.html";
+      });
+    }
+  }
+})();
+</script>
+
+<script>
+/* ---- Live studio open/closed status (contact section) ----
+   Replaces the old hardcoded "Studio currently active", which claimed the
+   studio was open at 3am on a Sunday.
+
+   TIMEZONE: the studio's status depends on MANILA time, not the visitor's.
+   A customer browsing from Dubai must see "closed, opens Monday 9:00 AM",
+   not their own local reckoning — so every calculation below is done in
+   Manila terms by shifting the UTC epoch by a fixed +8h. The Philippines
+   has observed no DST since 1978, which is why a fixed offset is correct
+   here and no timezone library is needed. This mirrors exactly what
+   backend/lib/business-hours.js does server-side; keep the two in step.
+
+   SOURCE OF TRUTH: OPERATING_HOURS below is a deliberate copy of
+   DEFAULT_OPERATING_HOURS in backend/lib/business-hours.js (there is no
+   build step and no shared module between backend and this static page).
+   If the backend config changes — or the future Settings API starts
+   writing CONFIG#OPERATING_HOURS — update this too, or the storefront will
+   advertise hours the SLA clock disagrees with. Both the status line AND
+   the "Studio hours" block are rendered from this constant so they cannot
+   drift from each other. */
+(() => {
+  const statusEl = document.getElementById("studio-status");
+  const hoursEl = document.getElementById("studio-hours");
+  if (!statusEl) return;
+
+  const MANILA_OFFSET_MIN = 480; // UTC+8, no DST
+  const OPERATING_HOURS = {
+    sun: null,
+    mon: { open: "09:00", close: "18:00" },
+    tue: { open: "09:00", close: "18:00" },
+    wed: { open: "09:00", close: "18:00" },
+    thu: { open: "09:00", close: "18:00" },
+    fri: { open: "09:00", close: "18:00" },
+    sat: null, // closed — studio runs Monday–Friday only (confirmed 2026-08-06)
+  };
+  const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const CLOSING_SOON_MIN = 60;
+
+  const toMin = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const fmt = (mins) => {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + (m ? ":" + String(m).padStart(2, "0") : ":00") + " " + ampm;
+  };
+
+  // "Now" expressed in Manila wall-clock terms.
+  function manilaNow() {
+    const d = new Date(Date.now() + MANILA_OFFSET_MIN * 60000);
+    return { dow: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  }
+
+  // The next opening at or after `fromDow`, scanning a full week. Returns null
+  // only if every day is closed, which would be a misconfiguration.
+  function nextOpening(fromDow, afterMinutes) {
+    for (let i = 0; i < 8; i++) {
+      const dow = (fromDow + i) % 7;
+      const day = OPERATING_HOURS[DAY_KEYS[dow]];
+      if (!day) continue;
+      const openMin = toMin(day.open);
+      if (i === 0 && afterMinutes >= openMin) continue; // today's window already passed
+      const when = i === 0 ? "today" : (i === 1 ? "tomorrow" : DAY_NAMES[dow]);
+      return { when, time: fmt(openMin) };
+    }
+    return null;
+  }
+
+  function render() {
+    const { dow, minutes } = manilaNow();
+    const today = OPERATING_HOURS[DAY_KEYS[dow]];
+    statusEl.classList.remove("is-closed", "is-soon");
+
+    let label;
+    if (today && minutes >= toMin(today.open) && minutes < toMin(today.close)) {
+      const left = toMin(today.close) - minutes;
+      if (left <= CLOSING_SOON_MIN) {
+        statusEl.classList.add("is-soon");
+        label = "Closing soon — open until " + fmt(toMin(today.close));
+      } else {
+        label = "Studio open now — until " + fmt(toMin(today.close));
+      }
+    } else {
+      statusEl.classList.add("is-closed");
+      const next = nextOpening(dow, minutes);
+      label = next ? "Closed now — opens " + next.when + " at " + next.time : "Closed";
+    }
+    // textContent, not innerHTML — the dot is re-created rather than parsed.
+    statusEl.textContent = "";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    statusEl.appendChild(dot);
+    statusEl.appendChild(document.createTextNode(label));
+  }
+
+  // Render the hours block from the same constant, grouping identical runs
+  // (Mon–Fri collapses to one line) so it reads like a sign on the door.
+  function renderHours() {
+    if (!hoursEl) return;
+    // Walk Monday-first, the way a sign on the door reads — iterating from
+    // Sunday (JS day 0) would print "Closed Sunday, Saturday".
+    const ORDER = [1, 2, 3, 4, 5, 6, 0];
+    const lines = [];
+    let runStart = null, runSpec = null, prev = null;
+    const flush = () => {
+      if (runStart === null) return;
+      const spec = OPERATING_HOURS[DAY_KEYS[runStart]];
+      const range = runStart === prev ? DAY_NAMES[runStart]
+        : DAY_NAMES[runStart] + " – " + DAY_NAMES[prev];
+      lines.push(range + ", " + fmt(toMin(spec.open)) + " – " + fmt(toMin(spec.close)));
+      runStart = null; runSpec = null;
+    };
+    const closed = [];
+    ORDER.forEach((dow) => {
+      const day = OPERATING_HOURS[DAY_KEYS[dow]];
+      const key = day ? day.open + "-" + day.close : null;
+      if (!day) { flush(); closed.push(DAY_NAMES[dow]); return; }
+      if (key !== runSpec) { flush(); runStart = dow; runSpec = key; }
+      prev = dow;
+    });
+    flush();
+    if (closed.length) lines.push("Closed " + closed.join(", ") + " & holidays");
+    hoursEl.textContent = "";
+    lines.forEach((l, i) => {
+      if (i) hoursEl.appendChild(document.createElement("br"));
+      hoursEl.appendChild(document.createTextNode(l));
+    });
+  }
+
+  render();
+  renderHours();
+  // Re-check every minute so a page left open across closing time updates.
+  setInterval(render, 60000);
+  // A backgrounded tab throttles timers; recompute the moment it is seen again.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+})();
+</script>
+</body>
+</html>

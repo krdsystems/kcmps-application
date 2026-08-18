@@ -1,0 +1,1282 @@
+/* KCMPS — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --color-bg: rgba(246, 247, 249, 0.92);
+  --color-surface: rgba(236, 238, 242, 0.9);
+  --color-text: #1a2b42;
+  --color-accent: #f2882e;
+  --color-accent-2: #1d3f72;
+  --color-divider: color-mix(in srgb, #1a2b42 12%, transparent);
+
+  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+     same step of any role matches the others in visual value. */
+  --color-neutral-100: #fbfbfc;
+  --color-neutral-200: #eef0f3;
+  --color-neutral-300: #dde0e6;
+  --color-neutral-400: #c1c6d0;
+  --color-neutral-500: #9ba1af;
+  --color-neutral-600: #767d8d;
+  --color-neutral-700: #565e70;
+  --color-neutral-800: #37404f;
+  --color-neutral-900: #212836;
+
+  --color-accent-100: #fff3e7;
+  --color-accent-200: #ffe1c2;
+  --color-accent-300: #ffc98f;
+  --color-accent-400: #fca85b;
+  --color-accent-500: #f2882e;
+  --color-accent-600: #d96d18;
+  --color-accent-700: #b0550f;
+  --color-accent-800: #833e0c;
+  --color-accent-900: #4f2508;
+
+  --color-accent-2-100: #eaf0fa;
+  --color-accent-2-200: #cbdaf0;
+  --color-accent-2-300: #9db8e0;
+  --color-accent-2-400: #6d93c9;
+  --color-accent-2-500: #35619c;
+  --color-accent-2-600: #274f87;
+  --color-accent-2-700: #1d3f72;
+  --color-accent-2-800: #142b52;
+  --color-accent-2-900: #0b1930;
+
+  /* Green — the logo's third mark color, kept for the rare status/tag need
+     (in stock, confirmed, live) — never for interactive chrome or headings,
+     which stay navy + the one orange spot. */
+  --color-green: #4a9d5c;
+
+  --font-heading: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-heading-weight: 700;
+  --font-body: "Inter", system-ui, sans-serif;
+
+  /* The scale skips no steps on purpose — --space-5 was MISSING here until
+     2026-08-06 while eight rules across the dashboard already referenced it.
+     An unresolvable var() makes the whole declaration invalid at
+     computed-value time, so `padding: var(--space-4) var(--space-5) ...`
+     silently computed to padding:0 rather than falling back to something
+     sane. That is what made dashboard content sit flush against the sidebar
+     and topbar. Don't remove a step from this scale without grepping for it
+     first — the failure is silent and looks like a layout bug, not a typo. */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 28px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Elevation — derived from the ground: soft navy-tinted shadows, tuned
+     lighter than a pure-black shadow so cards feel lifted, not heavy. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #1a2b42 10%, transparent);
+  --shadow-md: 0 6px 20px color-mix(in srgb, #1a2b42 12%, transparent);
+  --shadow-lg: 0 20px 48px color-mix(in srgb, #1a2b42 18%, transparent);
+}
+
+body {
+  background-color: #f0f1f5;
+  background-image: url('../../website/assets/bg-texture.png');
+  background-size: cover;
+  background-attachment: fixed;
+  background-position: center center;
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight); }
+
+.halftone{position:relative;filter:grayscale(0.35) contrast(1.15);overflow:hidden}
+.halftone::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(0,0,0,0.18) 30%,transparent 32%);
+  background-size:3px 3px;mix-blend-mode:multiply}
+
+/* The brand duotone — the system's showcase photo treatment, replacing a
+   literal press effect with a simple two-ink wash: navy in the shadows,
+   the orange spot warming the highlights. One filter, no misregistration —
+   softer and more usable across studio/product photography than a
+   press-plate gimmick. Markup: figure.duotone > img (or an image-slot). */
+.duotone{position:relative;overflow:hidden;border-radius:var(--radius-lg);background:var(--color-surface)}
+.duotone img, .duotone image-slot{display:block;width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.05)}
+.duotone::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(155deg, color-mix(in srgb, var(--color-accent-2) 78%, transparent) 0%, transparent 55%, color-mix(in srgb, var(--color-accent) 55%, transparent) 100%);
+  mix-blend-mode:multiply}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Components — built with the tokens above. Plain CSS
+   on plain HTML: no JavaScript, no build step. Each class is documented in
+   readme.md and demonstrated in foundations/ and components/.
+   ══════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Horizontal containment ───────────────────────────────────────────────
+   The page must never pan or rubber-band sideways on a phone. Two DIFFERENT
+   problems, which is why there are two declarations:
+
+   1. `overflow-x` clips anything wider than the viewport. On this site that
+      is the off-screen cart drawer and the carousel's neighbouring slides —
+      both intentional, both must stay invisible rather than scrollable-to.
+   2. `overscroll-behavior-x: none` stops the elastic horizontal bounce. This
+      is the one that fixes "the whole page bleeds left/right when I swipe":
+      the document does NOT overflow (measured — scrollWidth == 375 at 375px),
+      so what a shopper feels is the browser's rubber-band gesture, not real
+      content. `overflow-x` alone cannot stop it. It also stops swipe-to-go-back
+      hijacking a horizontal drag inside the design carousel.
+
+   `clip` on BODY, not `hidden` — this is the load-bearing detail. Per the
+   root CLAUDE.md gotcha (and docs/history.md step 12), `overflow-x: hidden`
+   on body promotes it to a scroll container and silently breaks every
+   `position: sticky` on the site — the nav, the scroll indicator, the hero
+   card-deck pin. `clip` clips without creating a scroll container, so sticky
+   keeps working; verified empirically at 375px, nav stayed pinned at top 0
+   after scrolling 900px. Safari < 16 ignores `clip` and falls through to
+   `visible`, which is why html keeps the documented-safe `hidden` as the
+   fallback layer. Do not "simplify" these to one rule. */
+html { overflow-x: hidden; overscroll-behavior-x: none; }
+body { overflow-x: clip; overscroll-behavior-x: none; }
+
+body { margin: 0; font-size: 15px; line-height: 1.55; font-weight: 400; }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  line-height: 1.15; letter-spacing: -0.01em; margin: 0 0 var(--space-2);
+}
+h1 { font-size: 42px; }
+h2 { font-size: 32px; }
+h3 { font-size: 25px; }
+h4 { font-size: 20px; }
+h5 { font-size: 16px; }
+h6 { font-size: 13px; }
+h6 { letter-spacing: 0.06em; text-transform: uppercase; }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--color-accent-700); text-underline-offset: 3px; }
+a:hover { color: var(--color-accent-600); }
+img { display: block; max-width: 100%; }
+figure { margin: 0; }
+figcaption {
+  font-size: 11px; margin-top: var(--space-1);
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* — rules — */
+.hr {
+  height: 1px; border: 0; margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+/* — buttons — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none;
+  font-family: var(--font-heading); font-weight: 600;
+  font-size: 14px; line-height: 1.2; color: var(--color-text);
+  background: transparent; border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+  transition: background-color 0.15s ease, transform 0.12s ease-out;
+}
+.btn svg { display: block; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { .btn { transition: background-color 0.15s ease; } .btn:active:not(:disabled) { transform: none; } }
+.btn-primary { background: var(--color-accent); color: #ffffff; }
+.btn-primary:hover { background: var(--color-accent-600); }
+.btn-primary:active { background: var(--color-accent-700); }
+.btn-secondary { border-color: var(--color-divider); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.btn-ghost { color: var(--color-accent-700); padding-inline: var(--space-1); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.btn-icon { width: 36px; height: 36px; padding: 0; }
+.btn-block { width: 100%; margin-top: var(--space-2); }
+
+/* — forms — */
+.field > label {
+  display: block; font-size: 12px; margin-bottom: 5px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.input {
+  width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.input::placeholder { color: color-mix(in srgb, var(--color-text) 65%, transparent); opacity: 1; }
+.input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+textarea.input { min-height: 90px; resize: vertical; }
+.radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.radio input, .seg-opt input {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.radio .dot {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 1.5px solid var(--color-divider);
+}
+.radio:hover .dot { border-color: var(--color-accent); }
+.radio input:checked + .dot {
+  border-color: var(--color-accent); background: var(--color-accent);
+  box-shadow: inset 0 0 0 4px var(--color-bg);
+}
+.radio input:focus-visible + .dot { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt:has(input:checked) { background: var(--color-accent); color: #ffffff; }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* — cards — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-lg);
+  background: rgba(236, 238, 242, 0.82);
+  backdrop-filter: blur(6px);
+}
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-700); }
+/* Explains why a gated product's "Add to cart" is disabled (products.js
+   `requiresCartProduct`, e.g. Lamination/Binding before Document Printing
+   is in the cart) — hidden by skuCard()'s syncGate() once unlocked. */
+.gate-note { color: var(--color-accent-700); }
+.card-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 17px; line-height: 1.2;
+}
+.card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+.elev-sm { box-shadow: var(--shadow-sm); }
+.elev-md { box-shadow: var(--shadow-md); }
+.elev-lg { box-shadow: var(--shadow-lg); }
+
+/* — tags — */
+.tag {
+  display: inline-flex; align-items: center; font-size: 11px;
+  letter-spacing: 0.02em; padding: 3px 10px;
+  border-radius: 999px;
+}
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.tag-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent-700); }
+
+/* — navigation — */
+.nav {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: none;
+}
+.nav-brand {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 18px; margin-right: auto; color: var(--color-accent-2);
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-brand img { height: 28px; width: auto; display: block; }
+.nav a { color: inherit; text-decoration: none; font-size: 14px; }
+.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent-700); }
+.brand-short { color: var(--color-accent-2); }
+.brand-sep { margin: 0 8px; color: var(--color-divider); font-weight: 400; }
+.brand-long {
+  font-family: var(--font-body); font-weight: 500; font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+}
+
+/* — tabs — */
+.tabs { display: flex; flex-direction: column; gap: var(--space-4); }
+.tab-list {
+  display: inline-flex; gap: 4px; padding: 4px; align-self: flex-start;
+  background: var(--color-surface); border-radius: var(--radius-md); flex-wrap: wrap;
+}
+.tab-btn {
+  font-family: var(--font-heading); font-weight: 600; font-size: 13.5px;
+  color: var(--color-text); background: transparent; border: none; cursor: pointer;
+  padding: 8px 16px; border-radius: var(--radius-sm); line-height: 1.2;
+}
+.tab-btn:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.tab-btn[aria-selected='true'] { background: var(--color-accent-2); color: #fff; }
+.tab-panel { display: none; }
+.tab-panel.is-active { display: block; }
+.tabs .tabs { margin-top: var(--space-3); }
+.tabs .tabs .tab-list { background: transparent; border: 1px solid var(--color-divider); padding: 3px; }
+.tabs .tabs .tab-btn { font-size: 12.5px; padding: 6px 12px; }
+.tabs .tabs .tab-btn[aria-selected='true'] { background: var(--color-accent-2-700); }
+.badge-soon {
+  display: inline-flex; align-items: center; font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+  background: var(--color-neutral-200); color: var(--color-neutral-800); margin-left: 6px;
+}
+.mv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
+@media (max-width: 900px) { .mv-grid { grid-template-columns: 1fr; } }
+
+/* — tables — */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  padding: var(--space-2); border-bottom: 1px solid var(--color-divider);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* — dialog — */
+.dialog-backdrop {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+}
+.dialog {
+  width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+}
+.dialog-title {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+.dialog-body { font-size: 14px; opacity: 0.85; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* — order confirmation popup (store.js openOrderPopup/closeOrderPopup) —
+   overlays the still-open cart drawer (101) rather than replacing it, so it
+   sits above it in the stacking order: .design-popup 150 -> this 160 ->
+   .lightbox-overlay 200. Adapted from the .dialog/.dialog-backdrop base
+   above, appended once to <body> and toggled via .is-open like the other
+   lazily-built overlays in this file (lightbox, design-popup). */
+.order-popup-backdrop {
+  position: fixed; inset: 0; z-index: 160; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.order-popup-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .order-popup-backdrop { transition: none; } }
+.order-popup {
+  width: min(440px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-text) 25%, transparent) transparent;
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.order-popup-backdrop.is-open .order-popup { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .order-popup { transition: none; } }
+.order-popup::-webkit-scrollbar { width: 6px; }
+.order-popup::-webkit-scrollbar-track { background: transparent; }
+.order-popup::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text) 25%, transparent);
+  border-radius: 999px;
+}
+.order-popup::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-text) 40%, transparent); }
+.order-popup-qr { display: block; margin: var(--space-2) auto; width: 200px; height: auto; border-radius: var(--radius-md); }
+/* Payment-proof form fields (store.js renderPaymentProofStep) — same
+   scoped spacing pattern as .checkout-view .field, since .dialog-body's
+   own children don't inherit .order-popup's flex `gap` (that only applies
+   between the popup's direct children: title/body/actions). */
+.order-popup .field { margin-bottom: var(--space-3); }
+@media (max-width: 480px) { .order-popup-backdrop { padding: var(--space-2); } .order-popup { max-height: 94vh; } }
+
+/* — capacity soft-cap popup (store.js requestQty/openCapPopup) — same
+   .dialog-backdrop/.dialog base as .order-popup above, its own stacking
+   layer since it can appear either on its own (a product card, before the
+   cart drawer is even open) or over the drawer/estimator. */
+.cap-popup-backdrop {
+  position: fixed; inset: 0; z-index: 162; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.cap-popup-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .cap-popup-backdrop { transition: none; } }
+.cap-popup {
+  width: min(420px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.cap-popup-backdrop.is-open .cap-popup { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .cap-popup { transition: none; } }
+@media (max-width: 480px) { .cap-popup-backdrop { padding: var(--space-2); } }
+
+/* — auth modal (index.html, openAuthModal/closeAuthModal) — same
+   .dialog-backdrop/.dialog base as .order-popup/.cap-popup above. Fronts
+   the nav's "Login / Sign-up" button: a choice step (Log in / Create
+   account), then — only for Create account — a minimal email+password
+   form and a confirmation-code step. Login itself is unchanged, still the
+   existing Hosted UI popup; this only front-loads a choice before it. See
+   docs/history.md entry 63 for why a custom signup form exists at all
+   (the pool's schema requires several standard attributes — full name,
+   a separate username — that this app never uses and a print-shop
+   customer shouldn't have to type). */
+.auth-modal-backdrop {
+  position: fixed; inset: 0; z-index: 170; display: grid; place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900) 55%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.auth-modal-backdrop.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .auth-modal-backdrop { transition: none; } }
+.auth-modal {
+  width: min(400px, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
+  transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.auth-modal-backdrop.is-open .auth-modal { transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .auth-modal { transition: none; } }
+.auth-modal .field { margin-bottom: var(--space-3); }
+.auth-choice-btn {
+  display: block; width: 100%; text-align: left; padding: var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid var(--color-divider);
+  background: var(--color-bg); cursor: pointer; font: inherit; color: inherit;
+}
+.auth-choice-btn:hover { background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg)); }
+.auth-choice-btn strong { display: block; font-family: var(--font-heading); font-size: 15px; margin-bottom: 2px; }
+.auth-choice-btn span { display: block; font-size: 12.5px; opacity: 0.7; }
+@media (max-width: 480px) { .auth-modal-backdrop { padding: var(--space-2); } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STOREFRONT — conversion-first offer, value stack, guarantee, how-it-works,
+   product buy-cards, cart drawer, checkout, FAQ, sticky CTA. Built entirely
+   from the tokens above; orange stays reserved for the single buy action.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* — offer hero extras (layered on .hero) — */
+.price-anchor { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-3); }
+.price-anchor .from { font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.price-anchor .amount { font-family: var(--font-heading); font-weight: 800; font-size: clamp(32px, 4vw, 44px); color: var(--color-accent-700); line-height: 1; }
+.price-anchor .was { font-size: 15px; color: color-mix(in srgb, var(--color-text) 55%, transparent); text-decoration: line-through; }
+.hero-checklist { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: grid; gap: 8px; }
+.hero-checklist li { display: flex; align-items: flex-start; gap: 8px; font-size: 14.5px; line-height: 1.5; }
+.hero-checklist svg { flex: none; width: 18px; height: 18px; color: var(--color-green); margin-top: 1px; }
+.trust-row { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+.trust-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  color: var(--color-accent-2-700); background: var(--color-accent-2-100); padding: 6px 12px; border-radius: 999px; }
+.trust-chip svg { width: 14px; height: 14px; }
+
+/* — value stack — */
+.valuestack { padding: var(--space-8) 0; }
+.vstack-card { max-width: 620px; padding: var(--space-4); box-shadow: var(--shadow-md); }
+.vstack-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 10px 0; border-bottom: 1px solid var(--color-divider); font-size: 15px; }
+.vstack-line .label { display: flex; align-items: baseline; gap: 8px; }
+.vstack-line .val { font-family: var(--font-heading); font-weight: 700; white-space: nowrap; }
+.vstack-line .val.free { color: var(--color-green); }
+.vstack-line .val.was { text-decoration: line-through; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.vstack-total { display: flex; justify-content: space-between; align-items: baseline; padding: var(--space-3) 0 0; font-size: 15px; }
+.vstack-total .val { font-family: var(--font-heading); font-weight: 700; text-decoration: line-through; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.vstack-pay { display: flex; justify-content: space-between; align-items: baseline; margin-top: var(--space-2);
+  padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-accent-100); }
+.vstack-pay .lbl { font-family: var(--font-heading); font-weight: 700; font-size: 16px; color: var(--color-accent-2-800); }
+.vstack-pay .amt { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--color-accent-700); }
+
+/* — guarantee band (reuses cta-band shell) — */
+.guarantee { margin: var(--space-8) 0; padding: var(--space-6); border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-accent-2-800) 92%, transparent); backdrop-filter: blur(8px);
+  color: #fff; display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.guarantee .g-icon { flex: none; width: 56px; height: 56px; display: grid; place-items: center; border-radius: var(--radius-md);
+  background: color-mix(in srgb, #fff 12%, transparent); color: #fff; }
+.guarantee .g-body { flex: 1; min-width: 240px; }
+.guarantee h3 { color: #fff; margin: 0 0 6px; font-size: 22px; }
+.guarantee p { margin: 0; color: color-mix(in srgb, #fff 80%, transparent); font-size: 14.5px; line-height: 1.6; }
+
+/* — how it works — */
+.how { padding: var(--space-8) 0; }
+.how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.how-step { padding: var(--space-4); }
+.how-step .step-num { font-family: var(--font-heading); font-weight: 800; font-size: 13px; color: var(--color-accent-700); letter-spacing: 0.06em; }
+.how-step .icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--radius-md);
+  background: var(--color-accent-2-100); color: var(--color-accent-2-700); margin: var(--space-2) 0 var(--space-3); }
+.how-step h3 { font-size: 18px; margin: 0 0 var(--space-2); }
+.how-step p { font-size: 14px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 78%, transparent); margin: 0; }
+@media (max-width: 900px) { .how-grid { grid-template-columns: 1fr; } }
+
+/* — product buy-cards (rendered by store.js into each catalog leaf) — */
+.leaf-note { font-size: 13px; color: color-mix(in srgb, var(--color-text) 65%, transparent); margin: 0 0 var(--space-3); }
+.product { position: relative; }
+.product-thumb { aspect-ratio: 4/3; border-radius: var(--radius-md); margin-bottom: var(--space-1); overflow: hidden;
+  background: linear-gradient(135deg, var(--color-accent-2-100), var(--color-accent-100));
+  display: grid; place-items: center; color: color-mix(in srgb, var(--color-accent-2) 45%, transparent); }
+.product-thumb .mono { font-family: var(--font-heading); font-weight: 800; font-size: 26px; letter-spacing: 0.04em; }
+.product-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* — multi-image gallery thumb (products.js `images[]`) — in-card prev/next +
+   click-to-enlarge; see store.js buildGalleryThumb()/openLightbox(). — */
+.product-gallery { position: relative; }
+.product-gallery img { cursor: zoom-in; }
+.gallery-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 26px; height: 26px; display: grid; place-items: center; border: none; cursor: pointer;
+  border-radius: 999px; background: color-mix(in srgb, #0b1930 55%, transparent); color: #fff;
+  backdrop-filter: blur(3px); opacity: 0.9; transition: background 0.15s ease, opacity 0.15s ease;
+}
+.gallery-arrow:hover { background: color-mix(in srgb, #0b1930 75%, transparent); opacity: 1; }
+.gallery-arrow:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.gallery-arrow.prev { left: 6px; }
+.gallery-arrow.next { right: 6px; }
+.gallery-counter {
+  position: absolute; right: 6px; bottom: 6px; z-index: 2; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, #0b1930 55%, transparent); color: #fff; font-size: 10.5px;
+  font-weight: 700; font-family: var(--font-heading); backdrop-filter: blur(3px);
+}
+
+/* — lightbox (shared, one instance appended to <body> by store.js) — enlarges
+   on desktop; true edge-to-edge fullscreen on mobile, with a clearly-labeled
+   text exit button (not just an icon) since there's no chrome/whitespace left
+   to signal "click here to leave" once the image fills the whole viewport. — */
+.lightbox-overlay {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, #05070d 88%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.lightbox-overlay.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .lightbox-overlay { transition: none; } }
+.lightbox-stage { max-width: min(92vw, 900px); max-height: 86vh; display: flex; align-items: center; justify-content: center; }
+.lightbox-stage img { max-width: 100%; max-height: 86vh; object-fit: contain; border-radius: var(--radius-md); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.lightbox-close {
+  position: absolute; top: 16px; right: 16px; z-index: 2; display: inline-flex; align-items: center; gap: 6px;
+  border: none; cursor: pointer; border-radius: 999px; background: color-mix(in srgb, #0b1930 55%, transparent);
+  color: #fff; backdrop-filter: blur(4px);
+}
+.lightbox-close-icon { display: inline-grid; place-items: center; width: 36px; height: 36px; font-size: 24px; line-height: 1; }
+.lightbox-close-text { display: none; padding-right: 14px; font-weight: 700; font-size: 13px; white-space: nowrap; }
+.lightbox-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 44px; height: 44px;
+  display: grid; place-items: center; border: none; cursor: pointer; border-radius: 999px;
+  background: color-mix(in srgb, #0b1930 45%, transparent); color: #fff; backdrop-filter: blur(4px);
+}
+.lightbox-arrow:hover { background: color-mix(in srgb, #0b1930 65%, transparent); }
+.lightbox-arrow:focus-visible, .lightbox-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.lightbox-arrow.prev { left: 16px; }
+.lightbox-arrow.next { right: 16px; }
+.lightbox-counter {
+  position: absolute; left: 0; right: 0; top: 16px; text-align: center; color: #fff; z-index: 1;
+  font-size: 13px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+/* Bottom bar shown when openLightbox() was called with an onSelect callback
+   and/or a `controls` object (see store.js buildLightboxControls()) — the
+   design-subsection lightbox always gets both, so a customer can pick the
+   size, adjust quantity, and add to cart without leaving fullscreen.
+   Hidden for plain gallery/cart-thumb viewing (neither param passed). */
+.lightbox-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px;
+  padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, color-mix(in srgb, #05070d 92%, transparent), transparent);
+}
+.lightbox-size-seg { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.lightbox-size-opt {
+  border: 1px solid color-mix(in srgb, #fff 35%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, #0b1930 45%, transparent); color: #fff;
+  padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.lightbox-size-opt.is-selected { background: var(--color-accent-2); border-color: var(--color-accent-2); }
+.lightbox-qty {
+  display: inline-flex; align-items: center; gap: 10px;
+  border: 1px solid color-mix(in srgb, #fff 35%, transparent); border-radius: 999px; padding: 4px 6px;
+}
+.lightbox-qty button {
+  width: 26px; height: 26px; border: none; border-radius: 50%; cursor: pointer;
+  background: color-mix(in srgb, #fff 15%, transparent); color: #fff; font-size: 16px; line-height: 1;
+}
+.lightbox-qty-val {
+  color: #fff; font-weight: 700; font-size: 13.5px; width: 2.2em; text-align: center;
+  background: transparent; border: none; padding: 0; font-family: inherit;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.lightbox-qty-val::-webkit-outer-spin-button, .lightbox-qty-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.lightbox-qty-val:focus { outline: 1px solid #fff; outline-offset: 2px; }
+.lightbox-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.lightbox-select {
+  border: 1px solid color-mix(in srgb, #fff 45%, transparent); cursor: pointer; border-radius: 999px;
+  padding: 11px 20px; font-weight: 700; font-size: 13.5px; background: transparent; color: #fff;
+}
+.lightbox-add { border-radius: 999px; padding: 11px 20px; font-size: 13.5px; }
+@media (max-width: 760px) {
+  .lightbox-select, .lightbox-add { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  /* Fills the screen edge-to-edge on mobile, per spec. */
+  .lightbox-overlay { background: #05070d; }
+  .lightbox-stage { max-width: 100vw; max-height: 100vh; }
+  .lightbox-stage img { max-height: 100vh; border-radius: 0; }
+  .lightbox-close {
+    top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right));
+    background: color-mix(in srgb, #0b1930 88%, transparent);
+    min-height: 44px; /* comfortable tap target now that the icon (which sized the button) is hidden */
+  }
+  .lightbox-close-icon { display: none; }
+  .lightbox-close-text { display: inline-flex; align-items: center; height: 44px; padding: 0 16px; }
+  /* Mobile shows the close button as a wide text pill (not a small icon), which
+     sits centered-top and would otherwise sit directly under the centered
+     counter text — clear it instead of overlapping. */
+  .lightbox-counter { top: calc(max(14px, env(safe-area-inset-top)) + 48px); }
+}
+
+/* — design picker grid (products.js `images[]`) — selectable cards shown
+   under a SKU's main thumb; picking one drives both the main thumb (via
+   gallery.setIndex) and the designRef/designName carried into the cart.
+   Capped to DESIGN_GRID_MAX (8) tiles so every card's picker takes the same
+   bounded space, keeping the price/add-to-cart row that follows top-aligned
+   and consistent across a row of cards regardless of design count — see
+   store.js buildDesignGrid(). — */
+.design-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px;
+  grid-auto-rows: min-content; align-content: start; margin: var(--space-2) 0 var(--space-1);
+}
+.design-pick {
+  position: relative; border: 2px solid transparent; border-radius: var(--radius-sm); padding: 0;
+  overflow: hidden; cursor: pointer; background: var(--color-surface); aspect-ratio: 1;
+  display: block; transition: border-color 0.15s ease;
+}
+.design-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.design-pick:hover { border-color: color-mix(in srgb, var(--color-accent-2) 40%, transparent); }
+.design-pick:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.design-pick.is-selected { border-color: var(--color-accent-2); }
+.design-pick-check {
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 999px;
+  background: var(--color-accent-2); color: #fff; display: none; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.design-pick.is-selected .design-pick-check { display: flex; }
+.design-pick-label {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px 2px; font-size: 9.5px; font-weight: 600;
+  line-height: 1.2; color: #fff; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: linear-gradient(to top, color-mix(in srgb, #0b1930 75%, transparent), transparent);
+}
+
+/* "+N more" trigger tile — replaces the picker's last slot once a product
+   has more designs than fit in the collapsed grid. */
+.design-pick-more {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 2px dashed color-mix(in srgb, var(--color-accent-2) 45%, transparent);
+  background: var(--color-accent-2-100); color: var(--color-accent-2-800);
+}
+.design-pick-more-count { font-family: var(--font-heading); font-weight: 800; font-size: 13px; }
+.design-pick-more-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Full-list popup — appended to <body> (not the card) so it can span the
+   whole viewport width; opens on hover of the picker (`.design-picker`) or
+   tap/focus of the "+N more" tile, closes on mouseleave. Height is capped
+   and scrolls once the (much wider) grid still overflows. */
+.design-popup {
+  position: fixed; left: 0; right: 0; z-index: 150;
+  max-height: min(70vh, 640px); overflow-y: auto;
+  background: var(--color-bg); border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+  padding: var(--space-4);
+  opacity: 0; visibility: hidden; transform: translateY(-6px);
+  transition: opacity 0.15s ease, visibility 0.15s ease, transform 0.15s ease;
+}
+.design-popup.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .design-popup { transition: none; } }
+.design-grid-full {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px;
+  max-width: 1100px; margin: 0 auto;
+}
+
+/* Full-screen "all designs" sheet — touch/no-hover replacement for
+   .design-popup (see store.js buildDesignGrid's isHoverCapable gate): a
+   single tap on "+N more" opens this instead of the small flyout, so there's
+   no double-tap. Tapping a tile opens the shared lightbox (fullscreen);
+   selecting there closes both the lightbox and this sheet. */
+.design-subcatalog {
+  position: fixed; inset: 0; z-index: 170; overflow-y: auto;
+  background: var(--color-bg);
+  opacity: 0; visibility: hidden; transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+.design-subcatalog.is-open { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .design-subcatalog { transition: none; } }
+.design-subcatalog-header {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+  padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-4) var(--space-3);
+  background: var(--color-bg); border-bottom: 1px solid var(--color-divider);
+}
+.design-subcatalog-title { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.design-subcatalog-close {
+  border: none; cursor: pointer; background: transparent; font-size: 26px; line-height: 1;
+  min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; color: var(--color-text);
+}
+.design-subcatalog .design-grid-full { padding: var(--space-4); }
+
+.product .seg { width: 100%; }
+.product .seg-opt { flex: 1; justify-content: center; font-size: 12.5px; }
+.product .seg-opt:has(input:checked) { background: var(--color-accent-2); }
+.shirt-toggle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; margin-top: 4px; }
+.shirt-toggle input { accent-color: var(--color-accent-2); width: 16px; height: 16px; }
+
+/* — shirt color picks (shown alongside the "Press onto a shirt" toggle) —
+   grayed out and non-interactive until the shirt toggle is checked; "Custom"
+   opens a native color input and reveals an availability disclaimer. — */
+.shirt-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) 12px; margin-top: 4px; }
+.shirt-row .shirt-toggle { margin-top: 0; }
+.shirt-color-opts { display: flex; align-items: center; gap: 8px; }
+.shirt-color-opts.is-disabled { opacity: 0.45; }
+.shirt-color-pick {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--color-divider); border-radius: 999px; padding: 3px 8px 3px 3px;
+  background: var(--color-surface); cursor: pointer; font-size: 11.5px; font-weight: 600;
+}
+.shirt-color-pick:disabled { cursor: not-allowed; }
+.shirt-color-pick.is-selected {
+  border-color: var(--color-accent-2); background: var(--color-accent-2); color: #fff;
+}
+.shirt-color-pick.is-selected .shirt-color-swatch {
+  border-color: #fff; box-shadow: 0 0 0 1px var(--color-accent-2);
+}
+.shirt-color-swatch {
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  border: 1.5px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+}
+.shirt-color-swatch.is-custom {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+.shirt-color-disclaimer {
+  flex: 1 0 100%; font-size: 11px; line-height: 1.4; margin: 0;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+}
+/* Two-step custom color pick: opens on the "Custom" swatch's own click
+   (no overlay input intercepting it — see skuCard's shirt-color block for
+   why that broke selection before), applies only once "Use this color" is
+   clicked, so the picker's live hex readout doubles as a confirmation step. */
+.shirt-color-custom-panel {
+  flex: 1 0 100%; display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  padding: 6px 8px; background: var(--color-surface);
+}
+.shirt-color-custom-input {
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--color-divider); border-radius: var(--radius-sm); cursor: pointer;
+}
+.shirt-color-custom-hex {
+  font-family: var(--font-heading); font-weight: 700; font-size: 12.5px; letter-spacing: 0.02em;
+}
+.shirt-color-confirm { margin-left: auto; padding: 6px 12px; font-size: 12px; min-height: 0; white-space: nowrap; }
+@media (max-width: 480px) {
+  /* At narrow widths the input+hex+"Use this color" trio no longer fits one
+     row without squeezing the confirm button's label onto two lines — drop
+     it to its own full-width row instead of letting it wrap mid-word. */
+  .shirt-color-custom-panel { flex-wrap: wrap; }
+  .shirt-color-confirm { flex: 1 0 100%; margin-left: 0; }
+}
+.addon-label { font-size: 12.5px; font-weight: 600; opacity: 0.75; margin-top: var(--space-2); }
+.product-buy { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); }
+.product-price { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }
+.product-price small { font-weight: 600; font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+/* In-store reference-price rows (inStoreInfoCard()) can stack up to 4 lines
+   per card (Photocopying, Rush ID Print) — the buy-card's bold 20px price
+   treatment is sized for a single number, not a repeated list. */
+.product-custom .product-price { font-family: var(--font-body); font-weight: 600; font-size: 14px; color: var(--color-text); }
+/* `flex: none` is load-bearing, not decoration. `.product-buy` is a flex row
+   (`justify-content: space-between`) whose other child is the price string —
+   without this the stepper is the flexible one and a long price squeezes it.
+   Measured at 375px before this was added: 12 shop cards rendered their
+   `−`/`+` buttons between 20px and 38px wide, silently defeating the
+   `@media (max-width: 760px)` 40x40 rule below (and its stated intent). */
+.qty-stepper { display: inline-flex; flex: none; align-items: center; border: 1px solid var(--color-divider); border-radius: var(--radius-md); overflow: hidden; }
+.qty-stepper button { flex: none; width: 30px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 16px; color: var(--color-text); line-height: 1;
+  transition: background-color 0.15s ease, transform 0.12s ease-out; }
+.qty-stepper button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.qty-stepper button:active { transform: scale(0.94); }
+@media (prefers-reduced-motion: reduce) { .qty-stepper button { transition: background-color 0.15s ease; } .qty-stepper button:active { transform: none; } }
+.qty-stepper .qval { width: 30px; min-width: 30px; height: 32px; text-align: center; font-family: var(--font-heading);
+  font-weight: 700; font-size: 14px; color: var(--color-text); border: none; background: transparent; padding: 0;
+  -moz-appearance: textfield; appearance: textfield; }
+.qty-stepper .qval::-webkit-outer-spin-button, .qty-stepper .qval::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty-stepper .qval:focus { outline: 2px solid var(--color-accent-2); outline-offset: -2px; }
+@media (max-width: 760px) {
+  /* 30x32px is under the ~40-44px touch-target minimum (Apple HIG / Material) —
+     widen the tap area on touch without changing the stepper's visual size on
+     desktop, where a mouse pointer doesn't need the extra margin. */
+  .qty-stepper button { width: 40px; height: 40px; }
+  .qty-stepper .qval { width: 34px; min-width: 34px; height: 40px; font-size: 16px; }
+  /* `.product-buy`'s desktop `space-between` row put the stepper's `+`
+     button flush against the card's right edge — right under the
+     scroll-position rail, which docks on that same edge (see the rail's own
+     mobile tap-target notes above). A thumb aiming for `+` kept landing on
+     the rail instead. Stack the price on its own row above a centered
+     stepper so the stepper's tap targets sit mid-card, clear of any edge
+     chrome, on both sides. */
+  .product-buy { flex-direction: column; align-items: center; gap: 6px; }
+  .product-price { text-align: center; }
+}
+.product.product-custom { border: 1.5px dashed color-mix(in srgb, var(--color-accent-2) 40%, transparent); background: var(--color-bg); }
+.product-custom .product-thumb { background: repeating-linear-gradient(45deg, var(--color-accent-2-100), var(--color-accent-2-100) 10px, var(--color-surface) 10px, var(--color-surface) 20px); }
+
+/* — cart drawer — */
+.cart-overlay { position: fixed; inset: 0; z-index: 100; background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity 0.25s ease, visibility 0.25s ease; }
+.cart-overlay.is-open { opacity: 1; visibility: visible; }
+.cart-drawer { position: fixed; top: 0; right: 0; z-index: 101; height: 100%; width: min(420px, 100%);
+  display: flex; flex-direction: column; background: var(--color-bg); box-shadow: var(--shadow-lg);
+  transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.cart-drawer.is-open { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .cart-drawer, .cart-overlay { transition: none; } }
+@media (max-width: 480px) { .cart-drawer { width: 100vw; } }
+.cart-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4);
+  border-bottom: 1px solid var(--color-divider); }
+.cart-head h3 { margin: 0; font-size: 18px; color: var(--color-accent-2-800); }
+.cart-close { width: 34px; height: 34px; border: none; background: transparent; cursor: pointer; border-radius: var(--radius-sm); color: var(--color-text); font-size: 20px; line-height: 1;
+  transition: background-color 0.15s ease, transform 0.12s ease-out; }
+.cart-close:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.cart-close:active { transform: scale(0.94); }
+@media (prefers-reduced-motion: reduce) { .cart-close { transition: background-color 0.15s ease; } .cart-close:active { transform: none; } }
+.cart-body { flex: 1; overflow-y: auto; padding: var(--space-3) var(--space-4); }
+.cart-empty { text-align: center; color: color-mix(in srgb, var(--color-text) 55%, transparent); font-size: 14px; padding: var(--space-8) var(--space-3); }
+.cart-line { display: grid; grid-template-columns: 1fr auto; gap: 4px var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-divider); }
+.cart-line.has-thumb { grid-template-columns: 52px 1fr auto; align-items: start; }
+.cart-line .c-thumb {
+  width: 52px; height: 52px; border: none; padding: 0; border-radius: var(--radius-sm);
+  overflow: hidden; cursor: zoom-in; background: var(--color-surface); flex: none;
+}
+.cart-line .c-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cart-line .c-thumb:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.cart-line .c-text { min-width: 0; }
+.cart-line .c-name { font-family: var(--font-heading); font-weight: 700; font-size: 14.5px; }
+.cart-line .c-design { font-weight: 500; color: color-mix(in srgb, var(--color-text) 65%, transparent); }
+.cart-line .c-meta { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.cart-line .c-price { font-family: var(--font-heading); font-weight: 700; text-align: right; white-space: nowrap; }
+.cart-line .c-price.pending { color: var(--color-accent-700); font-size: 12.5px; font-weight: 700; }
+.cart-line .c-controls { display: flex; align-items: center; gap: var(--space-3); grid-column: 1 / -1; margin-top: 4px; }
+.cart-line .c-remove { border: none; background: transparent; cursor: pointer; font-size: 12.5px; color: var(--color-accent-700); padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+.cart-tag { display: inline-flex; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; margin-left: 6px;
+  background: var(--color-accent-2-100); color: var(--color-accent-2-800); vertical-align: middle; }
+.cart-foot { border-top: 1px solid var(--color-divider); padding: var(--space-4); background: var(--color-surface); }
+.cart-foot .f-line { display: flex; justify-content: space-between; font-size: 13.5px; padding: 4px 0; }
+.cart-foot .f-total { display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--space-2); }
+.cart-foot .f-total .amt { font-family: var(--font-heading); font-weight: 800; font-size: 22px; color: var(--color-accent-2-800); }
+.cart-foot .f-note { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin: var(--space-2) 0; }
+
+/* — checkout view (swaps into the drawer body) — */
+.checkout-view { display: none; }
+.cart-drawer.checkout-mode .cart-view { display: none; }
+.cart-drawer.checkout-mode .checkout-view { display: block; }
+.checkout-view .field { margin-bottom: var(--space-3); }
+.checkout-back { border: none; background: transparent; cursor: pointer; font-size: 13px; color: var(--color-accent-700); padding: 0 0 var(--space-3); }
+
+/* — design-file upload zone (checkout, store.js's wireDesignUpload) — */
+.upload-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  padding: var(--space-4) var(--space-3); border: 1.5px dashed color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-accent) 3%, transparent);
+  cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.upload-drop:hover, .upload-drop:focus-visible { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+.upload-drop.is-dragover { border-color: var(--color-accent); border-style: solid;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.upload-drop-main { font-size: 13.5px; color: var(--color-text); }
+.upload-drop-link { color: var(--color-accent-700); text-decoration: underline; }
+.upload-drop-hint { font-size: 11px; line-height: 1.5; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+
+.upload-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.upload-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12.5px;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+/* min-width:0 so a long filename ellipsises instead of blowing the grid
+   track out past the drawer's width (same trap as .offer-grid's children). */
+.upload-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-item-meta { color: color-mix(in srgb, var(--color-text) 60%, transparent); font-variant-numeric: tabular-nums; }
+.upload-item-remove { grid-column: 3; border: none; background: transparent; cursor: pointer; font-size: 17px; line-height: 1;
+  padding: 0 2px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.upload-item-remove:hover { color: var(--color-accent-700); }
+.upload-item-bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; overflow: hidden;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent); }
+.upload-item-bar-fill { display: block; height: 100%; background: var(--color-accent); transition: width .2s ease; }
+.upload-item.is-done { background: color-mix(in srgb, #2e7d32 10%, transparent); }
+.upload-item.is-error { background: color-mix(in srgb, #c0392b 10%, transparent); }
+.upload-error { margin: 6px 0 0; font-size: 12px; color: #c0392b; }
+
+/* — FAQ (native details) — */
+.faq { padding: var(--space-8) 0; }
+.faq-item { border-bottom: 1px solid var(--color-divider); }
+.faq-item summary { list-style: none; cursor: pointer; padding: var(--space-3) 0; display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: var(--space-3);
+  font-family: var(--font-heading); font-weight: 700; font-size: 16px; color: var(--color-accent-2-800); }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; font-size: 22px; font-weight: 400; color: var(--color-accent-700); line-height: 1; }
+.faq-item[open] summary::after { content: "–"; }
+.faq-item p { margin: 0 0 var(--space-3); font-size: 14.5px; line-height: 1.65; color: color-mix(in srgb, var(--color-text) 82%, transparent); max-width: 68ch; }
+
+/* — sticky mobile CTA bar — */
+.sticky-cta { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: none;
+  gap: var(--space-2); padding: 10px var(--space-3); background: color-mix(in srgb, var(--color-bg) 94%, transparent);
+  backdrop-filter: blur(10px); border-top: 1px solid var(--color-divider); }
+.sticky-cta .btn { flex: 1; }
+/* Matches index.html's nav-links collapse breakpoint (max-width: 1200px) —
+   once the top nav's "Start your order" CTA hides there, this bottom bar is
+   the only remaining way to reach it, so the two must switch together. */
+@media (max-width: 1200px) { .sticky-cta { display: flex; } body { padding-bottom: 64px; } }
+
+/* — scroll position indicator (right-edge section rail) —
+   Desktop: vertically centered, translucent lines that brighten/lengthen for
+   the in-view section and reveal a label on hover (transform+opacity only,
+   never a layout size change, so neighbors don't jitter).
+   Mobile (≤760px): pinned between the nav and the fixed Shop/View Cart bar
+   via --nav-h/--stickycta-h (measured in JS, not hardcoded, so the rail
+   tracks the real bar heights). Collapsed to lines-only by default like desktop —
+   permanently-visible labels were wide enough to overlap the hero headline
+   on narrow screens. Tapping a segment flashes its label briefly (JS toggles
+   .is-tapped) before scrolling, then removes it. */
+.scroll-indicator { position: fixed; right: var(--space-2); top: 50%; transform: translateY(-50%);
+  z-index: 25; display: flex; flex-direction: column; gap: 10px; list-style: none;
+  margin: 0; padding: 0;
+  /* Only the line hit-areas are interactive; the gaps between them let
+     touches fall through to the page so normal scrolling still works near
+     the right edge (see .scroll-indicator-item pointer-events below). */
+  pointer-events: none; }
+.scroll-indicator.is-hidden { display: none; }
+.scroll-indicator-item { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  background: none; border: none; padding: 6px 2px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  /* pointer-events:auto re-enables taps on the segment itself; touch-action:none
+     makes a swipe that starts on a segment act on the rail (tap-to-jump) rather
+     than scrolling the page underneath it. */
+  pointer-events: auto; touch-action: none; }
+.scroll-indicator-label { font-size: 11.5px; font-weight: 600; color: var(--color-text);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent); padding: 3px 8px; border-radius: var(--radius-sm);
+  white-space: nowrap; opacity: 0; transform: translateX(6px) scale(0.92); transform-origin: right center;
+  transition: opacity 0.18s ease, transform 0.18s ease; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.scroll-indicator-line { width: 18px; height: 3px; border-radius: 2px;
+  background: color-mix(in srgb, var(--color-neutral-800) 45%, transparent);
+  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, width 0.2s ease;
+  transform-origin: right center; }
+/* Hover/focus-reveal is a pointer-device affordance only. Touch has no
+   hover, and touch taps can still trigger :focus-visible on some browsers
+   (e.g. DevTools touch emulation, some Android WebViews) — without this
+   guard the tapped segment's label gets stuck open on mobile instead of
+   collapsing back down. */
+@media (hover: hover) and (pointer: fine) {
+  .scroll-indicator-item:hover .scroll-indicator-line,
+  .scroll-indicator-item:focus-visible .scroll-indicator-line { background: var(--color-accent); transform: scaleY(1.6) scaleX(1.15); }
+  .scroll-indicator-item:hover .scroll-indicator-label,
+  .scroll-indicator-item:focus-visible .scroll-indicator-label { opacity: 1; transform: translateX(0) scale(1); }
+}
+.scroll-indicator-item.is-active .scroll-indicator-line { width: 26px; background: var(--color-accent);
+  opacity: 1; }
+.scroll-indicator-item:not(.is-active) .scroll-indicator-line { opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) { .scroll-indicator-line, .scroll-indicator-label { transition: none; } }
+
+@media (max-width: 760px) {
+  /* Constrain the rail to the band between the nav and the fixed Shop/View
+     Cart bar so it never overlaps either, but keep the segments packed as a
+     compact centered stack (justify-content: center) rather than spread out
+     across the whole band. */
+  .scroll-indicator { top: calc(var(--nav-h, 64px) + var(--space-2)); bottom: calc(var(--stickycta-h, 64px) + var(--space-2));
+    transform: none; justify-content: center; gap: 8px; }
+  /* Mobile-only: the base rule above makes the whole flex item (line +
+     the invisible-but-space-reserving label) tappable, so the reserved
+     label width silently extends the rail's hit area over whatever card
+     content sits behind it. Narrow the real hit target down to just the
+     visible line — pointer-events is inherited, so item:none also turns
+     off the label without a separate rule — and move touch-action:none
+     onto the line so a swipe starting exactly on it still tap-jumps
+     instead of scrolling the page underneath. The click listener
+     (index.html) is bound per-item and reads item.dataset.target via
+     closure, not event.target, so it still fires correctly via bubbling
+     from a tap that lands on the line. */
+  .scroll-indicator-item { padding: 4px 2px; pointer-events: none; touch-action: auto; }
+  .scroll-indicator-line { pointer-events: auto; touch-action: none; }
+  .scroll-indicator-label { font-size: 9.5px; padding: 2px 5px; font-weight: 700; }
+  /* Mobile is tap-driven. Force any sticky :hover/:focus reveal back to the
+     collapsed state (it can still fire under desktop touch-emulation and some
+     WebViews even though the pointer-fine query above shouldn't match) so
+     segments stay as lines. Only .is-tapped — set for ~0.9s on a real tap —
+     flashes the label, and it's declared last so it wins the cascade. */
+  .scroll-indicator-item:hover .scroll-indicator-label,
+  .scroll-indicator-item:focus .scroll-indicator-label,
+  .scroll-indicator-item:focus-visible .scroll-indicator-label { opacity: 0; transform: translateX(6px) scale(0.92); }
+  .scroll-indicator-item:hover .scroll-indicator-line,
+  .scroll-indicator-item:focus .scroll-indicator-line,
+  .scroll-indicator-item:focus-visible .scroll-indicator-line { transform: none; }
+  .scroll-indicator-item.is-tapped .scroll-indicator-label { opacity: 1; transform: none; }
+  .scroll-indicator-line { width: 12px; height: 2.5px; }
+  .scroll-indicator-item.is-active .scroll-indicator-line { width: 18px; }
+}
+
+/* — hero carousel (auto-advancing, arrows + swipe) — */
+.hero-carousel { position: relative; overflow: hidden; touch-action: pan-y; }
+.carousel-track {
+  display: flex; height: 100%; width: 100%;
+  transition: transform 4s cubic-bezier(0.45, 0, 0.55, 1);
+  will-change: transform;
+}
+.hero-carousel.is-dragging .carousel-track { transition: none; }
+@media (prefers-reduced-motion: reduce) { .carousel-track { transition: none; } }
+.carousel-slide { flex: 0 0 100%; height: 100%; margin: 0; }
+.carousel-slide img { width: 100%; height: 100%; object-fit: cover; }
+.carousel-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 40px; height: 40px; display: grid; place-items: center; border: none; cursor: pointer;
+  border-radius: 999px; background: color-mix(in srgb, #0b1930 45%, transparent); color: #fff;
+  backdrop-filter: blur(4px); transition: background 0.15s ease;
+}
+.carousel-arrow:hover { background: color-mix(in srgb, #0b1930 65%, transparent); }
+.carousel-arrow:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.carousel-arrow.prev { left: 12px; }
+.carousel-arrow.next { right: 12px; }
+.carousel-dots { position: absolute; left: 0; right: 0; bottom: 14px; z-index: 2; display: flex; justify-content: center; gap: 7px; }
+.carousel-dot {
+  width: 7px; height: 7px; border-radius: 999px; border: none; cursor: pointer; padding: 0;
+  background: color-mix(in srgb, #fff 45%, transparent); transition: background 0.2s ease, width 0.2s ease;
+}
+.carousel-dot.is-active { background: #fff; width: 20px; border-radius: 999px; }
+
+/* — My Orders (orders.html / order-detail.html) — shared between both so
+   the tab bar, status pills, and cards don't drift out of sync. Card layout
+   takes cues from Shopee/Lazada's order list: a slim header (order id/date
+   + an at-a-glance status pill), item rows built around a thumbnail (never
+   a wall of text with no visual anchor), and progress detail below the
+   fold rather than competing with the items for attention. */
+.orders-wrap { max-width: 880px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-8); }
+.orders-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); gap: var(--space-3); flex-wrap: wrap; }
+.orders-toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.orders-search { width: 240px; max-width: 100%; }
+.order-card { text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: var(--space-2); }
+.order-card + .order-card { margin-top: var(--space-3); }
+a.order-card:hover { background: color-mix(in srgb, var(--color-text) 5%, rgba(236, 238, 242, 0.82)); }
+.order-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border, #eee); }
+.order-id { font-family: var(--font-heading); font-weight: 700; }
+.order-total { font-family: var(--font-heading); font-weight: 700; }
+.tone-pill {
+  font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 999px; white-space: nowrap;
+  background: var(--color-accent-100); color: var(--color-accent-800);
+}
+.tone-pill.tone-warn { background: var(--color-accent-100); color: var(--color-accent-800); }
+.tone-pill.tone-bad { background: #fbe4e1; color: #c0392b; }
+.tone-pill.tone-good { background: var(--color-green-100, #e3f6ea); color: var(--color-green, #1f8a4c); }
+.tone-pill.tone-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
+.line-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.line-row { display: flex; align-items: center; gap: var(--space-3); font-size: 13.5px; padding: 6px 0; }
+.line-thumb {
+  width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+  background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+}
+.line-thumb-fallback {
+  width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+  background: var(--color-neutral-100, #f1f1f1); border: 1px solid var(--color-border, #eee);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--color-text-muted, #999);
+}
+.line-info { flex: 1; min-width: 0; }
+.line-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-meta { font-size: 12px; color: var(--color-text-muted, #666); margin-top: 2px; }
+.line-status { font-size: 12px; font-weight: 600; color: var(--color-text-muted, #666); white-space: nowrap; }
+.order-progress { display: flex; gap: 4px; margin: var(--space-2) 0 0; }
+.progress-step { flex: 1; height: 6px; border-radius: 999px; background: var(--color-border, #e4e4e7); }
+.progress-step.is-done { background: var(--color-accent); }
+.progress-step.is-bad { background: #c0392b; }
+.stage-label { font-size: 12.5px; color: var(--color-text-muted, #666); margin-top: 4px; }
+.orders-empty, .orders-loading, .orders-error { text-align: center; color: var(--color-text-muted, #666); padding: var(--space-6) 0; }
+.order-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+
+/* "New message!" banner (My Orders page, orders.html) — placed as the
+   FIRST thing inside .orders-wrap, before .orders-head, deliberately:
+   on a narrow phone viewport that's the only guaranteed-above-the-fold
+   spot on this page (the nav bar itself is already tight — see
+   styles.css's nav-links collapse note above — so a nav-icon badge
+   would be easy to miss; a full-width word-button in the content flow
+   isn't). Full-width tap target (min-height 44px, WCAG 2.5.5) rather
+   than a small icon+badge, since the ask was a literal word-button. */
+.new-message-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px;
+  padding: 10px var(--space-4); margin-bottom: var(--space-3); border: none; border-radius: var(--radius-md);
+  background: var(--color-accent); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 15px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 120ms ease;
+}
+.new-message-banner:hover { background: var(--color-accent-700, var(--color-accent)); }
+.new-message-banner .count {
+  font-size: 12px; font-weight: 800; background: rgba(255,255,255,0.3); border-radius: 999px; padding: 1px 8px;
+}
+@media (prefers-reduced-motion: reduce) { .new-message-banner { transition: none; } }
+
+/* "Unread messages" section — sits right below the banner (so on mobile
+   there's barely any scroll distance between clicking the banner and
+   landing here; scrollIntoView is still used for a11y/keyboard focus and
+   in case a long order list ever pushes them apart). Each row is its own
+   tap target straight to that order's message thread (order-detail.html
+   #messages), not a nested link-in-a-card, so the whole row is tappable. */
+.unread-messages-card { margin-bottom: var(--space-4); }
+.unread-thread-row {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 2px; border-bottom: 1px solid var(--color-border, #eee);
+  cursor: pointer; text-align: left; width: 100%; background: none; border-left: none; border-right: none; border-top: none;
+  font-family: inherit; color: inherit;
+}
+.unread-thread-row:last-child { border-bottom: none; }
+.unread-thread-row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.unread-thread-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.unread-thread-preview { font-size: 13px; color: var(--color-text-muted, #666); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unread-thread-count {
+  font-size: 11px; font-weight: 800; background: var(--color-accent); color: #fff; border-radius: 999px;
+  min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
+
+/* — order-detail.html — */
+.order-detail-back { font-size: 13px; margin-bottom: var(--space-3); display: inline-block; }
+.order-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.order-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-4); }
+@media (max-width: 760px) { .order-detail-grid { grid-template-columns: 1fr; } }
+.detail-card-title { font-family: var(--font-heading); font-weight: 700; font-size: 14px; margin: 0 0 var(--space-1); }
+.detail-row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 13.5px; padding: 4px 0; }
+.detail-row .k { color: var(--color-text-muted, #666); }
+.totals-row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
+.totals-row.is-total { font-weight: 700; border-top: 1px solid var(--color-divider); margin-top: var(--space-1); padding-top: var(--space-2); }
+.payment-screenshot { max-width: 160px; border-radius: var(--radius-md); display: block; margin-top: var(--space-2); border: 1px solid var(--color-divider); }
+.rejection-note { background: #fbe4e1; color: #c0392b; padding: var(--space-2); border-radius: var(--radius-sm); font-size: 13px; margin: var(--space-2) 0; }
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.timeline-item { display: flex; gap: var(--space-3); padding-bottom: var(--space-3); position: relative; }
+.timeline-item::before {
+  content: ""; position: absolute; left: 5px; top: 16px; bottom: 0; width: 1px;
+  background: var(--color-divider);
+}
+.timeline-item:last-child::before { display: none; }
+.timeline-dot { width: 11px; height: 11px; border-radius: 999px; background: var(--color-accent); flex-shrink: 0; margin-top: 3px; z-index: 1; }
+.timeline-dot.tone-bad { background: #c0392b; }
+.timeline-dot.tone-neutral { background: var(--color-neutral-400); }
+.timeline-body { flex: 1; }
+.timeline-label { font-weight: 600; font-size: 13.5px; }
+.timeline-at { font-size: 12px; color: var(--color-text-muted, #666); }
+.timeline-detail { font-size: 12.5px; color: #c0392b; margin-top: 2px; }
+.reorder-report { font-size: 13px; margin-top: var(--space-2); }
+.reorder-report .skip { color: #c0392b; }
+
+/* ==========================================================================
+   Mobile conversion polish (2026-08-06, docs/conversion-audit-2026-08-06.md)
+
+   Everything here is scoped to the touch breakpoint or to a single component;
+   nothing changes desktop layout. Findings were measured at 375x812, not
+   eyeballed — the audit doc records the exact numbers each rule answers.
+   ========================================================================== */
+
+/* --- A1: product variant options were CLIPPED AND UNREACHABLE on a phone ---
+   `.seg` is `overflow: hidden` with no wrap and no scroll, so any variant row
+   wider than the card had its tail options amputated with no scrollbar and no
+   fade. Measured at 375px: Inkjet Photo Print hid 2 of 6 options (scrollWidth
+   415 vs clientWidth 281), Lamination 1 of 5, Stickers & Labels 1 of 4 — i.e.
+   those SKUs literally could not be bought from a phone.
+
+   On mobile the segmented control becomes a wrapping chip row: each option
+   carries its own border and radius, so a wrapped second row can't produce the
+   orphaned-left-border artifact a plain `flex-wrap: wrap` would. Desktop keeps
+   the joined segmented control untouched (cards are wide enough there). This
+   also lands the 44px touch minimum on the same controls. */
+@media (max-width: 760px) {
+  .product .seg {
+    flex-wrap: wrap; gap: 6px;
+    border: none; border-radius: 0; overflow: visible;
+  }
+  .product .seg-opt {
+    flex: 1 1 auto; min-width: calc(50% - 3px); min-height: 44px;
+    justify-content: center; text-align: center;
+    border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  }
+  /* The joined-control divider is wrong once each chip has its own border. */
+  .product .seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+}
+
+/* --- A3/A4: form controls below the touch minimum, and the iOS zoom trap ---
+   `.input` was 14px / 36px tall. iOS Safari force-zooms the viewport whenever a
+   focused control is under 16px, and the viewport meta correctly omits
+   `maximum-scale` (suppressing the zoom that way would kill pinch-zoom, an
+   accessibility regression) — so every field in the checkout drawer, the
+   payment-proof popup and track-order.html yanked the page scale on tap.
+   16px removes the trigger; 44px min-height meets the HIG/Material target. */
+@media (max-width: 760px) {
+  .input { font-size: 16px; min-height: 44px; padding: 10px 12px; }
+  textarea.input { min-height: 96px; }
+  .seg-opt { min-height: 44px; }
+  /* Category tabs (30px) and the estimator's sub-tabs (27px) are on the path
+     of every purchase — this is the control shoppers use to find anything. */
+  .tab-btn { min-height: 44px; padding-block: 10px; }
+  .tabs .tabs .tab-btn { min-height: 40px; padding-block: 8px; }
+  .btn { min-height: 44px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .cart-close { width: 44px; height: 44px; }
+}
+
+/* --- A4: hero carousel dots were a 7x7px target ---
+   Keep the 7px dot exactly as designed; grow only the hit area, via a
+   transparent padding box plus `background-clip: content-box` so the visible
+   pill still paints at its original size. `.carousel-dots` keeps its own
+   layout because the padding is symmetric. `box-sizing: content-box` is
+   required here: the global reset is `border-box`, under which adding 6px of
+   horizontal padding to a 7px-wide dot leaves a 0px content box and
+   `background-clip: content-box` would paint nothing at all. */
+.carousel-dot {
+  box-sizing: content-box;
+  padding: 16px 12px; background-clip: content-box;
+}
+
+/* --- A5: the payment-proof popup's primary CTA sat 150px below the fold ---
+   Measured at 375x812 with the real rendered markup: `.order-popup` caps at
+   90vh (763px) but its content is 913px tall (200x384 QR + 3 fields + the
+   fallback-email note), so "Submit payment proof" — the last click of the
+   entire funnel, after the customer has already sent money via GCash — was off
+   screen behind nothing but a 6px scrollbar thumb. Pinning the action row keeps
+   it visible for the whole form. The negative margins + padding let the sticky
+   bar's background span the popup's full width so content scrolls under it
+   cleanly rather than appearing to collide with it. */
+.order-popup .dialog-actions {
+  position: sticky; bottom: calc(var(--space-4) * -1);
+  margin: 0 calc(var(--space-4) * -1) calc(var(--space-4) * -1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
+}
+/* Two buttons, one of them long ("I'll send it later" + "Submit payment
+   proof"), must not be squeezed into unreadable slivers on a 375px screen. */
+@media (max-width: 480px) {
+  .order-popup .dialog-actions { flex-wrap: wrap; }
+  .order-popup .dialog-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* --- A9: inline checkout validation, replacing four native alert() dialogs ---
+   Lives at the foot of the checkout view, directly above the Place-order button
+   in the drawer footer, so the message and the control it blocks are adjacent.
+   `.is-invalid` marks the specific field that failed — an alert() could not. */
+.checkout-error {
+  margin: var(--space-2) 0 0; padding: 10px 12px;
+  font-size: 13.5px; line-height: 1.45; color: #8c2c1c;
+  background: color-mix(in srgb, #c0392b 10%, transparent);
+  border: 1px solid color-mix(in srgb, #c0392b 35%, transparent);
+  border-radius: var(--radius-md);
+}
+.input.is-invalid { border-color: #c0392b; }
+.input.is-invalid:focus-visible { outline-color: #c0392b; }
+
+/* --- A10: the estimator's product picker hides most of itself ---
+   `.est-product-grid` is capped at 256px on purpose (documented in CLAUDE.md —
+   an uncapped grid pushes Step 02 off the page), but at 375px it holds 1549px
+   of content, so >80% of the catalog sat behind an internal scroll with no
+   affordance at all. A bottom fade says "more below" without touching the cap.
+   `mask-image` only — no extra DOM, and it degrades to a plain hard edge (the
+   current behaviour) in any browser that doesn't support it. */
+.est-product-grid {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent 100%);
+}
+/* Once scrolled to the end there is nothing more to hint at, and a permanent
+   fade over the last row would just look like a rendering bug. */
+.est-product-grid.is-scrolled-end {
+  -webkit-mask-image: none; mask-image: none;
+}
+
+/* Basis-of-comparison caption under the value stack (index.html #value). Small
+   and low-contrast on purpose — it's a disclosure, not a selling line, and it
+   must not compete with the price it sits beneath. */
+.vstack-note {
+  margin: var(--space-2) 0 0; font-size: 11.5px; line-height: 1.45;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}

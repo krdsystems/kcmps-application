@@ -1552,12 +1552,24 @@
       { id: "misc", label: "Miscellaneous", subcategories: [] },
     ],
   };
+  /* Two lists, mirroring backend/lib/cashbook.js — read its header before
+     touching either. CASHBOOK_METHOD_LABELS labels EVERY method that has
+     ever been written, including retired ones ("card", retired for new
+     writes 2026-08-19), so a historical row never renders as a raw slug.
+     CASHBOOK_METHODS is the narrower list of what may be PICKED. Both are
+     replaced wholesale by the server's own copy in
+     primeCashbookCategories() below — the server stays authoritative so
+     the two can't drift. */
+  let CASHBOOK_METHOD_LABELS = { cash: "Cash", gcash: "GCash", bank: "Bank", card: "Card" };
   let CASHBOOK_METHODS = [
     { id: "cash", label: "Cash" },
     { id: "gcash", label: "GCash" },
     { id: "bank", label: "Bank" },
-    { id: "card", label: "Card" },
   ];
+  // Which methods require a paymentAccount (the GCash number/owner or bank
+  // name/owner). Client-side check is UX only — log-transaction.js's
+  // validator is the actual gate.
+  let CASHBOOK_ACCOUNT_METHODS = ["gcash", "bank"];
 
   // Replaces the cache above from the live config. Fire-and-forget and
   // deliberately silent: a failure here must not break the page, because
@@ -1582,9 +1594,16 @@
         CASHBOOK_CATEGORIES.in = next.in;
         CASHBOOK_CATEGORIES.out = next.out;
       }
+      if (res.paymentMethodLabels && typeof res.paymentMethodLabels === "object") {
+        // Merged, not replaced: a label the server dropped is still needed
+        // to render a row that was written while it existed.
+        CASHBOOK_METHOD_LABELS = Object.assign({}, CASHBOOK_METHOD_LABELS, res.paymentMethodLabels);
+      }
       if (Array.isArray(res.paymentMethods) && res.paymentMethods.length) {
-        const labels = { cash: "Cash", gcash: "GCash", bank: "Bank", card: "Card" };
-        CASHBOOK_METHODS = res.paymentMethods.map((id) => ({ id, label: labels[id] || id }));
+        CASHBOOK_METHODS = res.paymentMethods.map((id) => ({ id, label: CASHBOOK_METHOD_LABELS[id] || id }));
+      }
+      if (Array.isArray(res.paymentAccountMethods)) {
+        CASHBOOK_ACCOUNT_METHODS = res.paymentAccountMethods.slice();
       }
       cashbookCategoriesPrimed = true;
     } catch { /* keep the pre-seeded defaults — see above */ }
@@ -1609,9 +1628,21 @@
     }
     return hit ? hit.label : id || "Uncategorised";
   }
+  // Labels off the FULL map, not the pickable list — a retired method
+  // (card) is absent from the chips but must still label its old rows.
   function cashbookMethodLabel(id) {
-    const hit = CASHBOOK_METHODS.find((m) => m.id === id);
-    return hit ? hit.label : id || "—";
+    return CASHBOOK_METHOD_LABELS[id] || id || "—";
+  }
+  function cashbookMethodNeedsAccount(id) {
+    return CASHBOOK_ACCOUNT_METHODS.indexOf(id) !== -1;
+  }
+  // Single display rule for the account detail, so the ledger, the job
+  // money card and the CSV can't disagree. A row written before
+  // 2026-08-19 simply has no paymentAccount — that is not an error, and
+  // nothing backfills it; it shows as an em dash.
+  function cashbookAccountLabel(account) {
+    const s = (account || "").trim();
+    return s || "—";
   }
   // Same fallback-across-direction reasoning as cashbookCategoryLabel above
   // (a void's reversal flips direction, so a reversed expense's parent
@@ -1711,6 +1742,8 @@
       subcategory: r.subcategoryId || null,
       subcategoryLabel: r.subcategoryLabel || null,
       method: r.paymentMethod,
+      // Absent on rows written before 2026-08-19 — rendered as "—".
+      account: r.paymentAccount || null,
       orderId: r.orderId || null,
       // The API has no client entity (plan §7 — no Client/CRM record, no
       // GSI2). Kept on the shape so the page's grouping code still reads.
@@ -1844,7 +1877,9 @@
           category: t.categoryId || null,
           categoryLabel: t.categoryLabel || cashbookCategoryLabel(t.direction === "out" ? "out" : "in", t.categoryId),
           subcategoryLabel: t.subcategoryLabel || null,
+          method: t.paymentMethod || null,
           methodLabel: t.paymentMethod ? cashbookMethodLabel(t.paymentMethod) : null,
+          accountLabel: t.paymentMethod ? cashbookAccountLabel(t.paymentAccount) : null,
           amountCentavos: t.amountCentavos || 0,
           occurredAt: t.occurredAt,
           actorName: t.actorName || t.createdBy || null,
@@ -1971,6 +2006,13 @@
       throw new Error("An allocation that doesn't move cash has to be linked to an order — it's a job cost, not a cash entry.");
     }
     if (affectsCash && !input.method) throw new Error("Pick a payment method.");
+    // UX gate only — the server re-validates and is the real one.
+    const paymentAccount = (input.paymentAccount || "").trim();
+    if (affectsCash && cashbookMethodNeedsAccount(input.method) && !paymentAccount) {
+      throw new Error(input.method === "gcash"
+        ? "Add the GCash number or account owner the money moved through."
+        : "Add the bank name or account owner the money moved through.");
+    }
 
     /* ---- expense against a job -> the costs route ---- */
     if (direction === "out" && orderId) {
@@ -1982,7 +2024,10 @@
         affectsCash,
         note,
       };
-      if (affectsCash) body.paymentMethod = input.method;
+      if (affectsCash) {
+        body.paymentMethod = input.method;
+        if (paymentAccount) body.paymentAccount = paymentAccount;
+      }
       if (hasQtyUnit) { body.qty = qty; body.unitCostCentavos = unitCostCentavos; }
       else { body.amountCentavos = amountCentavos; }
 
@@ -2011,6 +2056,7 @@
         subcategoryId,
         amountCentavos,          // positive; the server applies the sign
         paymentMethod: input.method,
+        paymentAccount: paymentAccount || null,
         orderId,
         note,
       }),
@@ -2101,6 +2147,9 @@
         unitAmountCentavos: null,
         amountCentavos: t.amountCentavos,
         method: cashbookMethodLabel(t.method),
+        // Own CSV column. Free text, so it goes through csvField()'s
+        // formula-injection guard exactly like note/label do.
+        account: cashbookAccountLabel(t.account),
         affectsCash: true,
         orderId: t.orderId,
         clientName: t.clientName,
@@ -2221,6 +2270,7 @@
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
+    cashbookMethodNeedsAccount, cashbookAccountLabel,
     cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,
     recordCashbookRecentOrder, getCashbookRecentOrderIds,
     getJobCosting, getJobCostingList, getCashbookDayExport,

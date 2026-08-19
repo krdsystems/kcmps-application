@@ -19,7 +19,9 @@
    ============================================================ */
 
 const { extractClaims, isStaff } = require("../lib");
-const { PAYMENT_METHODS } = require("../lib/cashbook");
+const {
+  PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PAYMENT_ACCOUNT_METHODS,
+} = require("../lib/cashbook");
 const { loadCategories, response } = require("./shared");
 
 exports.handler = async (event) => {
@@ -30,7 +32,13 @@ exports.handler = async (event) => {
   const categories = await loadCategories();
   return response(200, {
     categories,
+    // The server stays authoritative for BOTH lists so the client can't
+    // drift: `paymentMethods` is what may be written (card is retired and
+    // absent), `paymentMethodLabels` still labels retired ids on old rows,
+    // and `paymentAccountMethods` says which ones require a paymentAccount.
     paymentMethods: PAYMENT_METHODS,
+    paymentMethodLabels: PAYMENT_METHOD_LABELS,
+    paymentAccountMethods: PAYMENT_ACCOUNT_METHODS,
     costCategoryIds: categories.filter((c) => c.kind === "expense").map((c) => c.id),
   });
 };

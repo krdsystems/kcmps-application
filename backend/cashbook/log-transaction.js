@@ -117,6 +117,9 @@ exports.handler = async (event) => {
     direction: txn.direction,
     amountCentavos: txn.amountCentavos,
     paymentMethod: txn.paymentMethod,
+    // Required for gcash/bank, null for cash — validated in lib/cashbook.js.
+    // Absent entirely on rows written before 2026-08-19; never backfilled.
+    paymentAccount: txn.paymentAccount || null,
     note: txn.note || null,
     orderId: txn.orderId,
     // The plan's two-writers table. "manual" rows are voidable by an

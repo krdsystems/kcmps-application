@@ -189,7 +189,74 @@ function resolveSubcategory(category, rawSubcategoryId) {
   return { subcategoryId: sub.id, subcategoryLabel: sub.label };
 }
 
-const PAYMENT_METHODS = Object.freeze(["cash", "gcash", "bank", "card"]);
+/* ---------------- payment methods ----------------
+
+   TWO LISTS ON PURPOSE — do not collapse them into one.
+
+   PAYMENT_METHOD_LABELS is every method id that has EVER been written to
+   this ledger, including retired ones. It is the READ side: a row
+   carrying `paymentMethod: "card"` must still render as "Card" in the
+   ledger, the CSV and the job money card forever, because the record is
+   append-only and history is never rewritten.
+
+   PAYMENT_METHODS is the strictly narrower WRITE side: what a new row may
+   use, and what GET /cashbook/categories offers the entry form. "card"
+   was retired 2026-08-19 (owner decision), so it is absent here and
+   present above. Deleting the label instead of narrowing the accepted
+   list would have made historical rows print a raw slug or a blank cell.
+
+   A gcash/bank row additionally requires `paymentAccount` — the GCash
+   number/owner or the bank name/owner the money actually moved through.
+   Deliberately NOT called "reference": this repo already uses "GCash
+   reference" for the CUSTOMER's payment-proof transaction reference
+   (checkout/submit-payment-proof.js), and they are different facts.
+   Enforced HERE, server-side, so a stale or hand-rolled client cannot
+   write a gcash/bank row without one. The READ side is untouched: rows
+   written before this rule have no paymentAccount and are still valid —
+   the requirement applies only to NEW WRITES, nothing re-validates
+   history, and there is no migration (and must not be one). */
+const PAYMENT_METHOD_LABELS = Object.freeze({
+  cash: "Cash",
+  gcash: "GCash",
+  bank: "Bank",
+  card: "Card", // retired for new writes; label kept for historical rows
+});
+const PAYMENT_METHODS = Object.freeze(["cash", "gcash", "bank"]);
+const PAYMENT_ACCOUNT_METHODS = Object.freeze(["gcash", "bank"]);
+// Same cap and the same trim-then-slice handling as `note`, so free text
+// behaves identically wherever this module accepts it.
+const PAYMENT_ACCOUNT_MAX_LENGTH = 500;
+
+// Never throws and never invents: an unknown id falls back to itself, so
+// a future/unknown method still shows something rather than a blank.
+function paymentMethodLabel(methodId) {
+  const id = str(methodId).trim().toLowerCase();
+  if (!id) return null;
+  return PAYMENT_METHOD_LABELS[id] || methodId;
+}
+
+function paymentMethodRequiresAccount(methodId) {
+  return PAYMENT_ACCOUNT_METHODS.includes(str(methodId).trim().toLowerCase());
+}
+
+// Returns the trimmed account string, or null when the method has no
+// account concept (cash). Throws when one is required and is missing or
+// whitespace-only.
+function resolvePaymentAccount(methodId, raw) {
+  const account = str(raw).trim().slice(0, PAYMENT_ACCOUNT_MAX_LENGTH);
+  if (!paymentMethodRequiresAccount(methodId)) {
+    // Cash has no account. Anything supplied is dropped rather than
+    // stored, so a cash row can never carry a field that means nothing.
+    return null;
+  }
+  if (!account) {
+    throw new CashbookValidationError(
+      `paymentAccount is required for ${str(methodId).trim().toLowerCase()} — ` +
+      "the GCash number/owner or bank name/owner the money moved through"
+    );
+  }
+  return account;
+}
 
 /* ---------------- Manila clock ---------------- */
 
@@ -409,6 +476,7 @@ function validateTransactionInput(input = {}, { categories = DEFAULT_TXN_CATEGOR
   if (!PAYMENT_METHODS.includes(method)) {
     throw new CashbookValidationError(`paymentMethod must be one of: ${PAYMENT_METHODS.join(", ")}`);
   }
+  const paymentAccount = resolvePaymentAccount(method, input.paymentAccount);
 
   const occurredAt = resolveOccurredAt(input.occurredAt, now);
   const note = str(input.note).trim().slice(0, 500);
@@ -425,6 +493,7 @@ function validateTransactionInput(input = {}, { categories = DEFAULT_TXN_CATEGOR
     amountCentavos,
     normalized,
     paymentMethod: method,
+    paymentAccount,
     occurredAt,
     day: manilaDayKey(occurredAt),
     month: manilaMonthKey(occurredAt),
@@ -492,6 +561,9 @@ function validateCostInput(input = {}, { categories = DEFAULT_TXN_CATEGORIES, no
   if (affectsCash && !PAYMENT_METHODS.includes(method)) {
     throw new CashbookValidationError(`paymentMethod is required when affectsCash is true (one of: ${PAYMENT_METHODS.join(", ")})`);
   }
+  // affectsCash:false writes no TXN row and no method at all, so there is
+  // nothing to hold an account either.
+  const paymentAccount = affectsCash ? resolvePaymentAccount(method, input.paymentAccount) : null;
 
   const incurredAt = resolveOccurredAt(input.incurredAt || input.occurredAt, now);
 
@@ -508,6 +580,7 @@ function validateCostInput(input = {}, { categories = DEFAULT_TXN_CATEGORIES, no
     amountCentavos,
     affectsCash,
     paymentMethod: affectsCash ? method : null,
+    paymentAccount,
     incurredAt,
     day: manilaDayKey(incurredAt),
     month: manilaMonthKey(incurredAt),
@@ -602,6 +675,12 @@ module.exports = {
   MANILA_OFFSET_MINUTES,
   DEFAULT_TXN_CATEGORIES,
   PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_ACCOUNT_METHODS,
+  PAYMENT_ACCOUNT_MAX_LENGTH,
+  paymentMethodLabel,
+  paymentMethodRequiresAccount,
+  resolvePaymentAccount,
   ROLLUP_FIELDS,
   OCCURRED_AT_MAX_PAST_MS,
   OCCURRED_AT_MAX_FUTURE_MS,

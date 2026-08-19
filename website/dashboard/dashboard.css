@@ -310,6 +310,11 @@ html { scrollbar-gutter: stable; }
 /* — forms in dashboard context — */
 .dash-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
 .field { display: flex; flex-direction: column; gap: 4px; }
+/* `.field`'s own display beats the UA sheet's [hidden] { display: none } on
+   specificity, so a `hidden` field stays VISIBLE without this rule — caught
+   by measuring the DOM (the cash book's gcash/bank account field rendered
+   for Cash entries too). Any conditional .field anywhere depends on it. */
+.field[hidden] { display: none; }
 .field label { font-size: 12px; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
 select.input { appearance: auto; }
 
@@ -353,6 +358,17 @@ select.input { appearance: auto; }
    fixes. Same root cause as .dash-main's own min-width:0 one layout level
    up (this file, ~line 71) for the sidebar grid — the identical flex/grid
    "auto-minimum-size" trap, one nesting level deeper. */
+/* — job table column widths —
+   Consumed by jobs.html's gridTemplate(), which emits
+   `var(--jobcol-<key>, <fallback>px)` per column. They live here, not in the
+   JS, purely so the mobile block below can narrow them: gridTemplate() writes
+   an INLINE grid-template-columns on every row, and an inline style outranks
+   any stylesheet rule, so a media query could never override it directly.
+   Keep these in step with COLUMN_DEFS' minWidth fallbacks in jobs.html. */
+:root {
+  --jobcol-status: 190px; --jobcol-due: 100px; --jobcol-job: 260px;
+  --jobcol-orderId: 190px; --jobcol-client: 160px; --jobcol-tags: 280px;
+}
 .job-table-scroll { overflow-x: auto; min-width: 0; }
 /* width:max-content + min-width:100% is what stops the table "bleeding" out
    of the card as you zoom IN (reported 2026-08-13, live). A block-level grid
@@ -790,6 +806,19 @@ select.input { appearance: auto; }
   .mail-3pane { grid-template-columns: 280px 1fr; height: calc(100dvh - 172px); }
 }
 @media (max-width: 760px) {
+  /* Job table on a phone: the desktop widths total 1180px, so barely two
+     columns landed on a 375px screen and the row that identifies a job was
+     off-screen by default. Narrowed so the first three — Job, Status, Order
+     ID, which is what the default column order now leads with — fit without
+     scrolling: 118 + 100 + 96 = 314px against roughly 319px of usable width
+     (375 minus .dash-content's 2x16px and .job-row's 2x12px). The rest still
+     scroll horizontally; nothing is hidden, it just starts where it's useful.
+     Order ID is the tightest: "ORD-290E09747F" is 14 chars, so 96px is about
+     its natural width at this font size and it shouldn't go lower. */
+  :root {
+    --jobcol-job: 118px; --jobcol-status: 100px; --jobcol-orderId: 96px;
+    --jobcol-due: 76px; --jobcol-client: 120px; --jobcol-tags: 170px;
+  }
   /* one pane at a time; .show-read is toggled from email.html */
   .mail-3pane { grid-template-columns: 1fr; }
   .mail-3pane .mail-read { display: none; }
@@ -938,17 +967,50 @@ select.input { appearance: auto; }
    sheet with its own overflow rules (see the ≤760px block). */
 .cb-entry { min-width: 0; position: sticky; top: var(--space-3); }
 @media (min-width: 761px) {
+  /* --cb-rail-top must clear the sticky .dash-topbar, or the rail sticks
+     UNDERNEATH it and its first field is permanently hidden. Measured
+     constant, not a guess: topbar = 2x var(--space-3) padding + ~43px of
+     title/subtitle + 1px border ≈ 76px, plus a 16px breathing gap.
+     Re-measure if .dash-topbar's padding or title sizing changes.
+     max-height then completes the pair: stuck at --cb-rail-top, a rail of
+     `100dvh - top - 16px` ends exactly 16px above the fold, which is what
+     puts the sticky Save button below on screen rather than past it.
+     The earlier `100dvh - 32px` silently assumed the rail began at the
+     very top of the viewport; it begins ~138px down (topbar + content
+     padding + the "Cash book" heading), so its bottom edge — and Save with
+     it — sat below the fold. Owner reported exactly that 2026-08-19. */
   .cb-entry {
-    max-height: calc(100dvh - var(--space-3) * 2);
+    --cb-rail-top: 92px;
+    top: var(--cb-rail-top);
+    max-height: calc(100dvh - var(--cb-rail-top) - var(--space-3));
     overflow-y: auto;
-    overscroll-behavior: contain;
+    /* NO overscroll-behavior: contain here. It was the other half of the
+       same report: containing the scroll means that once the rail reaches
+       its own end the wheel refuses to chain to the page, so a cursor over
+       the rail could not scroll the page AT ALL and the only way down was
+       to move across to the ledger. Default chaining is correct — the rail
+       scrolls first, then the page continues. */
   }
-  /* Now that the rail scrolls internally, Save can leave the visible area
-     the same way it could on mobile — dock it to the rail's bottom edge
-     for the same reason the ≤760px block docks it to the sheet's. No
-     background override here: that is what rendered the CTA grey on
-     mobile (see the ≤760px .cb-form .btn-save rule). */
-  .cb-form .btn-save { position: sticky; bottom: 0; }
+  /* Docked Save — vertically ONLY. No left/right negative margins.
+     .cb-form is a flex COLUMN, so this button and every field above it are
+     already exactly the same width: content scrolling underneath can never
+     appear beside it, and there is nothing to full-bleed over. Widening it
+     past the card (the first attempt) only produced horizontal overflow
+     inside a scroll container — the right-edge bleed the owner reported
+     2026-08-19. Flush with the fields is what "flush" means here.
+     Opacity was never the problem either: --color-accent is #f2882e, a
+     solid hex, so .btn-primary already paints this fully opaque. What DID
+     leak was the strip of card padding beneath the button — .card is
+     rgba(...,0.82) — so the negative bottom pair below pulls the button
+     over that strip and closes it.
+     Do NOT add `background` here: that override is what rendered the CTA
+     grey on mobile. The orange must come from .btn-primary. */
+  .cb-form .btn-save {
+    position: sticky;
+    bottom: calc(-1 * var(--space-3));
+    margin-bottom: calc(-1 * var(--space-3));
+    box-shadow: 0 -6px 12px -4px rgba(0, 0, 0, 0.12);
+  }
 }
 
 /* — month strip: in / out / net — */
@@ -1080,6 +1142,16 @@ select.input { appearance: auto; }
 .cb-chip:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
 .cb-chip[aria-pressed="true"] { background: var(--color-accent-2-700); border-color: transparent; color: #fff; }
 .cb-chip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+/* The account detail for a gcash/bank entry (the GCash number/owner or
+   bank name/owner). Hidden entirely for cash via the [hidden] attribute —
+   the form must not grow a permanently-empty box for the commonest case.
+   44px min-height matches .cb-chip: this is a touch target on the same
+   mobile entry sheet, and .input's shared 36px default is below the bar. */
+.cb-account-input { min-height: 44px; }
+/* Free text on a narrow row — must ellipsize rather than push the ledger
+   row wide enough to scroll the page sideways at 375px. */
+.cb-tx-account { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .cb-extras { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .cb-extras summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--color-accent-2-700); min-height: 32px; padding: 6px 0; }
 .cb-extras[open] summary { margin-bottom: var(--space-2); }

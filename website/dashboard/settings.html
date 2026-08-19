@@ -27,10 +27,18 @@
       <section class="dsec" id="idle-pin" style="scroll-margin-top:var(--space-5)">
         <div class="dsec-head">
           <h2>Idle-screen PIN</h2>
-          <span class="hint">A privacy screen, not a login</span>
+          <!-- The explanation this opens used to sit as a paragraph in the
+               card below, where it pushed the actual PIN inputs down the
+               page and made the section read as mostly prose. It is real
+               information though — it corrects a wrong assumption (that a
+               PIN-locked screen is secured) and tells you how to recover a
+               forgotten PIN — so it moves behind this button rather than
+               being deleted. -->
+          <button type="button" class="dsec-help-btn" id="pin-help-btn"
+                  aria-expanded="false" aria-controls="pin-help" aria-label="About the idle-screen PIN">?</button>
         </div>
         <div class="card">
-          <p style="font-size:13px;margin:0 0 var(--space-3)">
+          <p class="dsec-help" id="pin-help" hidden>
             This is a privacy screen, not a login — your Cognito sign-in is still the real
             security boundary. Forgot your PIN? Use "Log out instead" on the locked screen, log
             back in, and save a new one — the old PIN isn't needed to replace it.
@@ -96,6 +104,26 @@
   const claims = KCMPS_DASH_SHELL.mount("settings");
   if (!claims) return;
   const { escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
+
+  /* ---- "?" help toggle on the Idle-screen PIN heading ----
+     Plain show/hide, not a floating popover: a popover would need
+     positioning, outside-click and viewport-collision handling to earn its
+     keep, and this is two sentences that can simply appear at the top of
+     the card they describe. aria-expanded on the button plus `hidden` on
+     the paragraph is the whole contract, so assistive tech and sighted
+     users read the same state. */
+  const pinHelpBtn = document.getElementById("pin-help-btn");
+  const pinHelp = document.getElementById("pin-help");
+  function setPinHelp(open) {
+    pinHelp.hidden = !open;
+    pinHelpBtn.setAttribute("aria-expanded", String(open));
+  }
+  pinHelpBtn.addEventListener("click", () => setPinHelp(pinHelp.hidden));
+  // Escape closes it from either the button or the revealed text, returning
+  // focus to the trigger so a keyboard user isn't stranded mid-card.
+  [pinHelpBtn, pinHelp].forEach((el) => el.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { setPinHelp(false); pinHelpBtn.focus(); }
+  }));
 
   /* ---- idle-screen PIN (dashboard-shell.js's SESSION_GUARD gate) ----
      Server-verified since 2026-08-07 (backend/staff-api/staff-pin.js via

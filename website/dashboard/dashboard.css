@@ -146,6 +146,35 @@ html { scrollbar-gutter: stable; }
 .dsec-head h2 { margin: 0; font-size: 18px; color: var(--color-accent-2-800); }
 .dsec-head .hint { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 
+/* — "?" help button on a section heading —
+   margin-right:auto is load-bearing: .dsec-head is justify-content:
+   space-between, so with only <h2> and this button as children the button
+   would be flung to the far right edge, nowhere near the heading it
+   explains. Pushing the free space to its right keeps the pair together
+   and still lets any third child sit right-aligned.
+   The visual circle stays small (22px) so it reads as an adornment rather
+   than an action, but ::after expands the actual hit target to the 44px
+   minimum this dashboard uses everywhere — sizing the button itself to
+   44px would put a big empty box next to the title. */
+.dsec-help-btn {
+  position: relative; margin-right: auto; align-self: center;
+  width: 22px; height: 22px; flex: 0 0 auto; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: 999px; background: none; cursor: pointer;
+  font-size: 13px; line-height: 1; font-weight: 700;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.dsec-help-btn::after { content: ""; position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+.dsec-help-btn:hover, .dsec-help-btn[aria-expanded="true"] { background: var(--color-accent-2-800); border-color: var(--color-accent-2-800); color: #fff; }
+.dsec-help {
+  font-size: 13px; margin: 0 0 var(--space-3);
+  padding: var(--space-3); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent-2-800) 6%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--color-accent-2-800) 35%, transparent);
+}
+
 /* — metric tiles — */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
 .tile { padding: var(--space-3); }

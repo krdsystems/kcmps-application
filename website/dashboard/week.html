@@ -67,10 +67,15 @@
 <script src="dashboard-data.js"></script>
 <script src="dashboard-shell.js"></script>
 <script>
-(() => {
+(async () => {
   const claims = KCMPS_DASH_SHELL.mount("week");
   if (!claims) return;
   const { fmtDate, escapeHtml } = KCMPS_DASH_SHELL;
+  // The capacity grid's buckets AND its planned-hours denominators both
+  // come from the station config, so refresh it before aggregating —
+  // otherwise a station added or retired in Settings wouldn't show here
+  // until a hard reload picked up a new dashboard-data.js.
+  await KCMPS_DASH.loadStations();
   const week = KCMPS_DASH.getWeekData();
 
   document.getElementById("station-grid").innerHTML = week.stations.map((s) => {

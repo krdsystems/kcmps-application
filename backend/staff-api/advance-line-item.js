@@ -50,7 +50,8 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { DynamoDBDocumentClient, TransactWriteCommand, GetCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
-const { STATUS, orderPk, metaSk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal, isValidQuotePrice } = require("../lib");
+const { STATUS, orderPk, metaSk, configPk, lineItemSk, buildEvent, extractClaims, isStaff, activeStatusAttrs, attrsToRemoveOnTerminal, isValidQuotePrice } = require("../lib");
+const { isKnownStation } = require("../lib/stations");
 
 const TABLE = process.env.TABLE_NAME;
 // Same FROM_EMAIL gate as the other staff-api/checkout Lambdas — unset
@@ -143,6 +144,33 @@ exports.handler = async (event) => {
   const { orderId, lineItemId, to, station, setupMinutes, priceEach, meta } = body;
   if (!orderId || !lineItemId || !to) return response(400, { error: "orderId, lineItemId, and to are required" });
 
+  /* Station gate (added 2026-08-19, alongside editable stations in
+     Settings). `station` used to be accepted as an UNVALIDATED free
+     string and written straight onto the line item and into the
+     append-only EVENT# record — so any staff caller could stamp
+     arbitrary text onto a job's production history, and a typo produced
+     a station that renders nowhere and counts toward no capacity bucket.
+
+     Validated against the CONFIG#STATIONS item (lib/stations.js), which
+     falls back to DEFAULT_STATIONS when unset — so this needed no
+     migration and accepts every id already in the data.
+
+     isKnownStation() deliberately accepts RETIRED stations: a line item
+     already in production at a station that has since been retired must
+     stay advanceable. Read is skipped entirely when no station was sent,
+     so transitions that don't carry one cost nothing extra. */
+  let stationId;
+  if (station != null && station !== "") {
+    const cfg = await client.send(new GetCommand({
+      TableName: TABLE, Key: { PK: configPk("STATIONS"), SK: metaSk() },
+    }));
+    const known = cfg.Item && !cfg.Item.deleted ? cfg.Item.stations : null;
+    if (!isKnownStation(known, station)) {
+      return response(400, { error: `Unknown station "${station}".` });
+    }
+    stationId = String(station).trim().toUpperCase();
+  }
+
   const pk = orderPk(orderId);
   const sk = lineItemSk(lineItemId);
   const current = await client.send(new GetCommand({ TableName: TABLE, Key: { PK: pk, SK: sk } }));
@@ -168,7 +196,7 @@ exports.handler = async (event) => {
   const updateParts = ["#status = :to", "enteredStatusAt = :now"];
   const names = { "#status": "status" };
   const values = { ":to": to, ":now": now, ":from": from };
-  if (station) { updateParts.push("station = :station"); values[":station"] = station; }
+  if (stationId) { updateParts.push("station = :station"); values[":station"] = stationId; }
   if (setupMinutes != null) { updateParts.push("setupMinutes = :setup"); values[":setup"] = setupMinutes; }
   if (requiresPrice) {
     const priceNum = typeof priceEach === "string" ? Number(priceEach) : priceEach;
@@ -205,7 +233,7 @@ exports.handler = async (event) => {
           Item: buildEvent({
             orderId, lineItemId, from, to,
             actorSub: claims.sub, actorName: claims.name || claims.email,
-            station: station || current.Item.station || null,
+            station: stationId || current.Item.station || null,
             at: now, meta,
           }),
         },

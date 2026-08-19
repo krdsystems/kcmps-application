@@ -92,6 +92,34 @@
         </div>
       </section>
 
+      <!-- Shop-wide production stations (backend/staff-api/stations.js).
+           Readable by any staffer, editable by Admin only — retiring a
+           station changes every scheduler's picker and the Week view's
+           capacity denominators, so it is shop configuration, not a
+           per-staffer preference like the two sections above. -->
+      <section class="dsec" id="stations">
+        <div class="dsec-head">
+          <h2>Stations</h2>
+          <button type="button" class="dsec-help-btn" id="stations-help-btn"
+                  aria-expanded="false" aria-controls="stations-help" aria-label="About stations">?</button>
+        </div>
+        <div class="card">
+          <p class="dsec-help" id="stations-help" hidden>
+            Stations are the production points a job is scheduled to. The code can't be changed
+            once a station exists, because finished jobs and the audit trail already point at it —
+            rename the display name instead. To take a station out of service, retire it: it
+            disappears from the scheduling picker but jobs already on it keep running.
+          </p>
+          <div id="stations-status" class="hint" style="margin-bottom:var(--space-3)">Loading…</div>
+          <div id="stations-list"></div>
+          <div id="stations-error"></div>
+          <div id="stations-actions" style="display:none;gap:8px;margin-top:var(--space-3);flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="stations-save-btn">Save stations</button>
+            <button type="button" class="btn btn-secondary" id="stations-add-btn">+ Add station</button>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -242,6 +270,125 @@
       loginGotoDashStatus.textContent = "Couldn't save — " + err.message;
     }
   });
+
+  /* ---- Stations (2026-08-19) ----
+     Shop-wide config, ONE CONFIG#STATIONS item behind GET/PUT /stations.
+     See backend/lib/stations.js's header for the rule this UI enforces on
+     the client and the server enforces for real: a station id is
+     create-only, because advance-line-item.js has already written those
+     strings onto line items and into append-only EVENT# audit records.
+     So there is no delete button and the code field is readonly on an
+     existing row — removal is expressed as "Retired".
+
+     The Admin gate here is CONVENIENCE, not security: it hides controls a
+     non-Admin's PUT would be rejected for anyway (403 from the Lambda,
+     which re-checks the verified JWT's groups). Never treat this
+     client-side claims read as the boundary — see CLAUDE.md's
+     "Client-decoded JWT claims are UI-only". */
+  const stationsHelpBtn = document.getElementById("stations-help-btn");
+  const stationsHelp = document.getElementById("stations-help");
+  function setStationsHelp(open) {
+    stationsHelp.hidden = !open;
+    stationsHelpBtn.setAttribute("aria-expanded", String(open));
+  }
+  stationsHelpBtn.addEventListener("click", () => setStationsHelp(stationsHelp.hidden));
+  [stationsHelpBtn, stationsHelp].forEach((el) => el.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { setStationsHelp(false); stationsHelpBtn.focus(); }
+  }));
+
+  const stationsStatus = document.getElementById("stations-status");
+  const stationsList = document.getElementById("stations-list");
+  const stationsErrorHost = document.getElementById("stations-error");
+  const stationsActions = document.getElementById("stations-actions");
+  const stationsSaveBtn = document.getElementById("stations-save-btn");
+  const stationsAddBtn = document.getElementById("stations-add-btn");
+
+  const isAdmin = (claims["cognito:groups"] || []).includes("Admin");
+  // Rows already on the server; `isNew` marks ones added in this session,
+  // which are the only rows whose code is still editable.
+  let stationRows = [];
+
+  function paintStations() {
+    if (!stationRows.length) { stationsList.innerHTML = ""; return; }
+    stationsList.innerHTML = stationRows.map((s, i) => {
+      const dim = s.retired ? "opacity:0.6;" : "";
+      return (
+        `<div class="dash-form-grid" style="${dim}align-items:end;padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider)">` +
+          `<div class="field"><label for="st-label-${i}">Name</label>` +
+            `<input class="input" id="st-label-${i}" data-i="${i}" data-f="label" type="text" maxlength="60" value="${escapeHtml(s.label)}"${isAdmin ? "" : " disabled"} /></div>` +
+          `<div class="field"><label for="st-id-${i}">Code</label>` +
+            `<input class="input" id="st-id-${i}" data-i="${i}" data-f="id" type="text" maxlength="32" value="${escapeHtml(s.id)}"` +
+            // Readonly, not disabled, on an existing row: a disabled input
+            // is skipped by assistive tech and reads as "broken", whereas
+            // readonly correctly says "this value is fixed".
+            `${(!isAdmin || !s.isNew) ? " readonly" : ""} placeholder="e.g. LASER-01" /></div>` +
+          `<div class="field"><label for="st-hrs-${i}">Planned hrs/week</label>` +
+            `<input class="input" id="st-hrs-${i}" data-i="${i}" data-f="plannedHoursPerWeek" type="number" min="0" max="168" inputmode="numeric" value="${Number(s.plannedHoursPerWeek) || 0}"${isAdmin ? "" : " disabled"} /></div>` +
+          `<div class="field"><label class="cb-check" for="st-ret-${i}" style="cursor:pointer;margin-top:22px">` +
+            `<input type="checkbox" id="st-ret-${i}" data-i="${i}" data-f="retired"${s.retired ? " checked" : ""}${isAdmin ? "" : " disabled"} />` +
+            `<span>Retired</span></label></div>` +
+        `</div>`
+      );
+    }).join("");
+  }
+
+  // One delegated listener over the whole list — rows are re-rendered on
+  // every retire toggle, so per-input listeners would be re-bound each
+  // time and leak.
+  stationsList.addEventListener("input", (e) => {
+    const t = e.target;
+    if (!t.dataset || t.dataset.i === undefined) return;
+    const row = stationRows[Number(t.dataset.i)];
+    if (!row) return;
+    const f = t.dataset.f;
+    if (f === "retired") { row.retired = t.checked; paintStations(); return; }
+    if (f === "id") { row.id = t.value.toUpperCase(); t.value = row.id; return; }
+    row[f] = t.value;
+  });
+
+  stationsAddBtn.addEventListener("click", () => {
+    stationRows.push({ id: "", label: "", plannedHoursPerWeek: 0, retired: false, isNew: true });
+    paintStations();
+    const last = document.getElementById("st-label-" + (stationRows.length - 1));
+    if (last) last.focus();
+  });
+
+  stationsSaveBtn.addEventListener("click", async () => {
+    stationsErrorHost.innerHTML = "";
+    await withBusy(stationsSaveBtn, async () => {
+      try {
+        const saved = await KCMPS_DASH.saveStations(stationRows.map((s) => ({
+          id: s.id, label: s.label,
+          plannedHoursPerWeek: Number(s.plannedHoursPerWeek) || 0,
+          retired: !!s.retired,
+        })));
+        // Re-seed from the SERVER's response, not from local state: the
+        // backend trims, uppercases and rounds, so echoing local values
+        // back would show a row that differs from what was stored.
+        stationRows = saved.map((s) => ({ ...s }));
+        paintStations();
+        stationsStatus.textContent = "Saved.";
+      } catch (err) {
+        showInlineError(stationsErrorHost, err.message);
+      }
+    });
+  });
+
+  (async () => {
+    try {
+      await KCMPS_DASH.loadStations(true);
+      stationRows = KCMPS_DASH.getAllStations();
+      paintStations();
+      stationsStatus.textContent = isAdmin
+        ? "Codes can't be changed once a station exists — rename it, or retire it to take it out of service."
+        : "Only an admin can change stations.";
+      if (isAdmin) stationsActions.style.display = "flex";
+    } catch (err) {
+      // loadStations() itself doesn't reject, so this is belt-and-braces
+      // around getAllStations()/paint — still worth not leaving "Loading…".
+      stationsStatus.textContent = "Couldn't load stations — " + err.message;
+    }
+  })();
 })();
 </script>
 </body>

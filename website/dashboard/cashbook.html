@@ -329,6 +329,15 @@
       : t.reversesTxnId ? `<div class="cb-tx-note">Reversing entry</div>` : "";
     const voidBtn = (!t.voided && !t.reversesTxnId)
       ? `<button type="button" class="btn btn-ghost cb-void-btn" data-void="${escapeHtml(t.txnId)}">Void</button>` : "";
+    // The one correction that doesn't need a void: attaching a row to the
+    // job it belongs to. Staff log money the moment it moves — usually on
+    // a phone, usually before anyone has the order id to hand — so this
+    // is the normal completion of an entry, not an exception path.
+    // Amount/category/method stay immutable; see
+    // backend/cashbook/relink-transaction.js.
+    const linkBtn = (!t.voided && !t.reversesTxnId && t.source !== "system")
+      ? `<button type="button" class="btn btn-ghost cb-link-btn" data-link="${escapeHtml(t.txnId)}" ` +
+        `data-order="${escapeHtml(t.orderId || "")}">${t.orderId ? "Change job" : "Link job"}</button>` : "";
     return (
       `<div class="${cls}">` +
         `<div class="cb-tx-main">` +
@@ -344,6 +353,7 @@
           // not a defect, and nothing backfills it.
           (D.cashbookMethodNeedsAccount(t.method)
             ? `<span class="cb-tx-account">${escapeHtml(D.cashbookAccountLabel(t.account))}</span>` : "") +
+          linkBtn +
           voidBtn +
         `</div>` +
       `</div>`
@@ -430,7 +440,63 @@
         await refreshAll();
       });
     });
+
+    /* Re-link an existing row to a job. Reuses the SAME picker as the
+       entry form (orderComboItems / recent-jobs-first) rather than a
+       prompt() — an order id is 14 characters of base36 that nobody can
+       retype correctly on a phone, which is exactly why these rows are
+       unlinked in the first place. */
+    $("cb-txlist").querySelectorAll("[data-link]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        relinkTxnId = btn.dataset.link;
+        // createCombobox reads opts.trigger at open time for desktop
+        // anchoring, so pointing it at THIS row's button is what makes
+        // one shared picker land next to whichever row was tapped.
+        relinkComboOpts.trigger = btn;
+        await withBusy(btn, loadOrdersForPicker);
+        relinkCombobox.setBanner(
+          ordersLoadFailed
+            ? "Couldn't load the order list — type or paste the order ID directly below."
+            : btn.dataset.order
+              ? "Currently linked to " + btn.dataset.order + ". Choose another job, or clear the box and confirm to unlink."
+              : null
+        );
+        relinkCombobox.open("");
+      });
+    });
   }
+
+  /* One shared relink picker for the whole ledger — built once, re-aimed
+     at each row's button. Per-row comboboxes would append a dialog to
+     <body> for every transaction on the day. */
+  let relinkTxnId = null;
+  async function applyRelink(orderId) {
+    if (!relinkTxnId) return;
+    const id = relinkTxnId;
+    relinkTxnId = null;
+    try {
+      await D.relinkCashbookTransaction(id, orderId);
+      if (orderId) D.recordCashbookRecentOrder(orderId);
+    } catch (err) {
+      showInlineError($("cb-error"), err.message);
+      return;
+    }
+    await refreshAll();
+  }
+  const relinkComboOpts = {
+    trigger: null,
+    title: "Link this entry to a job",
+    searchPlaceholder: "Search by client or job name…",
+    emptyMessage: "No matching order. You can still type or paste an order ID directly.",
+    allowFreeText: true,
+    getItems: orderComboItems,
+    getRecentKeys: () => D.getCashbookRecentOrderIds(),
+    onSelect: (it) => applyRelink(it.orderId),
+    // Free text covers both "paste an id the picker didn't list" and
+    // "clear it to detach" — an empty string reaches the seam as null.
+    onFreeText: (text) => applyRelink((text || "").trim()),
+  };
+  const relinkCombobox = createCombobox(relinkComboOpts);
 
   /* ---- job / client profit ---- */
   function jobCard(j) {

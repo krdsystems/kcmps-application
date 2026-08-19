@@ -501,7 +501,13 @@
     const body = document.getElementById("detail-body");
     let order;
     try {
-      order = await KCMPS_DASH.getOrder(orderId);
+      // Stations are server-side config (Admin-editable in Settings) but
+      // getStations() below is synchronous against a cached list — refresh
+      // that cache alongside the order so the picker reflects any rename
+      // or retire. loadStations() never rejects: a failed read leaves the
+      // fallback list in place rather than emptying the picker.
+      const [loaded] = await Promise.all([KCMPS_DASH.getOrder(orderId), KCMPS_DASH.loadStations()]);
+      order = loaded;
     } catch (err) {
       body.innerHTML = '<div class="empty-state">Couldn’t load this ticket — ' + escapeHtml(err.message) + '</div>';
       return;
@@ -509,7 +515,18 @@
     if (!order) { body.innerHTML = '<div class="empty-state">Ticket not found. It may have been reset — try re-seeding from Settings.</div>'; return; }
     const li = order.lineItems.find((x) => x.lineItemId === lineId) || order.lineItems[0];
     const events = KCMPS_DASH.getEventsFor(orderId).filter((e) => e.lineItemId === li.lineItemId);
+    /* Active stations, PLUS this line item's own station if it has since
+       been retired. Without that second part the select would not contain
+       the job's current station, so `selected` would match nothing, the
+       browser would fall back to the first option, and simply advancing a
+       job would silently MOVE it to a different station. Retiring a
+       station must stop it being scheduled for new work, not rewrite the
+       history of work already on it — the backend accepts retired ids for
+       exactly this reason (backend/lib/stations.js's isKnownStation). */
     const stations = KCMPS_DASH.getStations();
+    if (li.station && !stations.some((s) => s.id === li.station)) {
+      stations.unshift({ id: li.station, label: KCMPS_DASH.stationLabel(li.station) + " (retired)" });
+    }
     const reasons = KCMPS_DASH.getSpoilageReasons();
     const actions = actionsFor(li.status, order);
 

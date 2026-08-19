@@ -309,6 +309,49 @@ html { scrollbar-gutter: stable; }
 
 /* — forms in dashboard context — */
 .dash-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
+
+/* --- manual-order form: an EXPLICIT 12-column grid (2026-08-20) ---
+   The generic auto-fit grid above is wrong for this form specifically,
+   and the owner reported it as "clunky". Two concrete reasons:
+
+   (1) auto-fit recomputes the column COUNT from the available width, so
+       every conditional field that shows/hides (new-client name/type,
+       SKU, the two GCash fields, the two paid-via fields — eight of
+       them here) silently reflowed the whole form and moved fields the
+       staffer was mid-way through reading. An explicit 12-column track
+       keeps every field where it was.
+   (2) auto-fit gives Qty the same width as Description, which reads as
+       accidental — a 2-digit quantity in a 300px box next to an equally
+       sized price.
+
+   `align-items: end` plus the flex column below is what actually fixes
+   the vertical alignment: labels here differ wildly in length ("Qty" vs
+   "Price each (₱, optional if not yet quoted)"), so a wrapping label used
+   to push its own input a line lower than its row neighbours. Bottom-
+   aligning the inputs makes them share a baseline no matter how many
+   lines the label above takes. */
+.mo-grid { grid-template-columns: repeat(12, 1fr); align-items: end; }
+.mo-grid > .field { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.mo-grid > .field > label { margin-bottom: 4px; }
+.mo-2 { grid-column: span 2; }
+.mo-3 { grid-column: span 3; }
+.mo-4 { grid-column: span 4; }
+.mo-6 { grid-column: span 6; }
+/* Give the submit some air from the last field — it commits a real
+   order, so it shouldn't sit flush against the Notes box. */
+.mo-grid > button[type="submit"] { margin-top: var(--space-2); }
+
+/* Tablet: halve the resolution of the grid rather than collapsing it, so
+   paired fields (date/status, the two GCash fields) still share a row. */
+@media (max-width: 1100px) {
+  .mo-2, .mo-3, .mo-4 { grid-column: span 6; }
+}
+/* Phone: one field per row. Anything narrower than this turns a 2-column
+   layout into two unusably tight boxes. */
+@media (max-width: 760px) {
+  .mo-grid { grid-template-columns: 1fr; }
+  .mo-2, .mo-3, .mo-4, .mo-6 { grid-column: 1 / -1; }
+}
 .field { display: flex; flex-direction: column; gap: 4px; }
 /* `.field`'s own display beats the UA sheet's [hidden] { display: none } on
    specificity, so a `hidden` field stays VISIBLE without this rule — caught
@@ -1050,6 +1093,27 @@ select.input { appearance: auto; }
    view / read the number / take it away". flex-wrap so a narrow desktop
    window drops Export to its own line rather than crushing the chips. */
 .cb-export-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+
+/* --- ledger search + transaction id (2026-08-20) --- */
+.cb-searchrow { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+/* Grows to fill the row but keeps a usable floor, so on a phone it wraps
+   to its own full-width line instead of shrinking to a stub. */
+.cb-search { flex: 1 1 240px; min-width: 0; }
+.cb-searchnote { font-size: 12px; color: var(--color-text-muted, #6b7280); }
+/* The id is a copy target, not prose: monospace so similar glyphs stay
+   distinguishable, and tabular so a column of them doesn't jitter. */
+.cb-txid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.cb-txid:hover, .cb-txid:focus-visible { color: var(--color-primary, #1d4ed8); }
 .cb-export-btn { min-height: 44px; margin-left: auto; }
 .cb-dirfilter, .cb-methodfilter { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Smaller than .cb-chip: these narrow a view, they don't record money, and

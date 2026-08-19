@@ -225,7 +225,7 @@ in `approval.test.js`.
 
 ## `cashbook/` — what's in it (staging only, 2026-08-18/19)
 
-Cash Book + job costing, Phase 1 of `docs/cashbook-job-costing-plan-2026-08-18.md`. Eight
+Cash Book + job costing, Phase 1 of `docs/cashbook-job-costing-plan-2026-08-18.md`. Nine
 Lambdas on `kcmps-backend-staging`; **nothing promoted to production**. DynamoDB only — no S3,
 no SES, no email of any kind, so staging's SES-dark rule has nothing to keep dark here.
 
@@ -243,6 +243,7 @@ first deploy.
 | `get-month.js` | `GET /cashbook/month/{month}` — **Admin-only**. A single `GetItem`, never 31 partition queries |
 | `get-categories.js` | `GET /cashbook/categories` — `isStaff()`. Serves `CONFIG#TXN_CATEGORIES`, falling back to the seed list (same no-migration pattern as `business-hours.js`) |
 | `log-cost.js` | `POST /orders/{orderId}/costs` — `isStaff()`. **`affectsCash: false` writes the `COST#` line and NOTHING else** — no `TXN#`, no rollup bump. The prototype wrote a transaction unconditionally; don't copy that shape |
+| `find-transaction.js` | `GET /cashbook/transactions/{txnId}` — `isStaff()`. Finds one transaction from any day and reports which day it's on, so the ledger search can jump to it. **A GetItem, not a Scan**: the `IDEMPOTENCY#<txnId>` guard record already stores the row's keys and day, so the id IS an index and the cost stays flat as the table grows |
 | `relink-transaction.js` | `PATCH /cashbook/transactions/{txnId}/link` — `isStaff()`. Re-points a posted transaction at a different order, or unlinks it. **NOT an edit endpoint**: `orderId` is the only field it touches, because it is the only one that feeds no rollup — every money field still requires a void's reversing entry. Soft-deletes the stale `TXN_POINTER` (the staff-api role has no `DeleteItem`, and this repo is soft-delete-only); both readers filter `deleted` |
 | `get-job-costing.js` | `GET /orders/{orderId}/costing` — **Admin-only**. One query on the order partition -> revenue, cost, profit, margin, per-unit |
 

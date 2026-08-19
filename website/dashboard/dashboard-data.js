@@ -2203,6 +2203,27 @@
     });
   }
 
+  /* ---- find one transaction by id, on any day (2026-08-20) ----
+     Backs the ledger search box's "jump to another day" case. Cheap by
+     construction — the backend resolves it through the IDEMPOTENCY#
+     guard record, so it's a GetItem, never a Scan (see
+     backend/cashbook/find-transaction.js).
+
+     Returns null on 404 instead of throwing: "no transaction with that
+     id" is an ordinary search result, not an error the page should
+     surface as a red banner. */
+  async function findCashbookTransaction(txnId) {
+    const id = (txnId || "").trim();
+    if (!id) return null;
+    try {
+      const res = await apiFetch("/cashbook/transactions/" + encodeURIComponent(id), { method: "GET" });
+      return { transaction: normalizeTxnRow(res.transaction || {}), day: res.day || null };
+    } catch (err) {
+      if (err && err.status === 404) return null;
+      throw err;
+    }
+  }
+
   /* ---- day export (plan §8 "Should have" — CSV handoff) ----
      Flattens ONE day into a single row shape cashbook.html can turn
      straight into CSV, so the export logic (which fields exist, how a
@@ -2379,7 +2400,7 @@
     createManualOrder,
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
-    relinkCashbookTransaction,
+    relinkCashbookTransaction, findCashbookTransaction,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
     cashbookMethodNeedsAccount, cashbookAccountLabel,
     cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,

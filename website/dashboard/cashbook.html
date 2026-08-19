@@ -32,6 +32,13 @@
           <span class="hint">Recorded when money moves. Entries can be voided, never edited</span>
         </div>
 
+        <!-- Sub-tabs — see cashbook-history.html for why History is a
+             separate page rather than a second view of this one. -->
+        <div class="cb-subtabs" role="tablist" aria-label="Cash book views">
+          <a class="cb-subtab is-active" href="cashbook.html" role="tab" aria-selected="true">Ledger</a>
+          <a class="cb-subtab" href="cashbook-history.html" role="tab" aria-selected="false">History</a>
+        </div>
+
         <!-- ONE DOM, TWO LAYOUTS. Desktop: sticky entry rail on the left,
              ledger on the right. Mobile (≤760px): the ledger comes first
              (flex `order`) and this same .cb-entry becomes a bottom sheet.
@@ -286,7 +293,14 @@
   const actorName = claims.name || claims.email || "Staff";
 
   /* ---- page state ---- */
-  let selectedDay = D.manilaToday();
+  /* ?day=YYYY-MM-DD deep link, so History's "Open this day in the
+     ledger" lands on the right date instead of today. Validated and
+     clamped rather than trusted: a hand-edited future date would ask the
+     API for a day a cash book can never have. */
+  const dayParam = new URLSearchParams(location.search).get("day");
+  let selectedDay = (/^\d{4}-\d{2}-\d{2}$/.test(dayParam || "") && dayParam <= D.manilaToday())
+    ? dayParam
+    : D.manilaToday();
   let direction = "in";
   let category = null;
   let subcategory = null;

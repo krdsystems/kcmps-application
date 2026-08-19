@@ -535,6 +535,7 @@ Resources:
   # Cash Book + job costing — docs/cashbook-job-costing-plan-2026-08-18.md, Phase 1.
   LogTransactionLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-log-transaction", RetentionInDays: 14 } }
   VoidTransactionLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-void-transaction", RetentionInDays: 14 } }
+  GetHistoryLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-get-cashbook-history", RetentionInDays: 14 } }
   SearchTransactionsLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-search-transactions", RetentionInDays: 14 } }
   FindTransactionLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-find-transaction", RetentionInDays: 14 } }
   RelinkTransactionLogGroup: { Type: AWS::Logs::LogGroup, Properties: { LogGroupName: !Sub "/aws/lambda/kcmps-${EnvName}-relink-transaction", RetentionInDays: 14 } }
@@ -897,6 +898,24 @@ Resources:
   # POST /cashbook/transactions/{txnId}/void — Admin-only (owner decision
   # on plan O1). Append-only correction: flags the original, writes a
   # reversing row, negates both rollups, all in one transaction.
+  GetHistoryFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: GetHistoryLogGroup
+    Properties:
+      FunctionName: !Sub kcmps-${EnvName}-get-cashbook-history
+      Runtime: !Ref Runtime
+      Architectures: [arm64]
+      Handler: index.handler
+      Role: !GetAtt StaffApiLambdaRole.Arn
+      MemorySize: 256
+      # Reads only rollup summaries — at most 60 GetItems for a whole
+      # multi-year history, 31 for a month. Nowhere near the search fan-out.
+      Timeout: 15
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Sub "${ArtifactsPrefix}/kcmps-get-cashbook-history.zip" }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+
   SearchTransactionsFunction:
     Type: AWS::Lambda::Function
     DependsOn: SearchTransactionsLogGroup
@@ -1411,6 +1430,7 @@ Resources:
   # Cash Book + job costing
   LogTransactionIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt LogTransactionFunction.Arn, PayloadFormatVersion: "2.0" } }
   VoidTransactionIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt VoidTransactionFunction.Arn, PayloadFormatVersion: "2.0" } }
+  GetHistoryIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt GetHistoryFunction.Arn, PayloadFormatVersion: "2.0" } }
   SearchTransactionsIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt SearchTransactionsFunction.Arn, PayloadFormatVersion: "2.0" } }
   FindTransactionIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt FindTransactionFunction.Arn, PayloadFormatVersion: "2.0" } }
   RelinkTransactionIntegration: { Type: AWS::ApiGatewayV2::Integration, Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt RelinkTransactionFunction.Arn, PayloadFormatVersion: "2.0" } }
@@ -1468,6 +1488,7 @@ Resources:
   #    segment counts and cannot collide.
   RouteLogTransaction: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /cashbook/transactions", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${LogTransactionIntegration}" } }
   RouteVoidTransaction: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "POST /cashbook/transactions/{txnId}/void", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${VoidTransactionIntegration}" } }
+  RouteGetHistory: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /cashbook/history", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${GetHistoryIntegration}" } }
   RouteSearchTransactions: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /cashbook/search", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${SearchTransactionsIntegration}" } }
   RouteFindTransaction: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /cashbook/transactions/{txnId}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${FindTransactionIntegration}" } }
   RouteRelinkTransaction: { Type: AWS::ApiGatewayV2::Route, Properties: { ApiId: !Ref HttpApi, RouteKey: "PATCH /cashbook/transactions/{txnId}/link", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${RelinkTransactionIntegration}" } }
@@ -1521,6 +1542,7 @@ Resources:
   # that happens to get created later.
   PermLogTransaction: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref LogTransactionFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/transactions" } }
   PermVoidTransaction: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref VoidTransactionFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/transactions/*/void" } }
+  PermGetHistory: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref GetHistoryFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/history" } }
   PermSearchTransactions: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref SearchTransactionsFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/search" } }
   PermFindTransaction: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref FindTransactionFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/transactions/*" } }
   PermRelinkTransaction: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref RelinkTransactionFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/cashbook/transactions/*/link" } }

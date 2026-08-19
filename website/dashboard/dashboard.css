@@ -1137,6 +1137,72 @@ select.input { appearance: auto; }
 /* Full width so it reads as "the list continues", not as a stray action.
    Tall enough to be a comfortable phone tap target. */
 .cb-showmore { display: block; width: 100%; margin-top: var(--space-3); min-height: 44px; }
+
+/* --- cash book sub-tabs (Ledger / History) --- */
+.cb-subtabs { display: flex; gap: var(--space-1, 4px); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-divider, #e5e7eb); }
+.cb-subtab {
+  padding: 8px 14px; font-size: 14px; font-weight: 600; text-decoration: none;
+  color: var(--color-text-muted, #6b7280);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.cb-subtab:hover { color: var(--color-text, #111827); }
+.cb-subtab.is-active { color: var(--color-primary, #1d4ed8); border-bottom-color: var(--color-primary, #1d4ed8); }
+
+/* --- cash book history: year > month > day > transactions --- */
+.cb-hist-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.cb-hist-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* Column headings for the three money columns. Hidden on phones, where
+   the rows stack and a 3-up header would not line up with anything. */
+.cb-hist-legend { display: grid; grid-template-columns: repeat(3, minmax(96px, 120px)); gap: var(--space-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, #6b7280); text-align: right; }
+
+/* ONE row shape for every level, so the three money columns line up
+   straight down the page regardless of nesting — that alignment is the
+   entire point of the view. Indentation comes from padding-left on the
+   level modifiers below, never from a different grid. */
+.cb-hrow {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(96px, 120px));
+  gap: var(--space-2);
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+}
+.cb-hrow[role="button"] { cursor: pointer; }
+.cb-hrow[role="button"]:hover { background: var(--color-surface-alt, #f9fafb); }
+.cb-hrow:focus-visible { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: -2px; }
+.cb-hlabel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.cb-hm { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.cb-hm.net { font-weight: 700; }
+.cb-hm-span3 { grid-column: 2 / -1; }
+.cb-hcount { font-size: 11px; color: var(--color-text-muted, #6b7280); font-weight: 400; }
+
+.lvl-total { font-weight: 700; background: var(--color-surface-alt, #f9fafb); }
+.lvl-year { font-weight: 700; font-size: 15px; }
+.lvl-month { font-weight: 600; padding-left: var(--space-3); }
+.lvl-day { padding-left: var(--space-5); font-size: 13px; }
+.lvl-txn { padding-left: calc(var(--space-5) + var(--space-3)); font-size: 12.5px; border-bottom: 0; padding-top: 5px; padding-bottom: 5px; }
+.lvl-txn.is-dead { opacity: 0.55; text-decoration: line-through; }
+.lvl-txn.is-loading, .cb-hrow.is-loading { color: var(--color-text-muted, #6b7280); font-style: italic; }
+.cb-htxn-title { font-weight: 600; }
+.cb-htxn-note { font-size: 11.5px; color: var(--color-text-muted, #6b7280); }
+.cb-hopen { font-size: 12px; color: var(--color-primary, #1d4ed8); }
+
+.cb-caret { display: inline-block; transition: transform 0.15s ease; font-size: 15px; line-height: 1; }
+.cb-caret.is-open { transform: rotate(90deg); }
+
+/* Phone: the label takes the full width and the three money columns sit
+   under it as their own 3-up row. A 4-column grid at 375px would give
+   each amount ~70px, which truncates a six-figure peso value. */
+@media (max-width: 760px) {
+  .cb-hist-legend { display: none; }
+  .cb-hrow { grid-template-columns: repeat(3, 1fr); row-gap: 4px; }
+  .cb-hlabel { grid-column: 1 / -1; }
+  .cb-hm { font-size: 12px; }
+  .cb-hm-span3 { grid-column: 1 / -1; text-align: left; }
+  .lvl-month { padding-left: var(--space-2); }
+  .lvl-day { padding-left: var(--space-3); }
+  .lvl-txn { padding-left: var(--space-4); }
+}
 .cb-export-btn { min-height: 44px; margin-left: auto; }
 .cb-dirfilter, .cb-methodfilter { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Smaller than .cb-chip: these narrow a view, they don't record money, and

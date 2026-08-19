@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Cash Book History — KCMPS Ops</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content cb-page">
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Cash book</h2>
+          <span class="hint">Totals come from the same rollups the day view reconciles against</span>
+        </div>
+
+        <!-- Sub-tabs. Two pages rather than two views of one page: the
+             ledger is already a large document, and a history view that
+             only ever reads rollups shares almost none of its code. The
+             sidebar has no Cash book child entry on purpose — this reads
+             as a sub-view, not a third top-level destination. -->
+        <div class="cb-subtabs" role="tablist" aria-label="Cash book views">
+          <a class="cb-subtab" href="cashbook.html" role="tab" aria-selected="false">Ledger</a>
+          <a class="cb-subtab is-active" href="cashbook-history.html" role="tab" aria-selected="true">History</a>
+        </div>
+
+        <div id="hist-error"></div>
+
+        <div class="cb-hist-toolbar">
+          <div class="cb-hist-actions">
+            <button type="button" class="btn btn-secondary" id="hist-collapse">Collapse all</button>
+            <button type="button" class="btn btn-secondary" id="hist-expand">Expand months</button>
+          </div>
+          <div class="cb-hist-legend" aria-hidden="true">
+            <span>Revenue</span><span>Expenses</span><span>Net</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="hist-body"><p class="q-empty">Loading&hellip;</p></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="../auth-refresh.js"></script>
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("cashbook");
+  if (!claims) return;
+  const { escapeHtml, showInlineError } = KCMPS_DASH_SHELL;
+  const D = window.KCMPS_DASH;
+  const $ = (id) => document.getElementById(id);
+
+  /* One expansion state object for the whole tree. Keyed by the period
+     string ("2026", "2026-08", "2026-08-19") rather than by DOM node, so
+     a re-render after a lazy fetch restores exactly what was open —
+     rebuilding from the DOM would lose it on every expand. */
+  const open = { years: new Set(), months: new Set(), days: new Set() };
+  // Lazily fetched: months -> their day rows, days -> their transactions.
+  const monthDays = new Map();
+  const dayTxns = new Map();
+  let history = null;
+
+  const F = (c) => D.formatCentavos(c || 0);
+  const signCls = (c) => (c > 0 ? "pos" : c < 0 ? "neg" : "");
+
+  const MONTH_NAMES = ["January","February","March","April","May","June",
+                       "July","August","September","October","November","December"];
+  function monthLabel(m) {
+    return MONTH_NAMES[Number(m.slice(5, 7)) - 1] + " " + m.slice(0, 4);
+  }
+  function dayLabel(d) {
+    // Fixed +8 Manila, parsed as a date-only value so no timezone shift
+    // can move it a day — the same rule the ledger's keys follow.
+    const dt = new Date(d + "T00:00:00+08:00");
+    return dt.toLocaleDateString("en-PH", {
+      weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Manila",
+    });
+  }
+
+  /* Every row — year, month and day — renders the SAME three money
+     columns in the same order, so the eye can run straight down a column
+     across nesting levels. That symmetry is the whole point of the view;
+     don't give one level a different column set. */
+  function moneyCells(r) {
+    return `<span class="cb-hm pos">${escapeHtml(F(r.inCentavos))}</span>` +
+           `<span class="cb-hm neg">${escapeHtml(F(r.outCentavos))}</span>` +
+           `<span class="cb-hm net ${signCls(r.netCentavos)}">${escapeHtml(F(r.netCentavos))}</span>`;
+  }
+
+  function caret(isOpen) {
+    return `<span class="cb-caret${isOpen ? " is-open" : ""}" aria-hidden="true">&#8250;</span>`;
+  }
+
+  function render() {
+    if (!history) return;
+    const years = history.years || [];
+    if (!years.length) {
+      $("hist-body").innerHTML = `<p class="q-empty">No transactions recorded yet.</p>`;
+      return;
+    }
+
+    let html = "";
+    // Grand total only earns its place once there is more than one year
+    // to add up; with a single year it would just repeat the row below.
+    if (years.length > 1 && history.grandTotal) {
+      html += `<div class="cb-hrow lvl-total"><span class="cb-hlabel">All time</span>` +
+              moneyCells(history.grandTotal) + `</div>`;
+    }
+
+    for (const y of years) {
+      const yOpen = open.years.has(y.year);
+      html += `<div class="cb-hrow lvl-year${yOpen ? " is-open" : ""}" role="button" tabindex="0" ` +
+              `data-year="${escapeHtml(y.year)}">` +
+              `<span class="cb-hlabel">${caret(yOpen)}${escapeHtml(y.year)}` +
+              `<span class="cb-hcount">${y.txnCount} txn${y.txnCount === 1 ? "" : "s"}</span></span>` +
+              moneyCells(y) + `</div>`;
+      if (!yOpen) continue;
+
+      for (const m of y.months) {
+        const mOpen = open.months.has(m.month);
+        html += `<div class="cb-hrow lvl-month${mOpen ? " is-open" : ""}" role="button" tabindex="0" ` +
+                `data-month="${escapeHtml(m.month)}">` +
+                `<span class="cb-hlabel">${caret(mOpen)}${escapeHtml(monthLabel(m.month))}` +
+                `<span class="cb-hcount">${m.txnCount} txn${m.txnCount === 1 ? "" : "s"}</span></span>` +
+                moneyCells(m) + `</div>`;
+        if (!mOpen) continue;
+
+        const days = monthDays.get(m.month);
+        if (!days) { html += `<div class="cb-hrow lvl-day is-loading">Loading days&hellip;</div>`; continue; }
+
+        for (const d of days) {
+          const dOpen = open.days.has(d.day);
+          html += `<div class="cb-hrow lvl-day${dOpen ? " is-open" : ""}" role="button" tabindex="0" ` +
+                  `data-day="${escapeHtml(d.day)}">` +
+                  `<span class="cb-hlabel">${caret(dOpen)}${escapeHtml(dayLabel(d.day))}` +
+                  `<span class="cb-hcount">${d.txnCount} txn${d.txnCount === 1 ? "" : "s"}</span></span>` +
+                  moneyCells(d) + `</div>`;
+          if (dOpen) html += renderDayTxns(d.day);
+        }
+      }
+    }
+    $("hist-body").innerHTML = html;
+  }
+
+  function renderDayTxns(day) {
+    const rows = dayTxns.get(day);
+    if (!rows) return `<div class="cb-hrow lvl-txn is-loading">Loading transactions&hellip;</div>`;
+    if (!rows.length) return `<div class="cb-hrow lvl-txn is-loading">No transactions.</div>`;
+    return rows.map((t) => {
+      const title = t.subcategoryLabel
+        ? D.cashbookCategoryLabel(t.direction, t.category) + " › " + t.subcategoryLabel
+        : D.cashbookCategoryLabel(t.direction, t.category);
+      // Voided rows and their reversals stay visible — the record is
+      // append-only and hiding them here would contradict the ledger —
+      // but they are dimmed and never counted, matching the day view.
+      const dead = t.voided || t.reversesTxnId;
+      return `<div class="cb-hrow lvl-txn${dead ? " is-dead" : ""}">` +
+        `<span class="cb-hlabel"><span class="cb-htxn-title">${escapeHtml(title)}</span>` +
+        (t.note ? `<span class="cb-htxn-note">${escapeHtml(t.note)}</span>` : "") +
+        (t.orderId ? `<span class="cb-htxn-note">${escapeHtml(t.orderId)}</span>` : "") +
+        (t.voided ? `<span class="cb-htxn-note"><strong>Voided</strong></span>` : "") +
+        `</span>` +
+        `<span class="cb-hm ${t.direction === "in" ? "pos" : "neg"} cb-hm-span3">` +
+        `${escapeHtml(D.formatSignedCentavos(t.amountCentavos, t.direction))}</span>` +
+        `</div>`;
+    }).join("") +
+    `<div class="cb-hrow lvl-txn"><a class="cb-hopen" href="cashbook.html?day=${encodeURIComponent(day)}">Open this day in the ledger &rsaquo;</a></div>`;
+  }
+
+  /* ---- expansion, with lazy loads ---- */
+
+  async function toggleYear(year) {
+    if (open.years.has(year)) open.years.delete(year); else open.years.add(year);
+    render();
+  }
+
+  async function toggleMonth(month) {
+    if (open.months.has(month)) { open.months.delete(month); render(); return; }
+    open.months.add(month);
+    render();                                   // paint the "Loading days…" row first
+    if (!monthDays.has(month)) {
+      try {
+        const res = await D.getCashbookHistoryMonth(month);
+        monthDays.set(month, res.days || []);
+      } catch (err) {
+        showInlineError($("hist-error"), err.message);
+        open.months.delete(month);
+      }
+    }
+    render();
+  }
+
+  async function toggleDay(day) {
+    if (open.days.has(day)) { open.days.delete(day); render(); return; }
+    open.days.add(day);
+    render();
+    if (!dayTxns.has(day)) {
+      try {
+        const res = await D.getCashbookDay(day);
+        dayTxns.set(day, res.transactions || []);
+      } catch (err) {
+        showInlineError($("hist-error"), err.message);
+        open.days.delete(day);
+      }
+    }
+    render();
+  }
+
+  // One delegated handler for the whole tree — rows are rebuilt on every
+  // toggle, so per-row listeners would leak on each render.
+  function onActivate(e) {
+    const row = e.target.closest("[data-year],[data-month],[data-day]");
+    if (!row || !$("hist-body").contains(row)) return;
+    if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+    if (e.type === "keydown") e.preventDefault();
+    if (row.dataset.day) return void toggleDay(row.dataset.day);
+    if (row.dataset.month) return void toggleMonth(row.dataset.month);
+    if (row.dataset.year) return void toggleYear(row.dataset.year);
+  }
+  $("hist-body").addEventListener("click", onActivate);
+  $("hist-body").addEventListener("keydown", onActivate);
+
+  $("hist-collapse").addEventListener("click", () => {
+    // "Collapse all" leaves the year rows, which still carry their own
+    // three totals — the owner asked for exactly this: fully collapsed
+    // should still answer "what did each period come to".
+    open.years.clear(); open.months.clear(); open.days.clear();
+    render();
+  });
+
+  $("hist-expand").addEventListener("click", async () => {
+    (history.years || []).forEach((y) => open.years.add(y.year));
+    open.months.clear(); open.days.clear();
+    render();
+  });
+
+  (async () => {
+    try {
+      history = await D.getCashbookHistory();
+    } catch (err) {
+      $("hist-body").innerHTML = "";
+      showInlineError($("hist-error"), err.message);
+      return;
+    }
+    // Open the most recent year by default — with one year of data a
+    // fully collapsed page is a single row and looks broken.
+    if (history.years && history.years.length) open.years.add(history.years[0].year);
+    render();
+  })();
+})();
+</script>
+</body>
+</html>

@@ -2256,6 +2256,40 @@
     };
   }
 
+  /* ---- history: year -> month -> day rollups (2026-08-20) ----
+     ADMIN-ONLY, matching getCashbookMonth() — these ARE month totals,
+     served a year at a time, so anything looser would be a back door
+     around that endpoint's gate (owner decision O1, re-confirmed
+     2026-08-20). A 403 is surfaced as a plain sentence, same as
+     voidCashbookTransaction, because for a Staff-role user it's a normal
+     permission boundary rather than a fault.
+
+     Reads only METRIC# rollups — never transactions — so a whole
+     multi-year history is at most 60 GetItems. Day-level transactions
+     come from the existing getCashbookDay(), deliberately: one
+     implementation of "what happened on this day", and only that one
+     returns `reconciles`. */
+  const HISTORY_FORBIDDEN =
+    "Month and year totals are visible to Admins only. Your day view and search are unaffected.";
+
+  async function getCashbookHistory() {
+    try {
+      return await apiFetch("/cashbook/history", { method: "GET" });
+    } catch (err) {
+      if (err && err.status === 403) throw new Error(HISTORY_FORBIDDEN);
+      throw err;
+    }
+  }
+
+  async function getCashbookHistoryMonth(month) {
+    try {
+      return await apiFetch("/cashbook/history?month=" + encodeURIComponent(month), { method: "GET" });
+    } catch (err) {
+      if (err && err.status === 403) throw new Error(HISTORY_FORBIDDEN);
+      throw err;
+    }
+  }
+
   /* ---- day export (plan §8 "Should have" — CSV handoff) ----
      Flattens ONE day into a single row shape cashbook.html can turn
      straight into CSV, so the export logic (which fields exist, how a
@@ -2433,6 +2467,7 @@
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
     relinkCashbookTransaction, findCashbookTransaction, searchCashbookTransactions,
+    getCashbookHistory, getCashbookHistoryMonth,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
     cashbookMethodNeedsAccount, cashbookAccountLabel,
     cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,

@@ -68,7 +68,6 @@
       <section class="dsec" id="nav-auto-open">
         <div class="dsec-head">
           <h2>Navigation</h2>
-          <span class="hint">Phones only. Opens once per session.</span>
         </div>
         <div class="card">
           <label class="cb-check" for="nav-auto-open-toggle" style="cursor:pointer">
@@ -76,6 +75,12 @@
             <span>Open the menu automatically on mobile</span>
           </label>
           <div id="nav-auto-open-status" class="hint" style="margin:var(--space-2) 0 0 26px"></div>
+
+          <label class="cb-check" for="login-goto-dash-toggle" style="cursor:pointer;margin-top:var(--space-3)">
+            <input type="checkbox" id="login-goto-dash-toggle" checked />
+            <span>Go straight to the dashboard after logging in</span>
+          </label>
+          <div id="login-goto-dash-status" class="hint" style="margin:var(--space-2) 0 0 26px"></div>
         </div>
       </section>
 
@@ -177,6 +182,35 @@
     } catch (err) {
       navAutoOpenToggle.checked = !value;
       navAutoOpenStatus.textContent = "Couldn't save — " + err.message;
+    }
+  });
+
+  /* "Go straight to the dashboard after logging in" — same /staff/prefs blob,
+     same default-ON convention (missing/undefined reads as true). Applied by
+     index.html's maybeGoToDashboard(), NOT by anything on this page: the
+     redirect happens on the storefront right after the token exchange, which
+     is why that file reads this pref over the API directly rather than
+     through KCMPS_DASH (dashboard-data.js isn't loaded on the storefront). */
+  const loginGotoDashToggle = document.getElementById("login-goto-dash-toggle");
+  const loginGotoDashStatus = document.getElementById("login-goto-dash-status");
+  (async () => {
+    try {
+      const { data } = await KCMPS_DASH.getDashboardPrefs();
+      loginGotoDashToggle.checked = data.goToDashboardOnLogin !== false;
+    } catch {
+      loginGotoDashStatus.textContent = "Couldn't load your saved setting — showing the default.";
+    }
+  })();
+  loginGotoDashToggle.addEventListener("change", async () => {
+    const value = loginGotoDashToggle.checked;
+    loginGotoDashStatus.textContent = "Saving…";
+    try {
+      await KCMPS_DASH.setDashboardPref("goToDashboardOnLogin", value);
+      loginGotoDashStatus.textContent = "Saved.";
+      setTimeout(() => { loginGotoDashStatus.textContent = ""; }, 2000);
+    } catch (err) {
+      loginGotoDashToggle.checked = !value;
+      loginGotoDashStatus.textContent = "Couldn't save — " + err.message;
     }
   });
 })();

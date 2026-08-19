@@ -2418,5 +2418,10 @@
     open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart,
     bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice, requestQty: requestQty,
     submitPaymentProof: submitPaymentProof, itemCount: itemCount,
+    // apiBase exposed so index.html can read the staff /staff/prefs blob
+    // after login without a FOURTH copy of this hostname->endpoint mapping
+    // (store.js, dashboard-data.js and orders-data.js already each carry
+    // one). Same HTTP API backs checkout and the staff routes.
+    apiBase: CHECKOUT_API_BASE,
   };
 })();

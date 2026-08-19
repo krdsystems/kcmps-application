@@ -2449,14 +2449,40 @@ function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
    the instant they signed in. Mid-purchase always wins over convenience.
    Cart state survives either way (it's in localStorage), but losing your
    place in a checkout you're actively completing is not a fair trade for
-   skipping one tap. */
-function maybeGoToDashboard(claims) {
+   skipping one tap.
+
+   Toggleable per staffer in the dashboard's Settings > Navigation ("Go
+   straight to the dashboard after logging in"), stored on the same
+   /staff/prefs blob as the sidebar auto-open. This file can't use
+   KCMPS_DASH.getDashboardPrefs() for it — dashboard-data.js is a dashboard
+   script and isn't loaded on the storefront — so the pref is read over the
+   API directly, reusing store.js's endpoint mapping rather than adding a
+   fourth copy of it. Default ON: anything other than an explicit `false`
+   (missing key, failed fetch, offline) redirects, matching how the sibling
+   toggle behaves and how it's documented in settings.html. */
+async function maybeGoToDashboard(claims) {
   const groups = claims["cognito:groups"] || [];
   if (!COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) return;
   // Mid-purchase? Stay put. Optional-chained + ?? so a store.js that failed
   // to load reads as "no cart" rather than throwing and blocking the redirect.
+  // Both cheap checks run BEFORE the fetch, so a customer logging in never
+  // triggers a pointless authenticated request to a staff-only route.
   if ((window.KCMPS_STORE?.itemCount?.() ?? 0) > 0) return;
-  window.location.assign("dashboard/today.html");
+  let enabled = true;
+  try {
+    const base = window.KCMPS_STORE?.apiBase;
+    const tokens = loadTokens();
+    if (base && tokens?.id_token) {
+      const res = await fetch(base + "/staff/prefs", {
+        headers: { Authorization: "Bearer " + tokens.id_token },
+      });
+      if (res.ok) {
+        const body = await res.json();
+        enabled = ((body && body.data) || {}).goToDashboardOnLogin !== false;
+      }
+    }
+  } catch { /* offline / endpoint down — fall through to the default */ }
+  if (enabled) window.location.assign("dashboard/today.html");
 }
 
 /* ---- Login orchestration ---- */

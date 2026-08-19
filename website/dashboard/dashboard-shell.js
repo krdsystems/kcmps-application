@@ -948,16 +948,20 @@
       input.value = initialQuery || "";
       renderList(input.value);
       if (!isMobile) positionDesktop();
-      // Mobile: don't slam the keyboard open before the (now-visible) list
-      // has had a paint — focusing on the next frame lets the sheet
-      // transition start first, matching the brief's "search field must
-      // not force the keyboard open before the list is readable" note.
-      // Desktop: focus immediately, there's no sheet transition to race.
-      if (isMobile) {
-        requestAnimationFrame(() => requestAnimationFrame(() => input.focus({ preventScroll: true })));
-      } else {
-        input.focus({ preventScroll: true });
-      }
+      /* Mobile: do NOT focus the search input at all. Deferring the focus
+         by two frames (what this did originally) still ends with the
+         keyboard open, just slightly later — and the keyboard then covers
+         the list the staffer opened this picker to READ. Most selections
+         are a tap on a visible row (recent jobs, or one of a dozen
+         categories), not a search; typing is the exception, and tapping
+         the search box first is a fair price for it. Owner reported the
+         same complaint about the amount field on 2026-08-19 — see
+         cashbook.html's openSheet(); both are the same mistake, which was
+         optimising for keystrokes on a device where the keyboard is the
+         thing in the way.
+         Desktop: focus immediately. There's no on-screen keyboard to
+         occlude anything, and type-to-filter is the point of the control. */
+      if (!isMobile) input.focus({ preventScroll: true });
     }
 
     function close() {

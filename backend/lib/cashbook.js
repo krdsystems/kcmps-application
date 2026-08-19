@@ -603,7 +603,11 @@ function validateVoidReason(raw) {
 // an append-only register, and showing a voided cost inside a profit
 // figure would be simply wrong.
 function jobCosting({ costLines = [], txnRows = [], units = null } = {}) {
-  const liveCosts = costLines.filter((c) => c && !c.voided);
+  // `!c.deleted` — a re-linked expense moves its COST# line to the new
+  // job and soft-deletes the old one (relink-transaction.js). Expenses
+  // reach job profit ONLY through these lines, so a missed filter here
+  // would charge the cost to both jobs at once.
+  const liveCosts = costLines.filter((c) => c && !c.voided && !c.deleted);
   // `!t.deleted` is the re-link case: a transaction moved to another job
   // leaves a soft-deleted TXN_POINTER behind on the old one. The read
   // path filters these too — this is the second line of defence, here

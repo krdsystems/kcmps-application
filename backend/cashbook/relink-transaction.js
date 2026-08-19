@@ -37,19 +37,29 @@
    money field here would silently desync every METRIC#DAY/MONTH counter.
 
    ------------------------------------------------------------
-   The pointer row is the actual work
+   Moving the derived rows is the actual work — and there are TWO
    ------------------------------------------------------------
-   A linked transaction is stored twice: the ledger row under
-   TXN#<day>, and a TXN_POINTER copy under ORDER#<orderId> so the job
-   view resolves costs in ONE query with no scan (plan §4). Re-linking
-   therefore has to delete the old pointer and write the new one in the
-   SAME transaction as the ledger update, or a crash between them leaves
-   a job showing a transaction that no longer belongs to it.
+   A linked transaction is stored more than once. Besides the ledger row
+   under TXN#<day> there is a TXN_POINTER copy under ORDER#<orderId>, so
+   the job view resolves in ONE query with no scan (plan §4) — and, for
+   an EXPENSE, a COST# line, which is the only thing that actually
+   charges the job.
+
+   That second one is the trap, and it shipped broken once: revenue is
+   counted from TXN# rows but expense is counted from COST# lines, never
+   from TXN# rows. Moving only the pointer attaches an expense that
+   counts toward neither cost nor revenue, so it silently disappears from
+   the job (owner-reported on production, ORD-290E09747F, 2026-08-20).
+
+   Every move happens in the SAME TransactWriteItems as the ledger
+   update, or a crash between them leaves a job showing money that is no
+   longer its own. Removal is always a SOFT delete — see the note at the
+   Update below for the two independent reasons.
    ============================================================ */
 
 const {
-  orderPk, txnDayPk, txnSk, idempotencyPk, metaSk, eventSk,
-  extractClaims, isStaff,
+  orderPk, txnDayPk, txnSk, costSk, idempotencyPk, metaSk, eventSk,
+  baseItem, extractClaims, isStaff,
 } = require("../lib");
 const { buildCashbookEvent } = require("../lib/cashbook");
 const { TABLE, dynamo, response, isTransactionCancelled } = require("./shared");
@@ -106,16 +116,59 @@ exports.handler = async (event) => {
   // read-only in the UI; their order link is the thing that created them.
   if (row.source === "system") return response(409, { error: "System-posted transactions can't be re-linked." });
 
-  if ((priorOrderId || null) === nextOrderId) {
-    return response(200, { transaction: row, unchanged: true });
-  }
-
   const now = new Date().toISOString();
   const actorName = claims.name || claims.email || null;
+
+  /* ---- expenses need their COST# line moved too, not just the pointer ----
+
+     This is the part that is easy to miss, and it shipped broken once
+     (owner-reported on production 2026-08-20, ORD-290E09747F: a relinked
+     ₱1,690 DTF expense appeared nowhere on the job).
+
+     Revenue and expense reach a job's numbers by DIFFERENT routes:
+       - revenue  -> counted from the TXN# rows on the order partition
+       - expense  -> counted from the COST# lines, NEVER from TXN# rows
+     (see lib/cashbook.js's jobCosting(): costCentavos sums `costLines`,
+     revenueCentavos sums `txnRows` filtered to kind === "revenue").
+
+     An expense logged WITH an order goes through log-cost.js, which
+     writes both items. An expense logged WITHOUT one only ever gets a
+     ledger row — so moving just the pointer attaches something that
+     counts toward neither cost nor revenue, i.e. it silently vanishes.
+
+     The cost line's SK is derived from the row's own occurredAt/txnId,
+     exactly as log-cost.js derives it (costId === the idempotency id ===
+     txnId), so the keys line up whether or not one already exists. */
+  const isExpense = row.direction === "out";
+  const costLineSk = costSk(row.occurredAt, row.txnId);
+
+  // Prefer MOVING an existing cost line over rebuilding one: a line
+  // written by log-cost.js carries qty/unitCostCentavos, which the ledger
+  // row does not, and losing them would silently destroy the per-unit
+  // economics on a job that had them.
+  let priorCost = null;
+  if (isExpense && priorOrderId) {
+    const got = await dynamo.send(new GetCommand({
+      TableName: TABLE, Key: { PK: orderPk(priorOrderId), SK: costLineSk },
+    }));
+    if (got.Item && !got.Item.deleted) priorCost = got.Item;
+  }
   // The pointer's SK is derived from the row's OWN occurredAt/txnId, never
   // from `now` — it must match what log-transaction.js wrote, or the
   // delete below silently no-ops and the stale pointer survives.
   const pointerSk = txnSk(row.occurredAt, row.txnId);
+
+  /* Same order in, same order out — normally a no-op. NOT a no-op when
+     an expense is missing its cost line: rows relinked before the
+     cost-line bug was fixed (2026-08-20) have a TXN_POINTER and nothing
+     else, so they show up nowhere on the job. Re-running the link on
+     such a row repairs it in place, which means the fix needs no
+     backfill script and no unlink/relink dance by staff. */
+  const needsCostRepair = isExpense && nextOrderId && !priorCost;
+  const isMove = (priorOrderId || null) !== nextOrderId;
+  if (!isMove && !needsCostRepair) {
+    return response(200, { transaction: row, unchanged: true });
+  }
 
   const transactItems = [
     {
@@ -155,7 +208,7 @@ exports.handler = async (event) => {
     },
   ];
 
-  if (priorOrderId) {
+  if (priorOrderId && isMove) {
     /* SOFT-delete the stale pointer, never a hard Delete.
 
        Two independent reasons, and both matter:
@@ -188,6 +241,60 @@ exports.handler = async (event) => {
           ...row, orderId: nextOrderId, updatedAt: now,
           PK: orderPk(nextOrderId), SK: pointerSk,
           itemType: "TXN_POINTER", txnPk, txnSk: rowSk,
+        },
+      },
+    });
+  }
+
+  // Retire the old job's cost line the same soft way as the pointer.
+  if (isExpense && priorOrderId && isMove) {
+    transactItems.push({
+      Update: {
+        TableName: TABLE,
+        Key: { PK: orderPk(priorOrderId), SK: costLineSk },
+        UpdateExpression: "SET deleted = :true, updatedAt = :now, unlinkedFrom = :prior",
+        ExpressionAttributeValues: { ":true": true, ":now": now, ":prior": priorOrderId },
+      },
+    });
+  }
+
+  // ...and give the new job one, either the moved original or a fresh
+  // line derived from the ledger row. Field-for-field the shape
+  // log-cost.js writes, so job-detail.html and get-job-costing.js can't
+  // tell the two origins apart.
+  if (isExpense && nextOrderId) {
+    const base = priorCost || {};
+    transactItems.push({
+      Put: {
+        TableName: TABLE,
+        Item: {
+          ...baseItem({ status: "Posted", createdAt: base.createdAt || row.createdAt || now }),
+          PK: orderPk(nextOrderId),
+          SK: costLineSk,
+          itemType: "COST",
+          costId: row.txnId,
+          orderId: nextOrderId,
+          label: base.label || row.note || row.categoryLabel || "Cost",
+          categoryId: base.categoryId || row.categoryId,
+          categoryLabel: base.categoryLabel || row.categoryLabel,
+          subcategoryId: base.subcategoryId || row.subcategoryId || null,
+          subcategoryLabel: base.subcategoryLabel || row.subcategoryLabel || null,
+          qty: base.qty != null ? base.qty : null,
+          unitCostCentavos: base.unitCostCentavos != null ? base.unitCostCentavos : null,
+          amountCentavos: row.amountCentavos,
+          // It came off the ledger, so cash genuinely moved — an
+          // allocation (affectsCash:false) never has a TXN row to relink.
+          affectsCash: true,
+          paymentMethod: row.paymentMethod || base.paymentMethod || null,
+          paymentAccount: row.paymentAccount || base.paymentAccount || null,
+          incurredAt: row.occurredAt,
+          note: row.note || base.note || null,
+          source: "manual",
+          voided: false,
+          actorSub: row.actorSub || null,
+          actorName: row.actorName || null,
+          relinkedBy: claims.sub || null,
+          relinkedAt: now,
         },
       },
     });

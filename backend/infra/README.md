@@ -589,6 +589,16 @@ backend change:
   its own EventBridge rule (`kcmps-staging-guardduty-design-originals-scan-result`),
   added 2026-08-05. See the "Design originals bucket" section above for the full
   picture — same fail-closed / single-EventBridge-bus reasoning applies.
+- **Cash Book + job costing Lambdas (2026-08-18/19, staging only)** — 7 new functions
+  (`kcmps-staging-{log-transaction,void-transaction,get-cashbook-day,get-cashbook-month,
+  get-cashbook-categories,log-job-cost,get-job-costing}`), 7 API routes, all reusing
+  `StaffApiLambdaRole` (it already carries Get/Put/Update/Query **and** TransactWriteItems on
+  the table — note the `PutItem`-alongside-`TransactWriteItems` gotcha documented above is
+  already satisfied, which is why no role change was needed). Deployed as
+  `ArtifactsPrefix=cashbook-phase1-2026-08-18b`. DynamoDB only: no bucket, no SES env var, no
+  new IAM. Source in `backend/cashbook/`, rules in `backend/lib/cashbook.js`. **Not promoted to
+  production** — needs the owner's separate explicit go-ahead, and the dashboard page that
+  consumes these routes is still being built.
 - **What staging deliberately doesn't have**: PITR, Cognito `PostConfirmation` wiring
   (would displace production's — that Lambda's trigger is tested via direct/synthetic
   invoke instead), and SES sending (`FROM_EMAIL`/`SES_SENDER` env vars are omitted, so

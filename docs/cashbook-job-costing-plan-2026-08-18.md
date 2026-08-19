@@ -99,11 +99,21 @@ ERP file's *capture before display, foundation before feature* rule applied lite
 | D7 | Labor **[owner]** | **Piece-rate, paid per job** → `affectsCash: true` today | Owner-confirmed 2026-08-18. See Trap 2 for why the flag still exists |
 | D8 | Placement | Its **own dashboard page**, with a summary card on `today.html` linking into it | `today.html` is "daily control"; a full ledger crowds it |
 
+### Resolved since
+
+- **O1 — Permissions. RESOLVED [owner, 2026-08-18], built and verified on staging.** Any
+  `isStaff()` may **log** transactions and **read the day view**; `requireRole(Admin)` gates
+  **void**, **month totals**, and **job profit/margin**. `ROLES.STAFF` is deliberately *not*
+  treated as a capability — the same rule `backend/lib/mail.js` already enforces: `Staff` means
+  "may open the dashboard", not "may do this". `Finance` is **not** in the Admin-gated set
+  today; it logs and reads a day like any other staff role, and promoting it is a one-line
+  change when a real Finance hire exists. Wired now even though all four founders are Admin,
+  because gating later means auditing every historical action to work out who should have been
+  allowed to do what. Verified against the deployed staging Lambdas: a `[Staff]` claim gets 200
+  on the day view, 403 on void, 403 on month totals, 403 on job costing.
+
 ### Still open
 
-- **O1 — Permissions.** Suggested: any staff *logs*; **Admin/Finance** void, and see month
-  totals / margin. All four founders are `Admin` today, so this only bites on first hire — but
-  it is easier to decide now than to retrofit. Roles already exist in `backend/lib/auth.js`.
 - **O2 — DTF sourcing.** Outsourced (cash) or drawn from owned stock (allocation)? Determines
   the default `affectsCash` for the most common cost line. See §6.
 - **O3 — Page name.** "Cash Book" vs "Transactions" vs "Ledger". Doc uses **Cash Book**.
@@ -164,6 +174,88 @@ staff actually typed — never round-trip through the other:**
   wrong field as authoritative. The prototype's seed data hits exactly this trap (the owner's
   real totebag figures don't divide cleanly) and is the reason the derived-unit rule above
   exists — see `dashboard-data.js`'s `CASHBOOK_DEMO_ORDER` seed comment for the worked case.
+
+---
+
+## 4a. Conventions settled while building Phase 1 (2026-08-18/19)
+
+Recorded here so the next session does not re-derive them. All three were **verified by
+invoking the deployed staging Lambdas and querying `kcmps-staging` directly**, not by reading
+code. Backend lives in `backend/cashbook/` + `backend/lib/cashbook.js` (pure, unit-tested).
+
+### The idempotency pattern (B1) — why `ClientRequestToken` is not enough
+
+`TransactWriteItems` is **not** idempotent under SDK retry, and `ClientRequestToken` only
+dedupes byte-identical requests inside a 10-minute window. Neither covers the real case: a
+double-tap on a phone is a genuinely *new* request, and the rollup `ADD`s would bump twice with
+nothing erroring — leaving a total no later void can reconcile, because nobody knows there were
+ever two.
+
+The write is therefore guarded **at the item level, inside the same transaction as the
+counters**:
+
+1. an `IDEMPOTENCY#<clientId>` record, `Put` with `ConditionExpression: attribute_not_exists(PK)`
+2. the `TXN#` row itself, **keyed on that same client-generated id**, also
+   `attribute_not_exists(PK)`
+3. the `METRIC#DAY` / `METRIC#MONTH` `ADD`s
+
+A replay fails (1); because a cancelled transaction applies **nothing**, the `ADD`s in (3) are
+discarded with it. The counters cannot double-bump even in principle. The Lambda treats
+`TransactionCanceledException` with `ConditionalCheckFailed` **at index 0** as *success* and
+returns the original row with `idempotentReplay: true` — a replay means "your write already
+landed", which is a 200, not a 409.
+
+**The guard record in (1) is not redundant with (2)**, and this is the part that is easy to get
+wrong: the `TXN#` row's sort key contains its ISO timestamp, so when the *server* supplies that
+timestamp a replay computes a **different SK** and sails straight past a row-only condition.
+The guard record has no timestamp in its key. It also stores the row's exact `{PK, SK}`, which
+is what lets a void address a transaction by bare `txnId` with no day parameter — so a void can
+never be aimed at the wrong partition by a caller guessing a date.
+
+Auto-post from `verify-payment.js` (Trap 1, Phase 2) **must** reuse this same path with
+`autoPostIdempotencyId(orderId, paymentId)`. That Lambda sweeps every line item still `Pending
+Payment Verification` *plus* any already `On Hold` in one call, so a single invocation can
+legitimately post more than once — keying on `orderId` alone would collapse those into one.
+
+### Cross-day voids (B3) — the reversal lives in the ORIGINAL day's partition
+
+A void writes its reversing row into the **original** day's partition (`TXN#<original day>`),
+carrying its own `occurredAt` (the real moment of the void) and a `reversalDay` field recording
+the calendar day it was actually made. Nothing about when it happened is lost.
+
+Why: the invariant is **a day's `METRIC#DAY` rollup equals the sum of that day's `TXN#` rows**.
+Filing the reversal under *today* would leave yesterday's rollup corrected while yesterday's
+rows were not, permanently, and no later write could repair it without a cross-partition job.
+
+**Voided rows and reversal rows are both excluded from totals** (`countsTowardTotals()`), and
+the rollup is `ADD`ed the *negation* of the original — so net, gross-in, gross-out and count all
+return to exactly their pre-transaction values. Both rows stay physically present forever;
+append-only is preserved, they simply are not double-counted.
+
+> A first implementation counted every row and let the direction-flipped reversal cancel the
+> original. **Net was correct and every other field was wrong** — a day with one voided ₱35,000
+> sale reported ₱35,000 in *and* ₱35,000 out and 3 transactions, none of which happened. Caught
+> in staging UAT by reconciling the live rollup against the live rows, which is exactly why
+> `GET /cashbook/day/{day}` returns `rollup`, `computed` and `reconciles` on every read rather
+> than trusting the counter. Do not reintroduce it.
+
+Proven live: voiding a `2026-08-18` row on `2026-08-19` left the reversal at
+`PK: TXN#2026-08-18` / `reversalDay: 2026-08-19`; `2026-08-18` reconciled at zero with all 4
+rows still in the partition, and `2026-08-19` was untouched.
+
+### Sign is owned by the category, enforced server-side (B5)
+
+Amounts are stored **positive-with-direction**; the one exception is a **sign-carrying
+category** (`sign: -1`), today only `refund`, modelled as *negative revenue* rather than an
+expense. Whatever sign a client sends is discarded and the category's own sign re-applied, with
+`normalized: true` on the response so a stale client is visible rather than silently patched
+over. A positive ₱500 refund posted against the deployed staging Lambda stored as `-50000`.
+
+### `affectsCash: false` writes NO transaction (B8)
+
+An allocation line writes the `ORDER#`/`COST#` item **and nothing else** — no `TXN#`, no
+order→txn pointer, no rollup bump. Verified live: two cost lines against one order produced two
+`COST#` items and exactly one `TXN#`.
 
 ---
 

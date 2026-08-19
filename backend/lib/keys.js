@@ -130,6 +130,41 @@ function messageGsi2Sk(atIso) {
   return `MSG#${atIso}`;
 }
 
+// ---- Cash Book transactions + job cost lines ----
+// docs/cashbook-job-costing-plan-2026-08-18.md §4. The strings here are
+// that doc's table, verbatim — this is where they become code, not a new
+// convention being invented at a call site.
+//
+//   PK: TXN#<YYYY-MM-DD>    SK: TXN#<ISO>#<txnId>   the ledger row
+//   PK: ORDER#<orderId>     SK: COST#<ISO>#<costId> a job cost line
+//   PK: ORDER#<orderId>     SK: TXN#<ISO>#<txnId>   order->txn pointer
+//
+// The day component of the transaction PK is ALWAYS the Manila calendar
+// day (lib/cashbook.js's manilaDayKey()), derived server-side — a UTC
+// slice would file every evening transaction under tomorrow, and a
+// client-supplied day would file it wherever that device's clock said.
+// One Manila day = one partition, so a day view is a single Query and a
+// day's METRIC#DAY rollup is reconcilable against exactly the rows in
+// its own partition.
+function txnDayPk(yyyyMmDd) {
+  return `TXN#${yyyyMmDd}`;
+}
+
+// txnId is the caller's own idempotency id (see idempotencyPk above and
+// lib/cashbook.js's B1 note): making it part of the row's key is what
+// lets a retried write collide with itself under
+// ConditionExpression: attribute_not_exists(PK) instead of quietly
+// creating a second transaction and double-bumping the rollups.
+function txnSk(isoTimestamp, txnId) {
+  return `TXN#${isoTimestamp}#${txnId}`;
+}
+
+// Co-located under ORDER# alongside EVENT#/MSG#, so ONE query on the
+// order partition returns revenue + costs + profit for that job.
+function costSk(isoTimestamp, costId) {
+  return `COST#${isoTimestamp}#${costId}`;
+}
+
 // ---- Config (settings items — new convention, no prior art in this repo) ----
 // One item per config type: PK: CONFIG#<id>, SK: "META" (reuses metaSk()).
 // e.g. configPk("OPERATING_HOURS") -> "CONFIG#OPERATING_HOURS", read by
@@ -237,6 +272,9 @@ module.exports = {
   orderGsi2Sk,
   messageGsi2Sk,
   configPk,
+  txnDayPk,
+  txnSk,
+  costSk,
   messageSk,
   scanResultPk,
   designPk,

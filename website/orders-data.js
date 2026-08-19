@@ -55,7 +55,15 @@
     try { var raw = sessionStorage.getItem(TOKEN_STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
     catch (e) { return null; }
   }
-  function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+  /* Delegates to auth-refresh.js so all three clearTokens() bodies in this
+     codebase (here, index.html, dashboard-shell.js) release the same keys —
+     tokens AND the dashboard's kcmps_sidebar_auto_opened flag. The inline
+     fallback keeps this file working if auth-refresh.js failed to load. */
+  function clearTokens() {
+    if (window.KCMPS_AUTH) return window.KCMPS_AUTH.clearTokens();
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem("kcmps_sidebar_auto_opened");
+  }
   function decodeClaims(idJwt) {
     try { return JSON.parse(atob(idJwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); }
     catch (e) { return {}; }
@@ -263,15 +271,39 @@
   var CACHE_MS = 30000;
   var inflight = null;
 
-  function fetchOrders(session) {
+  /* One request, no retry logic — returns the parsed body, or null when the
+     response was a 401 the caller must handle. Split out from fetchOrders()
+     so the refresh-and-replay below can re-enter the REQUEST without
+     re-entering the body-parsing/caching tail (an earlier version recursed
+     into the whole chain and fed an already-parsed orders ARRAY into the
+     `body.orders` parser). */
+  function fetchOrdersOnce(session) {
     return fetch(API_BASE + "/orders", { headers: { Authorization: "Bearer " + session.idToken } })
       .then(function (res) {
-        if (res.status === 401) { clearTokens(); window.location.replace("index.html?login=required"); return null; }
+        if (res.status === 401) return null;
         if (!res.ok) throw new Error("Couldn't load your orders right now (" + res.status + ").");
         return res.json();
+      });
+  }
+
+  function fetchOrders(session) {
+    return fetchOrdersOnce(session)
+      .then(function (body) {
+        if (body) return body;
+        /* A 401 may just be an aged-out id token. Trade the refresh token in
+           and replay exactly ONCE before bouncing the customer to login.
+           refreshForRetry() is single-flight and never throws — it resolves
+           false when there is nothing to refresh (anonymous visitor, or a
+           token blob from a login that predates this feature). */
+        if (!window.KCMPS_AUTH) return null;
+        return window.KCMPS_AUTH.refreshForRetry().then(function (ok) {
+          var next = ok && getSession();
+          if (!next) return null;
+          return fetchOrdersOnce(next);
+        });
       })
       .then(function (body) {
-        if (!body) return [];
+        if (!body) { clearTokens(); window.location.replace("index.html?login=required"); return []; }
         var orders = (body.orders || []).map(normalizeOrder);
         orders.sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
         cache = { at: Date.now(), orders: orders };

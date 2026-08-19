@@ -80,7 +80,13 @@
     const token = idToken();
     return token ? { Authorization: "Bearer " + token } : {};
   }
-  async function apiFetch(path, opts) {
+  async function apiFetch(path, opts, _isRetry) {
+    // Proactive: top the token up before the request when it is within the
+    // refresh window, so ordinary calls don't have to fail first. No-op
+    // without a session, and no-op for the local-dev bypass token.
+    if (!_isRetry && global.KCMPS_AUTH) {
+      try { await global.KCMPS_AUTH.ensureFresh(); } catch { /* handled below via 401 */ }
+    }
     const res = await fetch(API_BASE + path, {
       ...opts,
       headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts && opts.headers) },
@@ -93,6 +99,19 @@
     // caller already has error handling for a failed apiFetch), it just
     // also raises the overlay first.
     if (res.status === 401) {
+      // Reactive refresh: a 401 may just mean the id token aged out. Try ONE
+      // refresh and replay the request before declaring the session over.
+      // refreshForRetry() is single-flight, so a burst of concurrent 401s
+      // (several dashboard cards loading at once) shares one token request,
+      // and it resolves false — never throws — when there is nothing to
+      // refresh (anonymous, legacy blob, or the local-dev bypass token).
+      // `_isRetry` bounds this at exactly one attempt: a 401 on the replay
+      // falls straight through to the session-ended path below.
+      if (!_isRetry && global.KCMPS_AUTH) {
+        let refreshed = false;
+        try { refreshed = await global.KCMPS_AUTH.refreshForRetry(); } catch { refreshed = false; }
+        if (refreshed) return apiFetch(path, opts, true);
+      }
       try { sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
       // A 401 ends the session too, so release the nav-drawer auto-open
       // flag and let the next login re-arm it (see dashboard-shell.js's

@@ -1008,6 +1008,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <!-- Storefront data + cart logic (static, front-end only). Loaded before the
      auth script so window.KCMPS_STORE exists when the auth flow refreshes the
      cart badge (see the CART INTEGRATION POINT in the auth script below). -->
+<script src="auth-refresh.js"></script>
 <script src="products.js"></script>
 <script src="store.js"></script>
 
@@ -1918,7 +1919,16 @@ function decodeJwt(token) {
    httpOnly cookie via a Backend-for-Frontend — needs a server we don't have
    as a static site. Revisit once API Gateway/Lambda exist. ---- */
 const TOKEN_STORAGE_KEY = "kcmps_tokens";
-function saveTokens(tokens) { sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens)); }
+/* saveTokens/clearTokens delegate to auth-refresh.js (window.KCMPS_AUTH),
+   which is the single place that knows the token blob's shape. saveTokens
+   there MERGES — critical because Cognito omits refresh_token from every
+   refresh response, so a wholesale overwrite would leave the second refresh
+   with nothing to use. The fallbacks keep this script working if
+   auth-refresh.js ever fails to load; they lose only the refresh feature. */
+function saveTokens(tokens) {
+  if (window.KCMPS_AUTH) return window.KCMPS_AUTH.saveTokens(tokens);
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+}
 function loadTokens() {
   const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   if (!raw) return null;
@@ -1934,6 +1944,7 @@ function loadTokens() {
    literal rather than shared because this file and the dashboard shell
    have no module system between them — keep the two strings in step. */
 function clearTokens() {
+  if (window.KCMPS_AUTH) return window.KCMPS_AUTH.clearTokens();
   sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   sessionStorage.removeItem("kcmps_sidebar_auto_opened");
 }
@@ -2517,6 +2528,13 @@ async function startLogin() {
    old session. (Cognito's /logout blocks iframe embedding — confirmed by
    testing — hence a popup, identified on return by window.name.) ---- */
 function logout() {
+  /* Revoke the refresh token BEFORE clearing it locally, so a copy stolen
+     via XSS dies with the session rather than staying valid for the rest of
+     its 5 days (EnableTokenRevocation is true on the app client). Strictly
+     best-effort and deliberately not awaited — a failed or slow revoke must
+     never block the user from logging out; the fetch uses keepalive so it
+     survives the popup navigation kicked off just below. */
+  try { window.KCMPS_AUTH && window.KCMPS_AUTH.revoke(); } catch { /* ignore */ }
   clearTokens();
   renderLoggedOut();
   const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({

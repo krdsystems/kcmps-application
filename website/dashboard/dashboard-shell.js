@@ -41,7 +41,16 @@
      customer data on an unattended screen for anyone walking past. */
   const SESSION_GUARD = {
     LOCK_MS: 30 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
-    SESSION_MS: 60 * 60 * 1000, // stage 2: session/staleness — token has likely expired
+    /* stage 2: a genuine IDLE TIMEOUT, no longer a proxy for token expiry.
+       Before refresh tokens existed (auth-refresh.js) this sat at 60 min
+       because that is when the id token died and the session ended with it;
+       stage 2 was really announcing "your token is gone". Now the token
+       refreshes itself for up to the refresh token's 5-day life, so 60 min
+       would have been an arbitrary interruption of a perfectly live session.
+       4h is the deliberate idle policy instead: long enough to cover a shift
+       with meetings/lunch in it, short enough that an unattended terminal
+       does not stay usable overnight. */
+    SESSION_MS: 4 * 60 * 60 * 1000,
     ACTIVITY_DEBOUNCE_MS: 1000, // coalesce bursts of pointer/key events into one timestamp write
     CHECK_INTERVAL_MS: 15 * 1000, // how often the idle clock is polled
     EXP_SKEW_MS: 0, // no grace period — an expired token is treated as expired immediately
@@ -182,6 +191,25 @@
     // at all — only real Cognito-issued tokens do — so a missing `exp` is
     // treated as valid rather than expired, which keeps that bypass working.
     if (typeof claims.exp === "number" && claims.exp * 1000 + SESSION_GUARD.EXP_SKEW_MS <= Date.now()) {
+      /* Expired id token is no longer automatically the end of the session:
+         if a refresh token is on hand, try to trade it in rather than
+         bouncing staff to login. This stays SYNCHRONOUS on purpose —
+         requireStaffAuth() has many callers that expect claims back
+         immediately — so it starts the refresh and lets the page continue on
+         the just-expired claims, which are UI-only anyway (every backend
+         route re-verifies, and dashboard-data.js's apiFetch awaits
+         ensureFresh() before it sends anything). If the refresh fails, THAT
+         is when we clear and redirect. canRefresh() is false for the
+         local-dev bypass token (no exp, no refresh token) and for any
+         pre-refresh-feature blob, both of which fall through to the original
+         behaviour below. */
+      if (global.KCMPS_AUTH && global.KCMPS_AUTH.canRefresh()) {
+        global.KCMPS_AUTH.refresh().catch(() => {
+          clearTokens();
+          window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
+        });
+        return claims;
+      }
       clearTokens();
       window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
       return null;
@@ -198,6 +226,10 @@
     // A deliberate identity change — the lock flag shouldn't survive into
     // the next person's fresh login in this tab.
     try { sessionStorage.removeItem("kcmps_guard_lock_v1"); } catch { /* ignore */ }
+    // Best-effort refresh-token revocation before the local clear, so a
+    // stolen copy dies with the session instead of outliving it by days.
+    // Not awaited — a failed/slow revoke must never block logging out.
+    try { global.KCMPS_AUTH && global.KCMPS_AUTH.revoke(); } catch (e) { /* ignore */ }
     clearTokens();
     const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
       client_id: COGNITO_CONFIG.clientId,
@@ -510,28 +542,28 @@
         actions.querySelector(".btn-primary").focus();
       }
     } else {
-      el.querySelector("#session-guard-title").textContent = "Your session may have expired";
+      el.querySelector("#session-guard-title").textContent = "Signed out for inactivity";
       el.querySelector("#session-guard-desc").textContent = pinSet
-        ? "Enter your PIN to see the Refresh/Log out options. The data on this screen may be out of date."
-        : "The data on this screen may be out of date. Refresh to continue, or log out.";
+        ? "This screen has been idle for a while. Enter your PIN to see the Refresh/Log out options — the data here may be out of date."
+        : "This screen has been idle for a while, so the data here may be out of date. Refresh to continue, or log out.";
       if (pinSet) {
         // IMPORTANT: a correct PIN here does NOT dismiss the overlay or
         // resume the page — it only reveals the Refresh/Log out controls
         // (renderStage2Actions), which still run the real
         // requireStaffAuth()/reload expiry check exactly as before this
-        // feature existed. Stage 2 means the token has likely actually
-        // expired; the PIN is not allowed to become a way to wave that
-        // away and "just carry on" with a stale session — see the task
-        // brief's explicit warning about this.
+        // feature existed. Stage 2 now means a long IDLE period (tokens
+        // refresh themselves — see auth-refresh.js), and the PIN is still
+        // not allowed to become a way to wave that away and "just carry
+        // on" with data that may be hours stale.
         renderPinGate(actions, {
           continueLabel: "Continue",
           onSuccess: () => { renderStage2Actions(actions); },
         });
       } else {
         // Deliberately NO "set up a PIN" nudge at stage 2, unlike stage 1.
-        // Stage 2 means the token has probably already expired, so sending
-        // them to settings.html would just bounce them to login and the PIN
-        // could not be saved anyway — a prompt that cannot succeed is worse
+        // Stage 2 follows hours of inactivity, and the underlying session
+        // may or may not still be refreshable — sending them to
+        // settings.html risks a prompt that cannot succeed, which is worse
         // than no prompt. They get the nudge next time stage 1 fires on a
         // live session.
         renderStage2Actions(actions);
@@ -555,9 +587,10 @@
     guardFocusReturnEl = null;
   }
 
-  // Called from dashboard-data.js's apiFetch on a 401 — jumps straight to
-  // stage 2 regardless of idle time, since a 401 is direct evidence the
-  // session is no longer valid (vs. stage 1's idle-time guess).
+  // Called from dashboard-data.js's apiFetch on a 401 that SURVIVED a
+  // refresh-and-retry (see its 401 branch) — jumps straight to stage 2
+  // regardless of idle time, since at that point the 401 is direct evidence
+  // the session is genuinely unrecoverable, not merely an aged-out token.
   function escalateSessionGuard() {
     openSessionGuard(2);
   }

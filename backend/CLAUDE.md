@@ -68,6 +68,7 @@ with what it builds.
 | `order-status.js` | `deriveOrderStatus()` — the line-item-statuses → order-level rollup rule (ERP file §2.4). A third independent copy of the same rule already exists in `dashboard-data.js` and `ops-dashboard/infra/logic-inputs/streams-handler.js` (predating this lib) — new Lambdas should import this one instead of adding a fourth |
 | `customer-view.js` | `redactForCustomer()` (strips staff-internal fields — station, setupMinutes, spoilage, correspondenceLog, event actor identity — from an order before a non-staff caller sees it) and `contactsMatch()` (the free-text-contact comparison every guest-facing endpoint authenticates against, since orderId alone isn't a meaningful secret) — shared by `staff-api/get-orders.js`, `checkout/lookup-order.js`, `checkout/cancel-order.js` |
 | `business-hours.js` | Pure operating-hours clock math — `businessMinutesBetween()`/`isWithinOperatingHours()`/`nextOperatingStart()`, fixed +8h Asia/Manila offset (no DST, so no timezone library). Backs the operating-hours-aware verification SLA in `staff-api/verify-payment.js`; unit-tested in `business-hours.test.js` |
+| `cashbook.js` | Cash Book + job costing rules — category/sign config, the rollup delta math, Manila day/month key derivation (delegates the clock to `business-hours.js`), input validation, and `jobCosting()`. **Read its header before touching totals**: it documents the positive-with-direction amount convention, the one sign-carrying category (`refund` = negative revenue, never an expense), and the void model — a voided row AND its reversal are both excluded from totals while both stay physically present, which is what keeps `sumRows(a day) == that day's METRIC#DAY`. Unit-tested in `cashbook.test.js` |
 | `upload-types.js` | The customer design-file upload allowlist + `resolveUploadType()` — the single server-side source of truth for what checkout accepts. `website/store.js` mirrors it client-side for UX only; if the two ever disagree, this one is correct. Requires the declared Content-Type AND the filename extension to agree, so a spoofed type on an executable is rejected. Unit-tested in `lib.test.js` |
 | `threat-descriptions.js` | `describeThreats()` — turns an AV signature name (`Trojan:Win32/Emotet`) into plain English a non-technical staffer can act on: label, one-line explanation, what-to-do advice, severity, plus the raw name kept for real investigation. Static table, **not** an LLM call — deterministic, free, no latency, unit-tested. Resolved once at scan time by `jobs/handle-scan-result.js` and stored on the record |
 | `index.js` | Re-exports everything above from one require |
@@ -219,6 +220,43 @@ non-Admin editing a `published` asset's metadata now gets a 403 explaining why
 ("re-submit for approval if this needs a content change"); draft/pending_approval/archived
 edits are unaffected and still open to the normal Production/Sales/Admin write gate. Covered
 in `approval.test.js`.
+
+## `cashbook/` — what's in it (staging only, 2026-08-18/19)
+
+Cash Book + job costing, Phase 1 of `docs/cashbook-job-costing-plan-2026-08-18.md`. Seven
+Lambdas on `kcmps-backend-staging`; **nothing promoted to production**. DynamoDB only — no S3,
+no SES, no email of any kind, so staging's SES-dark rule has nothing to keep dark here.
+
+All the rules live in `../lib/cashbook.js` (pure, unit-tested); these handlers are thin I/O
+shells around it plus `shared.js`. **`shared.js` is bundled into every cashbook zip alongside
+`index.js`, so the `require("../lib")` -> `require("./lib")` packaging rewrite must be applied
+to it too** — the same sibling-file miss that crashed all five Asset Library Lambdas on their
+first deploy.
+
+| File | Purpose |
+|---|---|
+| `log-transaction.js` | `POST /cashbook/transactions` — `isStaff()`. The manual writer in the plan's "one ledger, two writers" table. Read its header for the item-level idempotency pattern (`ClientRequestToken` is **not** sufficient) |
+| `void-transaction.js` | `POST /cashbook/transactions/{txnId}/void` — **Admin-only**. One transaction: double-void guard on the original, reversal row, negated day+month rollups, flags the linked `COST#` line and order pointer |
+| `get-day.js` | `GET /cashbook/day/{day}` — `isStaff()`. Returns `rollup`, `computed` and `reconciles` on every read; the counter is never trusted on the one view that can cheaply check it |
+| `get-month.js` | `GET /cashbook/month/{month}` — **Admin-only**. A single `GetItem`, never 31 partition queries |
+| `get-categories.js` | `GET /cashbook/categories` — `isStaff()`. Serves `CONFIG#TXN_CATEGORIES`, falling back to the seed list (same no-migration pattern as `business-hours.js`) |
+| `log-cost.js` | `POST /orders/{orderId}/costs` — `isStaff()`. **`affectsCash: false` writes the `COST#` line and NOTHING else** — no `TXN#`, no rollup bump. The prototype wrote a transaction unconditionally; don't copy that shape |
+| `get-job-costing.js` | `GET /orders/{orderId}/costing` — **Admin-only**. One query on the order partition -> revenue, cost, profit, margin, per-unit |
+
+Three things here are easy to get wrong, each proven live in staging UAT:
+
+- **A void excludes the cancelled pair from totals; it does not count the reversal as activity.**
+  The first build counted every row and let the flipped reversal cancel the original — net came
+  out right and gross-in/gross-out/count were all wrong. See `../lib/cashbook.js`'s header.
+- **The reversal is filed in the ORIGINAL day's partition**, not the day the void was made, so a
+  day's rollup and its rows can never disagree. `reversalDay` records when it really happened.
+- **The partition day is always derived server-side** from the Manila clock, never from a client
+  `day` field; a client `occurredAt` is accepted only inside a sanity window (31 days back, 2
+  hours forward).
+
+Auth split is the owner's O1 decision (2026-08-18): `isStaff()` logs and reads a day,
+`requireRole([ADMIN])` for void / month totals / job margin. **Never add `ROLES.STAFF` as a
+capability** — same rule as the mail panel.
 
 ## Hard rule before you send ANY test email
 

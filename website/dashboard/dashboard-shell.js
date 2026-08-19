@@ -40,8 +40,17 @@
      real staff workflow: too short reads as annoying, too long leaves
      customer data on an unattended screen for anyone walking past. */
   const SESSION_GUARD = {
-    LOCK_MS: 15 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
-    SESSION_MS: 60 * 60 * 1000, // stage 2: session/staleness — token has likely expired
+    LOCK_MS: 30 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
+    /* stage 2: a genuine IDLE TIMEOUT, no longer a proxy for token expiry.
+       Before refresh tokens existed (auth-refresh.js) this sat at 60 min
+       because that is when the id token died and the session ended with it;
+       stage 2 was really announcing "your token is gone". Now the token
+       refreshes itself for up to the refresh token's 5-day life, so 60 min
+       would have been an arbitrary interruption of a perfectly live session.
+       4h is the deliberate idle policy instead: long enough to cover a shift
+       with meetings/lunch in it, short enough that an unattended terminal
+       does not stay usable overnight. */
+    SESSION_MS: 4 * 60 * 60 * 1000,
     ACTIVITY_DEBOUNCE_MS: 1000, // coalesce bursts of pointer/key events into one timestamp write
     CHECK_INTERVAL_MS: 15 * 1000, // how often the idle clock is polled
     EXP_SKEW_MS: 0, // no grace period — an expired token is treated as expired immediately
@@ -59,7 +68,25 @@
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
   }
-  function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+  /* "Have we already auto-opened the nav drawer this session?" — see the
+     auto-open block in mount(). Lives at module scope, not inside mount(),
+     because clearTokens() below has to release it too. */
+  const SIDEBAR_AUTO_OPEN_KEY = "kcmps_sidebar_auto_opened";
+
+  /* Clearing tokens ends the session, so it must ALSO release the
+     auto-open flag. sessionStorage is scoped to the TAB, not to the login:
+     without this line, logging out and back in inside the same tab left
+     the flag set, so the drawer auto-opened exactly once per tab, ever,
+     and never again for any subsequent login. Reported 2026-08-19 as
+     "the auto-open feature is still not working" after a logout/login
+     cycle — the preference was fine and reads ON by default; the gate in
+     front of it had already been consumed. This runs on every session-end
+     path (explicit logout, expired `exp`, undecodable token), which is
+     exactly when re-arming is correct. */
+  function clearTokens() {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(SIDEBAR_AUTO_OPEN_KEY);
+  }
 
   /* ---- local-only test bypass ----
      No backend/Cognito Staff account is needed to test this mock-data
@@ -105,11 +132,12 @@
     { key: "week", href: "week.html", label: "This Week", hint: "Capacity & scheduling", soon: true },
     { key: "month", href: "month.html", label: "This Month", hint: "Trends & margin", soon: true },
     { key: "jobs", href: "jobs.html", label: "Jobs", hint: "All tickets" },
+    { key: "cashbook", href: "cashbook.html", label: "Cash Book", hint: "Money in, money out, job profit" },
     { key: "clients", href: "clients.html", label: "Clients", hint: "CRM", soon: true },
     { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
     { key: "design", href: "asset-library.html", label: "Asset Library", hint: "Files, designs & approvals" },
-    { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs", soon: true },
+    { key: "settings", href: "settings.html", label: "Settings", hint: "Idle-screen PIN & navigation" },
   ];
 
   /* Display order for the sidebar: working pages first, previews below them,
@@ -133,6 +161,10 @@
       week: '<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/>',
       month: '<path d="M224,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H32a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h64a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Z"/>',
       jobs: '<path d="M216,72H180.94l-9.83-19.66A16,16,0,0,0,156.78,44H99.22a16,16,0,0,0-14.33,8.34L75.06,72H40A24,24,0,0,0,16,96V192a24,24,0,0,0,24,24H216a24,24,0,0,0,24-24V96A24,24,0,0,0,216,72Z"/>',
+      // Phosphor "notebook" (regular), copied verbatim from
+      // phosphor-icons/core assets/regular/notebook.svg — never hand-write
+      // path data.
+      cashbook: '<path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/>',
       clients: '<path d="M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92Z"/>',
       // Phosphor "envelope-simple" / "images-square" (regular), copied verbatim
       // from phosphor-icons/core assets/regular/*.svg — never hand-write path data.
@@ -159,6 +191,25 @@
     // at all — only real Cognito-issued tokens do — so a missing `exp` is
     // treated as valid rather than expired, which keeps that bypass working.
     if (typeof claims.exp === "number" && claims.exp * 1000 + SESSION_GUARD.EXP_SKEW_MS <= Date.now()) {
+      /* Expired id token is no longer automatically the end of the session:
+         if a refresh token is on hand, try to trade it in rather than
+         bouncing staff to login. This stays SYNCHRONOUS on purpose —
+         requireStaffAuth() has many callers that expect claims back
+         immediately — so it starts the refresh and lets the page continue on
+         the just-expired claims, which are UI-only anyway (every backend
+         route re-verifies, and dashboard-data.js's apiFetch awaits
+         ensureFresh() before it sends anything). If the refresh fails, THAT
+         is when we clear and redirect. canRefresh() is false for the
+         local-dev bypass token (no exp, no refresh token) and for any
+         pre-refresh-feature blob, both of which fall through to the original
+         behaviour below. */
+      if (global.KCMPS_AUTH && global.KCMPS_AUTH.canRefresh()) {
+        global.KCMPS_AUTH.refresh().catch(() => {
+          clearTokens();
+          window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
+        });
+        return claims;
+      }
       clearTokens();
       window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
       return null;
@@ -175,6 +226,10 @@
     // A deliberate identity change — the lock flag shouldn't survive into
     // the next person's fresh login in this tab.
     try { sessionStorage.removeItem("kcmps_guard_lock_v1"); } catch { /* ignore */ }
+    // Best-effort refresh-token revocation before the local clear, so a
+    // stolen copy dies with the session instead of outliving it by days.
+    // Not awaited — a failed/slow revoke must never block logging out.
+    try { global.KCMPS_AUTH && global.KCMPS_AUTH.revoke(); } catch (e) { /* ignore */ }
     clearTokens();
     const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({
       client_id: COGNITO_CONFIG.clientId,
@@ -487,28 +542,28 @@
         actions.querySelector(".btn-primary").focus();
       }
     } else {
-      el.querySelector("#session-guard-title").textContent = "Your session may have expired";
+      el.querySelector("#session-guard-title").textContent = "Signed out for inactivity";
       el.querySelector("#session-guard-desc").textContent = pinSet
-        ? "Enter your PIN to see the Refresh/Log out options. The data on this screen may be out of date."
-        : "The data on this screen may be out of date. Refresh to continue, or log out.";
+        ? "This screen has been idle for a while. Enter your PIN to see the Refresh/Log out options — the data here may be out of date."
+        : "This screen has been idle for a while, so the data here may be out of date. Refresh to continue, or log out.";
       if (pinSet) {
         // IMPORTANT: a correct PIN here does NOT dismiss the overlay or
         // resume the page — it only reveals the Refresh/Log out controls
         // (renderStage2Actions), which still run the real
         // requireStaffAuth()/reload expiry check exactly as before this
-        // feature existed. Stage 2 means the token has likely actually
-        // expired; the PIN is not allowed to become a way to wave that
-        // away and "just carry on" with a stale session — see the task
-        // brief's explicit warning about this.
+        // feature existed. Stage 2 now means a long IDLE period (tokens
+        // refresh themselves — see auth-refresh.js), and the PIN is still
+        // not allowed to become a way to wave that away and "just carry
+        // on" with data that may be hours stale.
         renderPinGate(actions, {
           continueLabel: "Continue",
           onSuccess: () => { renderStage2Actions(actions); },
         });
       } else {
         // Deliberately NO "set up a PIN" nudge at stage 2, unlike stage 1.
-        // Stage 2 means the token has probably already expired, so sending
-        // them to settings.html would just bounce them to login and the PIN
-        // could not be saved anyway — a prompt that cannot succeed is worse
+        // Stage 2 follows hours of inactivity, and the underlying session
+        // may or may not still be refreshable — sending them to
+        // settings.html risks a prompt that cannot succeed, which is worse
         // than no prompt. They get the nudge next time stage 1 fires on a
         // live session.
         renderStage2Actions(actions);
@@ -532,9 +587,10 @@
     guardFocusReturnEl = null;
   }
 
-  // Called from dashboard-data.js's apiFetch on a 401 — jumps straight to
-  // stage 2 regardless of idle time, since a 401 is direct evidence the
-  // session is no longer valid (vs. stage 1's idle-time guess).
+  // Called from dashboard-data.js's apiFetch on a 401 that SURVIVED a
+  // refresh-and-retry (see its 401 branch) — jumps straight to stage 2
+  // regardless of idle time, since at that point the 401 is direct evidence
+  // the session is genuinely unrecoverable, not merely an aged-out token.
   function escalateSessionGuard() {
     openSessionGuard(2);
   }
@@ -611,6 +667,66 @@
         backdrop.classList.toggle("is-open", sidebar.classList.contains("is-open"));
       });
       backdrop.addEventListener("click", closeSidebar);
+
+      // Auto-open the nav drawer the FIRST time a mobile session enters
+      // the dashboard (2026-08-19; made a per-staffer, Settings-toggled
+      // preference the same day per owner revision — see settings.html's
+      // "Navigation" section) — reuses this exact open path (the same
+      // is-open classes toggle() sets above), never a second one, so
+      // there's only ever one way this drawer opens or closes. Gated on:
+      //   - the "autoOpenNavOnMobile" dashboard pref (default ON — see
+      //     below), fetched off the SAME GET/PATCH /staff/prefs seam
+      //     jobs.html's column order already uses. No key allowlist on
+      //     that endpoint (CLAUDE.md), so this needed no backend change;
+      //   - mobile only (same ≤760px breakpoint dashboard.css's .dash-
+      //     sidebar off-canvas rules use — desktop's sidebar is already
+      //     permanently visible and untouched by any of this);
+      //   - once per SESSION, not once per page load — otherwise every
+      //     tap-through to another dashboard page reopens the drawer over
+      //     the page the staffer just asked for. The session flag is
+      //     claimed BEFORE the prefs fetch (not after it resolves) so two
+      //     pages loaded back-to-back before the first fetch lands can't
+      //     both decide to open it;
+      //   - never while the idle-privacy-lock/session-guard overlay is up
+      //     (guardStage !== 0) — opening a nav drawer behind or over a
+      //     privacy lock defeats the point of the lock. Checked twice:
+      //     once now (restoredStage above has already set guardStage by
+      //     the time this runs) and again after the prefs fetch resolves,
+      //     since the guard can also raise itself asynchronously while
+      //     that fetch is in flight.
+      // NEVER awaited — a slow/failed prefs fetch must not block or delay
+      // rendering the rest of the dashboard shell.
+      // SIDEBAR_AUTO_OPEN_KEY is module-scope (next to TOKEN_STORAGE_KEY) —
+      // clearTokens() releases it on logout so a fresh login re-arms this.
+      const isMobileWidth = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+      if (isMobileWidth && guardStage === 0 && !sessionStorage.getItem(SIDEBAR_AUTO_OPEN_KEY)) {
+        sessionStorage.setItem(SIDEBAR_AUTO_OPEN_KEY, "1");
+        Promise.resolve()
+          .then(() => (global.KCMPS_DASH && global.KCMPS_DASH.getDashboardPrefs
+            ? global.KCMPS_DASH.getDashboardPrefs() : { data: {} }))
+          .then((res) => {
+            const data = (res && res.data) || {};
+            // Missing/undefined reads as ON — default ON per owner request;
+            // a staffer has to explicitly turn it off in Settings.
+            const enabled = data.autoOpenNavOnMobile !== false;
+            if (!enabled || guardStage !== 0) return;
+            sidebar.classList.add("is-open");
+            backdrop.classList.add("is-open");
+            // No focus() call anywhere in this block, deliberately —
+            // opening must not steal focus from wherever the page would
+            // otherwise put it. Dismissal (backdrop tap, hamburger
+            // toggle) is the SAME closeSidebar()/toggle listener wired
+            // above; nothing here bypasses or duplicates it.
+          })
+          .catch(() => {
+            // Fetch failed — fall back to the default (ON) rather than
+            // silently doing nothing; a broken prefs endpoint shouldn't
+            // also silently disable a feature the staffer never turned off.
+            if (guardStage !== 0) return;
+            sidebar.classList.add("is-open");
+            backdrop.classList.add("is-open");
+          });
+      }
     }
 
     return claims;
@@ -672,6 +788,232 @@
     host.innerHTML = '<div class="dash-inline-error">' + escapeHtml(message) + "</div>";
   }
 
+  /* ---- searchable combobox (2026-08-19) ----
+     Shared picker for "type to filter a list of options" — first built for
+     the Cash Book's category→subcategory picker and the order-id-by-name
+     lookup, kept here (not page-local) so any future picker can reuse it
+     rather than growing a second, differently-behaving control.
+
+     Mirrors ../store.js's `.design-subcatalog` full-screen-sheet pattern
+     for mobile (≤760px, the primary target) and adds a desktop dropdown
+     anchored to the trigger. One overlay element is built lazily and
+     reused across opens, same as store.js's popup/subcatalog builders.
+
+     Options API (see cashbook.html for real call sites):
+       trigger        — the element that opens the picker; focus returns
+                        here on close (Escape or selection).
+       title          — sheet/panel header text.
+       searchPlaceholder
+       getItems()     — () => [{ key, primary, secondary, searchText,
+                        disabled }, ...], called fresh on every open (or
+                        query change) so callers can serve a live list.
+       getRecentKeys()— optional () => [key, ...], most-used-first, shown
+                        pinned above the full list when the search box is
+                        empty. Ignored once the staffer types anything.
+       onSelect(item) — called with the matched item.
+       allowFreeText  — if true, Enter with no exact-key match calls
+                        onFreeText(rawText) instead of doing nothing; used
+                        by the order-id field so a pasted raw id still
+                        works even though it won't appear in the fetched
+                        list (an order made after page-load, for example).
+       onFreeText(text)
+       emptyMessage   — shown when the filtered list is empty.
+       banner         — optional string shown above the list (e.g. "Order
+                        search unavailable — type an order ID directly.")
+                        for a degraded-mode notice; never blocks input.
+     Returns { open(query), close(), setBanner(text) }.
+
+     A11y: role="combobox" on the visible search input, aria-expanded,
+     aria-controls -> the listbox, aria-activedescendant tracks the
+     highlighted option; the list itself is role="listbox" of
+     role="option" children. ↑/↓ moves, Enter selects, Escape closes and
+     returns focus to `trigger`. Every label is escapeHtml'd — list items
+     render server-approved category/order text, but an order's client
+     name is staffer-typed data that reaches this DOM same as anywhere
+     else on the page. */
+  let cbxSeq = 0;
+  function createCombobox(opts) {
+    const id = "cbx" + (++cbxSeq);
+    let root = null, input = null, list = null, banner = null;
+    let items = [];
+    let activeIndex = -1;
+    let isMobile = false;
+
+    function mq() {
+      return window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+    }
+
+    function build() {
+      root = document.createElement("div");
+      root.className = "cbx-root";
+      root.innerHTML =
+        `<div class="cbx-scrim"></div>` +
+        `<div class="cbx-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(opts.title || "Choose")}">` +
+          `<div class="cbx-head">` +
+            `<span class="cbx-title">${escapeHtml(opts.title || "")}</span>` +
+            `<button type="button" class="cbx-close" aria-label="Close">&times;</button>` +
+          `</div>` +
+          `<div class="cbx-search-wrap">` +
+            `<input type="text" class="input cbx-input" role="combobox" aria-expanded="true" ` +
+              `aria-controls="${id}-list" aria-autocomplete="list" autocomplete="off" ` +
+              `placeholder="${escapeHtml(opts.searchPlaceholder || "Type to search…")}" />` +
+          `</div>` +
+          `<div class="cbx-banner" id="${id}-banner" hidden></div>` +
+          `<div class="cbx-list" id="${id}-list" role="listbox"></div>` +
+        `</div>`;
+      document.body.appendChild(root);
+
+      input = root.querySelector(".cbx-input");
+      list = root.querySelector(".cbx-list");
+      banner = root.querySelector(".cbx-banner");
+      const closeBtn = root.querySelector(".cbx-close");
+      const scrim = root.querySelector(".cbx-scrim");
+
+      closeBtn.addEventListener("click", close);
+      scrim.addEventListener("click", close);
+      input.addEventListener("input", () => renderList(input.value));
+      input.addEventListener("keydown", onKeydown);
+      list.addEventListener("click", (e) => {
+        const row = e.target.closest(".cbx-opt");
+        if (row && !row.classList.contains("is-disabled")) select(Number(row.dataset.idx));
+      });
+    }
+
+    function positionDesktop() {
+      if (!opts.trigger) return;
+      const rect = opts.trigger.getBoundingClientRect();
+      const panel = root.querySelector(".cbx-panel");
+      // position: fixed — top must be the plain viewport-relative
+      // rect.bottom, never window.scrollY + rect.bottom (that math is only
+      // correct for position:absolute; see CLAUDE.md's .design-popup
+      // gotcha — adding scrollY here would put the panel offscreen on any
+      // page scrolled past the top).
+      panel.style.position = "fixed";
+      panel.style.top = Math.round(rect.bottom + 6) + "px";
+      panel.style.left = Math.round(rect.left) + "px";
+      panel.style.width = Math.max(280, Math.round(rect.width)) + "px";
+    }
+
+    function renderList(query) {
+      const q = (query || "").trim().toLowerCase();
+      const all = (opts.getItems ? opts.getItems() : []) || [];
+      let shown;
+      if (!q) {
+        const recentKeys = (opts.getRecentKeys ? opts.getRecentKeys() : []) || [];
+        const byKey = new Map(all.map((it) => [it.key, it]));
+        const recent = recentKeys.map((k) => byKey.get(k)).filter(Boolean);
+        const rest = all.filter((it) => !recentKeys.includes(it.key));
+        shown = recent.length
+          ? recent.map((it) => Object.assign({}, it, { isRecent: true })).concat(rest)
+          : all;
+      } else {
+        shown = all.filter((it) => (it.searchText || (it.primary + " " + (it.secondary || ""))).toLowerCase().includes(q));
+      }
+      items = shown;
+      activeIndex = shown.length ? 0 : -1;
+
+      if (!shown.length) {
+        list.innerHTML = `<p class="cbx-empty">${escapeHtml(opts.emptyMessage || "No match.")}</p>`;
+      } else {
+        list.innerHTML = shown.map((it, i) => (
+          `<div class="cbx-opt${it.disabled ? " is-disabled" : ""}${it.isRecent ? " is-recent" : ""}" ` +
+            `role="option" id="${id}-opt-${i}" data-idx="${i}" aria-selected="${i === activeIndex}">` +
+            `<span class="cbx-opt-primary">${escapeHtml(it.primary)}</span>` +
+            (it.secondary ? `<span class="cbx-opt-secondary">${escapeHtml(it.secondary)}</span>` : "") +
+            (it.isRecent ? `<span class="cbx-opt-flag">Recent</span>` : "") +
+          `</div>`
+        )).join("");
+      }
+      updateActiveDescendant();
+    }
+
+    function updateActiveDescendant() {
+      list.querySelectorAll(".cbx-opt").forEach((el, i) => el.setAttribute("aria-selected", String(i === activeIndex)));
+      if (activeIndex >= 0) {
+        input.setAttribute("aria-activedescendant", `${id}-opt-${activeIndex}`);
+        const el = list.querySelector(`#${id}-opt-${activeIndex}`);
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    function select(idx) {
+      const it = items[idx];
+      if (!it || it.disabled) return;
+      close();
+      opts.onSelect && opts.onSelect(it);
+    }
+
+    function onKeydown(e) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (items.length) { activeIndex = Math.min(items.length - 1, activeIndex + 1); updateActiveDescendant(); }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (items.length) { activeIndex = Math.max(0, activeIndex - 1); updateActiveDescendant(); }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeIndex >= 0 && items[activeIndex] && !items[activeIndex].disabled) {
+          select(activeIndex);
+        } else if (opts.allowFreeText) {
+          const raw = input.value.trim();
+          if (raw) { close(); opts.onFreeText && opts.onFreeText(raw); }
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    }
+
+    function setBanner(text) {
+      if (!banner) return;
+      if (text) { banner.textContent = text; banner.hidden = false; }
+      else { banner.hidden = true; banner.textContent = ""; }
+    }
+
+    function open(initialQuery) {
+      if (!root) build();
+      isMobile = mq();
+      root.className = "cbx-root is-open" + (isMobile ? " is-mobile" : " is-desktop");
+      document.body.style.overflow = "hidden";
+      if (opts.banner) setBanner(opts.banner);
+      input.value = initialQuery || "";
+      renderList(input.value);
+      if (!isMobile) positionDesktop();
+      /* Mobile: do NOT focus the search input at all. Deferring the focus
+         by two frames (what this did originally) still ends with the
+         keyboard open, just slightly later — and the keyboard then covers
+         the list the staffer opened this picker to READ. Most selections
+         are a tap on a visible row (recent jobs, or one of a dozen
+         categories), not a search; typing is the exception, and tapping
+         the search box first is a fair price for it. Owner reported the
+         same complaint about the amount field on 2026-08-19 — see
+         cashbook.html's openSheet(); both are the same mistake, which was
+         optimising for keystrokes on a device where the keyboard is the
+         thing in the way.
+         Desktop: focus immediately. There's no on-screen keyboard to
+         occlude anything, and type-to-filter is the point of the control. */
+      if (!isMobile) input.focus({ preventScroll: true });
+    }
+
+    function close() {
+      if (!root) return;
+      root.classList.remove("is-open");
+      document.body.style.overflow = "";
+      if (opts.trigger) opts.trigger.focus();
+    }
+
+    document.addEventListener("keydown", (e) => {
+      // Global fallback close — belt-and-braces alongside the input's own
+      // Escape handler, in case focus ever lands somewhere else inside
+      // the panel.
+      if (e.key === "Escape" && root && root.classList.contains("is-open")) close();
+    });
+
+    return { open, close, setBanner };
+  }
+
   function fmtPeso(n) {
     return "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -688,5 +1030,5 @@
     return (Math.round(h * 10) / 10) + "h";
   }
 
-  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge, escalateSessionGuard };
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge, escalateSessionGuard, createCombobox };
 })(window);

@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com https://162ufc121j.execute-api.ap-southeast-1.amazonaws.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'" />
+<title>Cash Book — KCMPS Ops</title>
+<meta name="robots" content="noindex" />
+<link rel="stylesheet" href="../styles.css" />
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body class="dash-gate-hide">
+
+<div class="dash-shell">
+  <aside class="dash-sidebar" id="dash-sidebar"><div id="dash-nav"></div></aside>
+  <div class="dash-main">
+    <header class="dash-topbar">
+      <button type="button" id="dash-nav-toggle" class="dash-nav-toggle" aria-label="Toggle menu">
+        <svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,112H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg>
+      </button>
+      <div id="dash-topbar-content" style="display:flex;justify-content:space-between;align-items:center;flex:1;gap:var(--space-3)"></div>
+    </header>
+
+    <main class="dash-content cb-page">
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Cash book</h2>
+          <!-- Both halves state a rule that isn't visible from the UI:
+               entries are dated when money MOVED (not when the order was
+               placed), and there is no edit — a mistake is voided. Someone
+               hunting for an edit button needs to be told that once. -->
+          <span class="hint">Recorded when money moves. Entries can be voided, never edited</span>
+        </div>
+
+        <!-- ONE DOM, TWO LAYOUTS. Desktop: sticky entry rail on the left,
+             ledger on the right. Mobile (≤760px): the ledger comes first
+             (flex `order`) and this same .cb-entry becomes a bottom sheet.
+             The markup is never reordered — see dashboard.css's CASH BOOK
+             block, and the mobile-hero precedent in ../styles.css. -->
+        <div class="cb-layout">
+
+          <section class="card cb-entry" id="cb-entry" aria-labelledby="cb-entry-title">
+            <div class="cb-sheet-grip" aria-hidden="true"></div>
+            <div class="cb-sheet-head">
+              <h3 id="cb-entry-title">Log transaction</h3>
+              <button type="button" class="cb-sheet-close" id="cb-sheet-close" aria-label="Close">&times;</button>
+            </div>
+
+            <form class="cb-form" id="cb-form" novalidate>
+              <!-- 1. Sign. First, because it re-colours everything after it. -->
+              <div class="seg cb-seg" role="radiogroup" aria-label="Revenue or expense">
+                <label class="seg-opt"><input type="radio" name="cb-dir" value="in" checked /><span>Revenue</span></label>
+                <label class="seg-opt"><input type="radio" name="cb-dir" value="out" /><span>Expense</span></label>
+              </div>
+
+              <!-- 2. Amount. inputmode="decimal" gives the numeric keypad
+                   with no spinners. NOT autofocused on open — see
+                   openSheet() for why the keyboard must not spring up
+                   before the staffer has seen the rest of the form. -->
+              <div class="field">
+                <label for="cb-amount">Amount</label>
+                <div class="cb-amount-wrap">
+                  <span class="cb-amount-peso" aria-hidden="true">&#8369;</span>
+                  <input class="input cb-amount-input" id="cb-amount" type="text" inputmode="decimal"
+                         autocomplete="off" placeholder="0.00" />
+                </div>
+              </div>
+
+              <!-- 3. Category — a searchable combobox (2026-08-19), not the
+                   old chip set and not a plain <select> either (the owner
+                   rejected a select on the bulk-quote picker as too hard to
+                   use). Typing filters BOTH category and subcategory, e.g.
+                   "dtf" surfaces Materials → Transfers. Subcategory is
+                   OPTIONAL — picking the parent row alone and saving
+                   immediately is the fast path, not a two-tap requirement. -->
+              <div class="field">
+                <label id="cb-cat-label" for="cb-category-trigger">Category</label>
+                <button type="button" class="cbx-trigger" id="cb-category-trigger" aria-labelledby="cb-cat-label">
+                  <span class="cbx-trigger-placeholder" id="cb-category-trigger-text">Choose a category&hellip;</span>
+                  <svg class="cbx-trigger-caret" width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                </button>
+              </div>
+
+              <!-- 4. Note — sits directly under Category (owner request,
+                   2026-08-19) because it's almost always describing WHAT
+                   the category was: "Sale" plus "Photocopying, 74 pages"
+                   is the whole story of a walk-in. It used to live in the
+                   collapsed extras below, where the owner couldn't find it
+                   — the same discoverability problem the job link had.
+                   Optional, and skipping it costs nothing: it sits between
+                   Category and Payment method, so the fast path is still
+                   one continuous downward pass with no detours. -->
+              <div class="field">
+                <label for="cb-note">Note (optional)</label>
+                <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
+              </div>
+
+              <!-- 5. Payment method — without it the drawer can't be reconciled (plan §8). -->
+              <div class="field">
+                <label id="cb-method-label">Payment method</label>
+                <div class="cb-chipset" id="cb-methods" role="group" aria-labelledby="cb-method-label"></div>
+              </div>
+
+              <!-- 5. Link to a job — a PERMANENT field, not inside the
+                   collapsed extras below (owner decision, 2026-08-19: the
+                   original "collapse it to keep the fast path four taps"
+                   reasoning didn't survive contact — the four taps are
+                   sign/amount/category/method/Save, and one more field
+                   between Method and Save costs a glance, not a tap, while
+                   hiding it defeats the entire job-costing workflow this
+                   picker exists for). Deliberately NOT conditional on
+                   category — a field that appears/disappears as you tap
+                   through categories is more disorienting on a phone than
+                   the small amount of vertical space it costs to always
+                   show it. Same searchable combobox as Category above,
+                   searching by client/job name instead of typing an id
+                   from memory; a pasted/typed raw order id still works
+                   (this input is real text, never read-only), and the
+                   combobox's own free-text path (allowFreeText) lets a
+                   staffer who already knows the id just type it and hit
+                   Enter without opening the list. Empty search shows
+                   RECENT jobs first — logging several cost lines against
+                   the same job in one sitting is the common case, and that
+                   makes it one tap instead of a fresh search each time.
+                   See the order-picker wiring below for the degrade-to-
+                   plain-text-entry behaviour when order search fails or is
+                   unavailable — it must never block logging money. -->
+              <div class="field">
+                <label for="cb-order">Link to job / Order ID (optional)</label>
+                <div class="cbx-field-row">
+                  <input class="input" id="cb-order" placeholder="e.g. ORD-DEMO-TOTEBAG or a client name" autocomplete="off" />
+                  <button type="button" class="btn btn-secondary cbx-field-btn" id="cb-order-find" aria-label="Find a job by name">
+                    <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.32l50.06,50.06a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Client is DERIVED from the linked job once one is picked
+                   — never a second, independently-typed fact that could
+                   disagree with it. Selecting a job swaps this to a
+                   read-only display of that job's client; clearing the
+                   job (or never linking one) restores the plain manual
+                   input. See syncClientField() below. -->
+              <div class="field" id="cb-client-field">
+                <label for="cb-client">Client (optional)</label>
+                <input class="input" id="cb-client" placeholder="e.g. Bayanihan Co-op" autocomplete="off" />
+              </div>
+
+              <!-- 6. Occasional extras, collapsed — genuinely optional on
+                   most entries, unlike the job link and note above. Note
+                   moved OUT of here 2026-08-19 (see item 4); what's left
+                   is only meaningful for a job-linked expense. -->
+              <details class="cb-extras">
+                <summary>Qty / unit cost</summary>
+
+                <!-- F5: only meaningful for an Expense linked to a job — an
+                     allocation from stock already owned is never a cash
+                     movement, so it makes no sense on Revenue or with no
+                     order to charge it against. Toggled by updateAllocVisibility(). -->
+                <div class="field cb-alloc-field" id="cb-alloc-field" hidden>
+                  <label class="cb-check" for="cb-affects-cash-no">
+                    <input type="checkbox" id="cb-affects-cash-no" />
+                    <span>This was paid from stock already owned (allocation, not cash)</span>
+                  </label>
+                  <span class="hint" style="font-size:11.5px">Counts against this job's profit, but never touches the cash drawer or month totals.</span>
+                </div>
+                <div class="field cb-qty-field" id="cb-qty-field" hidden>
+                  <label for="cb-qty">Qty (optional)</label>
+                  <input class="input" id="cb-qty" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 150" />
+                </div>
+                <div class="field cb-unit-field" id="cb-unit-field" hidden>
+                  <label for="cb-unit-cost">Unit cost (optional)</label>
+                  <div class="cb-amount-wrap">
+                    <span class="cb-amount-peso" aria-hidden="true">&#8369;</span>
+                    <input class="input cb-amount-input" id="cb-unit-cost" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" />
+                  </div>
+                  <span class="hint" style="font-size:11.5px">Enter both Qty and Unit cost to set the exact amount (qty &times; unit) &mdash; overrides Amount above.</span>
+                </div>
+              </details>
+
+              <div id="cb-error"></div>
+              <button type="submit" class="btn btn-primary btn-save" id="cb-save">Save</button>
+            </form>
+          </section>
+
+          <section class="cb-ledger">
+            <div class="cb-monthstrip" id="cb-monthstrip"></div>
+
+            <div class="cb-datestrip">
+              <button type="button" class="cb-daynav" id="cb-prev" aria-label="Previous day">&#8249;</button>
+              <div class="cb-dayname" aria-live="polite">
+                <b id="cb-dayname">&nbsp;</b>
+                <span id="cb-daysub">&nbsp;</span>
+              </div>
+              <button type="button" class="cb-daynav" id="cb-next" aria-label="Next day">&#8250;</button>
+              <input class="input" type="date" id="cb-datepick" aria-label="Jump to a date" />
+            </div>
+
+            <div class="cb-export-row">
+              <button type="button" class="btn btn-secondary cb-export-btn" id="cb-export-btn">
+                <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0ZM133.66,157.66a8,8,0,0,1-11.32,0l-40-40a8,8,0,0,1,11.32-11.32L120,132.69V32a8,8,0,0,1,16,0V132.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                Export day (.csv)
+              </button>
+            </div>
+
+            <div class="card">
+              <div class="cb-txlist" id="cb-txlist"></div>
+            </div>
+          </section>
+
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-head">
+          <h2>Job &amp; client profit</h2>
+        </div>
+        <div id="cb-jobs"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- Mobile-only chrome. Both are display:none above 760px, so desktop
+     never hit-tests them (an invisible full-width element over the page is
+     a click sink, not a decoration — see CLAUDE.md's shirt-colour gotcha). -->
+<div class="cb-scrim" id="cb-scrim"></div>
+<div class="cb-bottombar">
+  <button type="button" class="btn btn-primary" id="cb-open-sheet">&#65291; Log transaction</button>
+</div>
+
+<script src="../auth-refresh.js"></script>
+<script src="dashboard-data.js"></script>
+<script src="dashboard-shell.js"></script>
+<script>
+(() => {
+  const claims = KCMPS_DASH_SHELL.mount("cashbook");
+  if (!claims) return;
+  const { escapeHtml, showInlineError, withBusy, createCombobox } = KCMPS_DASH_SHELL;
+  // Money + Manila-date helpers come from the data layer, never
+  // reimplemented here — a second copy of the +8 shift or the float->int
+  // conversion is exactly how the two drift apart.
+  const D = KCMPS_DASH;
+  const actorName = claims.name || claims.email || "Staff";
+
+  /* ---- page state ---- */
+  let selectedDay = D.manilaToday();
+  let direction = "in";
+  let category = null;
+  let subcategory = null;
+  let method = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  // perUnit figures are exact ratios (₱76.9333/bag is a real number, not a
+  // rounding error) — round ONCE here, at the display edge, never before.
+  const fmtRatio = (c) => D.formatCentavos(Math.round(c));
+
+  /* ---- month strip: in / out / net ---- */
+  async function renderMonth() {
+    const m = await D.getCashbookMonth(D.manilaMonthOf(selectedDay));
+    // Month totals are Admin-only on the server. For a Staff-role user
+    // that is a normal permission boundary, not a failure — show why and
+    // leave the rest of the page (which they CAN use) working, rather
+    // than rendering three zeroes that look like a quiet month.
+    if (m.forbidden) {
+      $("cb-monthstrip").innerHTML =
+        `<div class="cb-ms-caption" style="grid-column:1/-1">` +
+        `Month totals are visible to Admins only. Your day view below is complete.</div>`;
+      return;
+    }
+    const netCls = m.netCentavos > 0 ? "pos" : m.netCentavos < 0 ? "neg" : "";
+    $("cb-monthstrip").innerHTML =
+      `<div><div class="cb-ms-label">In</div><div class="cb-ms-value pos">${D.formatCentavos(m.inCentavos)}</div></div>` +
+      `<div><div class="cb-ms-label">Out</div><div class="cb-ms-value neg">${D.formatCentavos(m.outCentavos)}</div></div>` +
+      `<div><div class="cb-ms-label">Net</div><div class="cb-ms-value ${netCls}">${D.formatCentavos(m.netCentavos)}</div></div>` +
+      `<div class="cb-ms-caption">${escapeHtml(m.monthLabel)} &middot; ${m.txnCount} transaction${m.txnCount === 1 ? "" : "s"}</div>`;
+  }
+
+  /* ---- day list ---- */
+  function txRow(t) {
+    const cls = "cb-tx dir-" + t.direction +
+      (t.voided ? " is-voided" : "") + (t.reversesTxnId ? " is-reversal" : "");
+    const title = t.subcategoryLabel
+      ? D.cashbookCategoryLabel(t.direction, t.category) + " › " + t.subcategoryLabel
+      : D.cashbookCategoryLabel(t.direction, t.category);
+    const meta = [D.manilaTimeLabel(t.occurredAt), escapeHtml(t.actorName || "—")];
+    if (t.orderId) meta.push(escapeHtml(t.orderId));
+    // Voids and reversals stay in the list — that is the point of an
+    // append-only record — but are visually demoted and never counted.
+    const flag = t.voided
+      ? `<div class="cb-tx-note"><strong>Voided</strong> &mdash; ${escapeHtml(t.voidReason || "")}</div>`
+      : t.reversesTxnId ? `<div class="cb-tx-note">Reversing entry</div>` : "";
+    const voidBtn = (!t.voided && !t.reversesTxnId)
+      ? `<button type="button" class="btn btn-ghost cb-void-btn" data-void="${escapeHtml(t.txnId)}">Void</button>` : "";
+    return (
+      `<div class="${cls}">` +
+        `<div class="cb-tx-main">` +
+          `<div class="cb-tx-title">${escapeHtml(title)}</div>` +
+          (t.note ? `<div class="cb-tx-note">${escapeHtml(t.note)}</div>` : "") + flag +
+          `<div class="cb-tx-meta">${meta.map((m) => `<span>${m}</span>`).join("<span>&middot;</span>")}</div>` +
+        `</div>` +
+        `<div class="cb-tx-side">` +
+          `<span class="cb-amount ${t.direction === "in" ? "pos" : "neg"}">${D.formatSignedCentavos(t.amountCentavos, t.direction)}</span>` +
+          `<span class="cb-methodchip m-${escapeHtml(t.method)}">${escapeHtml(D.cashbookMethodLabel(t.method))}</span>` +
+          voidBtn +
+        `</div>` +
+      `</div>`
+    );
+  }
+
+  async function renderDay() {
+    const day = await D.getCashbookDay(selectedDay);
+    $("cb-dayname").textContent = day.dayLabel;
+    $("cb-daysub").textContent = day.isToday
+      ? "Today · " + D.formatCentavos(day.netCentavos) + " net"
+      : D.formatCentavos(day.netCentavos) + " net";
+    $("cb-datepick").value = selectedDay;
+    // A cash book is cash-basis — a future day can never hold an entry, so
+    // it should be genuinely untappable, not just a dead end after
+    // navigating there. `max` is the Manila day key (D.manilaToday(), NOT
+    // new Date().toISOString().slice(0,10) — that's the UTC day, which
+    // between 16:00Z and 24:00Z is already "tomorrow" in Manila and would
+    // leave exactly one future day selectable). Recomputed on every
+    // renderDay() call (which runs on every refresh tick) rather than
+    // once at load, so a session left open across Manila midnight doesn't
+    // end up with a stale max — see the change handler below for the
+    // matching JS-side clamp (the native `max` isn't enough on its own:
+    // it's respected by the picker UI but not by every browser's typed/
+    // pasted input, and not by a programmatic value change).
+    $("cb-datepick").max = D.manilaToday();
+    // "next" stops at today too — a cash book has nothing to say about
+    // tomorrow. Both bounds must agree; see the change handler below.
+    $("cb-next").disabled = selectedDay >= D.manilaToday();
+
+    // The server re-sums this day's rows on every read and reports whether
+    // the stored counter agrees. If it ever doesn't, say so loudly — a
+    // total that silently disagrees with the rows printed under it is the
+    // one failure mode that makes a cash book worse than no cash book.
+    const recon = day.reconciles === false
+      ? `<div class="card" style="border-color:var(--danger,#b3261e);margin-bottom:var(--space-3)">` +
+        `<p style="margin:0"><strong>These totals don't match the rows below.</strong> ` +
+        `The stored day total is ${escapeHtml(D.formatCentavos(day.netCentavos))} net but the ` +
+        `transactions listed sum to ${escapeHtml(D.formatCentavos((day.computed && day.computed.netCentavos) || 0))}. ` +
+        `Don't reconcile the drawer against this figure &mdash; report it.</p></div>`
+      : "";
+
+    $("cb-txlist").innerHTML = recon + (day.transactions.length
+      ? day.transactions.map(txRow).join("")
+      : `<p class="q-empty">Nothing logged on this day yet.</p>`);
+
+    $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const reason = window.prompt("Why is this being voided? A void writes a reversing entry — the original stays on the record.");
+        if (reason === null) return;
+        try {
+          await D.voidCashbookTransaction(btn.dataset.void, reason, actorName);
+        } catch (err) {
+          showInlineError($("cb-error"), err.message);
+          return;
+        }
+        await refreshAll();
+      });
+    });
+  }
+
+  /* ---- job / client profit ---- */
+  function jobCard(j) {
+    const lines = j.costLines.map((c) => (
+      `<tr>` +
+        `<td>${escapeHtml(c.label)}` +
+          (c.affectsCash ? "" : ` <span class="cb-alloc-flag">allocation &mdash; estimated</span>`) +
+        `</td>` +
+        `<td>Cost &middot; ${escapeHtml(c.subcategoryLabel ? c.categoryLabel + " › " + c.subcategoryLabel : c.categoryLabel)}</td>` +
+        `<td class="num">${c.qty ? c.qty : "&mdash;"}</td>` +
+        `<td class="num">${c.unitCostCentavos != null ? fmtRatio(c.unitCostCentavos) : "&mdash;"}</td>` +
+        `<td class="num">${D.formatSignedCentavos(c.amountCentavos, "out")}</td>` +
+      `</tr>`
+    )).join("");
+
+    const marginTone = j.marginPct == null ? "" : j.marginPct >= 25 ? "good" : j.marginPct < 10 ? "bad" : "";
+    const tiles =
+      `<div class="cb-profit-tile ${j.profitCentavos >= 0 ? "good" : "bad"}"><div class="t-label">Profit</div><div class="t-value">${D.formatCentavos(j.profitCentavos)}</div></div>` +
+      `<div class="cb-profit-tile ${marginTone}"><div class="t-label">Margin</div><div class="t-value">${j.marginPct != null ? j.marginPct.toFixed(2) + "%" : "&mdash;"}</div></div>` +
+      (j.perUnit
+        ? `<div class="cb-profit-tile"><div class="t-label">Profit / unit</div><div class="t-value">${fmtRatio(j.perUnit.profitCentavos)}</div></div>` +
+          `<div class="cb-profit-tile"><div class="t-label">Cost / unit</div><div class="t-value">${fmtRatio(j.perUnit.costCentavos)}</div></div>`
+        : "") +
+      `<div class="cb-profit-tile"><div class="t-label">Net cash</div><div class="t-value">${D.formatCentavos(j.netCashCentavos)}</div></div>`;
+
+    // Profit counts every cost line; net cash counts only affectsCash ones.
+    // They agree today (labor is piece-rate) — the note explains why both
+    // are shown anyway rather than leaving a duplicate-looking number.
+    const cashNote = j.netCashCentavos === j.profitCentavos
+      ? `<p class="cb-approx">Net cash equals profit here because every cost line on this job was a real cash movement. They diverge the moment a cost is an internal allocation &mdash; salaried labour, or material drawn from stock bought earlier.</p>`
+      : `<p class="cb-approx">Net cash differs from profit because ${D.formatCentavos(j.totalCostCentavos - j.cashCostCentavos)} of cost was an internal allocation, not money that left the business.</p>`;
+
+    return (
+      `<div class="card cb-jobcard">` +
+        `<div class="cb-jobhead"><h3>${escapeHtml(j.jobLabel)}</h3>` +
+        `<span class="cb-client">${escapeHtml(j.clientName || "Unassigned")} &middot; ${escapeHtml(j.orderId)}</span></div>` +
+        `<div class="cb-scroll-x"><table class="cb-costtable">` +
+          `<thead><tr><th>Line</th><th>Type</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Amount</th></tr></thead>` +
+          `<tbody>` +
+            `<tr class="cb-revenue"><td>Revenue received</td><td>Revenue</td>` +
+              `<td class="num">${j.qty || "&mdash;"}</td>` +
+              `<td class="num">${j.perUnit ? fmtRatio(j.perUnit.revenueCentavos) : "&mdash;"}</td>` +
+              `<td class="num">${D.formatSignedCentavos(j.revenueCentavos, "in")}</td></tr>` +
+            lines +
+          `</tbody>` +
+          `<tfoot><tr><td colspan="4">Total cost</td><td class="num">${D.formatSignedCentavos(j.totalCostCentavos, "out")}</td></tr></tfoot>` +
+        `</table></div>` +
+        `<div class="cb-profit-row">${tiles}</div>` +
+        cashNote +
+      `</div>`
+    );
+  }
+
+  async function renderJobs() {
+    const clients = await D.getJobCostingList();
+    // Per-client aggregation needs GSI2, which isn't provisioned (plan §7,
+    // Phase 4). Say that plainly instead of showing an empty list that
+    // reads as "no job has any money against it" — which would be false.
+    if (clients.unavailable) {
+      $("cb-jobs").innerHTML =
+        `<div class="card"><p class="q-empty">${escapeHtml(clients.unavailableReason || "Per-client job totals aren't available yet.")}</p></div>`;
+      return;
+    }
+    if (!clients.length) {
+      $("cb-jobs").innerHTML = `<div class="card"><p class="q-empty">No job has money against it yet. Link a transaction to an order ID and it appears here.</p></div>`;
+      return;
+    }
+    $("cb-jobs").innerHTML = clients.map((c) => (
+      `<section style="margin-bottom:var(--space-4)">` +
+        `<div class="dsec-head" style="margin-bottom:var(--space-2)">` +
+          `<h3 style="margin:0;font-size:15px">${escapeHtml(c.clientName)}</h3>` +
+          `<span class="hint">${c.jobs.length} job${c.jobs.length === 1 ? "" : "s"} &middot; ` +
+          `${D.formatCentavos(c.revenueCentavos)} revenue &middot; ${D.formatCentavos(c.profitCentavos)} profit` +
+          `${c.marginPct != null ? " &middot; " + c.marginPct.toFixed(2) + "% margin" : ""}</span>` +
+        `</div>` +
+        c.jobs.map(jobCard).join("") +
+      `</section>`
+    )).join("");
+  }
+
+  async function refreshAll() {
+    // Loading state — the mock resolved instantly off localStorage, a real
+    // round trip does not, and a blank list reads as "nothing logged today"
+    // rather than "still fetching".
+    if (!$("cb-txlist").dataset.loaded) {
+      $("cb-txlist").innerHTML = `<p class="q-empty">Loading&hellip;</p>`;
+    }
+    try {
+      // allSettled, not all: a 403 on one panel must not blank the others.
+      const results = await Promise.allSettled([renderMonth(), renderDay(), renderJobs()]);
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) throw failed.reason;
+      $("cb-txlist").dataset.loaded = "1";
+    } catch (err) {
+      // 401 already raised the shell's session-guard overlay inside
+      // apiFetch; everything else (offline, 5xx, DNS) lands here. Never
+      // leave a stale or empty ledger looking like real data.
+      showInlineError($("cb-error"), err.message || "Couldn't reach the server.");
+      if (!$("cb-txlist").dataset.loaded) {
+        $("cb-txlist").innerHTML =
+          `<div class="card"><p class="q-empty"><strong>Couldn't load the cash book.</strong><br>` +
+          `${escapeHtml(err.message || "Check your connection and refresh.")}</p></div>`;
+      }
+    }
+  }
+
+  /* ---- payment method chips (unchanged — only Category got the
+       combobox treatment; the method list is short and flat, a chip set
+       is still the right control for it) ---- */
+  function renderChips(host, items, selectedId, onPick) {
+    host.innerHTML = items.map((it) => (
+      `<button type="button" class="cb-chip" data-id="${escapeHtml(it.id)}" aria-pressed="${it.id === selectedId}">${escapeHtml(it.label)}</button>`
+    )).join("");
+    host.querySelectorAll(".cb-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        onPick(btn.dataset.id);
+        host.querySelectorAll(".cb-chip").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+      });
+    });
+  }
+  function renderMethods() {
+    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
+  }
+
+  /* ---- category → subcategory combobox (2026-08-19) ----
+     Flattens the current direction's category list into ONE searchable
+     list: one row per parent category (subcategory left blank — the "save
+     with just the parent" fast path), plus one row per subcategory. Typing
+     "dtf" matches Materials → Transfers because the search text on a
+     subcategory row includes its parent's label/id too. */
+  function categoryComboItems() {
+    const cats = D.getCashbookCategories()[direction];
+    const items = [];
+    cats.forEach((c) => {
+      items.push({
+        key: c.id, categoryId: c.id, subcategoryId: null,
+        primary: c.label, secondary: null,
+        searchText: c.id + " " + c.label,
+      });
+      (c.subcategories || []).forEach((s) => {
+        items.push({
+          key: c.id + "::" + s.id, categoryId: c.id, subcategoryId: s.id,
+          primary: s.label, secondary: "in " + c.label,
+          searchText: c.id + " " + c.label + " " + s.id + " " + s.label,
+        });
+      });
+    });
+    return items;
+  }
+  function categoryTriggerLabel() {
+    if (!category) return null;
+    const cats = D.getCashbookCategories()[direction];
+    const cat = cats.find((c) => c.id === category);
+    const catLabel = cat ? cat.label : category;
+    if (!subcategory) return catLabel;
+    const sub = cat && (cat.subcategories || []).find((s) => s.id === subcategory);
+    return catLabel + " › " + (sub ? sub.label : subcategory);
+  }
+  function renderCategoryTrigger() {
+    const label = categoryTriggerLabel();
+    const el = $("cb-category-trigger-text");
+    if (label) { el.textContent = label; el.classList.remove("cbx-trigger-placeholder"); }
+    else { el.textContent = "Choose a category…"; el.classList.add("cbx-trigger-placeholder"); }
+  }
+  const categoryCombobox = createCombobox({
+    trigger: $("cb-category-trigger"),
+    title: "Category",
+    searchPlaceholder: "Search categories, e.g. \"dtf\"",
+    emptyMessage: "No matching category.",
+    getItems: categoryComboItems,
+    // Most-used-first (owner decision): pull the staffer's recent picks,
+    // matched against THIS direction's items — a pick recorded as an
+    // expense simply fails to match while Revenue is selected, which is
+    // the correct behaviour (no cross-direction recents).
+    getRecentKeys: () => {
+      const items = categoryComboItems();
+      const keys = items.map((it) => it.key);
+      return D.getCashbookRecentPicks()
+        .map((p) => (p.subcategoryId ? p.categoryId + "::" + p.subcategoryId : p.categoryId))
+        .filter((k) => keys.includes(k));
+    },
+    onSelect: (it) => {
+      category = it.categoryId;
+      subcategory = it.subcategoryId;
+      renderCategoryTrigger();
+    },
+  });
+  function renderCategories() {
+    const cats = D.getCashbookCategories()[direction];
+    // Switching sign invalidates the category — a revenue category on an
+    // expense would be silently wrong rather than obviously wrong.
+    if (!cats.some((c) => c.id === category)) { category = null; subcategory = null; }
+    renderCategoryTrigger();
+  }
+  $("cb-category-trigger").addEventListener("click", () => categoryCombobox.open());
+
+  /* ---- order/job picker — search by name, store the id (2026-08-19) ----
+     Reuses the SAME combobox as Category. The stored value is always the
+     order id (the backend contract, unchanged); the name is only how
+     staff FIND it. `cb-order` stays a plain text input the whole time —
+     pasting or typing a raw id (e.g. "ORD-A76A5307CE") always works,
+     whether or not the picker ever loaded, because nothing here makes
+     the field read-only or intercepts typing into it.
+
+     Data source is the EXISTING getAllOrders() seam (GET /orders,
+     already used by jobs.html) — fetched ONCE and cached, filtered
+     client-side, no new backend search endpoint. Prior art: jobs.html's
+     .cfp-search filter popover does the same "search input over a
+     locally-filtered list" thing, and per CLAUDE.md its client-name
+     dropdown is deliberately "a local autocomplete convenience only" —
+     same posture here.
+
+     KNOWN LIMITATION, not solved here: filtering client-side over every
+     fetched order is fine at this shop's volume and matches that same
+     precedent, but it is not a real search index. A proper per-client
+     lookup needs GSI2, which isn't provisioned (plan Phase 4) — the same
+     blocker documented in getJobCostingList() above.
+
+     MOST IMPORTANT BEHAVIOUR: a broken/slow/forbidden orders fetch must
+     never block logging money. If getAllOrders() fails, returns empty, or
+     the caller lacks permission, the button quietly disables and the
+     hint explains why — the text input keeps working as plain free-text
+     order-id entry the entire time. */
+  let ordersCache = null;      // null = not yet loaded, [] = loaded-but-empty
+  let ordersLoadFailed = false;
+  async function loadOrdersForPicker() {
+    if (ordersCache || ordersLoadFailed) return;
+    try {
+      const orders = await D.getAllOrders();
+      ordersCache = Array.isArray(orders) ? orders : [];
+    } catch (err) {
+      ordersLoadFailed = true;
+      ordersCache = null;
+    }
+  }
+  function orderComboItems() {
+    if (!ordersCache || !ordersCache.length) return [];
+    return ordersCache.map((o) => {
+      const name = (o.client && o.client.name) || "Unassigned";
+      const jobLabel = (o.lineItems && o.lineItems[0] && o.lineItems[0].description) || "";
+      const dateBit = o.createdAt ? D.manilaDayOf(o.createdAt) : "";
+      const statusBit = o.status || (o.lineItems && o.lineItems[0] && o.lineItems[0].status) || "";
+      return {
+        key: o.orderId, orderId: o.orderId, clientName: name,
+        primary: name + (jobLabel ? " — " + jobLabel : ""),
+        secondary: [o.orderId, dateBit, statusBit].filter(Boolean).join(" · "),
+        searchText: [o.orderId, name, jobLabel, statusBit].filter(Boolean).join(" "),
+      };
+    });
+  }
+  // Client is DERIVED once a job is linked — never a second, independently
+  // typed fact that could disagree with it (owner decision, 2026-08-19).
+  // linkedJobClient is the source of truth while a job is linked; the
+  // manual #cb-client input is only ever editable when it's null.
+  let linkedJobClient = null;
+  function syncClientField() {
+    const field = $("cb-client-field");
+    const input = $("cb-client");
+    if (linkedJobClient !== null) {
+      input.value = linkedJobClient;
+      input.readOnly = true;
+      field.querySelector("label").textContent = "Client (from linked job)";
+    } else {
+      input.readOnly = false;
+      field.querySelector("label").textContent = "Client (optional)";
+      // Don't clear whatever the staffer may have already typed — only
+      // the "was just derived from a job" value gets replaced, on unlink.
+    }
+  }
+  const orderCombobox = createCombobox({
+    trigger: $("cb-order-find"),
+    title: "Link to job",
+    searchPlaceholder: "Search by client or job name…",
+    emptyMessage: "No matching order. You can still type or paste an order ID directly.",
+    allowFreeText: true,
+    getItems: orderComboItems,
+    // Recent-jobs-first when the search box is empty — the common case is
+    // logging several cost lines against the same job in one sitting.
+    getRecentKeys: () => D.getCashbookRecentOrderIds(),
+    onSelect: (it) => {
+      $("cb-order").value = it.orderId;
+      $("cb-order").dispatchEvent(new Event("input", { bubbles: true }));
+      linkedJobClient = it.clientName || "Unassigned";
+      syncClientField();
+      D.recordCashbookRecentOrder(it.orderId);
+    },
+    onFreeText: (text) => {
+      $("cb-order").value = text;
+      $("cb-order").dispatchEvent(new Event("input", { bubbles: true }));
+      // A hand-typed/pasted id isn't matched against a fetched order, so
+      // there is no client to derive — leave the manual field editable.
+      linkedJobClient = null;
+      syncClientField();
+    },
+  });
+  // Clearing the order field by hand (backspace to empty) un-derives the
+  // client too, so a stale "from linked job" value can't linger once the
+  // link itself is gone.
+  $("cb-order").addEventListener("input", () => {
+    if (!$("cb-order").value.trim() && linkedJobClient !== null) {
+      linkedJobClient = null;
+      syncClientField();
+    }
+  });
+  $("cb-order-find").addEventListener("click", async () => {
+    await withBusy($("cb-order-find"), loadOrdersForPicker);
+    if (ordersLoadFailed || !ordersCache || !ordersCache.length) {
+      orderCombobox.setBanner(
+        ordersLoadFailed
+          ? "Couldn't load the order list — type or paste the order ID directly below."
+          : "No orders to search yet — type or paste the order ID directly below."
+      );
+    } else {
+      orderCombobox.setBanner(null);
+    }
+    orderCombobox.open($("cb-order").value.trim() && !$("cb-order").value.startsWith("ORD-") ? $("cb-order").value : "");
+  });
+  // Prefetch quietly (no busy spinner, no error surfaced) so the FIRST
+  // click on "Find a job" doesn't have to wait on the round trip. If it
+  // fails here, loadOrdersForPicker() just tries again — harmlessly a
+  // no-op once ordersLoadFailed is set — and the click handler above is
+  // what actually shows the degraded-mode banner.
+  loadOrdersForPicker();
+
+  /* ---- bottom sheet (mobile) ---- */
+  const entry = $("cb-entry");
+  const scrim = $("cb-scrim");
+  function openSheet() {
+    entry.classList.add("is-open");
+    scrim.classList.add("is-open");
+    /* Deliberately does NOT focus the amount field.
+       It used to, on "amount-first is the fastest entry" reasoning — but
+       that counted taps and ignored what focusing actually does on a
+       phone: the keyboard springs up immediately and covers most of the
+       sheet, hiding the category and payment-method pickers the staffer
+       still has to read. Owner reported it from a real device
+       2026-08-19. Now they tap whichever field they want first and the
+       keyboard appears only when it's wanted.
+       The focus() calls in the submit handler stay — focusing a field the
+       user is being told to correct is a different case, and there the
+       keyboard is exactly what they need. */
+  }
+  function closeSheet() {
+    entry.classList.remove("is-open");
+    scrim.classList.remove("is-open");
+  }
+  $("cb-open-sheet").addEventListener("click", openSheet);
+  $("cb-sheet-close").addEventListener("click", closeSheet);
+  scrim.addEventListener("click", closeSheet);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+
+  /* ---- date navigation ---- */
+  $("cb-prev").addEventListener("click", async () => {
+    selectedDay = D.manilaShiftDay(selectedDay, -1);
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+  $("cb-next").addEventListener("click", async () => {
+    if (selectedDay >= D.manilaToday()) return;
+    selectedDay = D.manilaShiftDay(selectedDay, 1);
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+  $("cb-datepick").addEventListener("change", async (e) => {
+    if (!e.target.value) return;
+    // `max` is UI-only — it isn't enforced on a typed/pasted value or a
+    // programmatic set, so clamp here too. Same Manila-day comparison as
+    // the ‹/› buttons use (string comparison on YYYY-MM-DD, which sorts
+    // correctly), so the two bounds can't disagree.
+    const today = D.manilaToday();
+    selectedDay = e.target.value > today ? today : e.target.value;
+    await Promise.all([renderDay(), renderMonth()]);
+  });
+
+  /* ---- CSV export (plan §8 "Should have") ----
+     Client-side Blob + object-URL download, no backend involved. Exports
+     the CURRENTLY SELECTED day's complete record — every cash movement
+     (revenue + expense), voided originals AND their reversing entries,
+     and any job cost line that never moved cash (affectsCash: false) —
+     via D.getCashbookDayExport(), which does the data assembly so this
+     page stays a pure renderer (same seam discipline as everywhere else
+     on this page). */
+
+  // CSV/formula-injection guard (OWASP): a cell whose text starts with
+  // =, +, -, or @ is executed as a formula by Excel/Sheets the moment the
+  // file is opened. Every field below is free text a staffer typed
+  // (note, category label, client name...) so this runs on ALL of them,
+  // not just the ones that look risky today. Prefixing with a bare
+  // single quote is the standard neutralizer — Excel/Sheets render the
+  // cell as literal text starting with that character, quote included is
+  // safe since it's now inside the (possibly re-quoted) field below.
+  const CSV_FORMULA_LEAD_RE = /^[=+\-@]/;
+  // RFC 4180 field quoting: anything containing a comma, a double quote,
+  // or a newline must be wrapped in quotes, with internal quotes doubled.
+  const CSV_NEEDS_QUOTING_RE = /[",\r\n]/;
+  // F6: `opts.numeric` skips the formula-lead guard. Only ever pass it for
+  // a value that already matches D.formatCentavosDecimal()'s output shape
+  // (/^-?\d+\.\d{2}$/, e.g. "-500.00") — that pattern cannot start with
+  // =/+/@ (only ever "-" or a digit) and so is not an injection vector,
+  // but WOULD be corrupted into a text cell ("'-500.00") by the guard,
+  // since F1 means a signed amount can legitimately start with "-".
+  // NEVER pass numeric:true for free text (notes/labels/categories/client
+  // names) — that guard is the injection neutralization and must stay
+  // exactly as it was.
+  function csvField(value, opts) {
+    let s = value === null || value === undefined ? "" : String(value);
+    const numeric = !!(opts && opts.numeric);
+    if (!numeric && CSV_FORMULA_LEAD_RE.test(s)) s = "'" + s;
+    if (CSV_NEEDS_QUOTING_RE.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  // Cells may be a plain value or a [value, opts] pair (for csvField's
+  // numeric mode) — every free-text cell stays a plain value, unaffected.
+  function csvRow(cells) {
+    return cells.map((c) => (Array.isArray(c) ? csvField(c[0], c[1]) : csvField(c))).join(",");
+  }
+
+  const CSV_HEADERS = [
+    "Date", "Time", "Type", "Category", "Subcategory", "Description", "Qty",
+    "Unit amount (PHP)", "Amount (PHP)", "Signed amount (PHP)", "Payment method",
+    "Affects cash", "Counts toward totals",
+    "Order ID", "Client", "Staffer", "Note", "Voided", "Void reason",
+  ];
+
+  const NUM = (v) => [v, { numeric: true }];
+
+  function exportRowToCsv(r) {
+    return csvRow([
+      D.manilaDayOf(r.occurredAt),
+      D.manilaTimeLabel(r.occurredAt),
+      r.isReversal ? (r.direction === "in" ? "revenue (reversal)" : "expense (reversal)")
+        : r.direction === "in" ? "revenue" : "expense",
+      r.category,
+      r.subcategory || "",
+      r.label,
+      r.qty == null ? "" : NUM(r.qty),
+      r.unitAmountCentavos == null ? "" : NUM(D.formatCentavosDecimal(r.unitAmountCentavos)),
+      NUM(D.formatCentavosDecimal(r.amountCentavos)),
+      NUM(D.formatCentavosDecimal(r.signedAmountCentavos)),
+      r.method || "",
+      r.affectsCash ? "yes" : "no",
+      r.countsTowardTotals ? "yes" : "no",
+      r.orderId || "",
+      r.clientName || "",
+      r.actorName || "",
+      r.note || "",
+      r.voided ? "yes" : "no",
+      r.voidReason || "",
+    ]);
+  }
+
+  async function exportSelectedDayCsv() {
+    const day = await D.getCashbookDayExport(selectedDay);
+    // UTF-8 BOM (\uFEFF) so Excel reads the file as UTF-8 rather than
+    // guessing a legacy codepage — without it, non-ASCII staff notes
+    // (and any accented characters) render as mojibake on open. The
+    // peso sign itself is deliberately kept OUT of the cell values
+    // (see the "Amount (PHP)" header) so this is really only load-
+    // bearing for accented characters in free-text notes, but the BOM
+    // costs nothing and removes the ambiguity either way.
+    const lines = [csvRow(CSV_HEADERS)].concat(day.rows.map(exportRowToCsv));
+    const csv = "\uFEFF" + lines.join("\r\n") + "\r\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kcmps-cashbook-" + day.dayKey + ".csv";
+    // Not attached to the DOM on some mobile browsers without this —
+    // Safari/Chrome on iOS/Android only honour a synthetic click on an
+    // <a download> that's actually in the document.
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on a delay, not immediately — some mobile browsers hand the
+    // blob off to a share sheet / "Files" save flow asynchronously, and
+    // revoking the URL before that read completes empties the download.
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  $("cb-export-btn").addEventListener("click", async () => {
+    await withBusy($("cb-export-btn"), exportSelectedDayCsv);
+  });
+
+  // F7: requires at least one digit somewhere in the string (the
+  // lookahead), so "." alone is rejected instead of surfacing a raw
+  // pesosToCentavos() TypeError. Still permissive about where the digit(s)
+  // land — "1500", "1500.", "1500.07", ".5" all still pass, matching prior
+  // behavior for every real amount a staffer might type.
+  const AMOUNT_RE = /^(?=.*\d)\d*\.?\d{0,2}$/;
+
+  /* ---- form ---- */
+  document.querySelectorAll('input[name="cb-dir"]').forEach((r) => {
+    r.addEventListener("change", () => { direction = r.value; renderCategories(); updateAllocVisibility(); });
+  });
+
+  // F5: the allocation checkbox + qty/unit fields only make sense for an
+  // Expense linked to a job (see the field's own comment in the markup).
+  // Hiding them otherwise, and clearing any stale values when they're
+  // hidden, keeps a leftover tick/qty from a previous entry silently
+  // applying to an unrelated one.
+  function updateAllocVisibility() {
+    const show = direction === "out" && $("cb-order").value.trim().length > 0;
+    $("cb-alloc-field").hidden = !show;
+    $("cb-qty-field").hidden = !show;
+    $("cb-unit-field").hidden = !show;
+    if (!show) {
+      $("cb-affects-cash-no").checked = false;
+      $("cb-qty").value = "";
+      $("cb-unit-cost").value = "";
+    }
+  }
+  $("cb-order").addEventListener("input", updateAllocVisibility);
+
+  $("cb-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("cb-error").innerHTML = "";
+
+    const qtyRaw = $("cb-qty").value.trim();
+    const unitRaw = $("cb-unit-cost").value.trim();
+    const hasQtyUnit = qtyRaw !== "" || unitRaw !== "";
+    let raw = "";
+
+    if (hasQtyUnit) {
+      if (!/^\d+$/.test(qtyRaw) || Number(qtyRaw) <= 0) {
+        showInlineError($("cb-error"), "Qty must be a whole number greater than zero.");
+        $("cb-qty").focus();
+        return;
+      }
+      if (!AMOUNT_RE.test(unitRaw) || Number(unitRaw) <= 0) {
+        showInlineError($("cb-error"), "Unit cost must be greater than zero, e.g. 130.00");
+        $("cb-unit-cost").focus();
+        return;
+      }
+    } else {
+      raw = $("cb-amount").value.trim().replace(/,/g, "");
+      if (!raw || !AMOUNT_RE.test(raw) || Number(raw) <= 0) {
+        showInlineError($("cb-error"), "Enter an amount greater than zero, e.g. 1500.07");
+        $("cb-amount").focus();
+        return;
+      }
+    }
+    if (!category) { showInlineError($("cb-error"), "Pick a category."); return; }
+    if (!method) { showInlineError($("cb-error"), "Pick a payment method."); return; }
+
+    // withBusy disables the button for the duration — the double-tap guard
+    // the plan calls for (the real backend also carries an idempotency key).
+    await withBusy($("cb-save"), async () => {
+      try {
+        const txn = await D.logCashbookTransaction({
+          direction, amountPesos: raw, category, subcategory, method,
+          orderId: $("cb-order").value, clientName: $("cb-client").value,
+          note: $("cb-note").value, actorName,
+          affectsCash: !$("cb-affects-cash-no").checked,
+          qty: hasQtyUnit ? qtyRaw : null,
+          unitCostPesos: hasQtyUnit ? unitRaw : null,
+        });
+        // Jump to the day the entry actually landed on (Manila), so a
+        // transaction logged while looking at an older day isn't silently
+        // filed somewhere the staffer can't see it.
+        selectedDay = D.manilaDayOf(txn.occurredAt);
+      } catch (err) {
+        showInlineError($("cb-error"), err.message);
+        return;
+      }
+      $("cb-amount").value = "";
+      $("cb-note").value = "";
+      $("cb-order").value = "";
+      $("cb-client").value = "";
+      linkedJobClient = null;
+      syncClientField();
+      $("cb-qty").value = "";
+      $("cb-unit-cost").value = "";
+      $("cb-affects-cash-no").checked = false;
+      // The category/subcategory pick is NOT cleared — a staffer logging
+      // several transactions in a row (e.g. today's batch of walk-ins) is
+      // very likely to want the same category again; renderCategories()
+      // still re-validates it against the (unchanged) direction below.
+      updateAllocVisibility();
+      closeSheet();
+      await refreshAll();
+    });
+  });
+
+  /* ---- first paint ---- */
+  renderCategories();
+  renderMethods();
+  syncClientField();
+  updateAllocVisibility();
+  refreshAll();
+})();
+</script>
+</body>
+</html>

@@ -1008,6 +1008,7 @@ footer p.tagline { font-size: 14px; color: color-mix(in srgb, var(--color-text) 
 <!-- Storefront data + cart logic (static, front-end only). Loaded before the
      auth script so window.KCMPS_STORE exists when the auth flow refreshes the
      cart badge (see the CART INTEGRATION POINT in the auth script below). -->
+<script src="auth-refresh.js"></script>
 <script src="products.js"></script>
 <script src="store.js"></script>
 
@@ -1918,13 +1919,35 @@ function decodeJwt(token) {
    httpOnly cookie via a Backend-for-Frontend — needs a server we don't have
    as a static site. Revisit once API Gateway/Lambda exist. ---- */
 const TOKEN_STORAGE_KEY = "kcmps_tokens";
-function saveTokens(tokens) { sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens)); }
+/* saveTokens/clearTokens delegate to auth-refresh.js (window.KCMPS_AUTH),
+   which is the single place that knows the token blob's shape. saveTokens
+   there MERGES — critical because Cognito omits refresh_token from every
+   refresh response, so a wholesale overwrite would leave the second refresh
+   with nothing to use. The fallbacks keep this script working if
+   auth-refresh.js ever fails to load; they lose only the refresh feature. */
+function saveTokens(tokens) {
+  if (window.KCMPS_AUTH) return window.KCMPS_AUTH.saveTokens(tokens);
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+}
 function loadTokens() {
   const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { clearTokens(); return null; }
 }
-function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+/* Ending the session here must also release the dashboard's "already
+   auto-opened the nav drawer this session" flag (dashboard-shell.js sets
+   it; see its clearTokens()). sessionStorage is scoped to the TAB, not the
+   login — and THIS is the logout staff actually use, the site-nav button,
+   which is why clearing it dashboard-side alone wasn't enough: log out
+   here, log back in, and the drawer stayed shut because the flag from the
+   previous login was still set. Reported 2026-08-19. Duplicated as a
+   literal rather than shared because this file and the dashboard shell
+   have no module system between them — keep the two strings in step. */
+function clearTokens() {
+  if (window.KCMPS_AUTH) return window.KCMPS_AUTH.clearTokens();
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem("kcmps_sidebar_auto_opened");
+}
 
 /* ---- Build the Hosted UI authorize URL ----
    response_type=code (Authorization Code flow). The Hosted UI page shows both
@@ -2420,6 +2443,59 @@ function renderSignUpDoneStep(email) {
    the Authorization header instead of localStorage — nothing here changes. ---- */
 function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
 
+/* ---- Post-login: send dashboard-eligible staff straight to the dashboard ----
+   Staff previously landed back on the storefront after signing in and had to
+   find the "Dashboard" nav link — an extra step on every shift, and an easy
+   one to miss on a phone where the nav is collapsed. Requested 2026-08-19.
+
+   Group membership is read from the SAME COGNITO_CONFIG.dashboardGroupNames
+   list renderLoggedIn() branches on, so the redirect and the nav link can
+   never disagree about who is staff. Client-decoded claims are UI-only here,
+   exactly as elsewhere in this file — dashboard-shell.js re-gates on load and
+   every backend route re-verifies the JWT, so a forged group claim buys a
+   redirect to a page that immediately bounces you, nothing more.
+
+   The cart guard is the important part: all four founders are Admin, so
+   without it a founder placing a real order would be yanked out of checkout
+   the instant they signed in. Mid-purchase always wins over convenience.
+   Cart state survives either way (it's in localStorage), but losing your
+   place in a checkout you're actively completing is not a fair trade for
+   skipping one tap.
+
+   Toggleable per staffer in the dashboard's Settings > Navigation ("Go
+   straight to the dashboard after logging in"), stored on the same
+   /staff/prefs blob as the sidebar auto-open. This file can't use
+   KCMPS_DASH.getDashboardPrefs() for it — dashboard-data.js is a dashboard
+   script and isn't loaded on the storefront — so the pref is read over the
+   API directly, reusing store.js's endpoint mapping rather than adding a
+   fourth copy of it. Default ON: anything other than an explicit `false`
+   (missing key, failed fetch, offline) redirects, matching how the sibling
+   toggle behaves and how it's documented in settings.html. */
+async function maybeGoToDashboard(claims) {
+  const groups = claims["cognito:groups"] || [];
+  if (!COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) return;
+  // Mid-purchase? Stay put. Optional-chained + ?? so a store.js that failed
+  // to load reads as "no cart" rather than throwing and blocking the redirect.
+  // Both cheap checks run BEFORE the fetch, so a customer logging in never
+  // triggers a pointless authenticated request to a staff-only route.
+  if ((window.KCMPS_STORE?.itemCount?.() ?? 0) > 0) return;
+  let enabled = true;
+  try {
+    const base = window.KCMPS_STORE?.apiBase;
+    const tokens = loadTokens();
+    if (base && tokens?.id_token) {
+      const res = await fetch(base + "/staff/prefs", {
+        headers: { Authorization: "Bearer " + tokens.id_token },
+      });
+      if (res.ok) {
+        const body = await res.json();
+        enabled = ((body && body.data) || {}).goToDashboardOnLogin !== false;
+      }
+    }
+  } catch { /* offline / endpoint down — fall through to the default */ }
+  if (enabled) window.location.assign("dashboard/today.html");
+}
+
 /* ---- Login orchestration ---- */
 async function startLogin() {
   // Optional-chained: with authUiEnabled false there is no #auth-btn to put
@@ -2438,6 +2514,7 @@ async function startLogin() {
     log("Decoded ID token claims:", claims);
     renderLoggedIn(claims);
     refreshCartBadge();
+    maybeGoToDashboard(claims);
   } catch (err) {
     console.error(err);
     alert("Login failed: " + err.message);
@@ -2451,6 +2528,13 @@ async function startLogin() {
    old session. (Cognito's /logout blocks iframe embedding — confirmed by
    testing — hence a popup, identified on return by window.name.) ---- */
 function logout() {
+  /* Revoke the refresh token BEFORE clearing it locally, so a copy stolen
+     via XSS dies with the session rather than staying valid for the rest of
+     its 5 days (EnableTokenRevocation is true on the app client). Strictly
+     best-effort and deliberately not awaited — a failed or slow revoke must
+     never block the user from logging out; the fetch uses keepalive so it
+     survives the popup navigation kicked off just below. */
+  try { window.KCMPS_AUTH && window.KCMPS_AUTH.revoke(); } catch { /* ignore */ }
   clearTokens();
   renderLoggedOut();
   const logoutUrl = `${COGNITO_CONFIG.domain}/logout?${new URLSearchParams({

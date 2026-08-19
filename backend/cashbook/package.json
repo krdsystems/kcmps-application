@@ -1,0 +1,9 @@
+{
+  "name": "kcmps-cashbook-lambdas",
+  "private": true,
+  "description": "Dependencies for backend/cashbook/*.js (Cash Book + job costing, Phase 1 — see docs/cashbook-job-costing-plan-2026-08-18.md). Deploy each handler .js file as its own Lambda; shared.js is bundled alongside it in every zip, and both it and the handler need the `require(\"../lib\")` -> `require(\"./lib\")` rewrite plus a flattened copy of backend/lib/. DynamoDB only — no S3, no SES: this feature sends no email and touches no bucket.",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}

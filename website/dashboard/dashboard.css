@@ -146,6 +146,35 @@ html { scrollbar-gutter: stable; }
 .dsec-head h2 { margin: 0; font-size: 18px; color: var(--color-accent-2-800); }
 .dsec-head .hint { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 
+/* — "?" help button on a section heading —
+   margin-right:auto is load-bearing: .dsec-head is justify-content:
+   space-between, so with only <h2> and this button as children the button
+   would be flung to the far right edge, nowhere near the heading it
+   explains. Pushing the free space to its right keeps the pair together
+   and still lets any third child sit right-aligned.
+   The visual circle stays small (22px) so it reads as an adornment rather
+   than an action, but ::after expands the actual hit target to the 44px
+   minimum this dashboard uses everywhere — sizing the button itself to
+   44px would put a big empty box next to the title. */
+.dsec-help-btn {
+  position: relative; margin-right: auto; align-self: center;
+  width: 22px; height: 22px; flex: 0 0 auto; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: 999px; background: none; cursor: pointer;
+  font-size: 13px; line-height: 1; font-weight: 700;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.dsec-help-btn::after { content: ""; position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+.dsec-help-btn:hover, .dsec-help-btn[aria-expanded="true"] { background: var(--color-accent-2-800); border-color: var(--color-accent-2-800); color: #fff; }
+.dsec-help {
+  font-size: 13px; margin: 0 0 var(--space-3);
+  padding: var(--space-3); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent-2-800) 6%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--color-accent-2-800) 35%, transparent);
+}
+
 /* — metric tiles — */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
 .tile { padding: var(--space-3); }
@@ -860,4 +889,389 @@ select.input { appearance: auto; }
 .dash-pin-mask {
   -webkit-text-security: disc;
   text-security: disc;
+}
+
+/* ============================================================
+   CASH BOOK  (cashbook.html — mock-data prototype)
+   ============================================================
+   docs/cashbook-job-costing-plan-2026-08-18.md §9. MOBILE IS THE PRIMARY
+   TARGET — staff work from phones — so the desktop two-pane shape is the
+   variant here, not the baseline.
+
+   ONE DOM, TWO LAYOUTS, CSS ONLY. The entry form and the ledger sit in
+   .cb-layout in that source order. Desktop puts the form in a sticky left
+   rail beside the list; mobile re-sequences with flex `order` so the list
+   comes first and the form becomes a bottom sheet. The markup is never
+   reordered — same technique as the mobile hero in ../styles.css, and for
+   the same reason: a JS-moved node breaks focus, form state and the back
+   button, and diverges the two layouts the moment either is edited.
+
+   PLACED AT THE END OF THIS FILE deliberately, like the phone-width block
+   above it: every base rule here must be declared before the @media blocks
+   that override it, since equal-specificity rules resolve by source order
+   regardless of which sits in a matching media query. Nothing here is
+   unscoped — every selector is .cb-* — so no existing dashboard page can
+   be reflowed by it.
+   ============================================================ */
+
+/* Room for the fixed bottom bar so the last ledger row is never trapped
+   under it. Desktop has no bar, so this is a no-op there. */
+.cb-page { padding-bottom: var(--space-8); }
+
+.cb-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.cb-ledger { min-width: 0; }
+.cb-entry { min-width: 0; position: sticky; top: var(--space-3); }
+
+/* — month strip: in / out / net — */
+.cb-monthstrip {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+  background: var(--color-divider); border-radius: var(--radius-md); overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+.cb-monthstrip > div { background: var(--color-surface); padding: 10px var(--space-2); min-width: 0; }
+.cb-ms-label { font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+.cb-ms-value {
+  font-family: var(--font-heading); font-weight: 800; font-size: 17px; line-height: 1.2;
+  color: var(--color-accent-2-800); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cb-ms-value.pos { color: var(--color-green); }
+.cb-ms-value.neg { color: #c0392b; }
+.cb-ms-caption { grid-column: 1 / -1; background: var(--color-surface); font-size: 11.5px; padding: 0 var(--space-2) 8px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+
+/* — date strip: ‹ Tue Aug 18 · Today › — */
+.cb-datestrip { display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-3); }
+.cb-datestrip .cb-dayname { flex: 1; text-align: center; min-width: 0; }
+.cb-dayname b { display: block; font-family: var(--font-heading); font-size: 15px; }
+.cb-dayname span { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+/* 44px minimum tap target, everywhere — not just on the sheet. */
+.cb-daynav {
+  flex: none; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md); background: var(--color-surface);
+  cursor: pointer; color: var(--color-accent-2-700); font-size: 18px; line-height: 1;
+}
+.cb-daynav:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
+.cb-daynav:disabled { opacity: 0.4; cursor: not-allowed; }
+.cb-datestrip .input[type="date"] { flex: none; width: auto; min-height: 44px; }
+
+/* — day export (CSV) — */
+.cb-export-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
+.cb-export-btn { min-height: 44px; }
+
+/* — transaction rows — */
+.cb-txlist { display: flex; flex-direction: column; gap: 6px; }
+.cb-tx {
+  display: flex; align-items: flex-start; gap: var(--space-2); padding: 10px 12px; min-height: 44px;
+  border-radius: var(--radius-sm); background: var(--color-bg); border-left: 3px solid transparent;
+}
+.cb-tx.dir-in { border-left-color: var(--color-green); }
+.cb-tx.dir-out { border-left-color: var(--color-accent); }
+.cb-tx-main { flex: 1; min-width: 0; }
+.cb-tx-title { font-size: 13.5px; font-weight: 600; }
+.cb-tx-note { font-size: 12px; color: color-mix(in srgb, var(--color-text) 62%, transparent); overflow-wrap: anywhere; }
+.cb-tx-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+.cb-tx-side { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.cb-amount { font-family: var(--font-heading); font-weight: 800; font-size: 15px; white-space: nowrap; }
+.cb-amount.pos { color: var(--color-green); }
+.cb-amount.neg { color: #c0392b; }
+/* Voided rows and their reversals stay VISIBLE — that is the point of an
+   append-only ledger — but must never be mistaken for live money. */
+.cb-tx.is-voided { opacity: 0.6; }
+.cb-tx.is-voided .cb-amount { text-decoration: line-through; }
+.cb-tx.is-reversal { border-left-style: dashed; }
+.cb-methodchip {
+  font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--color-accent-2-100); color: var(--color-accent-2-800);
+}
+.cb-methodchip.m-cash { background: #e2f3e5; color: #2c6a39; }
+.cb-methodchip.m-gcash { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.cb-methodchip.m-bank, .cb-methodchip.m-card { background: var(--color-neutral-200); color: var(--color-neutral-800); }
+.cb-void-btn { font-size: 11.5px; padding: 4px 8px; min-height: 32px; }
+
+/* — entry form — */
+/* Field order is the plan's: sign -> amount -> category -> method ->
+   optional extras -> save. Same order on both layouts; it is the fastest
+   on a phone and no worse on a desktop, so there is no second ordering to
+   keep in sync. */
+.cb-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.cb-seg { display: flex; width: 100%; }
+.cb-seg .seg-opt { flex: 1; justify-content: center; min-height: 44px; }
+/* The sign control is the one place the accent-per-screen rule bends: in
+   vs out is the single most consequential choice in the form and colour is
+   how it reads at a glance on a phone. */
+.cb-seg .seg-opt:has(input[value="in"]:checked) { background: var(--color-green); color: #fff; }
+.cb-seg .seg-opt:has(input[value="out"]:checked) { background: #c0392b; color: #fff; }
+.cb-amount-input {
+  font-family: var(--font-heading); font-weight: 800; font-size: 24px; min-height: 52px;
+  /* No spinners: they are a mis-tap hazard on touch and inputmode="decimal"
+     already gives the numeric keypad. */
+  appearance: textfield; -moz-appearance: textfield;
+}
+.cb-amount-input::-webkit-outer-spin-button, .cb-amount-input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.cb-amount-wrap { position: relative; display: flex; align-items: center; }
+.cb-amount-peso {
+  position: absolute; left: 12px; font-family: var(--font-heading); font-weight: 800; font-size: 20px;
+  color: color-mix(in srgb, var(--color-text) 45%, transparent); pointer-events: none;
+}
+.cb-amount-wrap .cb-amount-input { padding-left: 34px; }
+
+/* Category / method CHIPS, never a <select> — the owner rejected a select
+   on the bulk-quote picker as too hard to use (CLAUDE.md, "Bulk-quote
+   product picker"). Same lesson, same answer. */
+.cb-chipset { display: flex; flex-wrap: wrap; gap: 6px; }
+.cb-chip {
+  min-height: 44px; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--color-divider); background: var(--color-surface);
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--color-text);
+}
+.cb-chip:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
+.cb-chip[aria-pressed="true"] { background: var(--color-accent-2-700); border-color: transparent; color: #fff; }
+.cb-chip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.cb-extras { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.cb-extras summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--color-accent-2-700); min-height: 32px; padding: 6px 0; }
+.cb-extras[open] summary { margin-bottom: var(--space-2); }
+.cb-form .btn-save { min-height: 48px; width: 100%; }
+/* Client, once derived from a linked job — see cashbook.html's
+   syncClientField(). Same input element, just visually marked as
+   non-editable rather than swapped for a different control. */
+#cb-client[readonly] { background: color-mix(in srgb, var(--color-text) 5%, var(--color-surface)); color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+
+/* F5: allocation checkbox (affectsCash:false) + qty/unit-cost fields —
+   hidden by default, shown only for Expense + a filled Order/job ID (see
+   updateAllocVisibility() in cashbook.html). min-height: 44px on the whole
+   label keeps the tap target real, not just the tiny native checkbox box. */
+.cb-check { display: flex; align-items: flex-start; gap: 8px; min-height: 44px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--color-text); }
+.cb-check input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--color-accent-2-700); }
+
+/* — bottom bar + sheet chrome (mobile only; display:none until the
+     breakpoint, so desktop never hit-tests them). The sheet HEADING stays
+     on both layouts — it titles the desktop rail too — and only the grab
+     affordances that mean nothing without a sheet are dropped. — */
+.cb-bottombar, .cb-scrim, .cb-sheet-close, .cb-sheet-grip { display: none; }
+.cb-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.cb-sheet-head h3 { margin: 0; font-size: 16px; }
+
+/* — job / client costing — */
+.cb-jobcard { margin-bottom: var(--space-3); }
+.cb-jobhead { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.cb-jobhead h3 { margin: 0; font-size: 15px; }
+.cb-jobhead .cb-client { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.cb-costtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cb-costtable th, .cb-costtable td { padding: 7px 6px; border-bottom: 1px solid var(--color-divider); text-align: left; }
+.cb-costtable th { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 55%, transparent); font-weight: 700; }
+.cb-costtable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-costtable tr.cb-revenue td { font-weight: 700; }
+.cb-costtable tfoot td { border-bottom: 0; border-top: 2px solid var(--color-divider); font-weight: 800; }
+.cb-scroll-x { overflow-x: auto; min-width: 0; }
+.cb-profit-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
+.cb-profit-tile { padding: 10px 12px; border-radius: var(--radius-md); background: var(--color-bg); }
+.cb-profit-tile .t-label { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.cb-profit-tile .t-value { font-family: var(--font-heading); font-weight: 800; font-size: 20px; color: var(--color-accent-2-800); }
+.cb-profit-tile.good .t-value { color: var(--color-green); }
+.cb-profit-tile.bad .t-value { color: #c0392b; }
+.cb-approx { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 58%, transparent); margin: var(--space-2) 0 0; }
+/* §6: materials drawn from existing stock are an ESTIMATE, not a
+   stock-accurate COGS figure. The plan is explicit that the UI must say
+   so rather than let an approximation read as fact. */
+.cb-alloc-flag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--color-accent-100); color: var(--color-accent-800); white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .cb-layout { grid-template-columns: 300px minmax(0, 1fr); }
+}
+
+/* ---- MOBILE (≤760px): the list IS the page ---- */
+@media (max-width: 760px) {
+  /* Clear the fixed bottom bar. env(safe-area-inset-bottom) covers the
+     iOS home indicator, which otherwise eats the bar's lower third. */
+  .cb-page { padding-bottom: calc(var(--space-8) + 56px + env(safe-area-inset-bottom, 0px)); }
+
+  /* The inversion: flex `order` only. Markup order is unchanged.
+
+     align-items MUST be reset to stretch here. The base rule sets
+     `start`, which is right for the desktop grid (it stops the sticky
+     entry rail stretching to the ledger's full height) — but in the
+     column flex container it applies to the CROSS axis, i.e. width, and
+     `start` sizes each item to its max-content instead of the container.
+     That made .cb-ledger 347px wide inside a 288px parent at 320px
+     viewport: no visible horizontal scrollbar, because `html {
+     overflow-x: hidden }` in ../styles.css silently CLIPPED the excess,
+     so the right edge of every transaction row was cut off with nothing
+     on screen to say so. Caught by measuring getBoundingClientRect
+     against the parent's, not by eye. */
+  .cb-layout { display: flex; flex-direction: column; align-items: stretch; }
+  .cb-ledger { order: 1; }
+  .cb-entry { order: 2; }
+
+  /* Month strip stays visible while the day list scrolls — the plan's
+     "sticky top: in / out / net". */
+  /* No negative margin-inline here: an edge-to-edge bleed bought ~2px of
+     polish and put the strip's right edge past the viewport at 320px. The
+     page didn't actually scroll horizontally, but "doesn't overflow yet"
+     is not a property worth spending on a cosmetic 2px. */
+  .cb-monthstrip { position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+
+  /* Entry rail becomes a bottom sheet. It is the SAME element and the same
+     <form> — only its box changes. */
+  .cb-entry {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 120;
+    max-height: 88dvh; overflow-y: auto; margin: 0; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: var(--space-3) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
+    transform: translateY(102%); transition: transform 220ms ease;
+    /* visibility keeps the closed sheet out of the hit-test entirely —
+       a translated-away panel still hit-tests in some engines, and an
+       invisible full-width click sink over the bottom bar is exactly the
+       bug the shirt-colour swatch shipped once (CLAUDE.md). */
+    visibility: hidden;
+  }
+  .cb-entry.is-open { transform: none; visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .cb-entry { transition: none; } }
+
+  /* Save must stay reachable without hunting, no matter how many fields
+     sit above it (2026-08-19 — the job-link field moving out of the
+     collapsed extras and into the permanent form is exactly the kind of
+     change that could otherwise push Save below the fold at 375px).
+     .cb-entry is the scrolling element (overflow-y: auto above), so a
+     sticky bottom:0 on the button docks it to the SHEET's own visible
+     bottom edge, not the viewport's — it stays in view through every
+     scroll position while the fields above it keep scrolling underneath.
+     The top shadow gives it a visible seam so it doesn't look pasted
+     mid-form.
+
+     Do NOT set `background` here. This rule used to carry
+     `background: var(--color-surface)` to stop scrolled-past content
+     showing through the docked button — but the button is the primary
+     CTA (.btn-primary), so that override repainted it surface-grey on
+     mobile ONLY, where it read as *disabled* and broke the brand rule
+     that one orange accent is reserved for the single CTA per screen.
+     Reported from a real phone 2026-08-19; every automated check that
+     session measured geometry and tap targets, never colour, which is
+     exactly why it survived. The show-through it guarded against can't
+     happen anyway: the button is full-bleed (width + negative margins
+     below) and opaque, so nothing passes through or beside it. */
+  .cb-form .btn-save {
+    position: sticky; bottom: calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+    margin: var(--space-2) calc(-1 * var(--space-3)) calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+    width: calc(100% + var(--space-3) * 2);
+    padding-left: var(--space-3); padding-right: var(--space-3);
+    padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.08);
+  }
+
+  .cb-sheet-close { display: inline-flex; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; font-size: 22px; line-height: 1; cursor: pointer; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+  .cb-sheet-grip { display: block; width: 38px; height: 4px; border-radius: 999px; background: var(--color-neutral-400); margin: 0 auto var(--space-2); }
+
+  .cb-scrim { display: block; position: fixed; inset: 0; z-index: 110; background: rgba(10, 18, 30, 0.42); opacity: 0; visibility: hidden; transition: opacity 200ms ease; }
+  .cb-scrim.is-open { opacity: 1; visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .cb-scrim { transition: none; } }
+
+  /* Thumb-zone action bar. Fixed, full-width, above the sheet's scrim only
+     when the sheet is closed (the sheet's own z-index is higher). */
+  .cb-bottombar {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+    padding: 8px var(--space-3) calc(8px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--color-neutral-100) 92%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid var(--color-divider);
+  }
+  .cb-bottombar .btn { width: 100%; min-height: 48px; font-size: 15px; }
+
+  /* Nothing here may depend on hover — see the (hover: hover) gotchas in
+     CLAUDE.md. Every control above is a real button with a press state. */
+  .cb-tx { padding: 12px; }
+  .cb-tx-title { font-size: 14px; }
+  /* 44px floor applies to the SECONDARY controls too, not just the happy
+     path — measured at 375px, these two were the only ones under it
+     (32px each). Void is destructive and Extras is a disclosure, so
+     neither is a control anyone should have to aim for on a phone. */
+  .cb-void-btn, .cb-extras summary { min-height: 44px; }
+  .cb-void-btn { padding: 10px 12px; }
+  .cb-datestrip .input[type="date"] { flex: 1; min-width: 0; }
+  .cb-export-btn { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .cb-ms-value { font-size: 15px; }
+  .cb-tx { flex-direction: column; gap: 4px; }
+  .cb-tx-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; text-align: left; }
+  .cb-chip { padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   Searchable combobox (shared, dashboard-shell.js's createCombobox())
+   ============================================================
+   Built first for the Cash Book's category→subcategory picker and its
+   "link to job" order lookup — one control, two uses. Mobile (≤760px,
+   primary target) is a full-screen sheet, same shape as ../styles.css's
+   .design-subcatalog; desktop (≥761px) is a dropdown panel anchored to
+   the trigger via inline position/left/top/width set in JS (plain
+   rect.bottom — see the .design-popup gotcha in CLAUDE.md, never
+   window.scrollY + rect.bottom).
+   ============================================================ */
+.cbx-root { position: fixed; inset: 0; z-index: 170; display: none; }
+.cbx-root.is-open { display: block; }
+.cbx-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent); }
+.cbx-panel {
+  position: relative; background: var(--color-surface); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md); box-shadow: 0 12px 32px color-mix(in srgb, var(--color-neutral-900) 18%, transparent);
+  display: flex; flex-direction: column; max-height: min(420px, 70vh); overflow: hidden;
+}
+.cbx-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-divider); }
+.cbx-title { font-weight: 700; font-size: 13.5px; }
+.cbx-close { min-width: 44px; min-height: 44px; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--color-text); }
+.cbx-search-wrap { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-divider); }
+.cbx-input { width: 100%; min-height: 44px; }
+.cbx-banner {
+  margin: 0 var(--space-3); padding: 8px 10px; font-size: 12px; border-radius: var(--radius-sm);
+  background: var(--color-accent-100, #fff3e0); color: var(--color-accent-800, #7a4a00);
+}
+.cbx-list { overflow-y: auto; padding: 6px; }
+.cbx-empty { padding: var(--space-3); font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); text-align: center; }
+.cbx-opt {
+  display: flex; flex-direction: column; gap: 1px; min-height: 44px; justify-content: center;
+  padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.cbx-opt:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
+.cbx-opt[aria-selected="true"] { background: var(--color-accent-2-100); }
+.cbx-opt.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.cbx-opt-primary { font-size: 13.5px; font-weight: 600; color: var(--color-text); }
+.cbx-opt-secondary { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.cbx-opt-flag {
+  align-self: flex-start; margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--color-accent-2-700);
+}
+
+/* Trigger button — replaces the old chip-based category picker's markup;
+   looks like an .input but opens the combobox instead of taking text. */
+.cbx-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  min-height: 44px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--color-divider);
+  background: var(--color-surface); font: inherit; font-size: 13.5px; color: var(--color-text); cursor: pointer; text-align: left;
+}
+.cbx-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.cbx-trigger .cbx-trigger-placeholder { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.cbx-trigger-caret { flex: none; opacity: 0.55; }
+
+/* "Link to job" field row — text input + a button that opens the same
+   combobox as Category, searching by name instead of typing (2026-08-19).
+   The input stays a real, always-editable text field; the button is a
+   pure convenience on top of it, never a requirement. */
+.cbx-field-row { display: flex; gap: 6px; align-items: center; }
+.cbx-field-row .input { flex: 1; min-width: 0; }
+.cbx-field-btn { flex: none; min-width: 44px; min-height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: center; }
+
+/* Desktop (≥761px): dropdown panel, width/position set inline by JS. */
+@media (min-width: 761px) {
+  .cbx-root.is-desktop .cbx-scrim { background: transparent; }
+  .cbx-root.is-desktop .cbx-panel { position: fixed; }
+}
+
+/* Mobile (≤760px, primary target): full-screen sheet, .design-subcatalog's
+   shape — header + search pinned at top, list scrolls beneath. */
+@media (max-width: 760px) {
+  .cbx-root.is-mobile .cbx-panel {
+    position: fixed; inset: 0; max-height: none; border-radius: 0; border: 0;
+  }
+  .cbx-root.is-mobile .cbx-list { flex: 1; }
+  .cbx-root.is-mobile .cbx-opt { padding: 12px; }
 }

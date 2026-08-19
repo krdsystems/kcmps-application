@@ -2410,9 +2410,18 @@
   // requestQty exposed so the "Bulk & custom" estimator (index.html) gates
   // its quantity field through the exact same capacity soft-cap popup as the
   // shop cards and cart drawer — see the capacity soft-cap section above.
+  // itemCount exposed so index.html's post-login redirect can tell whether
+  // the visitor is mid-purchase. All four founders are Admin, so a founder
+  // buying something would otherwise be yanked to the dashboard the moment
+  // they signed in. Read-only, no cart mutation — keep it that way.
   window.KCMPS_STORE = {
     open: openDrawer, close: closeDrawer, refreshBadge: updateBadge, addToCart: addToCart,
     bulkTier: activeBulkTier, bulkUnitPrice: bulkUnitPrice, requestQty: requestQty,
-    submitPaymentProof: submitPaymentProof,
+    submitPaymentProof: submitPaymentProof, itemCount: itemCount,
+    // apiBase exposed so index.html can read the staff /staff/prefs blob
+    // after login without a FOURTH copy of this hostname->endpoint mapping
+    // (store.js, dashboard-data.js and orders-data.js already each carry
+    // one). Same HTTP API backs checkout and the staff routes.
+    apiBase: CHECKOUT_API_BASE,
   };
 })();

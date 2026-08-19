@@ -45,12 +45,23 @@
             <button type="button" class="btn btn-secondary" id="hist-collapse">Collapse all</button>
             <button type="button" class="btn btn-secondary" id="hist-expand">Expand months</button>
           </div>
-          <div class="cb-hist-legend" aria-hidden="true">
-            <span>Revenue</span><span>Expenses</span><span>Net</span>
-          </div>
         </div>
 
         <div class="card">
+          <!-- The column headings are a .cb-hrow like every other row, and
+               live INSIDE the same card, on purpose. They used to be their
+               own grid in the toolbar above; two parallel grids in
+               different containers cannot stay aligned (the card's own
+               padding offset one against the other), so the headings sat
+               visibly off from the numbers they label. Reusing the row
+               grid makes alignment structural rather than something to
+               re-tune whenever the columns change. -->
+          <div class="cb-hrow lvl-head" aria-hidden="true">
+            <span class="cb-hlabel"></span>
+            <span class="cb-hm">Revenue</span>
+            <span class="cb-hm">Expenses</span>
+            <span class="cb-hm">Net</span>
+          </div>
           <div id="hist-body"><p class="q-empty">Loading&hellip;</p></div>
         </div>
       </section>

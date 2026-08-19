@@ -1151,9 +1151,18 @@ select.input { appearance: auto; }
 /* --- cash book history: year > month > day > transactions --- */
 .cb-hist-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
 .cb-hist-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-/* Column headings for the three money columns. Hidden on phones, where
-   the rows stack and a 3-up header would not line up with anything. */
-.cb-hist-legend { display: grid; grid-template-columns: repeat(3, minmax(96px, 120px)); gap: var(--space-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, #6b7280); text-align: right; }
+/* Column headings. These are a .cb-hrow, NOT their own grid — the first
+   version was a separate 3-column grid sitting in the toolbar outside
+   the card, and it could not line up with the numbers because the card's
+   padding offset the two containers against each other (owner-reported,
+   2026-08-20). Anything that must align with the money columns has to
+   BE a .cb-hrow inside the same card; never re-declare the track sizes
+   in a second place. */
+.lvl-head {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  font-weight: 600; color: var(--color-text-muted, #6b7280);
+  padding-top: 0; padding-bottom: 6px;
+}
 
 /* ONE row shape for every level, so the three money columns line up
    straight down the page regardless of nesting — that alignment is the
@@ -1194,7 +1203,9 @@ select.input { appearance: auto; }
    under it as their own 3-up row. A 4-column grid at 375px would give
    each amount ~70px, which truncates a six-figure peso value. */
 @media (max-width: 760px) {
-  .cb-hist-legend { display: none; }
+  /* Rows restack to label-over-3-columns on a phone, so a fixed header
+     no longer sits above the columns it names. */
+  .lvl-head { display: none; }
   .cb-hrow { grid-template-columns: repeat(3, 1fr); row-gap: 4px; }
   .cb-hlabel { grid-column: 1 / -1; }
   .cb-hm { font-size: 12px; }

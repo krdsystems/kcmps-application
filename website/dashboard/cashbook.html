@@ -22,10 +22,11 @@
     </header>
 
     <main class="dash-content cb-page">
-      <p class="demo-notice"><strong>Preview — not connected to the backend yet.</strong>
-        Every figure on this page comes from sample data in your browser, not from real money.
-        It is seeded with the worked totebag example from the plan so the shape of the numbers is
-        real, but nothing logged here reaches anyone else's device. Do not use it as a record.</p>
+      <p class="demo-notice"><strong>Staging — real backend, real saved records.</strong>
+        Anything logged here is written to the staging database and is visible to everyone on the
+        team, so treat it as a real entry. Two things are not wired yet: online orders confirmed
+        in <em>Verify payment</em> are not posted here automatically, and per-client totals need
+        a database index that does not exist yet, so jobs group by order rather than by client.</p>
 
       <section class="dsec">
         <div class="dsec-head">

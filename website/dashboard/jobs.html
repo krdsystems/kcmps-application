@@ -199,7 +199,13 @@
       render: (order) => jobTagsCell(order),
     },
   };
-  const DEFAULT_COLUMN_ORDER = ["status", "due", "job", "orderId", "client", "tags"];
+  /* Job first, then Status, then Order ID (owner request 2026-08-19): on a
+     phone only about three columns fit, and those are the three that identify
+     a row. Due/Client/Tags follow in the horizontal scroll.
+     Only affects staffers with no saved column order — a saved preference
+     still wins (see loadPrefs below), which is the point of it being a
+     preference. */
+  const DEFAULT_COLUMN_ORDER = ["job", "status", "orderId", "due", "client", "tags"];
   let columns = DEFAULT_COLUMN_ORDER.slice();
   // Per-column value filters — key present + non-empty Set means "only
   // show rows whose value() is in this set." Absent/empty = no filter on
@@ -208,8 +214,16 @@
   // looks like a bug to someone who just cleared every checkbox.
   let columnFilters = {};
 
+  /* Emits CSS custom properties rather than the raw px, so the widths can be
+     narrowed at a breakpoint. This is an INLINE style (set on every .job-row
+     and on #job-list-head), and an inline style beats any stylesheet rule —
+     so a plain `@media` override of grid-template-columns could never win.
+     Referencing a var moves the value into CSS while the structure stays here.
+     COLUMN_DEFS' minWidth is the fallback, so an undefined var degrades to
+     today's desktop widths instead of collapsing the column to nothing.
+     Widths live in dashboard.css's "job table column widths" block. */
   function gridTemplate() {
-    return columns.map((k) => COLUMN_DEFS[k].minWidth + "px").join(" ");
+    return columns.map((k) => `var(--jobcol-${k}, ${COLUMN_DEFS[k].minWidth}px)`).join(" ");
   }
 
   async function allRows() {

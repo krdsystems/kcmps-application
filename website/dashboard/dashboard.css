@@ -353,6 +353,17 @@ select.input { appearance: auto; }
    fixes. Same root cause as .dash-main's own min-width:0 one layout level
    up (this file, ~line 71) for the sidebar grid — the identical flex/grid
    "auto-minimum-size" trap, one nesting level deeper. */
+/* — job table column widths —
+   Consumed by jobs.html's gridTemplate(), which emits
+   `var(--jobcol-<key>, <fallback>px)` per column. They live here, not in the
+   JS, purely so the mobile block below can narrow them: gridTemplate() writes
+   an INLINE grid-template-columns on every row, and an inline style outranks
+   any stylesheet rule, so a media query could never override it directly.
+   Keep these in step with COLUMN_DEFS' minWidth fallbacks in jobs.html. */
+:root {
+  --jobcol-status: 190px; --jobcol-due: 100px; --jobcol-job: 260px;
+  --jobcol-orderId: 190px; --jobcol-client: 160px; --jobcol-tags: 280px;
+}
 .job-table-scroll { overflow-x: auto; min-width: 0; }
 /* width:max-content + min-width:100% is what stops the table "bleeding" out
    of the card as you zoom IN (reported 2026-08-13, live). A block-level grid
@@ -790,6 +801,19 @@ select.input { appearance: auto; }
   .mail-3pane { grid-template-columns: 280px 1fr; height: calc(100dvh - 172px); }
 }
 @media (max-width: 760px) {
+  /* Job table on a phone: the desktop widths total 1180px, so barely two
+     columns landed on a 375px screen and the row that identifies a job was
+     off-screen by default. Narrowed so the first three — Job, Status, Order
+     ID, which is what the default column order now leads with — fit without
+     scrolling: 118 + 100 + 96 = 314px against roughly 319px of usable width
+     (375 minus .dash-content's 2x16px and .job-row's 2x12px). The rest still
+     scroll horizontally; nothing is hidden, it just starts where it's useful.
+     Order ID is the tightest: "ORD-290E09747F" is 14 chars, so 96px is about
+     its natural width at this font size and it shouldn't go lower. */
+  :root {
+    --jobcol-job: 118px; --jobcol-status: 100px; --jobcol-orderId: 96px;
+    --jobcol-due: 76px; --jobcol-client: 120px; --jobcol-tags: 170px;
+  }
   /* one pane at a time; .show-read is toggled from email.html */
   .mail-3pane { grid-template-columns: 1fr; }
   .mail-3pane .mail-read { display: none; }

@@ -197,6 +197,17 @@
             </div>
 
             <div class="cb-export-row">
+              <!-- Two filter groups, each single-select (clicking the active
+                   one clears it) and ANDed together, so Cash + Expense answers
+                   "how much cash went out today" — the question neither group
+                   can answer alone. Payment method exists so the drawer can be
+                   reconciled (plan §8); filtering to Cash makes the subtotal
+                   beside it what should physically be in the till.
+                   The subtotal stays hidden until something is filtered, so the
+                   default view isn't carrying a number nobody asked for. -->
+              <div class="cb-dirfilter" id="cb-dirfilter" role="group" aria-label="Filter by revenue or expense"></div>
+              <div class="cb-methodfilter" id="cb-methodfilter" role="group" aria-label="Filter by payment method"></div>
+              <output class="cb-subtotal" id="cb-subtotal" hidden></output>
               <button type="button" class="btn btn-secondary cb-export-btn" id="cb-export-btn">
                 <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,152v56a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V152a8,8,0,0,1,16,0v56H208V152a8,8,0,0,1,16,0ZM133.66,157.66a8,8,0,0,1-11.32,0l-40-40a8,8,0,0,1,11.32-11.32L120,132.69V32a8,8,0,0,1,16,0V132.69l26.34-26.35a8,8,0,0,1,11.32,11.32Z"/></svg>
                 Export day (.csv)
@@ -250,6 +261,13 @@
   let category = null;
   let subcategory = null;
   let method = null;
+
+  /* Ledger view filters — distinct from the entry-form state above. Both are
+     single-select and null means "no filter"; they AND together. Deliberately
+     NOT persisted or reset on day change: a staffer reconciling the till wants
+     Cash to stay selected while they page back through days. */
+  let filterMethod = null;
+  let filterDirection = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -346,9 +364,36 @@
         `Don't reconcile the drawer against this figure &mdash; report it.</p></div>`
       : "";
 
-    $("cb-txlist").innerHTML = recon + (day.transactions.length
-      ? day.transactions.map(txRow).join("")
-      : `<p class="q-empty">Nothing logged on this day yet.</p>`);
+    /* Filtered view. The subtotal sums the SAME rows being shown, minus the
+       ones that never count anywhere (voided originals and their reversing
+       entries — the pair cancels, so including either would double-count).
+       That's the identical rule the day rollup and the CSV's
+       countsTowardTotals column use, so the three can't disagree.
+       Signed, not gross: an expense subtracts, and a refund is a revenue row
+       stored negative — so summing signed values is the only way Cash + Revenue
+       reports what actually arrived rather than what was rung up. */
+    const shown = day.transactions.filter(matchesFilters);
+    const filtering = !!(filterDirection || filterMethod);
+    const subtotalEl = $("cb-subtotal");
+    if (filtering) {
+      const net = shown.reduce((s, t) => (
+        (t.voided || t.reversesTxnId) ? s : s + (t.direction === "out" ? -t.amountCentavos : t.amountCentavos)
+      ), 0);
+      const parts = [];
+      if (filterDirection) parts.push(filterDirection === "in" ? "Revenue" : "Expense");
+      if (filterMethod) parts.push(D.cashbookMethodLabel(filterMethod));
+      subtotalEl.textContent = parts.join(" · ") + ": " + D.formatCentavos(net);
+      subtotalEl.hidden = false;
+    } else {
+      subtotalEl.hidden = true;
+      subtotalEl.textContent = "";
+    }
+
+    $("cb-txlist").innerHTML = recon + (shown.length
+      ? shown.map(txRow).join("")
+      : `<p class="q-empty">${filtering
+          ? "No transactions match this filter on this day."
+          : "Nothing logged on this day yet."}</p>`);
 
     $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -484,6 +529,33 @@
       });
     });
   }
+  /* ---- ledger view filters ----
+     A filter chip differs from the form's chips above in one way that matters:
+     clicking the ACTIVE one clears it. Without that there'd be no way back to
+     "everything" short of reloading, since there is no All chip. */
+  function renderFilterChips(host, items, active, onPick) {
+    host.innerHTML = items.map((it) => (
+      `<button type="button" class="cb-filterchip" data-id="${escapeHtml(it.id)}" ` +
+      `aria-pressed="${it.id === active}">${escapeHtml(it.label)}</button>`
+    )).join("");
+    host.querySelectorAll(".cb-filterchip").forEach((btn) => {
+      btn.addEventListener("click", () => onPick(btn.dataset.id === active ? null : btn.dataset.id));
+    });
+  }
+  function renderFilters() {
+    // Both groups are rebuilt on every pick, not just the one clicked, so the
+    // aria-pressed/visual state can't drift from the two variables above.
+    renderFilterChips($("cb-dirfilter"), [{ id: "in", label: "Revenue" }, { id: "out", label: "Expense" }],
+      filterDirection, (id) => { filterDirection = id; renderFilters(); renderDay(); });
+    renderFilterChips($("cb-methodfilter"), D.getCashbookMethods(),
+      filterMethod, (id) => { filterMethod = id; renderFilters(); renderDay(); });
+  }
+  function matchesFilters(t) {
+    if (filterDirection && t.direction !== filterDirection) return false;
+    if (filterMethod && t.method !== filterMethod) return false;
+    return true;
+  }
+
   function renderMethods() {
     renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
   }
@@ -948,6 +1020,7 @@
   /* ---- first paint ---- */
   renderCategories();
   renderMethods();
+  renderFilters();
   syncClientField();
   updateAllocVisibility();
   refreshAll();

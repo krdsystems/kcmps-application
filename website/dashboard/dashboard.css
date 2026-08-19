@@ -920,7 +920,36 @@ select.input { appearance: auto; }
 
 .cb-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-3); align-items: start; }
 .cb-ledger { min-width: 0; }
+/* The entry rail is its OWN scroll container on desktop, so the wheel acts
+   on whichever pane the cursor is over instead of always moving the page
+   (owner request 2026-08-19: "if I hover in the log transaction area it
+   should scroll there, not the right side"). Same idea as .mail-list /
+   .mail-read, which are independently scrollable panes on the Email page.
+   The right-hand ledger deliberately keeps scrolling the PAGE rather than
+   becoming a second scroll container: it is the long element, and giving
+   it its own scrollbar would strand the page's own scrollbar at full
+   height with nothing to move, plus nest a scrollbar inside a scrollbar.
+   Because this rail is `position: sticky`, capping its height is what
+   makes internal scrolling possible at all — an uncapped sticky element
+   is as tall as its content and simply overflows the viewport.
+   overscroll-behavior: contain stops the page lurching once the rail hits
+   its top or bottom, which is the thing that makes nested scrolling feel
+   broken. All scoped to ≥761px: on mobile this same element is a bottom
+   sheet with its own overflow rules (see the ≤760px block). */
 .cb-entry { min-width: 0; position: sticky; top: var(--space-3); }
+@media (min-width: 761px) {
+  .cb-entry {
+    max-height: calc(100dvh - var(--space-3) * 2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Now that the rail scrolls internally, Save can leave the visible area
+     the same way it could on mobile — dock it to the rail's bottom edge
+     for the same reason the ≤760px block docks it to the sheet's. No
+     background override here: that is what rendered the CTA grey on
+     mobile (see the ≤760px .cb-form .btn-save rule). */
+  .cb-form .btn-save { position: sticky; bottom: 0; }
+}
 
 /* — month strip: in / out / net — */
 .cb-monthstrip {
@@ -954,8 +983,33 @@ select.input { appearance: auto; }
 .cb-datestrip .input[type="date"] { flex: none; width: auto; min-height: 44px; }
 
 /* — day export (CSV) — */
-.cb-export-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
-.cb-export-btn { min-height: 44px; }
+/* Filters sit on the left of this row and Export is pushed to the right by
+   its own margin-left:auto, so the row reads left-to-right as "narrow the
+   view / read the number / take it away". flex-wrap so a narrow desktop
+   window drops Export to its own line rather than crushing the chips. */
+.cb-export-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.cb-export-btn { min-height: 44px; margin-left: auto; }
+.cb-dirfilter, .cb-methodfilter { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Smaller than .cb-chip: these narrow a view, they don't record money, and
+   at .cb-chip's 44px they'd out-weigh the Save CTA on the same screen. The
+   44px floor is a TOUCH minimum and this row is desktop-side; the mobile
+   block below restores it. */
+.cb-filterchip {
+  min-height: 34px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--color-divider); background: var(--color-surface);
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--color-text);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.cb-filterchip:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
+.cb-filterchip[aria-pressed="true"] {
+  background: var(--color-accent-2-800); border-color: var(--color-accent-2-800); color: #fff;
+}
+/* Only rendered while a filter is active — see renderDay(). Tabular figures
+   so the number doesn't jitter as the filter changes. */
+.cb-subtotal {
+  font-size: 13px; font-weight: 700; color: var(--color-accent-2-800);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 
 /* — transaction rows — */
 .cb-txlist { display: flex; flex-direction: column; gap: 6px; }
@@ -1187,7 +1241,12 @@ select.input { appearance: auto; }
   .cb-void-btn, .cb-extras summary { min-height: 44px; }
   .cb-void-btn { padding: 10px 12px; }
   .cb-datestrip .input[type="date"] { flex: 1; min-width: 0; }
-  .cb-export-btn { width: 100%; }
+  .cb-export-btn { width: 100%; margin-left: 0; }
+  /* Restore the 44px touch floor the desktop-sized filter chips drop below,
+     and let the subtotal take its own full-width line so it isn't squeezed
+     to an ellipsis between wrapped chips. */
+  .cb-filterchip { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+  .cb-subtotal { width: 100%; }
 }
 
 @media (max-width: 480px) {

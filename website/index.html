@@ -2432,6 +2432,33 @@ function renderSignUpDoneStep(email) {
    the Authorization header instead of localStorage — nothing here changes. ---- */
 function refreshCartBadge() { window.KCMPS_STORE?.refreshBadge(); }
 
+/* ---- Post-login: send dashboard-eligible staff straight to the dashboard ----
+   Staff previously landed back on the storefront after signing in and had to
+   find the "Dashboard" nav link — an extra step on every shift, and an easy
+   one to miss on a phone where the nav is collapsed. Requested 2026-08-19.
+
+   Group membership is read from the SAME COGNITO_CONFIG.dashboardGroupNames
+   list renderLoggedIn() branches on, so the redirect and the nav link can
+   never disagree about who is staff. Client-decoded claims are UI-only here,
+   exactly as elsewhere in this file — dashboard-shell.js re-gates on load and
+   every backend route re-verifies the JWT, so a forged group claim buys a
+   redirect to a page that immediately bounces you, nothing more.
+
+   The cart guard is the important part: all four founders are Admin, so
+   without it a founder placing a real order would be yanked out of checkout
+   the instant they signed in. Mid-purchase always wins over convenience.
+   Cart state survives either way (it's in localStorage), but losing your
+   place in a checkout you're actively completing is not a fair trade for
+   skipping one tap. */
+function maybeGoToDashboard(claims) {
+  const groups = claims["cognito:groups"] || [];
+  if (!COGNITO_CONFIG.dashboardGroupNames.some((g) => groups.includes(g))) return;
+  // Mid-purchase? Stay put. Optional-chained + ?? so a store.js that failed
+  // to load reads as "no cart" rather than throwing and blocking the redirect.
+  if ((window.KCMPS_STORE?.itemCount?.() ?? 0) > 0) return;
+  window.location.assign("dashboard/today.html");
+}
+
 /* ---- Login orchestration ---- */
 async function startLogin() {
   // Optional-chained: with authUiEnabled false there is no #auth-btn to put
@@ -2450,6 +2477,7 @@ async function startLogin() {
     log("Decoded ID token claims:", claims);
     renderLoggedIn(claims);
     refreshCartBadge();
+    maybeGoToDashboard(claims);
   } catch (err) {
     console.error(err);
     alert("Login failed: " + err.message);

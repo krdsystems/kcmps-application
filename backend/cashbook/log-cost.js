@@ -99,6 +99,7 @@ exports.handler = async (event) => {
     amountCentavos: cost.amountCentavos,
     affectsCash: cost.affectsCash,
     paymentMethod: cost.paymentMethod,
+    paymentAccount: cost.paymentAccount || null,
     incurredAt: cost.incurredAt,
     note: cost.note || null,
     source: "manual",
@@ -147,6 +148,7 @@ exports.handler = async (event) => {
       direction: "out",
       amountCentavos: cost.amountCentavos,
       paymentMethod: cost.paymentMethod,
+      paymentAccount: cost.paymentAccount || null,
       note: cost.label,
       orderId,
       // Lets void-transaction.js flag the COST# line in the same

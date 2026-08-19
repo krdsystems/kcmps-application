@@ -673,6 +673,12 @@ backend change:
   `ArtifactsPrefix=cashbook-phase1-2026-08-18b`. DynamoDB only: no bucket, no SES env var, no
   new IAM. Source in `backend/cashbook/`, rules in `backend/lib/cashbook.js`. **Promoted to
   production 2026-08-19** — see "Cash Book Lambdas — production" below.
+  **Payment-method change, staging only (`ArtifactsPrefix=cashbook-payment-account-2026-08-19`)**:
+  `card` retired from the writable method list (its label is kept, so historical rows still read
+  "Card"), and `gcash`/`bank` now require a `paymentAccount`. Code-only — same 7 functions, no
+  template, IAM, route or env-var change. **No data was migrated or rewritten**; rows without the
+  field stay valid and render "—". NOT promoted to production — needs the owner's explicit
+  go-ahead.
 - **What staging deliberately doesn't have**: PITR, Cognito `PostConfirmation` wiring
   (would displace production's — that Lambda's trigger is tested via direct/synthetic
   invoke instead), and SES sending (`FROM_EMAIL`/`SES_SENDER` env vars are omitted, so

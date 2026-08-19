@@ -139,6 +139,10 @@ exports.handler = async (event) => {
     direction: original.direction === "in" ? "out" : "in",
     amountCentavos: original.amountCentavos,
     paymentMethod: original.paymentMethod,
+    // Copied, never re-validated: the reversal describes the SAME money
+    // movement as the original, including an original written before
+    // paymentAccount existed (which correctly reverses without one).
+    paymentAccount: original.paymentAccount || null,
     note: `Reversal of ${original.txnId}: ${reason}`,
     orderId: original.orderId || null,
     source: "system",

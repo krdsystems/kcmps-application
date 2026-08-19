@@ -310,6 +310,11 @@ html { scrollbar-gutter: stable; }
 /* — forms in dashboard context — */
 .dash-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
 .field { display: flex; flex-direction: column; gap: 4px; }
+/* `.field`'s own display beats the UA sheet's [hidden] { display: none } on
+   specificity, so a `hidden` field stays VISIBLE without this rule — caught
+   by measuring the DOM (the cash book's gcash/bank account field rendered
+   for Cash entries too). Any conditional .field anywhere depends on it. */
+.field[hidden] { display: none; }
 .field label { font-size: 12px; color: color-mix(in srgb, var(--color-text) 68%, transparent); }
 select.input { appearance: auto; }
 

@@ -101,6 +101,23 @@
                 <div class="cb-chipset" id="cb-methods" role="group" aria-labelledby="cb-method-label"></div>
               </div>
 
+              <!-- 5b. Account detail — MANDATORY for GCash/Bank, absent for
+                   Cash. Which methods require it comes from the server
+                   (GET /cashbook/categories -> paymentAccountMethods) so
+                   this can't drift from the validator that actually
+                   enforces it; the check below is UX, log-transaction.js
+                   is the gate. Deliberately `hidden` rather than always
+                   present-but-empty: a cash entry is the commonest case on
+                   a phone and must not grow a box it will never fill.
+                   Deliberately NOT called "reference" — that word already
+                   means the CUSTOMER's GCash transaction reference on the
+                   payment-proof path, and these are different facts. -->
+              <div class="field" id="cb-account-field" hidden>
+                <label for="cb-account" id="cb-account-label">GCash number / account owner</label>
+                <input class="input cb-account-input" id="cb-account" autocomplete="off"
+                       placeholder="e.g. 0917-555-0101 (Juan Dela Cruz)" />
+              </div>
+
               <!-- 5. Link to a job — a PERMANENT field, not inside the
                    collapsed extras below (owner decision, 2026-08-19: the
                    original "collapse it to keep the fast path four taps"
@@ -322,6 +339,11 @@
         `<div class="cb-tx-side">` +
           `<span class="cb-amount ${t.direction === "in" ? "pos" : "neg"}">${D.formatSignedCentavos(t.amountCentavos, t.direction)}</span>` +
           `<span class="cb-methodchip m-${escapeHtml(t.method)}">${escapeHtml(D.cashbookMethodLabel(t.method))}</span>` +
+          // Shown only where an account is a meaningful fact. A row from
+          // before 2026-08-19 has none and renders "—" — that is history,
+          // not a defect, and nothing backfills it.
+          (D.cashbookMethodNeedsAccount(t.method)
+            ? `<span class="cb-tx-account">${escapeHtml(D.cashbookAccountLabel(t.account))}</span>` : "") +
           voidBtn +
         `</div>` +
       `</div>`
@@ -556,8 +578,28 @@
     return true;
   }
 
+  /* GCash/Bank need an account detail; Cash does not. The field appears
+     only when it applies (see the markup comment) and its label names the
+     method, so the staffer is never guessing what to type. */
+  function syncAccountField() {
+    const needs = !!method && D.cashbookMethodNeedsAccount(method);
+    const field = $("cb-account-field");
+    field.hidden = !needs;
+    if (!needs) {
+      // Cleared on the way out so a value typed for GCash can't ride along
+      // on a later Cash entry.
+      $("cb-account").value = "";
+      return;
+    }
+    const isGcash = method === "gcash";
+    $("cb-account-label").textContent = isGcash
+      ? "GCash number / account owner" : "Bank name / account owner";
+    $("cb-account").placeholder = isGcash
+      ? "e.g. 0917-555-0101 (Juan Dela Cruz)" : "e.g. BPI 1234 (KCMPS)";
+  }
+
   function renderMethods() {
-    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
+    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; syncAccountField(); });
   }
 
   /* ---- category → subcategory combobox (2026-08-19) ----
@@ -854,6 +896,11 @@
   const CSV_HEADERS = [
     "Date", "Time", "Type", "Category", "Subcategory", "Description", "Qty",
     "Unit amount (PHP)", "Amount (PHP)", "Signed amount (PHP)", "Payment method",
+    // Own column, next to the method it belongs to. Attacker-adjacent free
+    // text, so csvField()'s formula-injection guard applies (it is NOT
+    // passed numeric:true). Rows predating the field export "—", the same
+    // token the screen shows, so the two never disagree.
+    "Payment account",
     "Affects cash", "Counts toward totals",
     "Order ID", "Client", "Staffer", "Note", "Voided", "Void reason",
   ];
@@ -874,6 +921,7 @@
       NUM(D.formatCentavosDecimal(r.amountCentavos)),
       NUM(D.formatCentavosDecimal(r.signedAmountCentavos)),
       r.method || "",
+      r.account || "—",
       r.affectsCash ? "yes" : "no",
       r.countsTowardTotals ? "yes" : "no",
       r.orderId || "",
@@ -977,6 +1025,15 @@
     }
     if (!category) { showInlineError($("cb-error"), "Pick a category."); return; }
     if (!method) { showInlineError($("cb-error"), "Pick a payment method."); return; }
+    // UX only — backend/lib/cashbook.js re-validates this and is the real
+    // gate, so a stale tab still can't write a gcash/bank row without one.
+    if (D.cashbookMethodNeedsAccount(method) && !$("cb-account").value.trim()) {
+      showInlineError($("cb-error"), method === "gcash"
+        ? "Add the GCash number or account owner the money moved through."
+        : "Add the bank name or account owner the money moved through.");
+      $("cb-account").focus();
+      return;
+    }
 
     // withBusy disables the button for the duration — the double-tap guard
     // the plan calls for (the real backend also carries an idempotency key).
@@ -984,6 +1041,7 @@
       try {
         const txn = await D.logCashbookTransaction({
           direction, amountPesos: raw, category, subcategory, method,
+          paymentAccount: $("cb-account").value,
           orderId: $("cb-order").value, clientName: $("cb-client").value,
           note: $("cb-note").value, actorName,
           affectsCash: !$("cb-affects-cash-no").checked,
@@ -1000,6 +1058,7 @@
       }
       $("cb-amount").value = "";
       $("cb-note").value = "";
+      $("cb-account").value = "";
       $("cb-order").value = "";
       $("cb-client").value = "";
       linkedJobClient = null;
@@ -1020,6 +1079,7 @@
   /* ---- first paint ---- */
   renderCategories();
   renderMethods();
+  syncAccountField();
   renderFilters();
   syncClientField();
   updateAllocVisibility();

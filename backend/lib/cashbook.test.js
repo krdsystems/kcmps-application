@@ -200,6 +200,7 @@ test("validateTransactionInput normalizes a good sale", () => {
     categoryId: "sale",
     amountCentavos: 3500000,
     paymentMethod: "GCash",
+    paymentAccount: "  GCash 0917-000-1234 (K. Dungca)  ",
     note: "  totebags  ",
     orderId: "ORD-XYZ",
   }, { now: NOW });
@@ -210,6 +211,7 @@ test("validateTransactionInput normalizes a good sale", () => {
   assert.equal(t.amountCentavos, 3500000);
   assert.equal(t.normalized, false);
   assert.equal(t.paymentMethod, "gcash");
+  assert.equal(t.paymentAccount, "GCash 0917-000-1234 (K. Dungca)");
   assert.equal(t.day, "2026-08-18");
   assert.equal(t.month, "2026-08");
   assert.equal(t.note, "totebags");
@@ -232,7 +234,7 @@ test("validateTransactionInput refuses a client direction that contradicts the c
 test("a stale client's positive refund is stored negative and flagged normalized (B5)", () => {
   const t = cb.validateTransactionInput({
     idempotencyId: "txn-refund123", categoryId: "refund",
-    amountCentavos: 50000, paymentMethod: "gcash",
+    amountCentavos: 50000, paymentMethod: "gcash", paymentAccount: "GCash 0917-000-1234",
   }, { now: NOW });
   assert.equal(t.amountCentavos, -50000);
   assert.equal(t.normalized, true);
@@ -491,4 +493,116 @@ test("costCategories excludes every revenue category", () => {
   assert.ok(!ids.includes("sale"));
   assert.ok(!ids.includes("refund"));
   assert.ok(ids.includes("materials"));
+});
+
+/* ---------------- payment methods + paymentAccount (2026-08-19) ----------------
+   Card retired for NEW WRITES only; gcash/bank require an account detail.
+   Neither rule touches a stored row — see the module header. */
+
+test("card is rejected on write but still resolves to a Card label", () => {
+  assert.ok(!cb.PAYMENT_METHODS.includes("card"), "card must not be writable");
+  assert.throws(() => cb.validateTransactionInput({
+    idempotencyId: "txn-card0001", categoryId: "sale",
+    amountCentavos: 100, paymentMethod: "card",
+  }, { now: NOW }), cb.CashbookValidationError);
+  // ...and a historical row carrying it still labels correctly, everywhere.
+  assert.equal(cb.paymentMethodLabel("card"), "Card");
+  assert.equal(cb.paymentMethodLabel("CARD"), "Card");
+  assert.equal(cb.paymentMethodLabel("cash"), "Cash");
+  assert.equal(cb.paymentMethodLabel("gcash"), "GCash");
+  assert.equal(cb.paymentMethodLabel("bank"), "Bank");
+  // Absent method (an affectsCash:false cost line) is not a label at all.
+  assert.equal(cb.paymentMethodLabel(null), null);
+  assert.equal(cb.paymentMethodLabel(""), null);
+});
+
+test("card is rejected on a cost line too", () => {
+  assert.throws(() => cb.validateCostInput({
+    idempotencyId: "cst-card0001", orderId: "ORD-1", label: "Blanks",
+    categoryId: "materials", amountCentavos: 100, paymentMethod: "card",
+  }, { now: NOW }), cb.CashbookValidationError);
+});
+
+test("gcash and bank require a paymentAccount; whitespace-only is not one", () => {
+  const base = { idempotencyId: "txn-acct0001", categoryId: "sale", amountCentavos: 100 };
+  for (const method of ["gcash", "bank"]) {
+    assert.throws(() => cb.validateTransactionInput({ ...base, paymentMethod: method }, { now: NOW }),
+      cb.CashbookValidationError, `${method} without paymentAccount must be rejected`);
+    assert.throws(() => cb.validateTransactionInput({ ...base, paymentMethod: method, paymentAccount: "   " }, { now: NOW }),
+      cb.CashbookValidationError, `${method} with whitespace-only paymentAccount must be rejected`);
+    assert.throws(() => cb.validateCostInput({
+      idempotencyId: "cst-acct0001", orderId: "ORD-1", label: "Blanks",
+      categoryId: "materials", amountCentavos: 100, paymentMethod: method,
+    }, { now: NOW }), cb.CashbookValidationError, `${method} cost line without paymentAccount must be rejected`);
+  }
+});
+
+test("cash needs no paymentAccount, and never stores one", () => {
+  const t = cb.validateTransactionInput({
+    idempotencyId: "txn-cash0001", categoryId: "sale",
+    amountCentavos: 100, paymentMethod: "cash",
+  }, { now: NOW });
+  assert.equal(t.paymentAccount, null);
+  // Cash has no account concept, so a supplied one is dropped rather than
+  // stored as a field that means nothing.
+  const t2 = cb.validateTransactionInput({
+    idempotencyId: "txn-cash0002", categoryId: "sale",
+    amountCentavos: 100, paymentMethod: "cash", paymentAccount: "BPI 1234",
+  }, { now: NOW });
+  assert.equal(t2.paymentAccount, null);
+});
+
+test("gcash with a paymentAccount is accepted and stored trimmed + capped", () => {
+  const t = cb.validateTransactionInput({
+    idempotencyId: "txn-acct0002", categoryId: "sale", amountCentavos: 100,
+    paymentMethod: "gcash", paymentAccount: "  0917-555-0101 / Juan Dela Cruz \n",
+  }, { now: NOW });
+  assert.equal(t.paymentAccount, "0917-555-0101 / Juan Dela Cruz");
+
+  const c = cb.validateCostInput({
+    idempotencyId: "cst-acct0002", orderId: "ORD-1", label: "Blanks",
+    categoryId: "materials", amountCentavos: 100,
+    paymentMethod: "bank", paymentAccount: "  BPI 0123 (KCMPS) ",
+  }, { now: NOW });
+  assert.equal(c.paymentAccount, "BPI 0123 (KCMPS)");
+
+  // Capped the same way `note` is.
+  const long = cb.validateTransactionInput({
+    idempotencyId: "txn-acct0003", categoryId: "sale", amountCentavos: 100,
+    paymentMethod: "gcash", paymentAccount: "x".repeat(cb.PAYMENT_ACCOUNT_MAX_LENGTH + 50),
+  }, { now: NOW });
+  assert.equal(long.paymentAccount.length, cb.PAYMENT_ACCOUNT_MAX_LENGTH);
+});
+
+test("an affectsCash:false allocation carries neither method nor account", () => {
+  const c = cb.validateCostInput({
+    idempotencyId: "cst-alloc001", orderId: "ORD-1", label: "From stock",
+    categoryId: "materials", amountCentavos: 100, affectsCash: false,
+  }, { now: NOW });
+  assert.equal(c.paymentMethod, null);
+  assert.equal(c.paymentAccount, null);
+});
+
+test("a stored row missing paymentAccount is never invalid on read (no migration)", () => {
+  // Rows written before 2026-08-19 look exactly like this. Every read-side
+  // helper must cope; nothing re-validates history.
+  const legacy = {
+    txnId: "txn-legacy01", direction: "in", kind: "revenue",
+    amountCentavos: 12345, paymentMethod: "card", voided: false,
+  };
+  assert.equal(cb.countsTowardTotals(legacy), true);
+  assert.equal(cb.sumRows([legacy]).netCentavos, 12345);
+  assert.equal(cb.paymentMethodLabel(legacy.paymentMethod), "Card");
+  assert.equal(legacy.paymentAccount, undefined);
+});
+
+test("paymentMethodRequiresAccount is the single source for which methods need one", () => {
+  assert.equal(cb.paymentMethodRequiresAccount("gcash"), true);
+  assert.equal(cb.paymentMethodRequiresAccount("bank"), true);
+  assert.equal(cb.paymentMethodRequiresAccount("cash"), false);
+  assert.deepEqual([...cb.PAYMENT_ACCOUNT_METHODS], ["gcash", "bank"]);
+  // Every account-requiring method must itself still be writable.
+  for (const m of cb.PAYMENT_ACCOUNT_METHODS) assert.ok(cb.PAYMENT_METHODS.includes(m));
+  // Every writable method must have a label.
+  for (const m of cb.PAYMENT_METHODS) assert.ok(cb.PAYMENT_METHOD_LABELS[m]);
 });

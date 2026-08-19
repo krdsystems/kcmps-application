@@ -1839,6 +1839,12 @@
       clientName: null,
       note: r.note || "",
       occurredAt: r.occurredAt,
+      // Server-derived Manila day. Irrelevant on the day view (every row
+      // shares it) but load-bearing for cross-day search results, which
+      // group by it and use it to jump. Never re-derived from occurredAt
+      // on this side — that slice is UTC and would file an evening
+      // transaction under the next day (D1).
+      day: r.day || null,
       actorName: r.actorName || null,
       source: r.source || "manual",
       voided: !!r.voided,
@@ -2224,6 +2230,32 @@
     }
   }
 
+  /* ---- search every day, not just the one on screen (2026-08-20) ----
+     Server-side because the client only ever holds ONE day. Cheap by
+     construction: the backend skips months whose rollup says they hold
+     no transactions and queries only the day partitions of months that
+     do, so it never Scans the table — see
+     backend/cashbook/search-transactions.js's header before changing
+     anything about how this is called.
+
+     `truncated` means more rows matched than were returned; the page
+     must say so rather than implying it found everything. */
+  async function searchCashbookTransactions(query, opts) {
+    const q = (query || "").trim();
+    if (!q) return { transactions: [], total: 0, truncated: false };
+    const params = new URLSearchParams({ q });
+    if (opts && opts.from) params.set("from", opts.from);
+    if (opts && opts.to) params.set("to", opts.to);
+    if (opts && opts.limit) params.set("limit", String(opts.limit));
+    const res = await apiFetch("/cashbook/search?" + params.toString(), { method: "GET" });
+    return {
+      transactions: (res.transactions || []).map(normalizeTxnRow),
+      total: res.total || 0,
+      truncated: !!res.truncated,
+      searchedDays: res.searchedDays || 0,
+    };
+  }
+
   /* ---- day export (plan §8 "Should have" — CSV handoff) ----
      Flattens ONE day into a single row shape cashbook.html can turn
      straight into CSV, so the export logic (which fields exist, how a
@@ -2400,7 +2432,7 @@
     createManualOrder,
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
-    relinkCashbookTransaction, findCashbookTransaction,
+    relinkCashbookTransaction, findCashbookTransaction, searchCashbookTransactions,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
     cashbookMethodNeedsAccount, cashbookAccountLabel,
     cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,

@@ -214,13 +214,14 @@
             </div>
 
             <!-- Free-text search across everything on a row (id, note,
-                 category, amount, order, staffer, method, account). It
-                 filters the day you're on; a transaction ID that isn't on
-                 this day is looked up directly and jumps to its own day,
-                 which is the point of showing IDs at all. -->
+                 category, amount, order, staffer, method, account) and
+                 across EVERY day, not just the one on screen — server-
+                 side, see backend/cashbook/search-transactions.js. While
+                 a search is active it replaces the ledger list below with
+                 results grouped by day. -->
             <div class="cb-searchrow">
               <input class="input cb-search" id="cb-search" type="search"
-                     placeholder="Search this day — ID, note, category, amount, order…"
+                     placeholder="Search all days — ID, note, category, amount, order…"
                      aria-label="Search transactions" autocomplete="off" spellcheck="false" />
               <span class="cb-searchnote" id="cb-searchnote" aria-live="polite"></span>
             </div>
@@ -453,12 +454,27 @@
       subtotalEl.textContent = "";
     }
 
+    /* A search is global and replaces this list entirely — renderDay
+       still runs (the date strip, month strip and subtotal above are all
+       still correct and still wanted), but the rows below belong to the
+       search, not to this day. Without this guard every refresh would
+       silently throw the results away. */
+    if (searchResults) { renderSearchResults(); return; }
+
     $("cb-txlist").innerHTML = recon + (shown.length
       ? shown.map(txRow).join("")
       : `<p class="q-empty">${filtering
           ? "No transactions match this filter on this day."
           : "Nothing logged on this day yet."}</p>`);
 
+    wireRowActions();
+  }
+
+  /* Void + re-link wiring for whatever rows are currently in the list.
+     Extracted from renderDay so SEARCH RESULTS get the same actions —
+     a row found by search is still a row you may need to re-link, and
+     that is often exactly why you searched for it. */
+  function wireRowActions() {
     $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const reason = window.prompt("Why is this being voided? A void writes a reversing entry — the original stays on the record.");
@@ -1085,59 +1101,120 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
-  /* ---- ledger search (2026-08-20) ----
-     Filters the day you're on across every field a row carries. Local,
-     because the day is already in memory — no round trip, no debounce
-     needed for the common case.
+  /* ---- ledger search — ACROSS EVERY DAY (2026-08-20) ----
+     Originally this filtered only the day on screen, which the owner
+     rightly rejected: a cash book you can only search one day at a time
+     doesn't answer "where did that ₱1,690 go".
 
-     The one thing local filtering CAN'T do is find a transaction saved
-     from another day, which is the whole reason IDs are now shown. So
-     when a search matches nothing here, the term is tried as an exact
-     transaction ID (a GetItem via the idempotency guard, never a Scan —
-     see backend/cashbook/find-transaction.js) and, on a hit, the page
-     jumps to that transaction's own day with the search still applied.
-     Only when the term looks like a single token: a multi-word search is
-     plainly not an ID, and firing a request per keystroke for
-     "13 meters dtf" would be pointless traffic. */
-  let searchLookupToken = 0;
+     So the search is server-side and global (see
+     backend/cashbook/search-transactions.js — it skips months whose
+     rollup says they're empty and queries only real day partitions, so
+     it is NOT a table Scan). While a search is active the ledger list is
+     REPLACED by results grouped under their own day headings; clearing
+     the box restores the ordinary day view untouched.
+
+     Results are capped in the DOM at PAGE_SIZE and grown by an explicit
+     "Show N more" click. A single busy day can already produce dozens of
+     rows, and painting several hundred at once on a phone is the kind of
+     thing that turns a search box into a freeze. */
+  const SEARCH_PAGE_SIZE = 50;
+  let searchResults = null;   // null = not searching; array = active search
+  let searchShown = SEARCH_PAGE_SIZE;
+  let searchToken = 0;
+  let searchDebounce = null;
+
   function setSearchNote(msg) { $("cb-searchnote").textContent = msg || ""; }
 
-  async function maybeJumpToTxnId(raw) {
-    const term = (raw || "").trim();
-    if (!term || /\s/.test(term) || term.length < 8) return;
-    const token = ++searchLookupToken;
-    setSearchNote("Not on this day — looking up…");
-    let hit = null;
-    try { hit = await D.findCashbookTransaction(term); }
-    catch { /* offline/500 — fall through to the not-found message */ }
-    // A newer keystroke started its own lookup while this was in flight;
-    // its result is the current one, so drop this stale answer.
-    if (token !== searchLookupToken) return;
-    if (hit && hit.day && hit.day !== selectedDay) {
-      setSearchNote("Found on " + hit.day + " — jumping…");
-      selectedDay = hit.day;
-      await refreshAll();
-      setSearchNote("Showing " + hit.day);
-      return;
-    }
-    setSearchNote(hit ? "" : "No match on this day, and no transaction with that ID.");
-  }
-
-  let searchDebounce = null;
-  $("cb-search").addEventListener("input", () => {
-    const raw = $("cb-search").value;
-    searchTerms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  function exitSearch() {
+    searchResults = null;
+    searchShown = SEARCH_PAGE_SIZE;
+    searchToken += 1;          // orphan any in-flight response
     setSearchNote("");
     renderDay(lastDay);
+  }
+
+  async function runSearch(raw) {
+    const q = (raw || "").trim();
+    if (!q) { exitSearch(); return; }
+    const token = ++searchToken;
+    setSearchNote("Searching all days…");
+    let res;
+    try {
+      res = await D.searchCashbookTransactions(q);
+    } catch (err) {
+      if (token !== searchToken) return;
+      setSearchNote("Couldn't search — " + err.message);
+      return;
+    }
+    // A newer keystroke owns the screen now; drop this stale answer.
+    if (token !== searchToken) return;
+    searchResults = res.transactions;
+    searchShown = SEARCH_PAGE_SIZE;
+    setSearchNote(
+      res.total === 0
+        ? "No matches in any day."
+        : res.total + " match" + (res.total === 1 ? "" : "es") +
+          (res.truncated ? " (showing the most recent — narrow the search for the rest)" : "")
+    );
+    renderSearchResults();
+  }
+
+  /* Results are grouped by day, newest first, because a bare list of
+     rows from different days with only a time on each is unreadable —
+     "10:26 PM" means nothing without knowing which day it belongs to. */
+  function renderSearchResults() {
+    const rows = (searchResults || []).filter(matchesFilters);
+    const host = $("cb-txlist");
+    if (!rows.length) {
+      host.innerHTML = `<p class="q-empty">No matching transactions.</p>`;
+      return;
+    }
+    const page = rows.slice(0, searchShown);
+    const remaining = rows.length - page.length;
+
+    let html = "";
+    let lastSeenDay = null;
+    for (const t of page) {
+      const d = t.day || (t.occurredAt || "").slice(0, 10);
+      if (d !== lastSeenDay) {
+        lastSeenDay = d;
+        html += `<div class="cb-searchday"><span>${escapeHtml(d)}</span>` +
+                `<button type="button" class="cb-searchday-go" data-goday="${escapeHtml(d)}">Open this day</button></div>`;
+      }
+      html += txRow(t);
+    }
+    if (remaining > 0) {
+      html += `<button type="button" class="btn btn-secondary cb-showmore" id="cb-showmore">` +
+              `Show ${remaining} more</button>`;
+    }
+    host.innerHTML = html;
+
+    const more = $("cb-showmore");
+    if (more) more.addEventListener("click", () => {
+      searchShown += SEARCH_PAGE_SIZE;
+      renderSearchResults();
+    });
+    host.querySelectorAll("[data-goday]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        selectedDay = b.dataset.goday;
+        $("cb-search").value = "";
+        exitSearch();
+        await refreshAll();
+      });
+    });
+    wireRowActions();
+  }
+
+  $("cb-search").addEventListener("input", () => {
+    const raw = $("cb-search").value;
+    // Kept in sync so the direction/method chips still narrow results,
+    // and so clearing the box restores the plain day view immediately
+    // rather than after the debounce.
+    searchTerms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
     clearTimeout(searchDebounce);
-    if (!searchTerms.length) { searchLookupToken++; return; }
-    // Only reach for the network once typing settles AND nothing local
-    // matched — an ID pasted in full satisfies both immediately.
-    searchDebounce = setTimeout(() => {
-      const day = lastDay;
-      if (day && day.transactions.some(matchesFilters)) return;
-      maybeJumpToTxnId(raw);
-    }, 350);
+    if (!searchTerms.length) { exitSearch(); return; }
+    setSearchNote("…");
+    searchDebounce = setTimeout(() => runSearch(raw), 300);
   });
 
   /* Click-to-copy on a row's transaction ID. Delegated on the list, which

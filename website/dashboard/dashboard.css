@@ -1114,6 +1114,29 @@ select.input { appearance: auto; }
   text-underline-offset: 2px;
 }
 .cb-txid:hover, .cb-txid:focus-visible { color: var(--color-primary, #1d4ed8); }
+
+/* Search results span days, so each group needs its date stated — a bare
+   list of times ("10:26 PM") from different days is unreadable. Sticky so
+   the date stays visible while scrolling a long group. */
+.cb-searchday {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  position: sticky; top: 0; z-index: 1;
+  padding: 6px 0 4px;
+  margin-top: var(--space-2);
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+  font-size: 12px; font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+}
+.cb-searchday-go {
+  background: none; border: 0; padding: 0;
+  font-size: 12px; font-weight: 500;
+  color: var(--color-primary, #1d4ed8);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+/* Full width so it reads as "the list continues", not as a stray action.
+   Tall enough to be a comfortable phone tap target. */
+.cb-showmore { display: block; width: 100%; margin-top: var(--space-3); min-height: 44px; }
 .cb-export-btn { min-height: 44px; margin-left: auto; }
 .cb-dirfilter, .cb-methodfilter { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Smaller than .cb-chip: these narrow a view, they don't record money, and

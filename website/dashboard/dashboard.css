@@ -986,12 +986,25 @@ select.input { appearance: auto; }
        to move across to the ledger. Default chaining is correct — the rail
        scrolls first, then the page continues. */
   }
-  /* Now that the rail scrolls internally, Save can leave the visible area
-     the same way it could on mobile — dock it to the rail's bottom edge
-     for the same reason the ≤760px block docks it to the sheet's. No
-     background override here: that is what rendered the CTA grey on
-     mobile (see the ≤760px .cb-form .btn-save rule). */
-  .cb-form .btn-save { position: sticky; bottom: 0; }
+  /* Docked Save, full-bleed — same shape as the ≤760px sheet rule.
+     Full-bleed is what makes it OPAQUE, and that is the whole point: the
+     button's own --color-accent is the only fully opaque surface involved.
+     Both --color-surface (0.9 alpha) and --color-bg (0.92) are translucent,
+     and .card is rgba(...,0.82), so painting a "solid" backdrop behind the
+     button would still let ~10-18% of the rows scrolling underneath show
+     through — which is exactly the mess the owner reported 2026-08-19
+     ("I see the values below the word"). Stretching the button over the
+     card's padding removes the gap instead of trying to mask it.
+     Do NOT add `background` to this rule: that is what rendered the CTA
+     grey on mobile. The orange comes from .btn-primary and must stay. */
+  .cb-form .btn-save {
+    position: sticky; bottom: calc(-1 * var(--space-3));
+    margin: var(--space-2) calc(-1 * var(--space-3)) calc(-1 * var(--space-3));
+    width: calc(100% + var(--space-3) * 2);
+    padding-left: var(--space-3); padding-right: var(--space-3);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.08);
+  }
 }
 
 /* — month strip: in / out / net — */

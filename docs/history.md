@@ -3231,3 +3231,88 @@ App broader permissions directly) before the next session that needs to land com
 All four fixes (Today, Jobs alignment, Jobs zoom-bleed, both Email bugs) went through the
 repo's standard staging-first gate — dev.kcmps.com sync and owner verification before each
 production promotion — and are live in production as of this entry.
+
+### 72. Cash Book + job costing, brain-dump to production in a day; Cognito refresh tokens; a run of mobile fixes only a real phone caught (2026-08-19)
+
+The largest single-session change so far: a new module designed, built, reviewed, promoted to
+production, and then debugged against real production data — plus a session-lifetime fix that had
+been quietly costing every staffer an hour of their day.
+
+**Cash Book + job costing.** Storefront and walk-in cash had no home; the ERP file's governing
+rule ("build a module only when a real transaction currently has no home") had genuinely fired.
+Design → `docs/cashbook-job-costing-plan-2026-08-18.md`. Shipped: `website/dashboard/cashbook.html`,
+`backend/cashbook/` (7 Lambdas), `backend/lib/cashbook.js` (pure, 53 tests). Cash-basis,
+integer centavos, Manila dates, append-only with void-not-edit, `METRIC#` rollups `ADD`-ed inside
+the same `TransactWriteItems` as the row so a total cannot drift from its rows.
+
+Two traps drove the design, and both earned their place:
+
+1. **Double-counting online orders.** `verify-payment.js` already records real money. One ledger,
+   two writers (`source: "system"` vs `"manual"`) rather than two ledgers that disagree. The
+   auto-post is still a documented seam, deliberately unwired — extending a live payment path
+   deserved its own pass.
+2. **Not every cost is a cash movement.** `affectsCash: false` (materials from stock already
+   owned) hits job profit but writes no `TXN#` at all. Labor is piece-rate today so the flag is
+   almost always `true` — built anyway, because retrofitting it means re-deriving information
+   that is gone.
+
+**The reviewer found a money bug before merge.** An adversarial pass caught refunds *increasing*
+revenue: the UI offered "Refund (negative revenue)" as a Revenue category, validation rejected
+amounts ≤ 0, and nothing negated the stored value. The sign now belongs to the category config,
+never to staff typing a minus.
+
+**And production found one the review couldn't.** Once real data existed, `ORD-290E09747F` showed
+a ₱10,000 materials expense in *both* Revenue and Costs. A job-linked expense writes two items
+sharing one id — a `TXN#` row (cash leaving) and a `COST#` line (the charge) — and the job money
+card listed every transaction under a heading labelled "Revenue". The totals were never wrong;
+`jobCosting()` already filtered on `kind`. It was the itemised list contradicting the figures
+printed directly above it, which is worse than a wrong number because a list reads as proof.
+
+**Cognito refresh tokens.** Cognito had been issuing a 5-day `refresh_token` that the frontend
+discarded, so every session died at 60 minutes. New `website/auth-refresh.js`: single-flight,
+proactive renewal, 401-retry-once, revoke-on-logout, fail-closed. Idle logout 60min → 4h, PIN lock
+15min → 30min. Two things that would each have shipped a fix that quietly didn't work: **Cognito
+returns no new refresh token on refresh**, so `saveTokens()` must carry the existing one forward
+or sessions still die at 60 minutes — only for users who lasted long enough to refresh once; and
+**no dashboard page had the Cognito origin in `connect-src`**, so a refresh from the dashboard was
+silently CSP-blocked, which looks exactly like a dead feature.
+
+**What a real phone caught that nothing automated did.** Screenshots were unavailable all session,
+so every check was measured geometry and numbers — and every one of these got through it:
+
+- The Save button rendered **grey, not orange**, on mobile only: a sticky-dock rule set
+  `background: var(--color-surface)`, overriding `.btn-primary`. A grey primary button reads as
+  *disabled*.
+- Opening the entry sheet **autofocused Amount**, springing the keyboard up over the category and
+  method pickers. The same mistake was in the combobox. Both were optimising for keystrokes on a
+  device where the keyboard is the thing in the way.
+- The **note and job-link fields were buried** in a collapsed disclosure. That was a deliberate
+  decision ("keep the fast path four taps") and it was wrong twice — the owner could not find
+  either field. Four taps were never the cost; a field between Method and Save costs a glance.
+
+**Self-inflicted, then fixed.** Per-pane scrolling on the desktop cash book introduced two of its
+own: `overscroll-behavior: contain` meant a cursor over the entry rail could not scroll the page
+*at all*, and the rail's height was measured as if it started at the top of the viewport when it
+starts ~138px down, so the docked Save sat below the fold. A later full-bleed attempt then widened
+the button past the card inside a scroll container — plain horizontal overflow. Opacity was never
+the issue: `--color-accent` is a solid hex. What leaked was the strip of card padding beneath it,
+since `.card` is `rgba(…,0.82)`.
+
+**Payment methods became two lists, not one.** `card` retired from writes, but kept in the label
+map so historical rows still print "Card" rather than a raw slug. `gcash`/`bank` now require a
+`paymentAccount` (deliberately not "reference", which already means the customer's payment-proof
+transaction ref). **Nothing was migrated** — rows predating the field render "—" everywhere, and
+absent is never invalid on read. Verified by hashing every item of a real production order before
+and after: byte-identical.
+
+**Process notes.** A `gh pr merge` was piped through `tail`, which swallowed a bad-flag error — the
+merge silently failed, and a deploy at that moment would have shipped the *old* code to production
+while reporting success. Caught only by checking whether the features were present on `main`
+rather than trusting the command's output. Separately, `aws s3 sync` treats a newer local mtime as
+"changed", so a `git checkout` makes 25 byte-identical files look like a pending deploy; and a
+production Lambda promotion was flagged by a safety check because the subagent's own transcript
+contained no user messages — the authorization was real, just not visible from inside the agent.
+
+Everything went through the staging-first gate. Frontend was promoted *before* the backend
+deliberately: new frontend against old backend is inert, whereas the reverse would have 400'd
+every GCash entry.

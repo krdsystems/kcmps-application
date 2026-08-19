@@ -962,10 +962,29 @@ select.input { appearance: auto; }
    sheet with its own overflow rules (see the ≤760px block). */
 .cb-entry { min-width: 0; position: sticky; top: var(--space-3); }
 @media (min-width: 761px) {
+  /* --cb-rail-top must clear the sticky .dash-topbar, or the rail sticks
+     UNDERNEATH it and its first field is permanently hidden. Measured
+     constant, not a guess: topbar = 2x var(--space-3) padding + ~43px of
+     title/subtitle + 1px border ≈ 76px, plus a 16px breathing gap.
+     Re-measure if .dash-topbar's padding or title sizing changes.
+     max-height then completes the pair: stuck at --cb-rail-top, a rail of
+     `100dvh - top - 16px` ends exactly 16px above the fold, which is what
+     puts the sticky Save button below on screen rather than past it.
+     The earlier `100dvh - 32px` silently assumed the rail began at the
+     very top of the viewport; it begins ~138px down (topbar + content
+     padding + the "Cash book" heading), so its bottom edge — and Save with
+     it — sat below the fold. Owner reported exactly that 2026-08-19. */
   .cb-entry {
-    max-height: calc(100dvh - var(--space-3) * 2);
+    --cb-rail-top: 92px;
+    top: var(--cb-rail-top);
+    max-height: calc(100dvh - var(--cb-rail-top) - var(--space-3));
     overflow-y: auto;
-    overscroll-behavior: contain;
+    /* NO overscroll-behavior: contain here. It was the other half of the
+       same report: containing the scroll means that once the rail reaches
+       its own end the wheel refuses to chain to the page, so a cursor over
+       the rail could not scroll the page AT ALL and the only way down was
+       to move across to the ledger. Default chaining is correct — the rail
+       scrolls first, then the page continues. */
   }
   /* Now that the rail scrolls internally, Save can leave the visible area
      the same way it could on mobile — dock it to the rail's bottom edge

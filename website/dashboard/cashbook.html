@@ -52,8 +52,10 @@
                 <label class="seg-opt"><input type="radio" name="cb-dir" value="out" /><span>Expense</span></label>
               </div>
 
-              <!-- 2. Amount, autofocused when the sheet opens. inputmode
-                   ="decimal" gives the numeric keypad with no spinners. -->
+              <!-- 2. Amount. inputmode="decimal" gives the numeric keypad
+                   with no spinners. NOT autofocused on open — see
+                   openSheet() for why the keyboard must not spring up
+                   before the staffer has seen the rest of the form. -->
               <div class="field">
                 <label for="cb-amount">Amount</label>
                 <div class="cb-amount-wrap">
@@ -679,9 +681,17 @@
   function openSheet() {
     entry.classList.add("is-open");
     scrim.classList.add("is-open");
-    // Amount-first is the fastest possible entry — focus it, don't make
-    // them reach for it.
-    $("cb-amount").focus();
+    /* Deliberately does NOT focus the amount field.
+       It used to, on "amount-first is the fastest entry" reasoning — but
+       that counted taps and ignored what focusing actually does on a
+       phone: the keyboard springs up immediately and covers most of the
+       sheet, hiding the category and payment-method pickers the staffer
+       still has to read. Owner reported it from a real device
+       2026-08-19. Now they tap whichever field they want first and the
+       keyboard appears only when it's wanted.
+       The focus() calls in the submit handler stay — focusing a field the
+       user is being told to correct is a different case, and there the
+       keyboard is exactly what they need. */
   }
   function closeSheet() {
     entry.classList.remove("is-open");

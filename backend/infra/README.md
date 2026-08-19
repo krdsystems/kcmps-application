@@ -457,6 +457,81 @@ production publish is a real content change to `kcmps.com` — treat it as one. 
 purge cron is a genuine hard-delete path once live in production — rehearse it against a
 throwaway record there before trusting the 15-minute schedule unattended.
 
+## Cash Book Lambdas — production (promoted 2026-08-19)
+
+Seven functions from `backend/cashbook/`, promoted from `kcmps-backend-staging` to production
+on the owner's explicit go-ahead. **Production Lambdas are CLI-managed** — there is no
+production Lambda stack, and `backend-lambdas.cfn.yaml` owns *staging only*, so this promotion
+was `aws lambda create-function` x7 + `apigatewayv2 create-integration`/`create-route`/
+`lambda add-permission` x7, not a stack deploy. Only the CloudWatch alarms are CloudFormation
+(`kcmps-observability`).
+
+| Function | Route (prod API `6msg2uho6c`, JWT authorizer `sboj1n`) | Gate |
+|---|---|---|
+| `kcmps-log-transaction` | `POST /cashbook/transactions` | `isStaff()` |
+| `kcmps-void-transaction` | `POST /cashbook/transactions/{txnId}/void` | Admin |
+| `kcmps-get-cashbook-day` | `GET /cashbook/day/{day}` | `isStaff()` |
+| `kcmps-get-cashbook-month` | `GET /cashbook/month/{month}` | Admin |
+| `kcmps-get-cashbook-categories` | `GET /cashbook/categories` | `isStaff()` |
+| `kcmps-log-job-cost` | `POST /orders/{orderId}/costs` | `isStaff()` |
+| `kcmps-get-job-costing` | `GET /orders/{orderId}/costing` | Admin |
+
+Route keys are **byte-identical to staging's**, deliberately — the frontend routes by hostname
+(`API_BASE`), so an environment-specific path would force a per-environment branch that nothing
+else in this repo has. All seven: `nodejs24.x`/`arm64`, `index.handler`, 256MB/10s,
+`TABLE_NAME=kcmps`, log group retention 30 days (production's convention; staging uses 14).
+
+**No IAM change was needed, and this was confirmed rather than assumed.** Production's
+`kcmps-staff-api-lambda-role` inline policy `kcmps-staff-api-inline` already grants
+`GetItem`/`Query`/`Scan`/`PutItem`/`UpdateItem` on `table/kcmps` (+ indexes) *and*
+`TransactWriteItems` on the table — read back with `aws iam get-role-policy` before deploying.
+That `PutItem`-alongside-`TransactWriteItems` pairing is the gotcha documented above: DynamoDB
+authorizes the constituent action of each operation *inside* a transaction, not just the
+transact-level one, so a role with only `TransactWriteItems` would fail every write here.
+
+**No SES, no S3, no bucket, no EventBridge schedule, no Cognito change.** This feature emails
+nobody and touches no object storage.
+
+**Production started EMPTY and stays empty.** No staging data was migrated, copied, or seeded —
+staging's UAT fixtures (order `ORD-A76A5307CE`, days `2026-08-18`/`19`) never left staging. The
+`CONFIG#TXN_CATEGORIES` item was deliberately **not** written: `shared.js`'s `loadCategories()`
+falls back to `DEFAULT_TXN_CATEGORIES` when it is absent (same no-migration-needed pattern as
+`business-hours.js`), so a fresh environment is fully functional with zero setup.
+
+**Packaging** — same shape as the checkout/mail zips, and the same trap that crashed all five
+Asset Library Lambdas on their first deploy applies here: the `require("../lib")` → `"./lib"`
+rewrite must be applied to **`shared.js` as well as the handler**, not just the handler.
+Each zip is `index.js` (the handler, rewritten) + `shared.js` (rewritten) + a flattened
+`lib/` copy of `backend/lib/*.js` minus `*.test.js` + `backend/cashbook/node_modules`
+(~3MB, small enough for a direct `--zip-file fileb://` upload — no artifacts bucket needed).
+
+**Live production verification (2026-08-19, direct Lambda invoke with synthetic JWT claims —
+no real Cognito login was available in-session; the seven routes were separately confirmed
+reachable and JWT-gated over real HTTPS, each returning 401 unauthenticated rather than 404):**
+`node --test backend/lib/cashbook.test.js` 45/45 pass. Logged a real transaction (201) and
+confirmed `METRIC#DAY#`/`METRIC#MONTH#` counters went 0 → 12345/1 via `aws dynamodb get-item`;
+replayed the identical `idempotencyId` and got 200 `idempotentReplay: true` with counters
+**unchanged** and exactly one `TXN#` row in the partition. Void: 403 for `[Staff]`, 200 for
+`[Staff Admin]`, counters back to their exact prior values, second attempt 409 "already
+voided". Month totals and job costing: 403 for `[Staff]`, 200 for `[Staff Admin]`. Day view:
+200 for `[Staff]`. A cost line with `affectsCash: false` wrote a `COST#` item and an `EVENT#`
+and **no** `TXN#` row, leaving the day rollup untouched; the `affectsCash: true` twin wrote the
+`TXN#` + pointer + rollups as designed. The cost tests ran against a **throwaway** `ORDER#`
+META item written directly to the table, never a real customer order.
+
+**All test rows were deleted afterwards** — every `TXN#`/`EVENT#`/`COST#`/`IDEMPOTENCY#`/
+`METRIC#` item and the throwaway order. A confirming scan for `TXN#`/`METRIC#`/`COST#`/
+`CONFIG#TXN_CATEGORIES`/`ORDER#PRODVERIFY` returns `Count: 0`, and the table's `IDEMPOTENCY#`
+items are back to the same 5 pre-existing checkout guards (no `scopeName`, so not cashbook).
+
+**Alarms**: 14 added to `kcmps-observability` — an Errors and a Throttles alarm per function,
+each at threshold 1 on a 5-minute Sum, actioning `kcmps-ops-alerts`. Deliberately **not**
+folded into the aggregated `DashboardMiscErrorsAlarm`: these are the only production Lambdas
+that write money records, and aggregating them would trade away exactly the signal that
+matters most. The stack template is now >51200 bytes, so `aws cloudformation deploy` needs
+`--s3-bucket kcmps-lambda-artifacts-staging --s3-prefix cfn-templates/observability` (an inert
+template upload — it does not touch any staging stack, Lambda, or table).
+
 ## Checkout Lambdas — deployed (2026-07-31)
 
 `kcmps-create-order` and `kcmps-submit-payment-proof`, both `nodejs24.x`/`arm64` in
@@ -589,16 +664,15 @@ backend change:
   its own EventBridge rule (`kcmps-staging-guardduty-design-originals-scan-result`),
   added 2026-08-05. See the "Design originals bucket" section above for the full
   picture — same fail-closed / single-EventBridge-bus reasoning applies.
-- **Cash Book + job costing Lambdas (2026-08-18/19, staging only)** — 7 new functions
+- **Cash Book + job costing Lambdas (2026-08-18/19)** — 7 new functions
   (`kcmps-staging-{log-transaction,void-transaction,get-cashbook-day,get-cashbook-month,
   get-cashbook-categories,log-job-cost,get-job-costing}`), 7 API routes, all reusing
   `StaffApiLambdaRole` (it already carries Get/Put/Update/Query **and** TransactWriteItems on
   the table — note the `PutItem`-alongside-`TransactWriteItems` gotcha documented above is
   already satisfied, which is why no role change was needed). Deployed as
   `ArtifactsPrefix=cashbook-phase1-2026-08-18b`. DynamoDB only: no bucket, no SES env var, no
-  new IAM. Source in `backend/cashbook/`, rules in `backend/lib/cashbook.js`. **Not promoted to
-  production** — needs the owner's separate explicit go-ahead, and the dashboard page that
-  consumes these routes is still being built.
+  new IAM. Source in `backend/cashbook/`, rules in `backend/lib/cashbook.js`. **Promoted to
+  production 2026-08-19** — see "Cash Book Lambdas — production" below.
 - **What staging deliberately doesn't have**: PITR, Cognito `PostConfirmation` wiring
   (would displace production's — that Lambda's trigger is tested via direct/synthetic
   invoke instead), and SES sending (`FROM_EMAIL`/`SES_SENDER` env vars are omitted, so

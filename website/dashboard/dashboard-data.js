@@ -94,6 +94,10 @@
     // also raises the overlay first.
     if (res.status === 401) {
       try { sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
+      // A 401 ends the session too, so release the nav-drawer auto-open
+      // flag and let the next login re-arm it (see dashboard-shell.js's
+      // clearTokens()). Same literal — no module system to share it through.
+      try { sessionStorage.removeItem("kcmps_sidebar_auto_opened"); } catch { /* ignore */ }
       if (global.KCMPS_DASH_SHELL && global.KCMPS_DASH_SHELL.escalateSessionGuard) {
         global.KCMPS_DASH_SHELL.escalateSessionGuard();
       }

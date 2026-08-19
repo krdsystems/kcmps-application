@@ -1924,7 +1924,19 @@ function loadTokens() {
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { clearTokens(); return null; }
 }
-function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+/* Ending the session here must also release the dashboard's "already
+   auto-opened the nav drawer this session" flag (dashboard-shell.js sets
+   it; see its clearTokens()). sessionStorage is scoped to the TAB, not the
+   login — and THIS is the logout staff actually use, the site-nav button,
+   which is why clearing it dashboard-side alone wasn't enough: log out
+   here, log back in, and the drawer stayed shut because the flag from the
+   previous login was still set. Reported 2026-08-19. Duplicated as a
+   literal rather than shared because this file and the dashboard shell
+   have no module system between them — keep the two strings in step. */
+function clearTokens() {
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem("kcmps_sidebar_auto_opened");
+}
 
 /* ---- Build the Hosted UI authorize URL ----
    response_type=code (Authorization Code flow). The Hosted UI page shows both

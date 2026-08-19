@@ -59,7 +59,25 @@
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
   }
-  function clearTokens() { sessionStorage.removeItem(TOKEN_STORAGE_KEY); }
+  /* "Have we already auto-opened the nav drawer this session?" — see the
+     auto-open block in mount(). Lives at module scope, not inside mount(),
+     because clearTokens() below has to release it too. */
+  const SIDEBAR_AUTO_OPEN_KEY = "kcmps_sidebar_auto_opened";
+
+  /* Clearing tokens ends the session, so it must ALSO release the
+     auto-open flag. sessionStorage is scoped to the TAB, not to the login:
+     without this line, logging out and back in inside the same tab left
+     the flag set, so the drawer auto-opened exactly once per tab, ever,
+     and never again for any subsequent login. Reported 2026-08-19 as
+     "the auto-open feature is still not working" after a logout/login
+     cycle — the preference was fine and reads ON by default; the gate in
+     front of it had already been consumed. This runs on every session-end
+     path (explicit logout, expired `exp`, undecodable token), which is
+     exactly when re-arming is correct. */
+  function clearTokens() {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(SIDEBAR_AUTO_OPEN_KEY);
+  }
 
   /* ---- local-only test bypass ----
      No backend/Cognito Staff account is needed to test this mock-data
@@ -645,7 +663,8 @@
       //     that fetch is in flight.
       // NEVER awaited — a slow/failed prefs fetch must not block or delay
       // rendering the rest of the dashboard shell.
-      const SIDEBAR_AUTO_OPEN_KEY = "kcmps_sidebar_auto_opened";
+      // SIDEBAR_AUTO_OPEN_KEY is module-scope (next to TOKEN_STORAGE_KEY) —
+      // clearTokens() releases it on logout so a fresh login re-arms this.
       const isMobileWidth = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
       if (isMobileWidth && guardStage === 0 && !sessionStorage.getItem(SIDEBAR_AUTO_OPEN_KEY)) {
         sessionStorage.setItem(SIDEBAR_AUTO_OPEN_KEY, "1");

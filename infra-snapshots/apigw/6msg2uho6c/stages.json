@@ -6,9 +6,9 @@
       "DefaultRouteSettings": {
         "DetailedMetricsEnabled": false
       },
-      "DeploymentId": "yvli3z",
-      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'yvli3z'",
-      "LastUpdatedDate": "2026-08-08T10:43:34+00:00",
+      "DeploymentId": "v03qr1",
+      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'v03qr1'",
+      "LastUpdatedDate": "2026-08-19T18:00:26+00:00",
       "RouteSettings": {
         "POST /design-uploads": {
           "ThrottlingBurstLimit": 20,

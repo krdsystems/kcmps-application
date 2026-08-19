@@ -2,6 +2,15 @@
   "Items": [
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "0ea815r",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-cashbook-month/invocations",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "1dsdn0h",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
@@ -38,10 +47,28 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "33xrwvf",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-cashbook-categories/invocations",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "39exh71",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-messages",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "4g3x3ua",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-stations",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -65,6 +92,42 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "72kfdm8",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-cashbook-day/invocations",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "8ep0zjs",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-log-transaction/invocations",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "91m7oe5",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-search-transactions",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "9eveop4",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-relink-transaction",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "ayzopdq",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
@@ -78,6 +141,15 @@
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-unread-messages",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "colsi2g",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-log-job-cost/invocations",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -128,6 +200,15 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "jdg1ejt",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-job-costing/invocations",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "lf8m0ts",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
@@ -173,10 +254,28 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "pkdua68",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-cashbook-history",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "qw39jn0",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-publish-design",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "r4thba3",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:apigateway:ap-southeast-1:lambda:path/2015-03-31/functions/arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-void-transaction/invocations",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -213,6 +312,15 @@
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-get-mail-message",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "xrivfa4",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-find-transaction",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },

@@ -2,7 +2,7 @@
   "Architectures": [
     "arm64"
   ],
-  "CodeSize": 3113094,
+  "CodeSize": 3118795,
   "Description": "",
   "Environment": {
     "Variables": {
@@ -12,13 +12,13 @@
   "EphemeralStorage": {
     "Size": 512
   },
-  "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-cashbook-categories",
-  "FunctionName": "kcmps-staging-get-cashbook-categories",
+  "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-cashbook-history",
+  "FunctionName": "kcmps-staging-get-cashbook-history",
   "Handler": "index.handler",
   "LastUpdateStatus": "Successful",
   "LoggingConfig": {
     "LogFormat": "Text",
-    "LogGroup": "/aws/lambda/kcmps-staging-get-cashbook-categories"
+    "LogGroup": "/aws/lambda/kcmps-staging-get-cashbook-history"
   },
   "MemorySize": 256,
   "PackageType": "Zip",
@@ -32,7 +32,7 @@
     "OptimizationStatus": "Off"
   },
   "State": "Active",
-  "Timeout": 10,
+  "Timeout": 15,
   "TracingConfig": {
     "Mode": "PassThrough"
   },

@@ -174,6 +174,86 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.093000+00:00",
+      "LogicalResourceId": "GetCashbookCategoriesErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-categories-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.171000+00:00",
+      "LogicalResourceId": "GetCashbookCategoriesThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-categories-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.372000+00:00",
+      "LogicalResourceId": "GetCashbookDayErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-day-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.036000+00:00",
+      "LogicalResourceId": "GetCashbookDayThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-day-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:26.957000+00:00",
+      "LogicalResourceId": "GetCashbookMonthErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-month-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.096000+00:00",
+      "LogicalResourceId": "GetCashbookMonthThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-cashbook-month-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.211000+00:00",
+      "LogicalResourceId": "GetJobCostingErrorsAlarm",
+      "PhysicalResourceId": "kcmps-get-job-costing-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.143000+00:00",
+      "LogicalResourceId": "GetJobCostingThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-get-job-costing-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T09:31:48.895000+00:00",
       "LogicalResourceId": "GetMessagesErrorsAlarm",
       "PhysicalResourceId": "kcmps-get-messages-errors",
@@ -287,6 +367,46 @@
       "LastUpdatedTimestamp": "2026-08-02T06:33:19.497000+00:00",
       "LogicalResourceId": "LambdaDlqDepthAlarm",
       "PhysicalResourceId": "kcmps-lambda-dlq-depth",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.102000+00:00",
+      "LogicalResourceId": "LogJobCostErrorsAlarm",
+      "PhysicalResourceId": "kcmps-log-job-cost-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.261000+00:00",
+      "LogicalResourceId": "LogJobCostThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-log-job-cost-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.225000+00:00",
+      "LogicalResourceId": "LogTransactionErrorsAlarm",
+      "PhysicalResourceId": "kcmps-log-transaction-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.107000+00:00",
+      "LogicalResourceId": "LogTransactionThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-log-transaction-throttles",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::CloudWatch::Alarm"
     },
@@ -527,6 +647,26 @@
       "LastUpdatedTimestamp": "2026-08-02T06:33:19.173000+00:00",
       "LogicalResourceId": "VerifyPaymentThrottlesAlarm",
       "PhysicalResourceId": "kcmps-verify-payment-throttles",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:27.202000+00:00",
+      "LogicalResourceId": "VoidTransactionErrorsAlarm",
+      "PhysicalResourceId": "kcmps-void-transaction-errors",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::CloudWatch::Alarm"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-19T05:16:26.984000+00:00",
+      "LogicalResourceId": "VoidTransactionThrottlesAlarm",
+      "PhysicalResourceId": "kcmps-void-transaction-throttles",
       "ResourceStatus": "CREATE_COMPLETE",
       "ResourceType": "AWS::CloudWatch::Alarm"
     }

@@ -35,6 +35,22 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "2qg3kq7",
+      "RouteKey": "PUT /stations",
+      "Target": "integrations/4g3x3ua"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "30mlxrb",
+      "RouteKey": "GET /cashbook/search",
+      "Target": "integrations/91m7oe5"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "4o7j3z7",
       "RouteKey": "POST /orders/{orderId}/messages",
       "Target": "integrations/e6makdr"
@@ -90,6 +106,14 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "ayvn9ee",
+      "RouteKey": "GET /cashbook/day/{day}",
+      "Target": "integrations/72kfdm8"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "b70di3m",
       "RouteKey": "POST /staff/pin/verify",
       "Target": "integrations/lzhmloq"
@@ -137,6 +161,14 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "gavasaq",
+      "RouteKey": "PATCH /cashbook/transactions/{txnId}/link",
+      "Target": "integrations/9eveop4"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "gcfcht5",
       "RouteKey": "POST /line-items/{lineItemId}/advance",
       "Target": "integrations/m17gsoc"
@@ -148,6 +180,14 @@
       "RouteId": "gzyqppn",
       "RouteKey": "POST /orders/manual",
       "Target": "integrations/1w5jvid"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "hg6pv9g",
+      "RouteKey": "GET /orders/{orderId}/costing",
+      "Target": "integrations/jdg1ejt"
     },
     {
       "ApiKeyRequired": false,
@@ -185,6 +225,14 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "nfc45w3",
+      "RouteKey": "POST /orders/{orderId}/costs",
+      "Target": "integrations/colsi2g"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "ocoacsj",
       "RouteKey": "POST /mail/mailboxes/{mailboxId}/messages/{messageId}/reply",
       "Target": "integrations/ygixd9a"
@@ -201,9 +249,49 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "rb6n14p",
+      "RouteKey": "POST /cashbook/transactions/{txnId}/void",
+      "Target": "integrations/r4thba3"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "rh2ypen",
+      "RouteKey": "GET /cashbook/history",
+      "Target": "integrations/pkdua68"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "s8rbxce",
+      "RouteKey": "POST /cashbook/transactions",
+      "Target": "integrations/8ep0zjs"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "tyvau2p",
+      "RouteKey": "GET /cashbook/transactions/{txnId}",
+      "Target": "integrations/xrivfa4"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "x8wv7r7",
       "RouteKey": "GET /messages/unread",
       "Target": "integrations/cg7eqrq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "xqa5ir4",
+      "RouteKey": "GET /stations",
+      "Target": "integrations/4g3x3ua"
     },
     {
       "ApiKeyRequired": false,
@@ -224,6 +312,14 @@
       "ApiKeyRequired": false,
       "AuthorizationType": "JWT",
       "AuthorizerId": "sboj1n",
+      "RouteId": "yefr1j2",
+      "RouteKey": "GET /cashbook/categories",
+      "Target": "integrations/33xrwvf"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
       "RouteId": "ywyixib",
       "RouteKey": "POST /orders/{orderId}/set-on-hold",
       "Target": "integrations/1h3tzuk"
@@ -234,6 +330,14 @@
       "RouteId": "zg1b3in",
       "RouteKey": "POST /orders/{orderId}/cancel",
       "Target": "integrations/ayzopdq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "sboj1n",
+      "RouteId": "zhoxpwu",
+      "RouteKey": "GET /cashbook/month/{month}",
+      "Target": "integrations/0ea815r"
     }
   ]
 }

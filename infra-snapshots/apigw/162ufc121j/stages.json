@@ -6,9 +6,9 @@
       "DefaultRouteSettings": {
         "DetailedMetricsEnabled": false
       },
-      "DeploymentId": "u8o1c8",
-      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'u8o1c8'",
-      "LastUpdatedDate": "2026-08-18T14:53:01+00:00",
+      "DeploymentId": "dcfqnj",
+      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'dcfqnj'",
+      "LastUpdatedDate": "2026-08-19T17:29:16+00:00",
       "RouteSettings": {},
       "StageName": "$default",
       "StageVariables": {},

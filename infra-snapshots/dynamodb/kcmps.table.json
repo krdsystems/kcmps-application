@@ -28,9 +28,9 @@
       {
         "IndexArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps/index/GSI1",
         "IndexName": "GSI1",
-        "IndexSizeBytes": 0,
+        "IndexSizeBytes": 466,
         "IndexStatus": "ACTIVE",
-        "ItemCount": 0,
+        "ItemCount": 1,
         "KeySchema": [
           {
             "AttributeName": "GSI1PK",
@@ -56,7 +56,7 @@
         }
       }
     ],
-    "ItemCount": 146,
+    "ItemCount": 171,
     "KeySchema": [
       {
         "AttributeName": "PK",
@@ -81,7 +81,7 @@
     "TableArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps",
     "TableId": "37b743a1-ec73-49b6-9859-b5ff51f0f68e",
     "TableName": "kcmps",
-    "TableSizeBytes": 89983,
+    "TableSizeBytes": 106099,
     "TableStatus": "ACTIVE",
     "WarmThroughput": {
       "ReadUnitsPerSecond": 12000,

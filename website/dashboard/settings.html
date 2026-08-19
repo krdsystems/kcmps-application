@@ -313,7 +313,7 @@
     stationsList.innerHTML = stationRows.map((s, i) => {
       const dim = s.retired ? "opacity:0.6;" : "";
       return (
-        `<div class="dash-form-grid" style="${dim}align-items:end;padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider)">` +
+        `<div class="dash-form-grid" data-row="${i}" style="${dim}align-items:end;padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider)">` +
           `<div class="field"><label for="st-label-${i}">Name</label>` +
             `<input class="input" id="st-label-${i}" data-i="${i}" data-f="label" type="text" maxlength="60" value="${escapeHtml(s.label)}"${isAdmin ? "" : " disabled"} /></div>` +
           `<div class="field"><label for="st-id-${i}">Code</label>` +
@@ -341,7 +341,21 @@
     const row = stationRows[Number(t.dataset.i)];
     if (!row) return;
     const f = t.dataset.f;
-    if (f === "retired") { row.retired = t.checked; paintStations(); return; }
+    if (f === "retired") {
+      row.retired = t.checked;
+      /* Update the dim styling IN PLACE — never re-render the list here.
+         The checkbox lives inside a <label for=...>, so a click on the
+         label toggles the box, fires this handler, and THEN applies the
+         label's own default activation. Repainting in between destroyed
+         the element that had just been toggled and handed that second
+         activation to the freshly-built replacement, flipping it back:
+         retiring a station looked like it worked and silently saved
+         nothing (found by the owner on staging, 2026-08-20 — a retire of
+         PRESS-01 never reached the config item). */
+      const rowEl = stationsList.querySelector(`[data-row="${t.dataset.i}"]`);
+      if (rowEl) rowEl.style.opacity = t.checked ? "0.6" : "";
+      return;
+    }
     if (f === "id") { row.id = t.value.toUpperCase(); t.value = row.id; return; }
     row[f] = t.value;
   });

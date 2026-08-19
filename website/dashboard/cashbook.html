@@ -22,13 +22,14 @@
     </header>
 
     <main class="dash-content cb-page">
-      <p class="demo-notice"><strong>Staging — real backend, real saved records.</strong>
-        Anything logged here is written to the staging database and visible to the whole team.</p>
-
       <section class="dsec">
         <div class="dsec-head">
           <h2>Cash book</h2>
-          <span class="hint">Cash-basis — recorded when money actually moves. Entries can be voided, never edited</span>
+          <!-- Both halves state a rule that isn't visible from the UI:
+               entries are dated when money MOVED (not when the order was
+               placed), and there is no edit — a mistake is voided. Someone
+               hunting for an edit button needs to be told that once. -->
+          <span class="hint">Recorded when money moves. Entries can be voided, never edited</span>
         </div>
 
         <!-- ONE DOM, TWO LAYOUTS. Desktop: sticky entry rail on the left,
@@ -213,7 +214,6 @@
       <section class="dsec">
         <div class="dsec-head">
           <h2>Job &amp; client profit</h2>
-          <span class="hint">Per-unit profit is the number that answers &ldquo;should we take the next job like this&rdquo;</span>
         </div>
         <div id="cb-jobs"></div>
       </section>

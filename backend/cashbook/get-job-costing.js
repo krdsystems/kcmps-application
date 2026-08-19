@@ -44,8 +44,17 @@ exports.handler = async (event) => {
   const meta = items.find((i) => i.SK === metaSk());
   if (!meta) return response(404, { error: "Order not found" });
 
-  const costLines = items.filter((i) => String(i.SK).startsWith("COST#"));
-  const txnRows = items.filter((i) => String(i.SK).startsWith("TXN#"));
+  // Same `!i.deleted` reasoning as txnRows below — a re-linked EXPENSE
+  // moves its COST# line too (that is how expenses reach a job's
+  // numbers; TXN# rows only carry revenue), leaving a soft-deleted line
+  // behind on the old job.
+  const costLines = items.filter((i) => String(i.SK).startsWith("COST#") && !i.deleted);
+  // `!i.deleted` skips pointers left behind by a re-link: moving a
+  // transaction to a different job soft-deletes its old TXN_POINTER
+  // rather than removing it (relink-transaction.js explains why it must
+  // be a soft delete), so without this filter the money would keep
+  // counting toward the job it was just moved off.
+  const txnRows = items.filter((i) => String(i.SK).startsWith("TXN#") && !i.deleted);
 
   let units = null;
   const q = event.queryStringParameters || {};

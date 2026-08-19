@@ -37,16 +37,16 @@
             <button type="button" class="btn btn-secondary" id="manual-order-toggle">+ New manual order</button>
           </div>
           <div class="dash-collapsible" id="manual-order-collapsible"><div>
-          <form class="dash-form-grid" id="manual-order-form">
-            <div class="field">
+          <form class="dash-form-grid mo-grid" id="manual-order-form">
+            <div class="field mo-6">
               <label for="mo-client">Client</label>
               <select class="input" id="mo-client"></select>
             </div>
-            <div class="field" id="mo-newclient-name-field" style="display:none">
+            <div class="field mo-3" id="mo-newclient-name-field" style="display:none">
               <label for="mo-newclient-name">New client name</label>
               <input class="input" id="mo-newclient-name" placeholder="e.g. Mika Reyes" />
             </div>
-            <div class="field" id="mo-newclient-type-field" style="display:none">
+            <div class="field mo-3" id="mo-newclient-type-field" style="display:none">
               <label for="mo-newclient-type">New client type</label>
               <select class="input" id="mo-newclient-type"><option value="B2C">B2C — individual</option><option value="B2B">B2B — organization</option></select>
             </div>
@@ -54,39 +54,39 @@
               <label for="mo-desc">Description</label>
               <input class="input" id="mo-desc" placeholder="e.g. 20 pcs DTF shirts, black, size run" required />
             </div>
-            <div class="field">
+            <div class="field mo-4">
               <label for="mo-type">Item type</label>
               <select class="input" id="mo-type"><option value="sku">Quick-buy (SKU)</option><option value="custom">Custom request</option></select>
             </div>
-            <div class="field" id="mo-sku-field">
+            <div class="field mo-4" id="mo-sku-field">
               <label for="mo-sku">SKU code (optional)</label>
               <input class="input" id="mo-sku" placeholder="e.g. PRINT-DTF-SHIRT" />
             </div>
-            <div class="field">
+            <div class="field mo-2">
               <label for="mo-qty">Qty</label>
               <input class="input" id="mo-qty" type="number" min="1" value="1" />
             </div>
-            <div class="field">
+            <div class="field mo-2">
               <label for="mo-price">Price each (₱, optional if not yet quoted)</label>
               <input class="input" id="mo-price" type="number" min="0" step="0.01" placeholder="e.g. 350" />
             </div>
-            <div class="field">
+            <div class="field mo-6">
               <label for="mo-due">Promised date</label>
               <input class="input" id="mo-due" type="date" required />
             </div>
-            <div class="field">
+            <div class="field mo-6">
               <label for="mo-status">Status</label>
               <select class="input" id="mo-status"></select>
             </div>
-            <div class="field" id="mo-gcash-ref-field" style="display:none">
+            <div class="field mo-6" id="mo-gcash-ref-field" style="display:none">
               <label for="mo-gcash-ref">GCash reference number</label>
               <input class="input" id="mo-gcash-ref" placeholder="e.g. 8017 442 99331" />
             </div>
-            <div class="field" id="mo-gcash-amount-field" style="display:none">
+            <div class="field mo-6" id="mo-gcash-amount-field" style="display:none">
               <label for="mo-gcash-amount">Claimed amount (₱)</label>
               <input class="input" id="mo-gcash-amount" type="number" min="0" step="0.01" />
             </div>
-            <div class="field" id="mo-paidvia-field" style="display:none">
+            <div class="field mo-6" id="mo-paidvia-field" style="display:none">
               <label for="mo-paidvia">Paid via (optional)</label>
               <select class="input" id="mo-paidvia">
                 <option value="">— not logged —</option>
@@ -95,7 +95,7 @@
                 <option value="other">Other</option>
               </select>
             </div>
-            <div class="field" id="mo-paidref-field" style="display:none">
+            <div class="field mo-6" id="mo-paidref-field" style="display:none">
               <label for="mo-paidref">Reference / O.R. number (optional)</label>
               <input class="input" id="mo-paidref" placeholder="e.g. OR #0231 or GCash ref" />
             </div>

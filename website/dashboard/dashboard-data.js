@@ -42,15 +42,49 @@
 
 (function (global) {
   const STORAGE_KEY = "kcmps_dashboard_mock_v1";
-  const STATIONS = ["PRESS-01", "DIGITAL-01", "3DPRINT-01", "HEATPRESS-01", "FINISHING-01"];
-  const STATION_LABELS = {
-    "PRESS-01": "Silkscreen Press",
-    "DIGITAL-01": "Digital / Large Format",
-    "3DPRINT-01": "3D Printing",
-    "HEATPRESS-01": "Heat Press / Apparel",
-    "FINISHING-01": "Finishing / Packing",
-  };
-  const PLANNED_HOURS_PER_WEEK = { "PRESS-01": 40, "DIGITAL-01": 32, "3DPRINT-01": 60, "HEATPRESS-01": 36, "FINISHING-01": 30 };
+  /* ---- production stations ----
+     Editable in Settings since 2026-08-19 (Admin only) and stored
+     server-side as ONE CONFIG#STATIONS item — see backend/lib/stations.js
+     and backend/staff-api/stations.js. The list below is the FALLBACK,
+     byte-for-byte what used to be hardcoded here: it is what every page
+     renders before loadStations() resolves, and what it keeps rendering
+     if the fetch fails. A station picker that empties itself because a
+     config read timed out would block Confirmed -> Scheduled entirely,
+     so this file never has "no stations".
+
+     getStations() stays SYNCHRONOUS on purpose. Its callers
+     (job-detail.html's advance form, week.html's capacity aggregation)
+     render inside already-synchronous code paths; making it async would
+     have meant reworking those call sites for a list that changes maybe
+     twice a year. Instead loadStations() refreshes the module-level
+     cache and callers that care await it once before rendering. */
+  const DEFAULT_STATIONS = [
+    { id: "PRESS-01", label: "Silkscreen Press", plannedHoursPerWeek: 40, retired: false },
+    { id: "DIGITAL-01", label: "Digital / Large Format", plannedHoursPerWeek: 32, retired: false },
+    { id: "3DPRINT-01", label: "3D Printing", plannedHoursPerWeek: 60, retired: false },
+    { id: "HEATPRESS-01", label: "Heat Press / Apparel", plannedHoursPerWeek: 36, retired: false },
+    { id: "FINISHING-01", label: "Finishing / Packing", plannedHoursPerWeek: 30, retired: false },
+  ];
+  let stationCache = DEFAULT_STATIONS.map((s) => ({ ...s }));
+
+  const STATIONS = stationCache.map((s) => s.id);
+  const STATION_LABELS = {};
+  const PLANNED_HOURS_PER_WEEK = {};
+  function reindexStations() {
+    STATIONS.length = 0;
+    Object.keys(STATION_LABELS).forEach((k) => delete STATION_LABELS[k]);
+    Object.keys(PLANNED_HOURS_PER_WEEK).forEach((k) => delete PLANNED_HOURS_PER_WEEK[k]);
+    stationCache.forEach((s) => {
+      // STATIONS drives the pickers and the Week capacity buckets, so it
+      // holds ACTIVE stations only. The label/hours maps keep every
+      // station including retired ones — historical line items and audit
+      // events still point at those ids and must still resolve to a name.
+      if (!s.retired) STATIONS.push(s.id);
+      STATION_LABELS[s.id] = s.label;
+      PLANNED_HOURS_PER_WEEK[s.id] = s.plannedHoursPerWeek;
+    });
+  }
+  reindexStations();
 
   /* ---- live backend (Milestone 1.3) ----
      getAllOrders/getOrder/verifyPayment/setOnHold/advanceLineItem are
@@ -886,7 +920,62 @@
     };
   }
 
+  /* ---- stations (live, CONFIG#STATIONS — see the constants block above) ----
+
+     getStations() is the picker list: ACTIVE stations only, synchronous,
+     always non-empty. getAllStations() is the Settings-editor list and
+     includes retired ones. stationLabel() resolves ANY id, retired or
+     otherwise, so a historical line item never renders a bare code.
+
+     loadStations() is fire-and-forget-safe: a failure leaves the fallback
+     list in place and reports nothing. Callers that want the current list
+     before first paint await it (job-detail.html does); callers that
+     don't still render a correct-if-stale picker. */
   function getStations() { return STATIONS.map((s) => ({ id: s, label: STATION_LABELS[s] })); }
+
+  function getAllStations() { return stationCache.map((s) => ({ ...s })); }
+
+  function stationLabel(id) { return STATION_LABELS[id] || id || ""; }
+
+  let stationsLoaded = null;
+  async function loadStations(force) {
+    if (stationsLoaded && !force) return getAllStations();
+    stationsLoaded = (async () => {
+      try {
+        const res = await apiFetch("/stations", { method: "GET" });
+        if (Array.isArray(res.stations) && res.stations.length) {
+          stationCache = res.stations.map((s) => ({
+            id: s.id,
+            label: s.label || s.id,
+            plannedHoursPerWeek: Number(s.plannedHoursPerWeek) || 0,
+            retired: s.retired === true,
+          }));
+          reindexStations();
+        }
+      } catch (err) {
+        // Deliberately silent — see the note above. The fallback list is
+        // a usable answer, and a console error here would fire on every
+        // dashboard page load for anyone offline.
+        stationsLoaded = null;
+      }
+      return getAllStations();
+    })();
+    return stationsLoaded;
+  }
+
+  // Admin only, server-enforced (backend/staff-api/stations.js). Rejects
+  // deleting or renaming an existing id — removal is `retired: true`.
+  async function saveStations(stations) {
+    const res = await apiFetch("/stations", {
+      method: "PUT",
+      body: JSON.stringify({ stations }),
+    });
+    if (Array.isArray(res.stations)) {
+      stationCache = res.stations.map((s) => ({ ...s }));
+      reindexStations();
+    }
+    return getAllStations();
+  }
   function getSpoilageReasons() { return SPOILAGE_REASONS.slice(); }
   function getClients() { return load().clients.slice(); }
   function getInventoryAll() { return load().inventory.slice(); }
@@ -1750,6 +1839,12 @@
       clientName: null,
       note: r.note || "",
       occurredAt: r.occurredAt,
+      // Server-derived Manila day. Irrelevant on the day view (every row
+      // shares it) but load-bearing for cross-day search results, which
+      // group by it and use it to jump. Never re-derived from occurredAt
+      // on this side — that slice is UTC and would file an evening
+      // transaction under the next day (D1).
+      day: r.day || null,
       actorName: r.actorName || null,
       source: r.source || "manual",
       voided: !!r.voided,
@@ -2094,6 +2189,107 @@
     }
   }
 
+  /* ---- re-link a logged transaction to an order (2026-08-20) ----
+     The ONLY field of a posted transaction that can be corrected in
+     place. Staff log money the moment it moves — often on a phone,
+     often before anyone knows the order id — so without this the only
+     way to attribute it later was void + retype.
+
+     This is NOT a general "edit transaction" call and the backend will
+     not let it become one: amount/direction/category/method/date all
+     feed the day and month rollups, so changing any of them requires a
+     void's reversing entry, not a mutation. See
+     backend/cashbook/relink-transaction.js's header.
+
+     Pass null (or "") to detach a transaction from its order. */
+  async function relinkCashbookTransaction(txnId, orderId) {
+    const next = (orderId || "").trim().toUpperCase() || null;
+    return apiFetch("/cashbook/transactions/" + encodeURIComponent(txnId) + "/link", {
+      method: "PATCH", body: JSON.stringify({ orderId: next }),
+    });
+  }
+
+  /* ---- find one transaction by id, on any day (2026-08-20) ----
+     Backs the ledger search box's "jump to another day" case. Cheap by
+     construction — the backend resolves it through the IDEMPOTENCY#
+     guard record, so it's a GetItem, never a Scan (see
+     backend/cashbook/find-transaction.js).
+
+     Returns null on 404 instead of throwing: "no transaction with that
+     id" is an ordinary search result, not an error the page should
+     surface as a red banner. */
+  async function findCashbookTransaction(txnId) {
+    const id = (txnId || "").trim();
+    if (!id) return null;
+    try {
+      const res = await apiFetch("/cashbook/transactions/" + encodeURIComponent(id), { method: "GET" });
+      return { transaction: normalizeTxnRow(res.transaction || {}), day: res.day || null };
+    } catch (err) {
+      if (err && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /* ---- search every day, not just the one on screen (2026-08-20) ----
+     Server-side because the client only ever holds ONE day. Cheap by
+     construction: the backend skips months whose rollup says they hold
+     no transactions and queries only the day partitions of months that
+     do, so it never Scans the table — see
+     backend/cashbook/search-transactions.js's header before changing
+     anything about how this is called.
+
+     `truncated` means more rows matched than were returned; the page
+     must say so rather than implying it found everything. */
+  async function searchCashbookTransactions(query, opts) {
+    const q = (query || "").trim();
+    if (!q) return { transactions: [], total: 0, truncated: false };
+    const params = new URLSearchParams({ q });
+    if (opts && opts.from) params.set("from", opts.from);
+    if (opts && opts.to) params.set("to", opts.to);
+    if (opts && opts.limit) params.set("limit", String(opts.limit));
+    const res = await apiFetch("/cashbook/search?" + params.toString(), { method: "GET" });
+    return {
+      transactions: (res.transactions || []).map(normalizeTxnRow),
+      total: res.total || 0,
+      truncated: !!res.truncated,
+      searchedDays: res.searchedDays || 0,
+    };
+  }
+
+  /* ---- history: year -> month -> day rollups (2026-08-20) ----
+     ADMIN-ONLY, matching getCashbookMonth() — these ARE month totals,
+     served a year at a time, so anything looser would be a back door
+     around that endpoint's gate (owner decision O1, re-confirmed
+     2026-08-20). A 403 is surfaced as a plain sentence, same as
+     voidCashbookTransaction, because for a Staff-role user it's a normal
+     permission boundary rather than a fault.
+
+     Reads only METRIC# rollups — never transactions — so a whole
+     multi-year history is at most 60 GetItems. Day-level transactions
+     come from the existing getCashbookDay(), deliberately: one
+     implementation of "what happened on this day", and only that one
+     returns `reconciles`. */
+  const HISTORY_FORBIDDEN =
+    "Month and year totals are visible to Admins only. Your day view and search are unaffected.";
+
+  async function getCashbookHistory() {
+    try {
+      return await apiFetch("/cashbook/history", { method: "GET" });
+    } catch (err) {
+      if (err && err.status === 403) throw new Error(HISTORY_FORBIDDEN);
+      throw err;
+    }
+  }
+
+  async function getCashbookHistoryMonth(month) {
+    try {
+      return await apiFetch("/cashbook/history?month=" + encodeURIComponent(month), { method: "GET" });
+    } catch (err) {
+      if (err && err.status === 403) throw new Error(HISTORY_FORBIDDEN);
+      throw err;
+    }
+  }
+
   /* ---- day export (plan §8 "Should have" — CSV handoff) ----
      Flattens ONE day into a single row shape cashbook.html can turn
      straight into CSV, so the export logic (which fields exist, how a
@@ -2261,7 +2457,8 @@
     getQueues, getTodayNumbers, getLowStock, getBlockers, addBlocker, resolveBlocker,
     advanceLineItem, sendToRework, setSetupMinutes, verifyPayment, setOnHold,
     getWeekData, getMonthData,
-    getStations, getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
+    getStations, getAllStations, stationLabel, loadStations, saveStations,
+    getSpoilageReasons, getClients, getInventoryAll, adjustInventory,
     getOrder, getAllOrders, getEventsFor, addCorrespondence,
     getDashboardPrefs, setDashboardPref,
     setOrderTags, getDefaultOrderTags,
@@ -2269,6 +2466,8 @@
     createManualOrder,
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
+    relinkCashbookTransaction, findCashbookTransaction, searchCashbookTransactions,
+    getCashbookHistory, getCashbookHistoryMonth,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
     cashbookMethodNeedsAccount, cashbookAccountLabel,
     cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,

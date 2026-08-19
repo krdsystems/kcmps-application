@@ -501,7 +501,13 @@
     const body = document.getElementById("detail-body");
     let order;
     try {
-      order = await KCMPS_DASH.getOrder(orderId);
+      // Stations are server-side config (Admin-editable in Settings) but
+      // getStations() below is synchronous against a cached list — refresh
+      // that cache alongside the order so the picker reflects any rename
+      // or retire. loadStations() never rejects: a failed read leaves the
+      // fallback list in place rather than emptying the picker.
+      const [loaded] = await Promise.all([KCMPS_DASH.getOrder(orderId), KCMPS_DASH.loadStations()]);
+      order = loaded;
     } catch (err) {
       body.innerHTML = '<div class="empty-state">Couldn’t load this ticket — ' + escapeHtml(err.message) + '</div>';
       return;
@@ -509,7 +515,24 @@
     if (!order) { body.innerHTML = '<div class="empty-state">Ticket not found. It may have been reset — try re-seeding from Settings.</div>'; return; }
     const li = order.lineItems.find((x) => x.lineItemId === lineId) || order.lineItems[0];
     const events = KCMPS_DASH.getEventsFor(orderId).filter((e) => e.lineItemId === li.lineItemId);
+    /* ACTIVE stations only. Retiring a station in Settings must remove it
+       from every picker — that is the entire point of retiring it, and an
+       earlier build that re-added the job's own retired station as a
+       "(retired)" option was reported by the owner as wrong (2026-08-20).
+
+       The problem that option was solving is real though, so it is
+       handled honestly instead: if this job currently sits on a station
+       that has since been retired, the select can't preselect it, so the
+       browser would fall back to the first option and advancing would
+       silently MOVE the job. `staleStation` below drives a visible notice
+       telling the staffer exactly that, turning a silent reassignment
+       into a deliberate one. The BACKEND still accepts retired ids
+       (backend/lib/stations.js's isKnownStation) — that stays, so an API
+       caller advancing a job without touching its station never breaks. */
     const stations = KCMPS_DASH.getStations();
+    const staleStation = (li.station && !stations.some((s) => s.id === li.station))
+      ? KCMPS_DASH.stationLabel(li.station)
+      : null;
     const reasons = KCMPS_DASH.getSpoilageReasons();
     const actions = actionsFor(li.status, order);
 
@@ -740,7 +763,13 @@
           formHost.innerHTML =
             `<div class="dash-form-grid" style="margin-bottom:var(--space-3)">` +
             (action.needsPrice ? `<div class="field"><label for="adv-price">Price per unit (₱)</label><input class="input" id="adv-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 250.00" /><p class="muted" style="margin:4px 0 0;font-size:12px">Quantity is ${qty} — the customer is billed price × ${qty}.</p></div>` : "") +
-            (action.needsStation ? `<div class="field"><label>Station</label><select class="input" id="adv-station">${stations.map((s) => `<option value="${s.id}"${li.station === s.id ? " selected" : ""}>${s.label}</option>`).join("")}</select></div>` : "") +
+            (action.needsStation ? `<div class="field"><label for="adv-station">Station</label><select class="input" id="adv-station">${stations.map((s) => `<option value="${s.id}"${li.station === s.id ? " selected" : ""}>${escapeHtml(s.label)}</option>`).join("")}</select>` +
+              // Only appears when the job's own station was retired out
+              // from under it. Says which one and that continuing moves
+              // the job, so the reassignment is a decision rather than a
+              // side effect of the select defaulting to its first option.
+              (staleStation ? `<p class="muted" style="margin:4px 0 0;font-size:12px">This job was at <strong>${escapeHtml(staleStation)}</strong>, which is now retired. Confirming will move it to the station selected above.</p>` : "") +
+              `</div>` : "") +
             (action.needsSetup ? `<div class="field"><label>Setup minutes (start-setup → start-run tap)</label><input class="input" id="adv-setup" type="number" min="0" placeholder="e.g. 15" /></div>` : "") +
             `</div><button type="button" class="btn btn-primary" id="adv-confirm">Confirm — ${action.label}</button>`;
           document.getElementById("adv-confirm").addEventListener("click", async (e) => {

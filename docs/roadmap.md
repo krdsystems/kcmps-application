@@ -962,6 +962,33 @@ wrong anyway) instead of every order. `orders.html` ("My Orders"):
 
 ---
 
+## Parallel track — Cash Book, job costing and production stations (built 2026-08-18/20)
+
+Live in production. See `docs/cashbook-job-costing-plan-2026-08-18.md` for the original design
+and `docs/history.md` entries 72–73 for what actually shipped.
+
+**In production:** the ledger (log/void/day/month/categories), per-job costing, CSV day export,
+re-linking a posted transaction to a job, transaction IDs, cross-day search, and the History
+sub-tab (year → month → day → transactions, Admin-only).
+
+**On staging only:** editable production stations in Settings (`CONFIG#STATIONS`,
+`GET`/`PUT /stations`, Admin-gated). Promote once the owner has confirmed a retire sticks and the
+job picker excludes it.
+
+### Deliberately not built yet
+
+- **Per-client cash book totals** — blocked on GSI2, which is not provisioned. Same blocker as the
+  Clients page and account-level message threads; worth doing as one coordinated pass.
+- **Server-side free-text search beyond the current design.** Search is bounded by walking day
+  partitions of active months, which is proportional to real activity, not table size. If volume
+  ever makes that slow the answer is a real index, **not** a filtered `Scan` — see
+  `backend/cashbook/search-transactions.js`'s header for why a Scan is the wrong tool here.
+- **`verify-payment.js` auto-post.** The plan's second ledger writer (Trap 1) is still an unwired
+  seam: a verified GCash payment does not yet post itself to the cash book, so staff log it
+  manually and `log-transaction.js` warns when an order already carries a system-posted row.
+- **A `deleted` filter on the orders read path.** Nothing filters soft-deleted orders today, which
+  is why removing 4 test orders needed a hard delete rather than a flag (history entry 73).
+
 ## Milestone 2 — Operational telemetry (ERP Phase 4, after M1 has real orders)
 Only meaningful once real orders flow. Instrument now because a metric not captured is gone.
 - METRIC# atomic counters in `streams-handler.js`; `api-metrics.js`; `/today` numbers real.

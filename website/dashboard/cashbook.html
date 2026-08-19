@@ -32,6 +32,13 @@
           <span class="hint">Recorded when money moves. Entries can be voided, never edited</span>
         </div>
 
+        <!-- Sub-tabs — see cashbook-history.html for why History is a
+             separate page rather than a second view of this one. -->
+        <div class="cb-subtabs" role="tablist" aria-label="Cash book views">
+          <a class="cb-subtab is-active" href="cashbook.html" role="tab" aria-selected="true">Ledger</a>
+          <a class="cb-subtab" href="cashbook-history.html" role="tab" aria-selected="false">History</a>
+        </div>
+
         <!-- ONE DOM, TWO LAYOUTS. Desktop: sticky entry rail on the left,
              ledger on the right. Mobile (≤760px): the ledger comes first
              (flex `order`) and this same .cb-entry becomes a bottom sheet.
@@ -213,6 +220,19 @@
               <input class="input" type="date" id="cb-datepick" aria-label="Jump to a date" />
             </div>
 
+            <!-- Free-text search across everything on a row (id, note,
+                 category, amount, order, staffer, method, account) and
+                 across EVERY day, not just the one on screen — server-
+                 side, see backend/cashbook/search-transactions.js. While
+                 a search is active it replaces the ledger list below with
+                 results grouped by day. -->
+            <div class="cb-searchrow">
+              <input class="input cb-search" id="cb-search" type="search"
+                     placeholder="Search all days — ID, note, category, amount, order…"
+                     aria-label="Search transactions" autocomplete="off" spellcheck="false" />
+              <span class="cb-searchnote" id="cb-searchnote" aria-live="polite"></span>
+            </div>
+
             <div class="cb-export-row">
               <!-- Two filter groups, each single-select (clicking the active
                    one clears it) and ANDed together, so Cash + Expense answers
@@ -273,7 +293,14 @@
   const actorName = claims.name || claims.email || "Staff";
 
   /* ---- page state ---- */
-  let selectedDay = D.manilaToday();
+  /* ?day=YYYY-MM-DD deep link, so History's "Open this day in the
+     ledger" lands on the right date instead of today. Validated and
+     clamped rather than trusted: a hand-edited future date would ask the
+     API for a day a cash book can never have. */
+  const dayParam = new URLSearchParams(location.search).get("day");
+  let selectedDay = (/^\d{4}-\d{2}-\d{2}$/.test(dayParam || "") && dayParam <= D.manilaToday())
+    ? dayParam
+    : D.manilaToday();
   let direction = "in";
   let category = null;
   let subcategory = null;
@@ -285,6 +312,9 @@
      Cash to stay selected while they page back through days. */
   let filterMethod = null;
   let filterDirection = null;
+  // Pre-split into lowercase terms once per keystroke rather than per
+  // row — the day list can be long and this runs on every render.
+  let searchTerms = [];
 
   const $ = (id) => document.getElementById(id);
 
@@ -322,6 +352,15 @@
       : D.cashbookCategoryLabel(t.direction, t.category);
     const meta = [D.manilaTimeLabel(t.occurredAt), escapeHtml(t.actorName || "—")];
     if (t.orderId) meta.push(escapeHtml(t.orderId));
+    // The ID is what makes a row referable in a chat message or a note,
+    // so it's click-to-copy rather than something to retype — it is 20
+    // characters of base36. A reversing entry has no id of its own.
+    if (t.txnId) {
+      meta.push(
+        `<button type="button" class="cb-txid" data-copy="${escapeHtml(t.txnId)}" ` +
+        `title="Copy transaction ID">${escapeHtml(t.txnId)}</button>`
+      );
+    }
     // Voids and reversals stay in the list — that is the point of an
     // append-only record — but are visually demoted and never counted.
     const flag = t.voided
@@ -329,6 +368,15 @@
       : t.reversesTxnId ? `<div class="cb-tx-note">Reversing entry</div>` : "";
     const voidBtn = (!t.voided && !t.reversesTxnId)
       ? `<button type="button" class="btn btn-ghost cb-void-btn" data-void="${escapeHtml(t.txnId)}">Void</button>` : "";
+    // The one correction that doesn't need a void: attaching a row to the
+    // job it belongs to. Staff log money the moment it moves — usually on
+    // a phone, usually before anyone has the order id to hand — so this
+    // is the normal completion of an entry, not an exception path.
+    // Amount/category/method stay immutable; see
+    // backend/cashbook/relink-transaction.js.
+    const linkBtn = (!t.voided && !t.reversesTxnId && t.source !== "system")
+      ? `<button type="button" class="btn btn-ghost cb-link-btn" data-link="${escapeHtml(t.txnId)}" ` +
+        `data-order="${escapeHtml(t.orderId || "")}">${t.orderId ? "Change job" : "Link job"}</button>` : "";
     return (
       `<div class="${cls}">` +
         `<div class="cb-tx-main">` +
@@ -344,14 +392,21 @@
           // not a defect, and nothing backfills it.
           (D.cashbookMethodNeedsAccount(t.method)
             ? `<span class="cb-tx-account">${escapeHtml(D.cashbookAccountLabel(t.account))}</span>` : "") +
+          linkBtn +
           voidBtn +
         `</div>` +
       `</div>`
     );
   }
 
-  async function renderDay() {
-    const day = await D.getCashbookDay(selectedDay);
+  // Cache of the day currently painted. Search re-renders on every
+  // keystroke, and without this each one would re-fetch the whole day
+  // from the API — the filtering is purely local, so it must reuse what
+  // is already in memory.
+  let lastDay = null;
+  async function renderDay(cached) {
+    const day = cached || await D.getCashbookDay(selectedDay);
+    lastDay = day;
     $("cb-dayname").textContent = day.dayLabel;
     $("cb-daysub").textContent = day.isToday
       ? "Today · " + D.formatCentavos(day.netCentavos) + " net"
@@ -395,7 +450,7 @@
        stored negative — so summing signed values is the only way Cash + Revenue
        reports what actually arrived rather than what was rung up. */
     const shown = day.transactions.filter(matchesFilters);
-    const filtering = !!(filterDirection || filterMethod);
+    const filtering = !!(filterDirection || filterMethod || searchTerms.length);
     const subtotalEl = $("cb-subtotal");
     if (filtering) {
       const net = shown.reduce((s, t) => (
@@ -404,6 +459,8 @@
       const parts = [];
       if (filterDirection) parts.push(filterDirection === "in" ? "Revenue" : "Expense");
       if (filterMethod) parts.push(D.cashbookMethodLabel(filterMethod));
+      if (searchTerms.length) parts.push(`"${searchTerms.join(" ")}"`);
+      if (!parts.length) parts.push("Shown");
       subtotalEl.textContent = parts.join(" · ") + ": " + D.formatCentavos(net);
       subtotalEl.hidden = false;
     } else {
@@ -411,12 +468,27 @@
       subtotalEl.textContent = "";
     }
 
+    /* A search is global and replaces this list entirely — renderDay
+       still runs (the date strip, month strip and subtotal above are all
+       still correct and still wanted), but the rows below belong to the
+       search, not to this day. Without this guard every refresh would
+       silently throw the results away. */
+    if (searchResults) { renderSearchResults(); return; }
+
     $("cb-txlist").innerHTML = recon + (shown.length
       ? shown.map(txRow).join("")
       : `<p class="q-empty">${filtering
           ? "No transactions match this filter on this day."
           : "Nothing logged on this day yet."}</p>`);
 
+    wireRowActions();
+  }
+
+  /* Void + re-link wiring for whatever rows are currently in the list.
+     Extracted from renderDay so SEARCH RESULTS get the same actions —
+     a row found by search is still a row you may need to re-link, and
+     that is often exactly why you searched for it. */
+  function wireRowActions() {
     $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const reason = window.prompt("Why is this being voided? A void writes a reversing entry — the original stays on the record.");
@@ -430,7 +502,63 @@
         await refreshAll();
       });
     });
+
+    /* Re-link an existing row to a job. Reuses the SAME picker as the
+       entry form (orderComboItems / recent-jobs-first) rather than a
+       prompt() — an order id is 14 characters of base36 that nobody can
+       retype correctly on a phone, which is exactly why these rows are
+       unlinked in the first place. */
+    $("cb-txlist").querySelectorAll("[data-link]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        relinkTxnId = btn.dataset.link;
+        // createCombobox reads opts.trigger at open time for desktop
+        // anchoring, so pointing it at THIS row's button is what makes
+        // one shared picker land next to whichever row was tapped.
+        relinkComboOpts.trigger = btn;
+        await withBusy(btn, loadOrdersForPicker);
+        relinkCombobox.setBanner(
+          ordersLoadFailed
+            ? "Couldn't load the order list — type or paste the order ID directly below."
+            : btn.dataset.order
+              ? "Currently linked to " + btn.dataset.order + ". Choose another job, or clear the box and confirm to unlink."
+              : null
+        );
+        relinkCombobox.open("");
+      });
+    });
   }
+
+  /* One shared relink picker for the whole ledger — built once, re-aimed
+     at each row's button. Per-row comboboxes would append a dialog to
+     <body> for every transaction on the day. */
+  let relinkTxnId = null;
+  async function applyRelink(orderId) {
+    if (!relinkTxnId) return;
+    const id = relinkTxnId;
+    relinkTxnId = null;
+    try {
+      await D.relinkCashbookTransaction(id, orderId);
+      if (orderId) D.recordCashbookRecentOrder(orderId);
+    } catch (err) {
+      showInlineError($("cb-error"), err.message);
+      return;
+    }
+    await refreshAll();
+  }
+  const relinkComboOpts = {
+    trigger: null,
+    title: "Link this entry to a job",
+    searchPlaceholder: "Search by client or job name…",
+    emptyMessage: "No matching order. You can still type or paste an order ID directly.",
+    allowFreeText: true,
+    getItems: orderComboItems,
+    getRecentKeys: () => D.getCashbookRecentOrderIds(),
+    onSelect: (it) => applyRelink(it.orderId),
+    // Free text covers both "paste an id the picker didn't list" and
+    // "clear it to detach" — an empty string reaches the seam as null.
+    onFreeText: (text) => applyRelink((text || "").trim()),
+  };
+  const relinkCombobox = createCombobox(relinkComboOpts);
 
   /* ---- job / client profit ---- */
   function jobCard(j) {
@@ -572,9 +700,35 @@
     renderFilterChips($("cb-methodfilter"), D.getCashbookMethods(),
       filterMethod, (id) => { filterMethod = id; renderFilters(); renderDay(); });
   }
+  /* Everything on a row that a person might search by, flattened to one
+     lowercase haystack. Deliberately includes the formatted peso amount
+     as well as the raw centavos, so "1,690", "1690" and "169000" all
+     find the same row — a staffer searches with the number they saw on
+     screen or on a receipt, not the storage representation. */
+  function searchHaystack(t) {
+    return [
+      t.txnId, t.note, t.orderId, t.clientName, t.actorName,
+      t.category, t.subcategoryLabel, t.account,
+      D.cashbookCategoryLabel(t.direction, t.category),
+      D.cashbookMethodLabel(t.method),
+      t.direction === "in" ? "revenue" : "expense",
+      t.voided ? "voided" : "",
+      String(t.amountCentavos || 0),
+      D.formatCentavos(t.amountCentavos || 0),
+      D.manilaTimeLabel(t.occurredAt),
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+  // Every term must match (AND), so adding words narrows rather than
+  // widens — "dtf 1690" finds the one row, not every row with either.
+  function matchesSearch(t) {
+    if (!searchTerms.length) return true;
+    const hay = searchHaystack(t);
+    return searchTerms.every((w) => hay.includes(w));
+  }
   function matchesFilters(t) {
     if (filterDirection && t.direction !== filterDirection) return false;
     if (filterMethod && t.method !== filterMethod) return false;
+    if (!matchesSearch(t)) return false;
     return true;
   }
 
@@ -960,6 +1114,145 @@
     // revoking the URL before that read completes empties the download.
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
+
+  /* ---- ledger search — ACROSS EVERY DAY (2026-08-20) ----
+     Originally this filtered only the day on screen, which the owner
+     rightly rejected: a cash book you can only search one day at a time
+     doesn't answer "where did that ₱1,690 go".
+
+     So the search is server-side and global (see
+     backend/cashbook/search-transactions.js — it skips months whose
+     rollup says they're empty and queries only real day partitions, so
+     it is NOT a table Scan). While a search is active the ledger list is
+     REPLACED by results grouped under their own day headings; clearing
+     the box restores the ordinary day view untouched.
+
+     Results are capped in the DOM at PAGE_SIZE and grown by an explicit
+     "Show N more" click. A single busy day can already produce dozens of
+     rows, and painting several hundred at once on a phone is the kind of
+     thing that turns a search box into a freeze. */
+  const SEARCH_PAGE_SIZE = 50;
+  let searchResults = null;   // null = not searching; array = active search
+  let searchShown = SEARCH_PAGE_SIZE;
+  let searchToken = 0;
+  let searchDebounce = null;
+
+  function setSearchNote(msg) { $("cb-searchnote").textContent = msg || ""; }
+
+  function exitSearch() {
+    searchResults = null;
+    searchShown = SEARCH_PAGE_SIZE;
+    searchToken += 1;          // orphan any in-flight response
+    setSearchNote("");
+    renderDay(lastDay);
+  }
+
+  async function runSearch(raw) {
+    const q = (raw || "").trim();
+    if (!q) { exitSearch(); return; }
+    const token = ++searchToken;
+    setSearchNote("Searching all days…");
+    let res;
+    try {
+      res = await D.searchCashbookTransactions(q);
+    } catch (err) {
+      if (token !== searchToken) return;
+      setSearchNote("Couldn't search — " + err.message);
+      return;
+    }
+    // A newer keystroke owns the screen now; drop this stale answer.
+    if (token !== searchToken) return;
+    searchResults = res.transactions;
+    searchShown = SEARCH_PAGE_SIZE;
+    setSearchNote(
+      res.total === 0
+        ? "No matches in any day."
+        : res.total + " match" + (res.total === 1 ? "" : "es") +
+          (res.truncated ? " (showing the most recent — narrow the search for the rest)" : "")
+    );
+    renderSearchResults();
+  }
+
+  /* Results are grouped by day, newest first, because a bare list of
+     rows from different days with only a time on each is unreadable —
+     "10:26 PM" means nothing without knowing which day it belongs to. */
+  function renderSearchResults() {
+    const rows = (searchResults || []).filter(matchesFilters);
+    const host = $("cb-txlist");
+    if (!rows.length) {
+      host.innerHTML = `<p class="q-empty">No matching transactions.</p>`;
+      return;
+    }
+    const page = rows.slice(0, searchShown);
+    const remaining = rows.length - page.length;
+
+    let html = "";
+    let lastSeenDay = null;
+    for (const t of page) {
+      const d = t.day || (t.occurredAt || "").slice(0, 10);
+      if (d !== lastSeenDay) {
+        lastSeenDay = d;
+        html += `<div class="cb-searchday"><span>${escapeHtml(d)}</span>` +
+                `<button type="button" class="cb-searchday-go" data-goday="${escapeHtml(d)}">Open this day</button></div>`;
+      }
+      html += txRow(t);
+    }
+    if (remaining > 0) {
+      html += `<button type="button" class="btn btn-secondary cb-showmore" id="cb-showmore">` +
+              `Show ${remaining} more</button>`;
+    }
+    host.innerHTML = html;
+
+    const more = $("cb-showmore");
+    if (more) more.addEventListener("click", () => {
+      searchShown += SEARCH_PAGE_SIZE;
+      renderSearchResults();
+    });
+    host.querySelectorAll("[data-goday]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        selectedDay = b.dataset.goday;
+        $("cb-search").value = "";
+        exitSearch();
+        await refreshAll();
+      });
+    });
+    wireRowActions();
+  }
+
+  $("cb-search").addEventListener("input", () => {
+    const raw = $("cb-search").value;
+    // Kept in sync so the direction/method chips still narrow results,
+    // and so clearing the box restores the plain day view immediately
+    // rather than after the debounce.
+    searchTerms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    clearTimeout(searchDebounce);
+    if (!searchTerms.length) { exitSearch(); return; }
+    setSearchNote("…");
+    searchDebounce = setTimeout(() => runSearch(raw), 300);
+  });
+
+  /* Click-to-copy on a row's transaction ID. Delegated on the list, which
+     is re-rendered constantly — per-row listeners would be re-bound on
+     every keystroke of the search box above. */
+  $("cb-txlist").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    const id = btn.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(id);
+      const prev = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = prev; }, 1200);
+    } catch {
+      // Clipboard blocked (insecure context / permission): select the
+      // text so it can still be copied by hand instead of doing nothing.
+      const r = document.createRange();
+      r.selectNodeContents(btn);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+  });
 
   $("cb-export-btn").addEventListener("click", async () => {
     await withBusy($("cb-export-btn"), exportSelectedDayCsv);

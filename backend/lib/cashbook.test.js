@@ -606,3 +606,38 @@ test("paymentMethodRequiresAccount is the single source for which methods need o
   // Every writable method must have a label.
   for (const m of cb.PAYMENT_METHODS) assert.ok(cb.PAYMENT_METHOD_LABELS[m]);
 });
+
+/* ---- re-link: a soft-deleted order pointer must stop counting (2026-08-20) ---- */
+
+test("jobCosting ignores a soft-deleted TXN pointer left by a re-link", () => {
+  const rows = [
+    { kind: "revenue", amountCentavos: 35000_00 },
+    // moved to a different job — relink-transaction.js soft-deletes the
+    // stale pointer rather than hard-deleting it (the staff-api role has
+    // no DeleteItem, and this repo is soft-delete-only).
+    { kind: "revenue", amountCentavos: 9999_00, deleted: true },
+  ];
+  const out = cb.jobCosting({ costLines: [], txnRows: rows });
+  assert.equal(out.revenueCentavos, 35000_00);
+});
+
+test("jobCosting still counts a pointer explicitly marked deleted:false", () => {
+  const out = cb.jobCosting({
+    costLines: [], txnRows: [{ kind: "revenue", amountCentavos: 500_00, deleted: false }],
+  });
+  assert.equal(out.revenueCentavos, 500_00);
+});
+
+test("jobCosting ignores a soft-deleted COST line left by a re-linked expense", () => {
+  // Expenses reach job profit ONLY via cost lines, so a missed filter
+  // here charges a moved expense to both jobs at once.
+  const out = cb.jobCosting({
+    costLines: [
+      { amountCentavos: 1690_00, affectsCash: true },
+      { amountCentavos: 9999_00, affectsCash: true, deleted: true },
+    ],
+    txnRows: [{ kind: "revenue", amountCentavos: 35000_00 }],
+  });
+  assert.equal(out.costCentavos, 1690_00);
+  assert.equal(out.profitCentavos, 35000_00 - 1690_00);
+});

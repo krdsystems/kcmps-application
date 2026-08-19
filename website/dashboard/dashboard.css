@@ -309,6 +309,49 @@ html { scrollbar-gutter: stable; }
 
 /* — forms in dashboard context — */
 .dash-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
+
+/* --- manual-order form: an EXPLICIT 12-column grid (2026-08-20) ---
+   The generic auto-fit grid above is wrong for this form specifically,
+   and the owner reported it as "clunky". Two concrete reasons:
+
+   (1) auto-fit recomputes the column COUNT from the available width, so
+       every conditional field that shows/hides (new-client name/type,
+       SKU, the two GCash fields, the two paid-via fields — eight of
+       them here) silently reflowed the whole form and moved fields the
+       staffer was mid-way through reading. An explicit 12-column track
+       keeps every field where it was.
+   (2) auto-fit gives Qty the same width as Description, which reads as
+       accidental — a 2-digit quantity in a 300px box next to an equally
+       sized price.
+
+   `align-items: end` plus the flex column below is what actually fixes
+   the vertical alignment: labels here differ wildly in length ("Qty" vs
+   "Price each (₱, optional if not yet quoted)"), so a wrapping label used
+   to push its own input a line lower than its row neighbours. Bottom-
+   aligning the inputs makes them share a baseline no matter how many
+   lines the label above takes. */
+.mo-grid { grid-template-columns: repeat(12, 1fr); align-items: end; }
+.mo-grid > .field { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.mo-grid > .field > label { margin-bottom: 4px; }
+.mo-2 { grid-column: span 2; }
+.mo-3 { grid-column: span 3; }
+.mo-4 { grid-column: span 4; }
+.mo-6 { grid-column: span 6; }
+/* Give the submit some air from the last field — it commits a real
+   order, so it shouldn't sit flush against the Notes box. */
+.mo-grid > button[type="submit"] { margin-top: var(--space-2); }
+
+/* Tablet: halve the resolution of the grid rather than collapsing it, so
+   paired fields (date/status, the two GCash fields) still share a row. */
+@media (max-width: 1100px) {
+  .mo-2, .mo-3, .mo-4 { grid-column: span 6; }
+}
+/* Phone: one field per row. Anything narrower than this turns a 2-column
+   layout into two unusably tight boxes. */
+@media (max-width: 760px) {
+  .mo-grid { grid-template-columns: 1fr; }
+  .mo-2, .mo-3, .mo-4, .mo-6 { grid-column: 1 / -1; }
+}
 .field { display: flex; flex-direction: column; gap: 4px; }
 /* `.field`'s own display beats the UA sheet's [hidden] { display: none } on
    specificity, so a `hidden` field stays VISIBLE without this rule — caught
@@ -1050,6 +1093,127 @@ select.input { appearance: auto; }
    view / read the number / take it away". flex-wrap so a narrow desktop
    window drops Export to its own line rather than crushing the chips. */
 .cb-export-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+
+/* --- ledger search + transaction id (2026-08-20) --- */
+.cb-searchrow { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+/* Grows to fill the row but keeps a usable floor, so on a phone it wraps
+   to its own full-width line instead of shrinking to a stub. */
+.cb-search { flex: 1 1 240px; min-width: 0; }
+.cb-searchnote { font-size: 12px; color: var(--color-text-muted, #6b7280); }
+/* The id is a copy target, not prose: monospace so similar glyphs stay
+   distinguishable, and tabular so a column of them doesn't jitter. */
+.cb-txid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.cb-txid:hover, .cb-txid:focus-visible { color: var(--color-primary, #1d4ed8); }
+
+/* Search results span days, so each group needs its date stated — a bare
+   list of times ("10:26 PM") from different days is unreadable. Sticky so
+   the date stays visible while scrolling a long group. */
+.cb-searchday {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  position: sticky; top: 0; z-index: 1;
+  padding: 6px 0 4px;
+  margin-top: var(--space-2);
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+  font-size: 12px; font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+}
+.cb-searchday-go {
+  background: none; border: 0; padding: 0;
+  font-size: 12px; font-weight: 500;
+  color: var(--color-primary, #1d4ed8);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+/* Full width so it reads as "the list continues", not as a stray action.
+   Tall enough to be a comfortable phone tap target. */
+.cb-showmore { display: block; width: 100%; margin-top: var(--space-3); min-height: 44px; }
+
+/* --- cash book sub-tabs (Ledger / History) --- */
+.cb-subtabs { display: flex; gap: var(--space-1, 4px); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-divider, #e5e7eb); }
+.cb-subtab {
+  padding: 8px 14px; font-size: 14px; font-weight: 600; text-decoration: none;
+  color: var(--color-text-muted, #6b7280);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.cb-subtab:hover { color: var(--color-text, #111827); }
+.cb-subtab.is-active { color: var(--color-primary, #1d4ed8); border-bottom-color: var(--color-primary, #1d4ed8); }
+
+/* --- cash book history: year > month > day > transactions --- */
+.cb-hist-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.cb-hist-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* Column headings. These are a .cb-hrow, NOT their own grid — the first
+   version was a separate 3-column grid sitting in the toolbar outside
+   the card, and it could not line up with the numbers because the card's
+   padding offset the two containers against each other (owner-reported,
+   2026-08-20). Anything that must align with the money columns has to
+   BE a .cb-hrow inside the same card; never re-declare the track sizes
+   in a second place. */
+.lvl-head {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  font-weight: 600; color: var(--color-text-muted, #6b7280);
+  padding-top: 0; padding-bottom: 6px;
+}
+
+/* ONE row shape for every level, so the three money columns line up
+   straight down the page regardless of nesting — that alignment is the
+   entire point of the view. Indentation comes from padding-left on the
+   level modifiers below, never from a different grid. */
+.cb-hrow {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(96px, 120px));
+  gap: var(--space-2);
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider, #e5e7eb);
+}
+.cb-hrow[role="button"] { cursor: pointer; }
+.cb-hrow[role="button"]:hover { background: var(--color-surface-alt, #f9fafb); }
+.cb-hrow:focus-visible { outline: 2px solid var(--color-primary, #1d4ed8); outline-offset: -2px; }
+.cb-hlabel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.cb-hm { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+.cb-hm.net { font-weight: 700; }
+.cb-hm-span3 { grid-column: 2 / -1; }
+.cb-hcount { font-size: 11px; color: var(--color-text-muted, #6b7280); font-weight: 400; }
+
+.lvl-total { font-weight: 700; background: var(--color-surface-alt, #f9fafb); }
+.lvl-year { font-weight: 700; font-size: 15px; }
+.lvl-month { font-weight: 600; padding-left: var(--space-3); }
+.lvl-day { padding-left: var(--space-5); font-size: 13px; }
+.lvl-txn { padding-left: calc(var(--space-5) + var(--space-3)); font-size: 12.5px; border-bottom: 0; padding-top: 5px; padding-bottom: 5px; }
+.lvl-txn.is-dead { opacity: 0.55; text-decoration: line-through; }
+.lvl-txn.is-loading, .cb-hrow.is-loading { color: var(--color-text-muted, #6b7280); font-style: italic; }
+.cb-htxn-title { font-weight: 600; }
+.cb-htxn-note { font-size: 11.5px; color: var(--color-text-muted, #6b7280); }
+.cb-hopen { font-size: 12px; color: var(--color-primary, #1d4ed8); }
+
+.cb-caret { display: inline-block; transition: transform 0.15s ease; font-size: 15px; line-height: 1; }
+.cb-caret.is-open { transform: rotate(90deg); }
+
+/* Phone: the label takes the full width and the three money columns sit
+   under it as their own 3-up row. A 4-column grid at 375px would give
+   each amount ~70px, which truncates a six-figure peso value. */
+@media (max-width: 760px) {
+  /* Rows restack to label-over-3-columns on a phone, so a fixed header
+     no longer sits above the columns it names. */
+  .lvl-head { display: none; }
+  .cb-hrow { grid-template-columns: repeat(3, 1fr); row-gap: 4px; }
+  .cb-hlabel { grid-column: 1 / -1; }
+  .cb-hm { font-size: 12px; }
+  .cb-hm-span3 { grid-column: 1 / -1; text-align: left; }
+  .lvl-month { padding-left: var(--space-2); }
+  .lvl-day { padding-left: var(--space-3); }
+  .lvl-txn { padding-left: var(--space-4); }
+}
 .cb-export-btn { min-height: 44px; margin-left: auto; }
 .cb-dirfilter, .cb-methodfilter { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Smaller than .cb-chip: these narrow a view, they don't record money, and

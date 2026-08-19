@@ -80,7 +80,21 @@
                 </button>
               </div>
 
-              <!-- 4. Payment method — without it the drawer can't be reconciled (plan §8). -->
+              <!-- 4. Note — sits directly under Category (owner request,
+                   2026-08-19) because it's almost always describing WHAT
+                   the category was: "Sale" plus "Photocopying, 74 pages"
+                   is the whole story of a walk-in. It used to live in the
+                   collapsed extras below, where the owner couldn't find it
+                   — the same discoverability problem the job link had.
+                   Optional, and skipping it costs nothing: it sits between
+                   Category and Payment method, so the fast path is still
+                   one continuous downward pass with no detours. -->
+              <div class="field">
+                <label for="cb-note">Note (optional)</label>
+                <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
+              </div>
+
+              <!-- 5. Payment method — without it the drawer can't be reconciled (plan §8). -->
               <div class="field">
                 <label id="cb-method-label">Payment method</label>
                 <div class="cb-chipset" id="cb-methods" role="group" aria-labelledby="cb-method-label"></div>
@@ -132,13 +146,11 @@
               </div>
 
               <!-- 6. Occasional extras, collapsed — genuinely optional on
-                   most entries, unlike the job link above. -->
+                   most entries, unlike the job link and note above. Note
+                   moved OUT of here 2026-08-19 (see item 4); what's left
+                   is only meaningful for a job-linked expense. -->
               <details class="cb-extras">
-                <summary>Add a note, qty/unit cost</summary>
-                <div class="field">
-                  <label for="cb-note">Note (optional)</label>
-                  <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
-                </div>
+                <summary>Qty / unit cost</summary>
 
                 <!-- F5: only meaningful for an Expense linked to a job — an
                      allocation from stock already owned is never a cash

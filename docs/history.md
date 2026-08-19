@@ -3316,3 +3316,112 @@ contained no user messages — the authorization was real, just not visible from
 Everything went through the staging-first gate. Frontend was promoted *before* the backend
 deliberately: new frontend against old backend is inert, whereas the reverse would have 400'd
 every GCash entry.
+
+### 73. Editable stations; the cash book grows a re-link, global search, transaction IDs and a History view; 4 test orders deleted from production (2026-08-20)
+
+Seven features and four bugs in one session, most of them found by the owner testing on a real
+device against real production data — which is, again, what caught the things reading the code
+did not.
+
+**Editable stations (Settings, Admin-only).** Stations were a hardcoded array in
+`dashboard-data.js`. They are now one `CONFIG#STATIONS` item behind `GET`/`PUT /stations`, with a
+hardcoded fallback so no migration was needed — the same pattern `business-hours.js` uses for
+`CONFIG#OPERATING_HOURS`.
+
+The load-bearing decision: **a station id is create-only.** `advance-line-item.js` has already
+written those strings onto line items *and* stamped them into append-only `EVENT#` audit records,
+so renaming one would orphan history and deleting one would leave the Week view rendering a
+station that resolves to nothing. Removal is therefore `retired: true` — hidden from pickers,
+still resolvable for history — and `validateStationsPayload()` refuses any payload that drops or
+renames an existing id. This is the same two-list split the cash book needed for the retired
+`card` payment method, arrived at independently for the same reason.
+
+It also closed a real hole found while reading the call site: `advance-line-item.js` accepted
+`station` as a **completely unvalidated free string** and wrote it into the audit trail. Any staff
+caller could stamp arbitrary text onto a job's production history, and a typo produced a station
+that rendered nowhere and counted toward no capacity bucket. Now validated — and deliberately
+still accepting *retired* ids, so a job already running on a retired station stays advanceable.
+
+**Two bugs in that feature, both owner-found, both instructive.** First, retiring a station
+silently saved nothing: the Retired checkbox sits inside a `<label for=…>`, so clicking the label
+toggled the box, fired the input handler, which **re-rendered the whole list** — and the label's
+own default activation then landed on the freshly-built replacement checkbox and flipped it back.
+The UI looked like it worked. Second, a retired station still appeared in the job picker as a
+"(retired)" option. That was deliberate and wrong: it existed to stop the select falling back to
+its first option and *silently moving* a job whose station had been retired. Removing a station
+from every picker is the whole point of retiring it, so the option went and the underlying problem
+is now stated out loud instead — the select shows active stations only, plus a notice naming the
+old station and saying that confirming will move the job.
+
+**Cash book re-link — and the bug that made it worse than useless for expenses.** Staff log money
+the moment it moves, on a phone, usually before anyone has the order id, so an unlinked row is the
+*normal* state of a fresh entry. `PATCH /cashbook/transactions/{txnId}/link` fixes attribution
+in place on any past day. It is emphatically **not** an edit endpoint: `orderId` is the only field
+it touches, because it is the only one feeding no rollup — every money field still requires a
+void's reversing entry.
+
+It shipped broken. Revenue and expenses reach a job by *different routes*: revenue is summed from
+the `TXN#` rows, expenses **only** from `COST#` lines. An expense logged without an order never
+gets a cost line at all (`log-cost.js` is the path that writes both), so moving just the pointer
+attached something counting toward neither cost nor revenue — it vanished. The owner found it on a
+real order within minutes of the deploy. Re-linking an expense now moves its cost line too,
+preferring to *move* an existing line so a `log-cost`-authored one keeps its qty/unit cost and the
+per-unit economics survive.
+
+Two constraints shaped the repair. The stale pointer is **soft**-deleted, partly for the repo's
+soft-delete-only rule and partly because the shared staff-api role has no `dynamodb:DeleteItem` —
+a hard delete 500s, and widening a role every staff-api Lambda shares was the wrong trade. And
+re-running the same link now *self-heals* a missing cost line rather than short-circuiting as
+`unchanged`, so rows written while it was broken repair themselves on a second click — no backfill
+script. That path needed an `isMove` guard: retiring and re-writing the same key inside one
+`TransactWriteItems` is rejected outright by DynamoDB, which is how the first production repair
+attempt failed.
+
+**Search across every day — and why it is not a Scan.** Day-scoped search was rejected by the
+owner, correctly: a cash book you can only search one day at a time cannot answer "where did that
+₱1,690 go". The obvious implementation is a Scan with a filter, which reads *every* item in the
+table — orders, events, mail, designs — to find cash book rows, so the cost of finding one expense
+would grow with unrelated data. The key schema already offers better: rows live in per-Manila-day
+partitions and every month carries a `METRIC#MONTH` rollup, so the search reads month rollups,
+skips months holding nothing, and queries only the day partitions of months with real activity.
+Measured: 232 day queries down to **51** for identical results.
+
+A month with no rollup is treated as a genuine zero rather than "unknown", which is only safe
+because every writer bumps the rollup inside the *same* `TransactWriteItems` as the row. Uses
+parallel `GetItem`s, not `BatchGetItem` — the shared role doesn't grant it, and the first staging
+build failed with `AccessDeniedException` proving it.
+
+**Transaction IDs and History.** IDs are now click-to-copy on every row, which is what makes a row
+referable in a chat message; an ID from another day resolves through the `IDEMPOTENCY#` guard
+record as a plain `GetItem`, so the id *is* an index and lookup cost is flat forever. The History
+sub-tab drills year → month → day → transactions, reading **only** rollups (≤60 `GetItem`s for a
+whole multi-year history), with year totals summed server-side so a year row can never disagree
+with its own months. Admin-only, matching `get-month.js` — it *is* month totals served a year at a
+time, so a looser gate would have been a back door around the owner's O1 decision.
+
+Its column headings shipped misaligned, and the cause was structural rather than cosmetic: the
+headings were their own 3-column grid in the toolbar *outside* the card, while the rows are a
+4-column grid *inside* it — two parallel grids offset by the card's own padding. Re-tuning track
+sizes would have looked right at one width and drifted at another. The heading strip is now a
+`.cb-hrow` inside the same card, so alignment is a property of the structure.
+
+**Manual-order form.** The generic `auto-fit` grid recomputed its column *count* from available
+width, so each of the eight conditional fields showing/hiding reflowed the whole form under the
+staffer, and Qty got the same width as Description. Replaced with an explicit 12-column grid;
+`align-items: end` plus a flex column per field is what fixed the actual complaint, since labels
+range from "Qty" to "Price each (₱, optional if not yet quoted)" and a wrapping label used to push
+its own input a line below its row neighbours.
+
+**4 test orders hard-deleted from production**, at the owner's request and after he tagged them
+`Environment=Test` himself. 48 items, no cash book data attached, so no rollup needed reconciling.
+Backed up to `~/Documents/Business/kcmps-prod-backups/` (outside the repo — real production
+records) with restore instructions, and the delete loop re-verified the tag on every partition
+before touching it. Worth noting the finding that forced the choice: **nothing in the read path
+filters `deleted`**, so a soft delete would not actually have hidden them.
+
+**Process note.** Browser verification kept producing false greens: an unauthenticated dashboard
+redirects to the storefront, and `loadStations()`'s fail-safe returns the *fallback* list, so one
+check reported the station picker was fine when it was reading defaults rather than the real
+config. The checks that actually proved things were direct Lambda invokes against real data, and
+running the page's own script against stubbed data in the browser — never "the page rendered
+without errors".

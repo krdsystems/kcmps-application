@@ -111,6 +111,8 @@ exports.handler = async (event) => {
     occurredAt: txn.occurredAt,
     categoryId: txn.categoryId,
     categoryLabel: txn.categoryLabel,
+    subcategoryId: txn.subcategoryId,
+    subcategoryLabel: txn.subcategoryLabel,
     kind: txn.kind,
     direction: txn.direction,
     amountCentavos: txn.amountCentavos,

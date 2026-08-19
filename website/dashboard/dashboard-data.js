@@ -1482,27 +1482,51 @@
      kept without inventing a second vocabulary that the backend would
      reject. Nothing in cashbook.html hardcodes an id; it renders whatever
      this returns. */
+  // Subcategories mirror backend/lib/cashbook.js's DEFAULT_TXN_CATEGORIES
+  // subcategories arrays byte-for-byte (same ids/labels), for the same
+  // synchronous-first-paint reason the parent list above is pre-seeded —
+  // primeCashbookCategories() overwrites both the moment the real
+  // GET /cashbook/categories response lands.
   const CASHBOOK_CATEGORIES = {
     in: [
-      { id: "sale", label: "Sale" },
-      { id: "other_income", label: "Other income" },
+      { id: "sale", label: "Sale", subcategories: [
+        { id: "print_office", label: "Print — office" },
+        { id: "print_large", label: "Print — large format" },
+        { id: "merch", label: "Merch / apparel" },
+        { id: "design", label: "Design service" },
+        { id: "walkin", label: "Walk-in" },
+      ] },
+      { id: "other_income", label: "Other income", subcategories: [] },
       // F1: the sign is owned by the category, not by staff typing a
       // minus — staff always type a positive amount. The SERVER re-applies
       // this sign on every write regardless of what the client sends
       // (backend review finding B5), so this flag is a display/UX hint
       // here, never the enforcement point.
-      { id: "refund", label: "Refund (negative revenue)", sign: -1 },
+      { id: "refund", label: "Refund (negative revenue)", sign: -1, subcategories: [] },
     ],
     out: [
-      { id: "materials", label: "Materials" },
-      { id: "labor", label: "Labor" },
-      { id: "service", label: "Outsourced service" },
-      { id: "supplies", label: "Shop supplies" },
-      { id: "rent", label: "Rent" },
-      { id: "utilities", label: "Utilities" },
-      { id: "transport", label: "Transport / delivery" },
-      { id: "equipment", label: "Equipment" },
-      { id: "misc", label: "Miscellaneous" },
+      { id: "materials", label: "Materials", subcategories: [
+        { id: "blanks", label: "Blanks (shirts/totebags)" },
+        { id: "transfers", label: "Transfers (DTF/vinyl/subli)" },
+        { id: "ink", label: "Ink & toner" },
+        { id: "paper", label: "Paper & board" },
+        { id: "packaging", label: "Packaging" },
+      ] },
+      { id: "labor", label: "Labor", subcategories: [
+        { id: "piece_rate", label: "Piece-rate" },
+        { id: "overtime", label: "Overtime" },
+      ] },
+      { id: "service", label: "Outsourced service", subcategories: [
+        { id: "subcontract", label: "Subcontracted print" },
+        { id: "rush", label: "Rush fee" },
+        { id: "courier", label: "Courier" },
+      ] },
+      { id: "supplies", label: "Shop supplies", subcategories: [] },
+      { id: "rent", label: "Rent", subcategories: [] },
+      { id: "utilities", label: "Utilities", subcategories: [] },
+      { id: "transport", label: "Transport / delivery", subcategories: [] },
+      { id: "equipment", label: "Equipment", subcategories: [] },
+      { id: "misc", label: "Miscellaneous", subcategories: [] },
     ],
   };
   let CASHBOOK_METHODS = [
@@ -1526,6 +1550,9 @@
         if (c.direction !== "in" && c.direction !== "out") return;
         const entry = { id: c.id, label: c.label };
         if (c.sign === -1) entry.sign = -1;
+        entry.subcategories = Array.isArray(c.subcategories)
+          ? c.subcategories.map((s) => ({ id: s.id, label: s.label }))
+          : [];
         next[c.direction].push(entry);
       });
       if (next.in.length && next.out.length) {
@@ -1563,6 +1590,80 @@
     const hit = CASHBOOK_METHODS.find((m) => m.id === id);
     return hit ? hit.label : id || "—";
   }
+  // Same fallback-across-direction reasoning as cashbookCategoryLabel above
+  // (a void's reversal flips direction, so a reversed expense's parent
+  // category — and therefore its subcategory list — lives under "in").
+  function cashbookSubcategoryLabel(direction, categoryId, subcategoryId) {
+    if (!subcategoryId) return null;
+    const list = CASHBOOK_CATEGORIES[direction] || [];
+    let cat = list.find((c) => c.id === categoryId);
+    if (!cat) {
+      const other = direction === "in" ? "out" : "in";
+      cat = (CASHBOOK_CATEGORIES[other] || []).find((c) => c.id === categoryId);
+    }
+    const sub = cat && Array.isArray(cat.subcategories) && cat.subcategories.find((s) => s.id === subcategoryId);
+    return sub ? sub.label : subcategoryId;
+  }
+
+  /* ---- most-used category/subcategory picks (2026-08-19) ----
+     Pinned-at-top state for the searchable combobox — persisted through
+     THIS seam (never a page reading localStorage directly, same rule as
+     everything else on it). A simple recency+frequency counter keyed on
+     "categoryId" or "categoryId::subcategoryId", capped so the list can't
+     grow forever. Per-browser, not per-staffer — same scope as every
+     other localStorage-backed preference in this file before a real
+     per-staffer prefs store existed for it (dashboard-prefs.js covers
+     cross-device staffer prefs today, but this is cheap enough and local
+     enough that round-tripping it through the API would be overkill for
+     "which chip did I tap most"). */
+  const CASHBOOK_RECENT_MAX = 6;
+  function cashbookPickKey(categoryId, subcategoryId) {
+    return subcategoryId ? categoryId + "::" + subcategoryId : categoryId;
+  }
+  function recordCashbookCategoryPick(categoryId, subcategoryId) {
+    if (!categoryId) return;
+    const state = load();
+    if (!Array.isArray(state.cashbookRecentPicks)) state.cashbookRecentPicks = [];
+    const key = cashbookPickKey(categoryId, subcategoryId);
+    const list = state.cashbookRecentPicks.filter((k) => k !== key);
+    list.unshift(key);
+    state.cashbookRecentPicks = list.slice(0, CASHBOOK_RECENT_MAX);
+    save(state);
+  }
+  // Returns [{categoryId, subcategoryId}] most-recent-first, deliberately
+  // NOT validated against the current category list here — the combobox's
+  // getRecentKeys() call is matched against whatever getItems() actually
+  // built, so a since-removed category id just quietly fails to match
+  // rather than needing a second round of validation here.
+  // Same pattern, for the "link to job" picker's recent-jobs-first default
+  // (owner decision, 2026-08-19: logging several cost lines against the
+  // same job in one sitting is the common case, and recent-first makes
+  // that one tap instead of a fresh search every time). Kept as a
+  // separate list/key from the category picks above — different shape
+  // (order ids, not category::subcategory pairs) and no reason to share a
+  // cap between two unrelated pickers.
+  const CASHBOOK_RECENT_ORDERS_MAX = 6;
+  function recordCashbookRecentOrder(orderId) {
+    if (!orderId) return;
+    const state = load();
+    if (!Array.isArray(state.cashbookRecentOrderIds)) state.cashbookRecentOrderIds = [];
+    const list = state.cashbookRecentOrderIds.filter((id) => id !== orderId);
+    list.unshift(orderId);
+    state.cashbookRecentOrderIds = list.slice(0, CASHBOOK_RECENT_ORDERS_MAX);
+    save(state);
+  }
+  function getCashbookRecentOrderIds() {
+    const state = load();
+    return Array.isArray(state.cashbookRecentOrderIds) ? state.cashbookRecentOrderIds.slice() : [];
+  }
+
+  function getCashbookRecentPicks() {
+    const state = load();
+    return (Array.isArray(state.cashbookRecentPicks) ? state.cashbookRecentPicks : []).map((key) => {
+      const idx = key.indexOf("::");
+      return idx === -1 ? { categoryId: key, subcategoryId: null } : { categoryId: key.slice(0, idx), subcategoryId: key.slice(idx + 2) };
+    });
+  }
   /* ---- reads ---- */
   // Newest-first, matching the plan's mobile list order.
   function sortNewestFirst(list) {
@@ -1584,6 +1685,8 @@
       // float anywhere on this path (D3).
       amountCentavos: r.amountCentavos,
       category: r.categoryId,
+      subcategory: r.subcategoryId || null,
+      subcategoryLabel: r.subcategoryLabel || null,
       method: r.paymentMethod,
       orderId: r.orderId || null,
       // The API has no client entity (plan §7 — no Client/CRM record, no
@@ -1708,6 +1811,8 @@
           label: c.label,
           category: c.categoryId,
           categoryLabel: c.categoryLabel || cashbookCategoryLabel("out", c.categoryId),
+          subcategory: c.subcategoryId || null,
+          subcategoryLabel: c.subcategoryLabel || cashbookSubcategoryLabel("out", c.categoryId, c.subcategoryId),
           qty: c.qty,
           unitCostCentavos: c.unitCostCentavos != null ? c.unitCostCentavos
             : (c.qty && c.qty > 0 ? c.amountCentavos / c.qty : null),
@@ -1804,6 +1909,7 @@
       throw new Error("Enter an amount greater than zero.");
     }
     if (!input.category) throw new Error("Pick a category.");
+    const subcategoryId = (input.subcategory || "").trim() || null;
 
     const orderId = (input.orderId || "").trim() || null;
     const note = (input.note || "").trim();
@@ -1825,6 +1931,7 @@
         idempotencyId,
         label: note || cashbookCategoryLabel("out", input.category),
         categoryId: input.category,
+        subcategoryId,
         affectsCash,
         note,
       };
@@ -1837,6 +1944,7 @@
       });
       const cost = res.cost || {};
       const txn = res.transaction ? normalizeTxnRow(res.transaction) : null;
+      recordCashbookCategoryPick(input.category, subcategoryId);
       // affectsCash:false never creates a txn row — cashbook.html only
       // reads occurredAt/orderId off the return in that case, to jump to
       // the right day.
@@ -1853,6 +1961,7 @@
       body: JSON.stringify({
         idempotencyId,
         categoryId: input.category,
+        subcategoryId,
         amountCentavos,          // positive; the server applies the sign
         paymentMethod: input.method,
         orderId,
@@ -1865,6 +1974,7 @@
     // may be double-counting.
     if (res.warning) txn.warning = res.warning;
     txn.idempotentReplay = !!res.idempotentReplay;
+    recordCashbookCategoryPick(input.category, subcategoryId);
     return txn;
   }
 
@@ -1934,6 +2044,7 @@
         occurredAt: t.occurredAt,
         direction: t.direction,
         category: cashbookCategoryLabel(t.direction, t.category),
+        subcategory: t.subcategoryLabel || cashbookSubcategoryLabel(t.direction, t.category, t.subcategory),
         label: t.note || cashbookCategoryLabel(t.direction, t.category),
         // Qty/unit cost live on the COST# line, which is in the ORDER
         // partition rather than the day partition — the day API does not
@@ -2063,6 +2174,8 @@
     // Cash Book + job costing (mock — see the CASH BOOK section above).
     getCashbookDay, getCashbookMonth, logCashbookTransaction, voidCashbookTransaction,
     getCashbookCategories, getCashbookMethods, cashbookCategoryLabel, cashbookMethodLabel,
+    cashbookSubcategoryLabel, recordCashbookCategoryPick, getCashbookRecentPicks,
+    recordCashbookRecentOrder, getCashbookRecentOrderIds,
     getJobCosting, getJobCostingList, getCashbookDayExport,
     // Manila-date + centavo helpers. Exported so cashbook.html never
     // reimplements either — a second copy of the +8 shift or the

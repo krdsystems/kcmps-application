@@ -98,20 +98,45 @@ class CashbookValidationError extends Error {
 //   direction "in" (money arrives) | "out" (money leaves)
 //   sign      +1 normally; -1 for a sign-carrying category (see header)
 //   kind      "revenue" | "expense" — what job costing counts it as
+//   subcategories  optional [{id, label}] — id is unique only WITHIN this
+//                  parent (not globally); empty/absent means the category
+//                  has no subcategory taxonomy at all. Owner-approved
+//                  taxonomy, docs/cashbook-job-costing-plan-2026-08-18.md
+//                  "Categories → subcategories". Subcategory is OPTIONAL on
+//                  every write — a staffer may always save the parent alone.
 const DEFAULT_TXN_CATEGORIES = Object.freeze([
-  { id: "sale", label: "Sale", direction: "in", sign: 1, kind: "revenue" },
-  { id: "other_income", label: "Other income", direction: "in", sign: 1, kind: "revenue" },
+  { id: "sale", label: "Sale", direction: "in", sign: 1, kind: "revenue", subcategories: [
+    { id: "print_office", label: "Print — office" },
+    { id: "print_large", label: "Print — large format" },
+    { id: "merch", label: "Merch / apparel" },
+    { id: "design", label: "Design service" },
+    { id: "walkin", label: "Walk-in" },
+  ] },
+  { id: "other_income", label: "Other income", direction: "in", sign: 1, kind: "revenue", subcategories: [] },
   // Sign-carrying: negative revenue, NOT an expense. See header.
-  { id: "refund", label: "Refund", direction: "in", sign: -1, kind: "revenue" },
-  { id: "materials", label: "Materials", direction: "out", sign: 1, kind: "expense" },
-  { id: "labor", label: "Labor", direction: "out", sign: 1, kind: "expense" },
-  { id: "service", label: "Outsourced service", direction: "out", sign: 1, kind: "expense" },
-  { id: "supplies", label: "Shop supplies", direction: "out", sign: 1, kind: "expense" },
-  { id: "rent", label: "Rent", direction: "out", sign: 1, kind: "expense" },
-  { id: "utilities", label: "Utilities", direction: "out", sign: 1, kind: "expense" },
-  { id: "transport", label: "Transport / delivery", direction: "out", sign: 1, kind: "expense" },
-  { id: "equipment", label: "Equipment", direction: "out", sign: 1, kind: "expense" },
-  { id: "misc", label: "Miscellaneous", direction: "out", sign: 1, kind: "expense" },
+  { id: "refund", label: "Refund", direction: "in", sign: -1, kind: "revenue", subcategories: [] },
+  { id: "materials", label: "Materials", direction: "out", sign: 1, kind: "expense", subcategories: [
+    { id: "blanks", label: "Blanks (shirts/totebags)" },
+    { id: "transfers", label: "Transfers (DTF/vinyl/subli)" },
+    { id: "ink", label: "Ink & toner" },
+    { id: "paper", label: "Paper & board" },
+    { id: "packaging", label: "Packaging" },
+  ] },
+  { id: "labor", label: "Labor", direction: "out", sign: 1, kind: "expense", subcategories: [
+    { id: "piece_rate", label: "Piece-rate" },
+    { id: "overtime", label: "Overtime" },
+  ] },
+  { id: "service", label: "Outsourced service", direction: "out", sign: 1, kind: "expense", subcategories: [
+    { id: "subcontract", label: "Subcontracted print" },
+    { id: "rush", label: "Rush fee" },
+    { id: "courier", label: "Courier" },
+  ] },
+  { id: "supplies", label: "Shop supplies", direction: "out", sign: 1, kind: "expense", subcategories: [] },
+  { id: "rent", label: "Rent", direction: "out", sign: 1, kind: "expense", subcategories: [] },
+  { id: "utilities", label: "Utilities", direction: "out", sign: 1, kind: "expense", subcategories: [] },
+  { id: "transport", label: "Transport / delivery", direction: "out", sign: 1, kind: "expense", subcategories: [] },
+  { id: "equipment", label: "Equipment", direction: "out", sign: 1, kind: "expense", subcategories: [] },
+  { id: "misc", label: "Miscellaneous", direction: "out", sign: 1, kind: "expense", subcategories: [] },
 ]);
 
 // Categories valid on a job COST# line — expenses only. Booking a
@@ -122,6 +147,46 @@ function costCategories(categories = DEFAULT_TXN_CATEGORIES) {
 
 function categoryById(categoryId, categories = DEFAULT_TXN_CATEGORIES) {
   return categories.find((c) => c && c.id === categoryId) || null;
+}
+
+// Look up a subcategory WITHIN a resolved parent category object (as
+// returned by categoryById). Subcategory ids are unique only within their
+// parent, so this deliberately never searches across categories.
+function subcategoryById(category, subcategoryId) {
+  if (!category || !Array.isArray(category.subcategories)) return null;
+  return category.subcategories.find((s) => s && s.id === subcategoryId) || null;
+}
+
+// Single resolver every call site (Lambda responses, CSV export, the
+// dashboard) goes through instead of re-deriving a label ad hoc.
+function subcategoryLabel(categoryId, subcategoryId, categories = DEFAULT_TXN_CATEGORIES) {
+  if (!subcategoryId) return null;
+  const category = categoryById(categoryId, categories);
+  const sub = subcategoryById(category, subcategoryId);
+  return sub ? sub.label : null;
+}
+
+// Validates an optional subcategoryId against an already-resolved parent
+// category. Returns { subcategoryId, subcategoryLabel } — both null when
+// none was supplied (subcategory is OPTIONAL, owner decision). Throws when
+// one was supplied but doesn't belong to this category, or the category
+// has no subcategories at all.
+function resolveSubcategory(category, rawSubcategoryId) {
+  const subcategoryId = str(rawSubcategoryId).trim();
+  if (!subcategoryId) return { subcategoryId: null, subcategoryLabel: null };
+
+  const options = Array.isArray(category.subcategories) ? category.subcategories : [];
+  if (!options.length) {
+    throw new CashbookValidationError(`Category ${category.id} has no subcategories; subcategoryId must be omitted`);
+  }
+  const sub = options.find((s) => s && s.id === subcategoryId);
+  if (!sub) {
+    throw new CashbookValidationError(
+      `Unknown subcategoryId ${JSON.stringify(subcategoryId)} for category ${category.id}. ` +
+      `Valid: ${options.map((s) => s.id).join(", ")}`
+    );
+  }
+  return { subcategoryId: sub.id, subcategoryLabel: sub.label };
 }
 
 const PAYMENT_METHODS = Object.freeze(["cash", "gcash", "bank", "card"]);
@@ -338,6 +403,7 @@ function validateTransactionInput(input = {}, { categories = DEFAULT_TXN_CATEGOR
   }
 
   const { amountCentavos, normalized } = normalizeAmount(category, input.amountCentavos);
+  const { subcategoryId, subcategoryLabel: subLabel } = resolveSubcategory(category, input.subcategoryId);
 
   const method = str(input.paymentMethod).trim().toLowerCase();
   if (!PAYMENT_METHODS.includes(method)) {
@@ -352,6 +418,8 @@ function validateTransactionInput(input = {}, { categories = DEFAULT_TXN_CATEGOR
     txnId: idempotencyId,
     categoryId: category.id,
     categoryLabel: category.label,
+    subcategoryId,
+    subcategoryLabel: subLabel,
     kind: category.kind,
     direction,
     amountCentavos,
@@ -384,6 +452,8 @@ function validateCostInput(input = {}, { categories = DEFAULT_TXN_CATEGORIES, no
 
   const label = str(input.label).trim();
   if (!label) throw new CashbookValidationError("label is required on a cost line");
+
+  const { subcategoryId, subcategoryLabel: subLabel } = resolveSubcategory(category, input.subcategoryId);
 
   // Qty + unit cost, not a bare total — this is what yields the per-unit
   // economics the plan §5 worked example is built on. qty may be null for
@@ -431,6 +501,8 @@ function validateCostInput(input = {}, { categories = DEFAULT_TXN_CATEGORIES, no
     label,
     categoryId: category.id,
     categoryLabel: category.label,
+    subcategoryId,
+    subcategoryLabel: subLabel,
     qty,
     unitCostCentavos,
     amountCentavos,
@@ -535,6 +607,9 @@ module.exports = {
   OCCURRED_AT_MAX_FUTURE_MS,
   costCategories,
   categoryById,
+  subcategoryById,
+  subcategoryLabel,
+  resolveSubcategory,
   manilaDayKey,
   manilaMonthKey,
   isValidDayKey,

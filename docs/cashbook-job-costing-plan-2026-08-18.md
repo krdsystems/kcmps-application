@@ -257,6 +257,57 @@ An allocation line writes the `ORDER#`/`COST#` item **and nothing else** — no 
 order→txn pointer, no rollup bump. Verified live: two cost lines against one order produced two
 `COST#` items and exactly one `TXN#`.
 
+### Two-level categories: category → subcategory (2026-08-19, owner-approved)
+
+Every `DEFAULT_TXN_CATEGORIES` parent id is **frozen** (stored on existing rows, never renamed —
+see the constant's own header comment) and now carries an optional `subcategories: [{id, label}]`
+array. Subcategory ids are unique only **within** their parent, not globally.
+
+**Subcategory is OPTIONAL on every write.** A staffer may always save the parent category alone;
+`resolveSubcategory()` in `backend/lib/cashbook.js` returns `{subcategoryId: null,
+subcategoryLabel: null}` when none is supplied, and both `validateTransactionInput` and
+`validateCostInput` accept that. A `subcategoryId` that IS supplied must belong to the given
+parent (cross-category and no-such-subcategory are both rejected with a 400) — the server owns
+and validates the vocabulary; there is no free-text/client-invented category path.
+
+Approved taxonomy:
+
+| Parent (frozen id) | Subcategories (id — label) |
+|---|---|
+| `sale` | `print_office` — Print — office · `print_large` — Print — large format · `merch` — Merch / apparel · `design` — Design service · `walkin` — Walk-in |
+| `other_income` | none |
+| `refund` | none (still `sign: -1`, unchanged) |
+| `materials` | `blanks` — Blanks (shirts/totebags) · `transfers` — Transfers (DTF/vinyl/subli) · `ink` — Ink & toner · `paper` — Paper & board · `packaging` — Packaging |
+| `labor` | `piece_rate` — Piece-rate · `overtime` — Overtime |
+| `service` | `subcontract` — Subcontracted print · `rush` — Rush fee · `courier` — Courier |
+| `supplies`, `rent`, `utilities`, `transport`, `equipment`, `misc` | none |
+
+Existing rows written before this change have no `subcategoryId` field at all (not even `null`)
+— there is no backfill/migration, and `countsTowardTotals()`/rollups/job-costing all read them
+unaffected, verified live against a pre-existing production-shaped row.
+
+Frontend: `website/dashboard/cashbook.html`'s chip-based category picker was replaced with a
+searchable combobox (`dashboard-shell.js`'s `createCombobox()`, shared with the "link to job"
+order picker below) — type-to-filter across both levels, most-used-first when the search box is
+empty (persisted via `KCMPS_DASH`'s `recordCashbookCategoryPick()`/`getCashbookRecentPicks()`,
+never direct `localStorage`), full-screen sheet on mobile (≤760px) mirroring `store.js`'s
+`.design-subcatalog` pattern, anchored dropdown on desktop.
+
+### Job picker: search by name, store the id (2026-08-19, owner-approved)
+
+The "Link to job / Order ID" field is the **same** combobox, reusing `getAllOrders()` (no new
+search endpoint) fetched once and filtered client-side — real search-index limits apply (see the
+GSI2 note in §7); fine at this shop's volume. The stored value is always the order id; a
+pasted/typed raw id still works even if the picker never loaded (`allowFreeText`), and a failed/
+slow/forbidden orders fetch degrades to plain text entry rather than blocking logging money.
+Recent jobs (`getCashbookRecentOrderIds()`) are pinned above search results, no typing required
+— the common case is several cost lines against the same job in one sitting. Selecting a job
+derives the Client field from it (read-only while linked, so there is never a second,
+independently-typed value that could disagree) — clearing the link restores the manual input.
+Placement is a **permanent** field between Payment method and Save, not inside the collapsed
+"extras" disclosure (which still holds only genuinely occasional fields: note, qty, unit cost,
+the allocation checkbox).
+
 ---
 
 ## 5. Worked example — the owner's real totebag job

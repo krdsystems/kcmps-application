@@ -23,10 +23,7 @@
 
     <main class="dash-content cb-page">
       <p class="demo-notice"><strong>Staging — real backend, real saved records.</strong>
-        Anything logged here is written to the staging database and is visible to everyone on the
-        team, so treat it as a real entry. Two things are not wired yet: online orders confirmed
-        in <em>Verify payment</em> are not posted here automatically, and per-client totals need
-        a database index that does not exist yet, so jobs group by order rather than by client.</p>
+        Anything logged here is written to the staging database and visible to the whole team.</p>
 
       <section class="dsec">
         <div class="dsec-head">
@@ -62,16 +59,23 @@
                 <div class="cb-amount-wrap">
                   <span class="cb-amount-peso" aria-hidden="true">&#8369;</span>
                   <input class="input cb-amount-input" id="cb-amount" type="text" inputmode="decimal"
-                         autocomplete="off" placeholder="0.00" aria-describedby="cb-amount-hint" />
+                         autocomplete="off" placeholder="0.00" />
                 </div>
-                <span class="hint" id="cb-amount-hint" style="font-size:11.5px">Pesos and centavos, e.g. 1500.07</span>
               </div>
 
-              <!-- 3. Category chips, NOT a <select> — the owner rejected a
-                   select on the bulk-quote picker as too hard to use. -->
+              <!-- 3. Category — a searchable combobox (2026-08-19), not the
+                   old chip set and not a plain <select> either (the owner
+                   rejected a select on the bulk-quote picker as too hard to
+                   use). Typing filters BOTH category and subcategory, e.g.
+                   "dtf" surfaces Materials → Transfers. Subcategory is
+                   OPTIONAL — picking the parent row alone and saving
+                   immediately is the fast path, not a two-tap requirement. -->
               <div class="field">
-                <label id="cb-cat-label">Category</label>
-                <div class="cb-chipset" id="cb-categories" role="group" aria-labelledby="cb-cat-label"></div>
+                <label id="cb-cat-label" for="cb-category-trigger">Category</label>
+                <button type="button" class="cbx-trigger" id="cb-category-trigger" aria-labelledby="cb-cat-label">
+                  <span class="cbx-trigger-placeholder" id="cb-category-trigger-text">Choose a category&hellip;</span>
+                  <svg class="cbx-trigger-caret" width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>
+                </button>
               </div>
 
               <!-- 4. Payment method — without it the drawer can't be reconciled (plan §8). -->
@@ -80,18 +84,55 @@
                 <div class="cb-chipset" id="cb-methods" role="group" aria-labelledby="cb-method-label"></div>
               </div>
 
-              <!-- 5. Optional extras, collapsed so the fast path stays four taps. -->
+              <!-- 5. Link to a job — a PERMANENT field, not inside the
+                   collapsed extras below (owner decision, 2026-08-19: the
+                   original "collapse it to keep the fast path four taps"
+                   reasoning didn't survive contact — the four taps are
+                   sign/amount/category/method/Save, and one more field
+                   between Method and Save costs a glance, not a tap, while
+                   hiding it defeats the entire job-costing workflow this
+                   picker exists for). Deliberately NOT conditional on
+                   category — a field that appears/disappears as you tap
+                   through categories is more disorienting on a phone than
+                   the small amount of vertical space it costs to always
+                   show it. Same searchable combobox as Category above,
+                   searching by client/job name instead of typing an id
+                   from memory; a pasted/typed raw order id still works
+                   (this input is real text, never read-only), and the
+                   combobox's own free-text path (allowFreeText) lets a
+                   staffer who already knows the id just type it and hit
+                   Enter without opening the list. Empty search shows
+                   RECENT jobs first — logging several cost lines against
+                   the same job in one sitting is the common case, and that
+                   makes it one tap instead of a fresh search each time.
+                   See the order-picker wiring below for the degrade-to-
+                   plain-text-entry behaviour when order search fails or is
+                   unavailable — it must never block logging money. -->
+              <div class="field">
+                <label for="cb-order">Link to job / Order ID (optional)</label>
+                <div class="cbx-field-row">
+                  <input class="input" id="cb-order" placeholder="e.g. ORD-DEMO-TOTEBAG or a client name" autocomplete="off" />
+                  <button type="button" class="btn btn-secondary cbx-field-btn" id="cb-order-find" aria-label="Find a job by name">
+                    <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.32l50.06,50.06a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Client is DERIVED from the linked job once one is picked
+                   — never a second, independently-typed fact that could
+                   disagree with it. Selecting a job swaps this to a
+                   read-only display of that job's client; clearing the
+                   job (or never linking one) restores the plain manual
+                   input. See syncClientField() below. -->
+              <div class="field" id="cb-client-field">
+                <label for="cb-client">Client (optional)</label>
+                <input class="input" id="cb-client" placeholder="e.g. Bayanihan Co-op" autocomplete="off" />
+              </div>
+
+              <!-- 6. Occasional extras, collapsed — genuinely optional on
+                   most entries, unlike the job link above. -->
               <details class="cb-extras">
-                <summary>Link to a job, add a note</summary>
-                <div class="field">
-                  <label for="cb-order">Order / job ID (optional)</label>
-                  <input class="input" id="cb-order" placeholder="e.g. ORD-DEMO-TOTEBAG" autocomplete="off" />
-                  <span class="hint" style="font-size:11.5px">An expense linked to a job also becomes a cost line on that job's profit.</span>
-                </div>
-                <div class="field">
-                  <label for="cb-client">Client (optional)</label>
-                  <input class="input" id="cb-client" placeholder="e.g. Bayanihan Co-op" autocomplete="off" />
-                </div>
+                <summary>Add a note, qty/unit cost</summary>
                 <div class="field">
                   <label for="cb-note">Note (optional)</label>
                   <input class="input" id="cb-note" placeholder="e.g. Photocopying, 74 pages" autocomplete="off" />
@@ -181,7 +222,7 @@
 (() => {
   const claims = KCMPS_DASH_SHELL.mount("cashbook");
   if (!claims) return;
-  const { escapeHtml, showInlineError, withBusy } = KCMPS_DASH_SHELL;
+  const { escapeHtml, showInlineError, withBusy, createCombobox } = KCMPS_DASH_SHELL;
   // Money + Manila-date helpers come from the data layer, never
   // reimplemented here — a second copy of the +8 shift or the float->int
   // conversion is exactly how the two drift apart.
@@ -192,6 +233,7 @@
   let selectedDay = D.manilaToday();
   let direction = "in";
   let category = null;
+  let subcategory = null;
   let method = null;
 
   const $ = (id) => document.getElementById(id);
@@ -225,7 +267,9 @@
   function txRow(t) {
     const cls = "cb-tx dir-" + t.direction +
       (t.voided ? " is-voided" : "") + (t.reversesTxnId ? " is-reversal" : "");
-    const title = D.cashbookCategoryLabel(t.direction, t.category);
+    const title = t.subcategoryLabel
+      ? D.cashbookCategoryLabel(t.direction, t.category) + " › " + t.subcategoryLabel
+      : D.cashbookCategoryLabel(t.direction, t.category);
     const meta = [D.manilaTimeLabel(t.occurredAt), escapeHtml(t.actorName || "—")];
     if (t.orderId) meta.push(escapeHtml(t.orderId));
     // Voids and reversals stay in the list — that is the point of an
@@ -258,9 +302,21 @@
       ? "Today · " + D.formatCentavos(day.netCentavos) + " net"
       : D.formatCentavos(day.netCentavos) + " net";
     $("cb-datepick").value = selectedDay;
-    // A future day is reachable (a date picker can land there) but is never
-    // the default, and "next" stops at today — a cash book has nothing to
-    // say about tomorrow.
+    // A cash book is cash-basis — a future day can never hold an entry, so
+    // it should be genuinely untappable, not just a dead end after
+    // navigating there. `max` is the Manila day key (D.manilaToday(), NOT
+    // new Date().toISOString().slice(0,10) — that's the UTC day, which
+    // between 16:00Z and 24:00Z is already "tomorrow" in Manila and would
+    // leave exactly one future day selectable). Recomputed on every
+    // renderDay() call (which runs on every refresh tick) rather than
+    // once at load, so a session left open across Manila midnight doesn't
+    // end up with a stale max — see the change handler below for the
+    // matching JS-side clamp (the native `max` isn't enough on its own:
+    // it's respected by the picker UI but not by every browser's typed/
+    // pasted input, and not by a programmatic value change).
+    $("cb-datepick").max = D.manilaToday();
+    // "next" stops at today too — a cash book has nothing to say about
+    // tomorrow. Both bounds must agree; see the change handler below.
     $("cb-next").disabled = selectedDay >= D.manilaToday();
 
     // The server re-sums this day's rows on every read and reports whether
@@ -301,7 +357,7 @@
         `<td>${escapeHtml(c.label)}` +
           (c.affectsCash ? "" : ` <span class="cb-alloc-flag">allocation &mdash; estimated</span>`) +
         `</td>` +
-        `<td>Cost &middot; ${escapeHtml(c.categoryLabel)}</td>` +
+        `<td>Cost &middot; ${escapeHtml(c.subcategoryLabel ? c.categoryLabel + " › " + c.subcategoryLabel : c.categoryLabel)}</td>` +
         `<td class="num">${c.qty ? c.qty : "&mdash;"}</td>` +
         `<td class="num">${c.unitCostCentavos != null ? fmtRatio(c.unitCostCentavos) : "&mdash;"}</td>` +
         `<td class="num">${D.formatSignedCentavos(c.amountCentavos, "out")}</td>` +
@@ -399,7 +455,9 @@
     }
   }
 
-  /* ---- chips ---- */
+  /* ---- payment method chips (unchanged — only Category got the
+       combobox treatment; the method list is short and flat, a chip set
+       is still the right control for it) ---- */
   function renderChips(host, items, selectedId, onPick) {
     host.innerHTML = items.map((it) => (
       `<button type="button" class="cb-chip" data-id="${escapeHtml(it.id)}" aria-pressed="${it.id === selectedId}">${escapeHtml(it.label)}</button>`
@@ -411,16 +469,209 @@
       });
     });
   }
+  function renderMethods() {
+    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
+  }
+
+  /* ---- category → subcategory combobox (2026-08-19) ----
+     Flattens the current direction's category list into ONE searchable
+     list: one row per parent category (subcategory left blank — the "save
+     with just the parent" fast path), plus one row per subcategory. Typing
+     "dtf" matches Materials → Transfers because the search text on a
+     subcategory row includes its parent's label/id too. */
+  function categoryComboItems() {
+    const cats = D.getCashbookCategories()[direction];
+    const items = [];
+    cats.forEach((c) => {
+      items.push({
+        key: c.id, categoryId: c.id, subcategoryId: null,
+        primary: c.label, secondary: null,
+        searchText: c.id + " " + c.label,
+      });
+      (c.subcategories || []).forEach((s) => {
+        items.push({
+          key: c.id + "::" + s.id, categoryId: c.id, subcategoryId: s.id,
+          primary: s.label, secondary: "in " + c.label,
+          searchText: c.id + " " + c.label + " " + s.id + " " + s.label,
+        });
+      });
+    });
+    return items;
+  }
+  function categoryTriggerLabel() {
+    if (!category) return null;
+    const cats = D.getCashbookCategories()[direction];
+    const cat = cats.find((c) => c.id === category);
+    const catLabel = cat ? cat.label : category;
+    if (!subcategory) return catLabel;
+    const sub = cat && (cat.subcategories || []).find((s) => s.id === subcategory);
+    return catLabel + " › " + (sub ? sub.label : subcategory);
+  }
+  function renderCategoryTrigger() {
+    const label = categoryTriggerLabel();
+    const el = $("cb-category-trigger-text");
+    if (label) { el.textContent = label; el.classList.remove("cbx-trigger-placeholder"); }
+    else { el.textContent = "Choose a category…"; el.classList.add("cbx-trigger-placeholder"); }
+  }
+  const categoryCombobox = createCombobox({
+    trigger: $("cb-category-trigger"),
+    title: "Category",
+    searchPlaceholder: "Search categories, e.g. \"dtf\"",
+    emptyMessage: "No matching category.",
+    getItems: categoryComboItems,
+    // Most-used-first (owner decision): pull the staffer's recent picks,
+    // matched against THIS direction's items — a pick recorded as an
+    // expense simply fails to match while Revenue is selected, which is
+    // the correct behaviour (no cross-direction recents).
+    getRecentKeys: () => {
+      const items = categoryComboItems();
+      const keys = items.map((it) => it.key);
+      return D.getCashbookRecentPicks()
+        .map((p) => (p.subcategoryId ? p.categoryId + "::" + p.subcategoryId : p.categoryId))
+        .filter((k) => keys.includes(k));
+    },
+    onSelect: (it) => {
+      category = it.categoryId;
+      subcategory = it.subcategoryId;
+      renderCategoryTrigger();
+    },
+  });
   function renderCategories() {
     const cats = D.getCashbookCategories()[direction];
     // Switching sign invalidates the category — a revenue category on an
     // expense would be silently wrong rather than obviously wrong.
-    if (!cats.some((c) => c.id === category)) category = null;
-    renderChips($("cb-categories"), cats, category, (id) => { category = id; });
+    if (!cats.some((c) => c.id === category)) { category = null; subcategory = null; }
+    renderCategoryTrigger();
   }
-  function renderMethods() {
-    renderChips($("cb-methods"), D.getCashbookMethods(), method, (id) => { method = id; });
+  $("cb-category-trigger").addEventListener("click", () => categoryCombobox.open());
+
+  /* ---- order/job picker — search by name, store the id (2026-08-19) ----
+     Reuses the SAME combobox as Category. The stored value is always the
+     order id (the backend contract, unchanged); the name is only how
+     staff FIND it. `cb-order` stays a plain text input the whole time —
+     pasting or typing a raw id (e.g. "ORD-A76A5307CE") always works,
+     whether or not the picker ever loaded, because nothing here makes
+     the field read-only or intercepts typing into it.
+
+     Data source is the EXISTING getAllOrders() seam (GET /orders,
+     already used by jobs.html) — fetched ONCE and cached, filtered
+     client-side, no new backend search endpoint. Prior art: jobs.html's
+     .cfp-search filter popover does the same "search input over a
+     locally-filtered list" thing, and per CLAUDE.md its client-name
+     dropdown is deliberately "a local autocomplete convenience only" —
+     same posture here.
+
+     KNOWN LIMITATION, not solved here: filtering client-side over every
+     fetched order is fine at this shop's volume and matches that same
+     precedent, but it is not a real search index. A proper per-client
+     lookup needs GSI2, which isn't provisioned (plan Phase 4) — the same
+     blocker documented in getJobCostingList() above.
+
+     MOST IMPORTANT BEHAVIOUR: a broken/slow/forbidden orders fetch must
+     never block logging money. If getAllOrders() fails, returns empty, or
+     the caller lacks permission, the button quietly disables and the
+     hint explains why — the text input keeps working as plain free-text
+     order-id entry the entire time. */
+  let ordersCache = null;      // null = not yet loaded, [] = loaded-but-empty
+  let ordersLoadFailed = false;
+  async function loadOrdersForPicker() {
+    if (ordersCache || ordersLoadFailed) return;
+    try {
+      const orders = await D.getAllOrders();
+      ordersCache = Array.isArray(orders) ? orders : [];
+    } catch (err) {
+      ordersLoadFailed = true;
+      ordersCache = null;
+    }
   }
+  function orderComboItems() {
+    if (!ordersCache || !ordersCache.length) return [];
+    return ordersCache.map((o) => {
+      const name = (o.client && o.client.name) || "Unassigned";
+      const jobLabel = (o.lineItems && o.lineItems[0] && o.lineItems[0].description) || "";
+      const dateBit = o.createdAt ? D.manilaDayOf(o.createdAt) : "";
+      const statusBit = o.status || (o.lineItems && o.lineItems[0] && o.lineItems[0].status) || "";
+      return {
+        key: o.orderId, orderId: o.orderId, clientName: name,
+        primary: name + (jobLabel ? " — " + jobLabel : ""),
+        secondary: [o.orderId, dateBit, statusBit].filter(Boolean).join(" · "),
+        searchText: [o.orderId, name, jobLabel, statusBit].filter(Boolean).join(" "),
+      };
+    });
+  }
+  // Client is DERIVED once a job is linked — never a second, independently
+  // typed fact that could disagree with it (owner decision, 2026-08-19).
+  // linkedJobClient is the source of truth while a job is linked; the
+  // manual #cb-client input is only ever editable when it's null.
+  let linkedJobClient = null;
+  function syncClientField() {
+    const field = $("cb-client-field");
+    const input = $("cb-client");
+    if (linkedJobClient !== null) {
+      input.value = linkedJobClient;
+      input.readOnly = true;
+      field.querySelector("label").textContent = "Client (from linked job)";
+    } else {
+      input.readOnly = false;
+      field.querySelector("label").textContent = "Client (optional)";
+      // Don't clear whatever the staffer may have already typed — only
+      // the "was just derived from a job" value gets replaced, on unlink.
+    }
+  }
+  const orderCombobox = createCombobox({
+    trigger: $("cb-order-find"),
+    title: "Link to job",
+    searchPlaceholder: "Search by client or job name…",
+    emptyMessage: "No matching order. You can still type or paste an order ID directly.",
+    allowFreeText: true,
+    getItems: orderComboItems,
+    // Recent-jobs-first when the search box is empty — the common case is
+    // logging several cost lines against the same job in one sitting.
+    getRecentKeys: () => D.getCashbookRecentOrderIds(),
+    onSelect: (it) => {
+      $("cb-order").value = it.orderId;
+      $("cb-order").dispatchEvent(new Event("input", { bubbles: true }));
+      linkedJobClient = it.clientName || "Unassigned";
+      syncClientField();
+      D.recordCashbookRecentOrder(it.orderId);
+    },
+    onFreeText: (text) => {
+      $("cb-order").value = text;
+      $("cb-order").dispatchEvent(new Event("input", { bubbles: true }));
+      // A hand-typed/pasted id isn't matched against a fetched order, so
+      // there is no client to derive — leave the manual field editable.
+      linkedJobClient = null;
+      syncClientField();
+    },
+  });
+  // Clearing the order field by hand (backspace to empty) un-derives the
+  // client too, so a stale "from linked job" value can't linger once the
+  // link itself is gone.
+  $("cb-order").addEventListener("input", () => {
+    if (!$("cb-order").value.trim() && linkedJobClient !== null) {
+      linkedJobClient = null;
+      syncClientField();
+    }
+  });
+  $("cb-order-find").addEventListener("click", async () => {
+    await withBusy($("cb-order-find"), loadOrdersForPicker);
+    if (ordersLoadFailed || !ordersCache || !ordersCache.length) {
+      orderCombobox.setBanner(
+        ordersLoadFailed
+          ? "Couldn't load the order list — type or paste the order ID directly below."
+          : "No orders to search yet — type or paste the order ID directly below."
+      );
+    } else {
+      orderCombobox.setBanner(null);
+    }
+    orderCombobox.open($("cb-order").value.trim() && !$("cb-order").value.startsWith("ORD-") ? $("cb-order").value : "");
+  });
+  // Prefetch quietly (no busy spinner, no error surfaced) so the FIRST
+  // click on "Find a job" doesn't have to wait on the round trip. If it
+  // fails here, loadOrdersForPicker() just tries again — harmlessly a
+  // no-op once ordersLoadFailed is set — and the click handler above is
+  // what actually shows the degraded-mode banner.
+  loadOrdersForPicker();
 
   /* ---- bottom sheet (mobile) ---- */
   const entry = $("cb-entry");
@@ -453,7 +704,12 @@
   });
   $("cb-datepick").addEventListener("change", async (e) => {
     if (!e.target.value) return;
-    selectedDay = e.target.value;
+    // `max` is UI-only — it isn't enforced on a typed/pasted value or a
+    // programmatic set, so clamp here too. Same Manila-day comparison as
+    // the ‹/› buttons use (string comparison on YYYY-MM-DD, which sorts
+    // correctly), so the two bounds can't disagree.
+    const today = D.manilaToday();
+    selectedDay = e.target.value > today ? today : e.target.value;
     await Promise.all([renderDay(), renderMonth()]);
   });
 
@@ -501,7 +757,7 @@
   }
 
   const CSV_HEADERS = [
-    "Date", "Time", "Type", "Category", "Description", "Qty",
+    "Date", "Time", "Type", "Category", "Subcategory", "Description", "Qty",
     "Unit amount (PHP)", "Amount (PHP)", "Signed amount (PHP)", "Payment method",
     "Affects cash", "Counts toward totals",
     "Order ID", "Client", "Staffer", "Note", "Voided", "Void reason",
@@ -516,6 +772,7 @@
       r.isReversal ? (r.direction === "in" ? "revenue (reversal)" : "expense (reversal)")
         : r.direction === "in" ? "revenue" : "expense",
       r.category,
+      r.subcategory || "",
       r.label,
       r.qty == null ? "" : NUM(r.qty),
       r.unitAmountCentavos == null ? "" : NUM(D.formatCentavosDecimal(r.unitAmountCentavos)),
@@ -631,7 +888,7 @@
     await withBusy($("cb-save"), async () => {
       try {
         const txn = await D.logCashbookTransaction({
-          direction, amountPesos: raw, category, method,
+          direction, amountPesos: raw, category, subcategory, method,
           orderId: $("cb-order").value, clientName: $("cb-client").value,
           note: $("cb-note").value, actorName,
           affectsCash: !$("cb-affects-cash-no").checked,
@@ -650,9 +907,15 @@
       $("cb-note").value = "";
       $("cb-order").value = "";
       $("cb-client").value = "";
+      linkedJobClient = null;
+      syncClientField();
       $("cb-qty").value = "";
       $("cb-unit-cost").value = "";
       $("cb-affects-cash-no").checked = false;
+      // The category/subcategory pick is NOT cleared — a staffer logging
+      // several transactions in a row (e.g. today's batch of walk-ins) is
+      // very likely to want the same category again; renderCategories()
+      // still re-validates it against the (unchanged) direction below.
       updateAllocVisibility();
       closeSheet();
       await refreshAll();
@@ -662,6 +925,7 @@
   /* ---- first paint ---- */
   renderCategories();
   renderMethods();
+  syncClientField();
   updateAllocVisibility();
   refreshAll();
 })();

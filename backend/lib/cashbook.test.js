@@ -249,6 +249,71 @@ test("the partition day comes from the SERVER's Manila clock, not a client 'day'
   assert.equal(t.month, "2026-08");
 });
 
+/* ---------------- subcategories ---------------- */
+
+test("validateTransactionInput accepts a valid category/subcategory pair", () => {
+  const t = cb.validateTransactionInput({
+    idempotencyId: "txn-sub123456", categoryId: "sale", subcategoryId: "print_office",
+    amountCentavos: 100000, paymentMethod: "cash",
+  }, { now: NOW });
+  assert.equal(t.subcategoryId, "print_office");
+  assert.equal(t.subcategoryLabel, "Print — office");
+});
+
+test("validateTransactionInput allows an absent subcategory — it is optional", () => {
+  const t = cb.validateTransactionInput({
+    idempotencyId: "txn-nosub12345", categoryId: "sale",
+    amountCentavos: 100000, paymentMethod: "cash",
+  }, { now: NOW });
+  assert.equal(t.subcategoryId, null);
+  assert.equal(t.subcategoryLabel, null);
+});
+
+test("validateTransactionInput rejects an unknown subcategoryId", () => {
+  assert.throws(() => cb.validateTransactionInput({
+    idempotencyId: "txn-badsub1234", categoryId: "sale", subcategoryId: "nope",
+    amountCentavos: 100000, paymentMethod: "cash",
+  }, { now: NOW }), cb.CashbookValidationError);
+});
+
+test("validateTransactionInput rejects a subcategory that belongs to a DIFFERENT category", () => {
+  // "blanks" is a materials subcategory, not a sale subcategory.
+  assert.throws(() => cb.validateTransactionInput({
+    idempotencyId: "txn-crosssub12", categoryId: "sale", subcategoryId: "blanks",
+    amountCentavos: 100000, paymentMethod: "cash",
+  }, { now: NOW }), cb.CashbookValidationError);
+});
+
+test("validateTransactionInput rejects a subcategoryId on a category that has none", () => {
+  assert.throws(() => cb.validateTransactionInput({
+    idempotencyId: "txn-noleaf12345", categoryId: "rent", subcategoryId: "anything",
+    amountCentavos: 100000, paymentMethod: "cash",
+  }, { now: NOW }), cb.CashbookValidationError);
+});
+
+test("validateCostInput accepts and rejects subcategories the same way", () => {
+  const c = cb.validateCostInput({
+    idempotencyId: "cost-sub123456", orderId: "ORD-XYZ", label: "DTF transfers",
+    categoryId: "materials", subcategoryId: "transfers",
+    qty: 10, unitCostCentavos: 5000, paymentMethod: "cash",
+  }, { now: NOW });
+  assert.equal(c.subcategoryId, "transfers");
+  assert.equal(c.subcategoryLabel, "Transfers (DTF/vinyl/subli)");
+
+  assert.throws(() => cb.validateCostInput({
+    idempotencyId: "cost-badsub1234", orderId: "ORD-XYZ", label: "x",
+    categoryId: "materials", subcategoryId: "piece_rate", // belongs to labor
+    amountCentavos: 1000, paymentMethod: "cash",
+  }, { now: NOW }), cb.CashbookValidationError);
+});
+
+test("subcategoryLabel resolver looks up a label without re-deriving it ad hoc", () => {
+  assert.equal(cb.subcategoryLabel("materials", "ink"), "Ink & toner");
+  assert.equal(cb.subcategoryLabel("materials", null), null);
+  assert.equal(cb.subcategoryLabel("materials", "nope"), null);
+  assert.equal(cb.subcategoryLabel("rent", "anything"), null);
+});
+
 /* ---------------- cost-line validation (B8) ---------------- */
 
 test("validateCostInput derives amount from qty x unit cost", () => {

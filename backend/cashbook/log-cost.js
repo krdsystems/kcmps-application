@@ -89,6 +89,8 @@ exports.handler = async (event) => {
     label: cost.label,
     categoryId: cost.categoryId,
     categoryLabel: cost.categoryLabel,
+    subcategoryId: cost.subcategoryId,
+    subcategoryLabel: cost.subcategoryLabel,
     // qty + unit cost, not a bare total — this is what yields the
     // per-unit economics in plan §5. amountCentavos is stored too, but
     // re-derived server-side, never taken from the client.
@@ -139,6 +141,8 @@ exports.handler = async (event) => {
       occurredAt: cost.incurredAt,
       categoryId: cost.categoryId,
       categoryLabel: cost.categoryLabel,
+      subcategoryId: cost.subcategoryId,
+      subcategoryLabel: cost.subcategoryLabel,
       kind: "expense",
       direction: "out",
       amountCentavos: cost.amountCentavos,

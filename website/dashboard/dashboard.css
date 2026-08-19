@@ -1001,6 +1001,10 @@ select.input { appearance: auto; }
 .cb-extras summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--color-accent-2-700); min-height: 32px; padding: 6px 0; }
 .cb-extras[open] summary { margin-bottom: var(--space-2); }
 .cb-form .btn-save { min-height: 48px; width: 100%; }
+/* Client, once derived from a linked job — see cashbook.html's
+   syncClientField(). Same input element, just visually marked as
+   non-editable rather than swapped for a different control. */
+#cb-client[readonly] { background: color-mix(in srgb, var(--color-text) 5%, var(--color-surface)); color: color-mix(in srgb, var(--color-text) 70%, transparent); }
 
 /* F5: allocation checkbox (affectsCash:false) + qty/unit-cost fields —
    hidden by default, shown only for Expense + a filled Order/job ID (see
@@ -1093,6 +1097,38 @@ select.input { appearance: auto; }
   .cb-entry.is-open { transform: none; visibility: visible; }
   @media (prefers-reduced-motion: reduce) { .cb-entry { transition: none; } }
 
+  /* Save must stay reachable without hunting, no matter how many fields
+     sit above it (2026-08-19 — the job-link field moving out of the
+     collapsed extras and into the permanent form is exactly the kind of
+     change that could otherwise push Save below the fold at 375px).
+     .cb-entry is the scrolling element (overflow-y: auto above), so a
+     sticky bottom:0 on the button docks it to the SHEET's own visible
+     bottom edge, not the viewport's — it stays in view through every
+     scroll position while the fields above it keep scrolling underneath.
+     The top shadow gives it a visible seam so it doesn't look pasted
+     mid-form.
+
+     Do NOT set `background` here. This rule used to carry
+     `background: var(--color-surface)` to stop scrolled-past content
+     showing through the docked button — but the button is the primary
+     CTA (.btn-primary), so that override repainted it surface-grey on
+     mobile ONLY, where it read as *disabled* and broke the brand rule
+     that one orange accent is reserved for the single CTA per screen.
+     Reported from a real phone 2026-08-19; every automated check that
+     session measured geometry and tap targets, never colour, which is
+     exactly why it survived. The show-through it guarded against can't
+     happen anyway: the button is full-bleed (width + negative margins
+     below) and opaque, so nothing passes through or beside it. */
+  .cb-form .btn-save {
+    position: sticky; bottom: calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+    margin: var(--space-2) calc(-1 * var(--space-3)) calc(-1 * (var(--space-4) + env(safe-area-inset-bottom, 0px)));
+    width: calc(100% + var(--space-3) * 2);
+    padding-left: var(--space-3); padding-right: var(--space-3);
+    padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.08);
+  }
+
   .cb-sheet-close { display: inline-flex; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; font-size: 22px; line-height: 1; cursor: pointer; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
   .cb-sheet-grip { display: block; width: 38px; height: 4px; border-radius: 999px; background: var(--color-neutral-400); margin: 0 auto var(--space-2); }
 
@@ -1130,4 +1166,83 @@ select.input { appearance: auto; }
   .cb-tx { flex-direction: column; gap: 4px; }
   .cb-tx-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; text-align: left; }
   .cb-chip { padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   Searchable combobox (shared, dashboard-shell.js's createCombobox())
+   ============================================================
+   Built first for the Cash Book's category→subcategory picker and its
+   "link to job" order lookup — one control, two uses. Mobile (≤760px,
+   primary target) is a full-screen sheet, same shape as ../styles.css's
+   .design-subcatalog; desktop (≥761px) is a dropdown panel anchored to
+   the trigger via inline position/left/top/width set in JS (plain
+   rect.bottom — see the .design-popup gotcha in CLAUDE.md, never
+   window.scrollY + rect.bottom).
+   ============================================================ */
+.cbx-root { position: fixed; inset: 0; z-index: 170; display: none; }
+.cbx-root.is-open { display: block; }
+.cbx-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent); }
+.cbx-panel {
+  position: relative; background: var(--color-surface); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md); box-shadow: 0 12px 32px color-mix(in srgb, var(--color-neutral-900) 18%, transparent);
+  display: flex; flex-direction: column; max-height: min(420px, 70vh); overflow: hidden;
+}
+.cbx-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-divider); }
+.cbx-title { font-weight: 700; font-size: 13.5px; }
+.cbx-close { min-width: 44px; min-height: 44px; background: transparent; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--color-text); }
+.cbx-search-wrap { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-divider); }
+.cbx-input { width: 100%; min-height: 44px; }
+.cbx-banner {
+  margin: 0 var(--space-3); padding: 8px 10px; font-size: 12px; border-radius: var(--radius-sm);
+  background: var(--color-accent-100, #fff3e0); color: var(--color-accent-800, #7a4a00);
+}
+.cbx-list { overflow-y: auto; padding: 6px; }
+.cbx-empty { padding: var(--space-3); font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); text-align: center; }
+.cbx-opt {
+  display: flex; flex-direction: column; gap: 1px; min-height: 44px; justify-content: center;
+  padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.cbx-opt:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
+.cbx-opt[aria-selected="true"] { background: var(--color-accent-2-100); }
+.cbx-opt.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.cbx-opt-primary { font-size: 13.5px; font-weight: 600; color: var(--color-text); }
+.cbx-opt-secondary { font-size: 11.5px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.cbx-opt-flag {
+  align-self: flex-start; margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; color: var(--color-accent-2-700);
+}
+
+/* Trigger button — replaces the old chip-based category picker's markup;
+   looks like an .input but opens the combobox instead of taking text. */
+.cbx-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  min-height: 44px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--color-divider);
+  background: var(--color-surface); font: inherit; font-size: 13.5px; color: var(--color-text); cursor: pointer; text-align: left;
+}
+.cbx-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.cbx-trigger .cbx-trigger-placeholder { color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.cbx-trigger-caret { flex: none; opacity: 0.55; }
+
+/* "Link to job" field row — text input + a button that opens the same
+   combobox as Category, searching by name instead of typing (2026-08-19).
+   The input stays a real, always-editable text field; the button is a
+   pure convenience on top of it, never a requirement. */
+.cbx-field-row { display: flex; gap: 6px; align-items: center; }
+.cbx-field-row .input { flex: 1; min-width: 0; }
+.cbx-field-btn { flex: none; min-width: 44px; min-height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: center; }
+
+/* Desktop (≥761px): dropdown panel, width/position set inline by JS. */
+@media (min-width: 761px) {
+  .cbx-root.is-desktop .cbx-scrim { background: transparent; }
+  .cbx-root.is-desktop .cbx-panel { position: fixed; }
+}
+
+/* Mobile (≤760px, primary target): full-screen sheet, .design-subcatalog's
+   shape — header + search pinned at top, list scrolls beneath. */
+@media (max-width: 760px) {
+  .cbx-root.is-mobile .cbx-panel {
+    position: fixed; inset: 0; max-height: none; border-radius: 0; border: 0;
+  }
+  .cbx-root.is-mobile .cbx-list { flex: 1; }
+  .cbx-root.is-mobile .cbx-opt { padding: 12px; }
 }

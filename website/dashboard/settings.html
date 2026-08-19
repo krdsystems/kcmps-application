@@ -27,22 +27,13 @@
       <section class="dsec" id="idle-pin" style="scroll-margin-top:var(--space-5)">
         <div class="dsec-head">
           <h2>Idle-screen PIN</h2>
-          <span class="hint">A privacy deterrent, not a login — read the note below</span>
+          <span class="hint">A privacy screen, not a login</span>
         </div>
         <div class="card">
           <p style="font-size:13px;margin:0 0 var(--space-3)">
-            When this dashboard auto-hides itself after sitting idle, it normally reopens with a
-            plain "Resume" button. Setting a PIN here means <strong>your</strong> PIN has to be
-            typed to reopen it instead — so a colleague walking past an unattended, still-logged-in
-            screen can't casually see customer names, payment screenshots, or GCash references.
-            The PIN is checked on the server (never stored on this computer), and repeated wrong
-            guesses lock it out for a while — but <strong>it is still not a real login</strong>:
-            the actual security boundary is your Cognito sign-in, which every action on this
-            dashboard re-checks regardless of this PIN. If your session has genuinely expired,
-            entering the right PIN will not "carry on" for you — you'll still be asked to refresh
-            or log back in.
-            <strong>Forgot your PIN?</strong> Use "Log out instead" on the locked screen, log back
-            in, then come back here and save a new PIN — the old one isn't needed to replace it.
+            This is a privacy screen, not a login — your Cognito sign-in is still the real
+            security boundary. Forgot your PIN? Use "Log out instead" on the locked screen, log
+            back in, and save a new one — the old PIN isn't needed to replace it.
           </p>
           <div id="pin-status" class="hint" style="margin-bottom:var(--space-3)"></div>
           <!-- Deliberately NOT type="password": that's what taught browser
@@ -68,41 +59,23 @@
         </div>
       </section>
 
-      <section class="dsec">
-        <p class="demo-notice"><strong>Preview — not connected to the backend yet.</strong>
-          These values are read-only defaults compiled into the page. Changing them here is not
-          possible yet and would not affect how orders are processed.</p>
+      <!-- Per-staffer device-behaviour setting, same neighbourhood as
+           Idle-screen PIN above (both are "how this device behaves for
+           me", not order/job data) — backed by the existing dashboard
+           prefs API (backend/staff-api/dashboard-prefs.js), not a new
+           Lambda. See dashboard-shell.js's mount() for where this is
+           read (2026-08-19). -->
+      <section class="dsec" id="nav-auto-open">
         <div class="dsec-head">
-          <h2>SLA windows &amp; thresholds</h2>
-          <span class="hint">Read-only preview in this mock build — wire to a Settings API once the backend exists (see infra doc)</span>
+          <h2>Navigation</h2>
+          <span class="hint">Phones only. Opens once per session.</span>
         </div>
-        <div class="card" style="overflow-x:auto">
-          <table class="table table-mobile-stack">
-            <thead><tr><th>Rule</th><th>Threshold</th><th>Action</th></tr></thead>
-            <tbody>
-              <tr><td data-label="Rule">Payment verification SLA</td><td data-label="Threshold">4 working hours (red at 2h warn)</td><td data-label="Action">Dashboard turns red; SES digest to staff</td></tr>
-              <tr><td data-label="Rule">Payment verification expiry</td><td data-label="Threshold">48 hours, no resubmission</td><td data-label="Action">Auto-cancel, release inventory hold, notify customer</td></tr>
-              <tr><td data-label="Rule">Quote response SLA</td><td data-label="Threshold">18 hours (matches 24h customer promise)</td><td data-label="Action">Dashboard red</td></tr>
-              <tr><td data-label="Rule">Quote expiry</td><td data-label="Threshold">Priced + no payment &gt; 7 days</td><td data-label="Action">Status → Quote Expired, price released, SES notice</td></tr>
-              <tr><td data-label="Rule">Due-date risk</td><td data-label="Threshold">Due ≤ 48h and not yet In Production</td><td data-label="Action">Dashboard red</td></tr>
-              <tr><td data-label="Rule">Station capacity threshold</td><td data-label="Threshold">&gt;85% committed for the week</td><td data-label="Action">Estimator turnaround extends; rush multiplier engages</td></tr>
-              <tr><td data-label="Rule">Recurring blocker</td><td data-label="Threshold">Same tag 3+ times / 30 days</td><td data-label="Action">Auto-promote to weekly agenda</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="dsec">
-        <div class="dsec-head"><h2>Spoilage reason codes</h2></div>
         <div class="card">
-          <div style="display:flex;gap:8px;flex-wrap:wrap" id="reason-tags"></div>
-        </div>
-      </section>
-
-      <section class="dsec">
-        <div class="dsec-head"><h2>Stations</h2></div>
-        <div class="card">
-          <div style="display:flex;gap:8px;flex-wrap:wrap" id="station-tags"></div>
+          <label class="cb-check" for="nav-auto-open-toggle" style="cursor:pointer">
+            <input type="checkbox" id="nav-auto-open-toggle" checked />
+            <span>Open the menu automatically on mobile</span>
+          </label>
+          <div id="nav-auto-open-status" class="hint" style="margin:var(--space-2) 0 0 26px"></div>
         </div>
       </section>
 
@@ -117,11 +90,6 @@
   const claims = KCMPS_DASH_SHELL.mount("settings");
   if (!claims) return;
   const { escapeHtml, withBusy, showInlineError } = KCMPS_DASH_SHELL;
-
-  document.getElementById("reason-tags").innerHTML = KCMPS_DASH.getSpoilageReasons()
-    .map((r) => `<span class="tag tag-accent-2">${escapeHtml(r.label)}</span>`).join("");
-  document.getElementById("station-tags").innerHTML = KCMPS_DASH.getStations()
-    .map((s) => `<span class="tag tag-neutral">${escapeHtml(s.label)} (${s.id})</span>`).join("");
 
   /* ---- idle-screen PIN (dashboard-shell.js's SESSION_GUARD gate) ----
      Server-verified since 2026-08-07 (backend/staff-api/staff-pin.js via
@@ -177,6 +145,39 @@
         paintPinStatus(false);
       } catch (err) { showInlineError(pinErrorHost, err.message); }
     });
+  });
+
+  /* ---- auto-open nav drawer on mobile (2026-08-19) ----
+     Per-staffer, cross-device — the same dashboard-prefs.js seam jobs.html
+     already uses for column order (GET/PATCH /staff/prefs, a shallow-
+     merge blob keyed on the JWT sub, no key allowlist per CLAUDE.md — so
+     this key needed zero backend change). Default ON: missing/undefined
+     reads as true, so a staffer who's never touched this setting gets the
+     owner-requested behaviour without having to opt in. See
+     dashboard-shell.js's mount() for where this is actually applied. */
+  const navAutoOpenToggle = document.getElementById("nav-auto-open-toggle");
+  const navAutoOpenStatus = document.getElementById("nav-auto-open-status");
+  (async () => {
+    try {
+      const { data } = await KCMPS_DASH.getDashboardPrefs();
+      navAutoOpenToggle.checked = data.autoOpenNavOnMobile !== false;
+    } catch {
+      // Couldn't reach the server — leave the checkbox at its markup
+      // default (checked) rather than blocking the page on this.
+      navAutoOpenStatus.textContent = "Couldn't load your saved setting — showing the default.";
+    }
+  })();
+  navAutoOpenToggle.addEventListener("change", async () => {
+    const value = navAutoOpenToggle.checked;
+    navAutoOpenStatus.textContent = "Saving…";
+    try {
+      await KCMPS_DASH.setDashboardPref("autoOpenNavOnMobile", value);
+      navAutoOpenStatus.textContent = "Saved.";
+      setTimeout(() => { navAutoOpenStatus.textContent = ""; }, 2000);
+    } catch (err) {
+      navAutoOpenToggle.checked = !value;
+      navAutoOpenStatus.textContent = "Couldn't save — " + err.message;
+    }
   });
 })();
 </script>

@@ -40,7 +40,7 @@
      real staff workflow: too short reads as annoying, too long leaves
      customer data on an unattended screen for anyone walking past. */
   const SESSION_GUARD = {
-    LOCK_MS: 15 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
+    LOCK_MS: 30 * 60 * 1000, // stage 1: privacy lock — nobody walking past can read the screen
     SESSION_MS: 60 * 60 * 1000, // stage 2: session/staleness — token has likely expired
     ACTIVITY_DEBOUNCE_MS: 1000, // coalesce bursts of pointer/key events into one timestamp write
     CHECK_INTERVAL_MS: 15 * 1000, // how often the idle clock is polled
@@ -110,7 +110,7 @@
     { key: "email", href: "email.html", label: "Email", hint: "Shop mailboxes" },
     { key: "inventory", href: "inventory.html", label: "Inventory", hint: "Stock levels", soon: true },
     { key: "design", href: "asset-library.html", label: "Asset Library", hint: "Files, designs & approvals" },
-    { key: "settings", href: "settings.html", label: "Settings", hint: "Rates & SLAs", soon: true },
+    { key: "settings", href: "settings.html", label: "Settings", hint: "Idle-screen PIN & navigation" },
   ];
 
   /* Display order for the sidebar: working pages first, previews below them,
@@ -616,6 +616,65 @@
         backdrop.classList.toggle("is-open", sidebar.classList.contains("is-open"));
       });
       backdrop.addEventListener("click", closeSidebar);
+
+      // Auto-open the nav drawer the FIRST time a mobile session enters
+      // the dashboard (2026-08-19; made a per-staffer, Settings-toggled
+      // preference the same day per owner revision — see settings.html's
+      // "Navigation" section) — reuses this exact open path (the same
+      // is-open classes toggle() sets above), never a second one, so
+      // there's only ever one way this drawer opens or closes. Gated on:
+      //   - the "autoOpenNavOnMobile" dashboard pref (default ON — see
+      //     below), fetched off the SAME GET/PATCH /staff/prefs seam
+      //     jobs.html's column order already uses. No key allowlist on
+      //     that endpoint (CLAUDE.md), so this needed no backend change;
+      //   - mobile only (same ≤760px breakpoint dashboard.css's .dash-
+      //     sidebar off-canvas rules use — desktop's sidebar is already
+      //     permanently visible and untouched by any of this);
+      //   - once per SESSION, not once per page load — otherwise every
+      //     tap-through to another dashboard page reopens the drawer over
+      //     the page the staffer just asked for. The session flag is
+      //     claimed BEFORE the prefs fetch (not after it resolves) so two
+      //     pages loaded back-to-back before the first fetch lands can't
+      //     both decide to open it;
+      //   - never while the idle-privacy-lock/session-guard overlay is up
+      //     (guardStage !== 0) — opening a nav drawer behind or over a
+      //     privacy lock defeats the point of the lock. Checked twice:
+      //     once now (restoredStage above has already set guardStage by
+      //     the time this runs) and again after the prefs fetch resolves,
+      //     since the guard can also raise itself asynchronously while
+      //     that fetch is in flight.
+      // NEVER awaited — a slow/failed prefs fetch must not block or delay
+      // rendering the rest of the dashboard shell.
+      const SIDEBAR_AUTO_OPEN_KEY = "kcmps_sidebar_auto_opened";
+      const isMobileWidth = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+      if (isMobileWidth && guardStage === 0 && !sessionStorage.getItem(SIDEBAR_AUTO_OPEN_KEY)) {
+        sessionStorage.setItem(SIDEBAR_AUTO_OPEN_KEY, "1");
+        Promise.resolve()
+          .then(() => (global.KCMPS_DASH && global.KCMPS_DASH.getDashboardPrefs
+            ? global.KCMPS_DASH.getDashboardPrefs() : { data: {} }))
+          .then((res) => {
+            const data = (res && res.data) || {};
+            // Missing/undefined reads as ON — default ON per owner request;
+            // a staffer has to explicitly turn it off in Settings.
+            const enabled = data.autoOpenNavOnMobile !== false;
+            if (!enabled || guardStage !== 0) return;
+            sidebar.classList.add("is-open");
+            backdrop.classList.add("is-open");
+            // No focus() call anywhere in this block, deliberately —
+            // opening must not steal focus from wherever the page would
+            // otherwise put it. Dismissal (backdrop tap, hamburger
+            // toggle) is the SAME closeSidebar()/toggle listener wired
+            // above; nothing here bypasses or duplicates it.
+          })
+          .catch(() => {
+            // Fetch failed — fall back to the default (ON) rather than
+            // silently doing nothing; a broken prefs endpoint shouldn't
+            // also silently disable a feature the staffer never turned off.
+            if (guardStage !== 0) return;
+            sidebar.classList.add("is-open");
+            backdrop.classList.add("is-open");
+          });
+      }
     }
 
     return claims;
@@ -677,6 +736,228 @@
     host.innerHTML = '<div class="dash-inline-error">' + escapeHtml(message) + "</div>";
   }
 
+  /* ---- searchable combobox (2026-08-19) ----
+     Shared picker for "type to filter a list of options" — first built for
+     the Cash Book's category→subcategory picker and the order-id-by-name
+     lookup, kept here (not page-local) so any future picker can reuse it
+     rather than growing a second, differently-behaving control.
+
+     Mirrors ../store.js's `.design-subcatalog` full-screen-sheet pattern
+     for mobile (≤760px, the primary target) and adds a desktop dropdown
+     anchored to the trigger. One overlay element is built lazily and
+     reused across opens, same as store.js's popup/subcatalog builders.
+
+     Options API (see cashbook.html for real call sites):
+       trigger        — the element that opens the picker; focus returns
+                        here on close (Escape or selection).
+       title          — sheet/panel header text.
+       searchPlaceholder
+       getItems()     — () => [{ key, primary, secondary, searchText,
+                        disabled }, ...], called fresh on every open (or
+                        query change) so callers can serve a live list.
+       getRecentKeys()— optional () => [key, ...], most-used-first, shown
+                        pinned above the full list when the search box is
+                        empty. Ignored once the staffer types anything.
+       onSelect(item) — called with the matched item.
+       allowFreeText  — if true, Enter with no exact-key match calls
+                        onFreeText(rawText) instead of doing nothing; used
+                        by the order-id field so a pasted raw id still
+                        works even though it won't appear in the fetched
+                        list (an order made after page-load, for example).
+       onFreeText(text)
+       emptyMessage   — shown when the filtered list is empty.
+       banner         — optional string shown above the list (e.g. "Order
+                        search unavailable — type an order ID directly.")
+                        for a degraded-mode notice; never blocks input.
+     Returns { open(query), close(), setBanner(text) }.
+
+     A11y: role="combobox" on the visible search input, aria-expanded,
+     aria-controls -> the listbox, aria-activedescendant tracks the
+     highlighted option; the list itself is role="listbox" of
+     role="option" children. ↑/↓ moves, Enter selects, Escape closes and
+     returns focus to `trigger`. Every label is escapeHtml'd — list items
+     render server-approved category/order text, but an order's client
+     name is staffer-typed data that reaches this DOM same as anywhere
+     else on the page. */
+  let cbxSeq = 0;
+  function createCombobox(opts) {
+    const id = "cbx" + (++cbxSeq);
+    let root = null, input = null, list = null, banner = null;
+    let items = [];
+    let activeIndex = -1;
+    let isMobile = false;
+
+    function mq() {
+      return window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+    }
+
+    function build() {
+      root = document.createElement("div");
+      root.className = "cbx-root";
+      root.innerHTML =
+        `<div class="cbx-scrim"></div>` +
+        `<div class="cbx-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(opts.title || "Choose")}">` +
+          `<div class="cbx-head">` +
+            `<span class="cbx-title">${escapeHtml(opts.title || "")}</span>` +
+            `<button type="button" class="cbx-close" aria-label="Close">&times;</button>` +
+          `</div>` +
+          `<div class="cbx-search-wrap">` +
+            `<input type="text" class="input cbx-input" role="combobox" aria-expanded="true" ` +
+              `aria-controls="${id}-list" aria-autocomplete="list" autocomplete="off" ` +
+              `placeholder="${escapeHtml(opts.searchPlaceholder || "Type to search…")}" />` +
+          `</div>` +
+          `<div class="cbx-banner" id="${id}-banner" hidden></div>` +
+          `<div class="cbx-list" id="${id}-list" role="listbox"></div>` +
+        `</div>`;
+      document.body.appendChild(root);
+
+      input = root.querySelector(".cbx-input");
+      list = root.querySelector(".cbx-list");
+      banner = root.querySelector(".cbx-banner");
+      const closeBtn = root.querySelector(".cbx-close");
+      const scrim = root.querySelector(".cbx-scrim");
+
+      closeBtn.addEventListener("click", close);
+      scrim.addEventListener("click", close);
+      input.addEventListener("input", () => renderList(input.value));
+      input.addEventListener("keydown", onKeydown);
+      list.addEventListener("click", (e) => {
+        const row = e.target.closest(".cbx-opt");
+        if (row && !row.classList.contains("is-disabled")) select(Number(row.dataset.idx));
+      });
+    }
+
+    function positionDesktop() {
+      if (!opts.trigger) return;
+      const rect = opts.trigger.getBoundingClientRect();
+      const panel = root.querySelector(".cbx-panel");
+      // position: fixed — top must be the plain viewport-relative
+      // rect.bottom, never window.scrollY + rect.bottom (that math is only
+      // correct for position:absolute; see CLAUDE.md's .design-popup
+      // gotcha — adding scrollY here would put the panel offscreen on any
+      // page scrolled past the top).
+      panel.style.position = "fixed";
+      panel.style.top = Math.round(rect.bottom + 6) + "px";
+      panel.style.left = Math.round(rect.left) + "px";
+      panel.style.width = Math.max(280, Math.round(rect.width)) + "px";
+    }
+
+    function renderList(query) {
+      const q = (query || "").trim().toLowerCase();
+      const all = (opts.getItems ? opts.getItems() : []) || [];
+      let shown;
+      if (!q) {
+        const recentKeys = (opts.getRecentKeys ? opts.getRecentKeys() : []) || [];
+        const byKey = new Map(all.map((it) => [it.key, it]));
+        const recent = recentKeys.map((k) => byKey.get(k)).filter(Boolean);
+        const rest = all.filter((it) => !recentKeys.includes(it.key));
+        shown = recent.length
+          ? recent.map((it) => Object.assign({}, it, { isRecent: true })).concat(rest)
+          : all;
+      } else {
+        shown = all.filter((it) => (it.searchText || (it.primary + " " + (it.secondary || ""))).toLowerCase().includes(q));
+      }
+      items = shown;
+      activeIndex = shown.length ? 0 : -1;
+
+      if (!shown.length) {
+        list.innerHTML = `<p class="cbx-empty">${escapeHtml(opts.emptyMessage || "No match.")}</p>`;
+      } else {
+        list.innerHTML = shown.map((it, i) => (
+          `<div class="cbx-opt${it.disabled ? " is-disabled" : ""}${it.isRecent ? " is-recent" : ""}" ` +
+            `role="option" id="${id}-opt-${i}" data-idx="${i}" aria-selected="${i === activeIndex}">` +
+            `<span class="cbx-opt-primary">${escapeHtml(it.primary)}</span>` +
+            (it.secondary ? `<span class="cbx-opt-secondary">${escapeHtml(it.secondary)}</span>` : "") +
+            (it.isRecent ? `<span class="cbx-opt-flag">Recent</span>` : "") +
+          `</div>`
+        )).join("");
+      }
+      updateActiveDescendant();
+    }
+
+    function updateActiveDescendant() {
+      list.querySelectorAll(".cbx-opt").forEach((el, i) => el.setAttribute("aria-selected", String(i === activeIndex)));
+      if (activeIndex >= 0) {
+        input.setAttribute("aria-activedescendant", `${id}-opt-${activeIndex}`);
+        const el = list.querySelector(`#${id}-opt-${activeIndex}`);
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    function select(idx) {
+      const it = items[idx];
+      if (!it || it.disabled) return;
+      close();
+      opts.onSelect && opts.onSelect(it);
+    }
+
+    function onKeydown(e) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (items.length) { activeIndex = Math.min(items.length - 1, activeIndex + 1); updateActiveDescendant(); }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (items.length) { activeIndex = Math.max(0, activeIndex - 1); updateActiveDescendant(); }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeIndex >= 0 && items[activeIndex] && !items[activeIndex].disabled) {
+          select(activeIndex);
+        } else if (opts.allowFreeText) {
+          const raw = input.value.trim();
+          if (raw) { close(); opts.onFreeText && opts.onFreeText(raw); }
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    }
+
+    function setBanner(text) {
+      if (!banner) return;
+      if (text) { banner.textContent = text; banner.hidden = false; }
+      else { banner.hidden = true; banner.textContent = ""; }
+    }
+
+    function open(initialQuery) {
+      if (!root) build();
+      isMobile = mq();
+      root.className = "cbx-root is-open" + (isMobile ? " is-mobile" : " is-desktop");
+      document.body.style.overflow = "hidden";
+      if (opts.banner) setBanner(opts.banner);
+      input.value = initialQuery || "";
+      renderList(input.value);
+      if (!isMobile) positionDesktop();
+      // Mobile: don't slam the keyboard open before the (now-visible) list
+      // has had a paint — focusing on the next frame lets the sheet
+      // transition start first, matching the brief's "search field must
+      // not force the keyboard open before the list is readable" note.
+      // Desktop: focus immediately, there's no sheet transition to race.
+      if (isMobile) {
+        requestAnimationFrame(() => requestAnimationFrame(() => input.focus({ preventScroll: true })));
+      } else {
+        input.focus({ preventScroll: true });
+      }
+    }
+
+    function close() {
+      if (!root) return;
+      root.classList.remove("is-open");
+      document.body.style.overflow = "";
+      if (opts.trigger) opts.trigger.focus();
+    }
+
+    document.addEventListener("keydown", (e) => {
+      // Global fallback close — belt-and-braces alongside the input's own
+      // Escape handler, in case focus ever lands somewhere else inside
+      // the panel.
+      if (e.key === "Escape" && root && root.classList.contains("is-open")) close();
+    });
+
+    return { open, close, setBanner };
+  }
+
   function fmtPeso(n) {
     return "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -693,5 +974,5 @@
     return (Math.round(h * 10) / 10) + "h";
   }
 
-  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge, escalateSessionGuard };
+  global.KCMPS_DASH_SHELL = { mount, requireStaffAuth, logout, escapeHtml, fmtPeso, fmtDate, fmtDateTime, fmtHours, NAV_ITEMS, isLocalHost, seedLocalStaffSession, withBusy, showInlineError, refreshUnreadBadge, escalateSessionGuard, createCombobox };
 })(window);

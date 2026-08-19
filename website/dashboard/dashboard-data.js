@@ -1825,6 +1825,30 @@
         costCentavos: totalCostCentavos / qty,
         profitCentavos: profitCentavos / qty,
       } : null,
+      /* The cash movements booked against this order — the revenue side of
+         the same picture the cost lines give. The API has always returned
+         these (get-job-costing.js's `transactions`); they were simply not
+         mapped through, which left job-detail.html unable to show WHERE the
+         revenue figure came from. Voided rows are dropped for display; the
+         server has already excluded them (and reversals) from the summary
+         totals, so the list and the totals agree. */
+      transactions: (res.transactions || [])
+        .filter((t) => !t.voided)
+        .sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt))
+        .map((t) => ({
+          txnId: t.txnId,
+          kind: t.kind,
+          // Stored field names, not invented ones: the row carries `note`
+          // (free text) and `paymentMethod` (an id), per log-transaction.js.
+          label: t.note || null,
+          category: t.categoryId || null,
+          categoryLabel: t.categoryLabel || cashbookCategoryLabel(t.direction === "out" ? "out" : "in", t.categoryId),
+          subcategoryLabel: t.subcategoryLabel || null,
+          methodLabel: t.paymentMethod ? cashbookMethodLabel(t.paymentMethod) : null,
+          amountCentavos: t.amountCentavos || 0,
+          occurredAt: t.occurredAt,
+          actorName: t.actorName || t.createdBy || null,
+        })),
       costLines: (res.costLines || [])
         .filter((c) => !c.voided)
         .sort((a, b) => new Date(a.incurredAt) - new Date(b.incurredAt))

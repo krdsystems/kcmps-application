@@ -1260,10 +1260,25 @@ select.input { appearance: auto; }
 .cbx-field-row .input { flex: 1; min-width: 0; }
 .cbx-field-btn { flex: none; min-width: 44px; min-height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: center; }
 
-/* Desktop (≥761px): dropdown panel, width/position set inline by JS. */
+/* Desktop (≥761px): a dropdown attached to its field, NOT an overlay.
+   The root collapses to a zero-size static box (its fixed panel is the only
+   thing that paints) and the scrim is removed outright — a full-viewport
+   scrim, even a transparent one, left the rest of the page unclickable and
+   made the control read as modal (owner, 2026-08-19: "the dropdown is
+   floating instead of within the area only"). Click-away is a capture-phase
+   pointerdown listener in createCombobox() instead. Sheet chrome (title bar
+   + 44px close button) is hidden here too; Escape and click-away are the
+   close affordances. The panel carries its own z-index because a static
+   root cannot. Width/top/left are set inline by positionDesktop(), which
+   also re-runs on scroll and resize. */
 @media (min-width: 761px) {
-  .cbx-root.is-desktop .cbx-scrim { background: transparent; }
-  .cbx-root.is-desktop .cbx-panel { position: fixed; }
+  .cbx-root.is-desktop { position: static; inset: auto; }
+  .cbx-root.is-desktop .cbx-scrim { display: none; }
+  .cbx-root.is-desktop .cbx-head { display: none; }
+  .cbx-root.is-desktop .cbx-panel { position: fixed; z-index: 170; max-height: min(340px, 60vh); }
+  .cbx-root.is-desktop .cbx-search-wrap { padding: 6px; }
+  .cbx-root.is-desktop .cbx-input { min-height: 32px; font-size: 13px; }
+  .cbx-root.is-desktop .cbx-opt { min-height: 32px; padding: 5px 10px; }
 }
 
 /* Mobile (≤760px, primary target): full-screen sheet, .design-subcatalog's

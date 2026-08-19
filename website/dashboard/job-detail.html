@@ -297,6 +297,121 @@
     );
   }
 
+  /* ---- Job money (Cash Book job costing) ----------------------------
+     GET /orders/{id}/costing is Admin-only (plan §3, O1: any staff logs and
+     reads the day view; only an Admin sees totals/margin/job profit). Two
+     gates, deliberately: the claim check below keeps a non-Admin from firing
+     a request that can only 403, and getJobCosting() still returns
+     {forbidden:true} rather than throwing if the server disagrees with the
+     token — the server is the authority, this is just politeness.
+
+     Money arrives as integer centavos and is formatted for display only.
+     Per-unit figures are exact ratios (floats) and therefore go through
+     formatCentavosDecimal(), never formatCentavos() (which rejects a
+     non-integer by design). Nothing here is re-stored. */
+  const isAdmin = ((claims["cognito:groups"]) || []).includes("Admin");
+
+  function moneyRow(label, value, opts2) {
+    const o = opts2 || {};
+    return `<div class="m-block"><h4>${escapeHtml(label)}</h4>` +
+      `<p${o.tone ? ` style="color:${o.tone}"` : ""}>${escapeHtml(value)}</p></div>`;
+  }
+
+  function renderCostingInto(host, c) {
+    const F = KCMPS_DASH.formatCentavos;
+    const FD = KCMPS_DASH.formatCentavosDecimal;
+    const hasActivity = (c.transactions && c.transactions.length) || (c.costLines && c.costLines.length);
+    if (!hasActivity) {
+      host.innerHTML =
+        `<p class="q-empty" style="margin:0;font-size:13px">No money logged against this job yet. ` +
+        `Log revenue or a cost from the <a href="cashbook.html">Cash Book</a> and link it to ${escapeHtml(c.orderId)}.</p>`;
+      return;
+    }
+
+    const allocations = (c.costLines || []).filter((l) => l.affectsCash === false);
+    const allocationTotal = allocations.reduce((s, l) => s + (l.amountCentavos || 0), 0);
+
+    const summary =
+      `<div class="ticket-meta" style="margin-bottom:var(--space-3)">` +
+      moneyRow("Revenue", F(c.revenueCentavos)) +
+      moneyRow("Total cost", F(c.totalCostCentavos)) +
+      moneyRow("Profit", F(c.profitCentavos), { tone: c.profitCentavos < 0 ? "#c0392b" : "" }) +
+      moneyRow("Margin", c.marginPct == null ? "—" : (Math.round(c.marginPct * 100) / 100).toFixed(2) + "%") +
+      (c.perUnit
+        ? moneyRow("Per unit (" + c.qty + ")", "₱" + FD(c.perUnit.profitCentavos) + " profit")
+        : "") +
+      /* Profit and cash diverge the moment an affectsCash:false line
+         exists (plan Trap 2). Showing net cash only when it differs keeps
+         the common case uncluttered and makes the divergence impossible to
+         miss when it is real. */
+      (c.netCashCentavos !== c.profitCentavos
+        ? moneyRow("Net cash", F(c.netCashCentavos))
+        : "") +
+      `</div>`;
+
+    const txns = (c.transactions || []).length
+      ? `<h4 style="margin:0 0 4px;font-size:11px;letter-spacing:0.05em;text-transform:uppercase" class="text-muted">Revenue</h4>` +
+        `<div style="margin-bottom:var(--space-3)">` +
+        c.transactions.map((t) => (
+          `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0;border-bottom:1px solid var(--color-divider)">` +
+          `<span>${escapeHtml(t.label || t.categoryLabel || "Payment")}` +
+          `<span class="text-muted" style="font-size:11.5px"> · ${fmtDate(t.occurredAt)}${t.methodLabel ? " · " + escapeHtml(t.methodLabel) : ""}</span></span>` +
+          `<span style="font-weight:600;white-space:nowrap">${escapeHtml(F(t.amountCentavos))}</span></div>`
+        )).join("") +
+        `</div>`
+      : "";
+
+    const costs = (c.costLines || []).length
+      ? `<h4 style="margin:0 0 4px;font-size:11px;letter-spacing:0.05em;text-transform:uppercase" class="text-muted">Costs</h4>` +
+        `<div>` +
+        c.costLines.map((l) => {
+          const unit = (l.qty && l.unitCostCentavos != null)
+            ? `${l.qty} × ₱${FD(l.unitCostCentavos)}`
+            : "";
+          return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:3px 0;border-bottom:1px solid var(--color-divider)">` +
+            `<span>${escapeHtml(l.label || l.categoryLabel || "Cost")}` +
+            `<span class="text-muted" style="font-size:11.5px"> · ${escapeHtml(l.categoryLabel || "")}${unit ? " · " + escapeHtml(unit) : ""}${l.incurredAt ? " · " + fmtDate(l.incurredAt) : ""}</span>` +
+            (l.affectsCash === false ? ` <span class="tag tag-neutral" style="font-size:10px">allocation</span>` : "") +
+            `</span>` +
+            `<span style="font-weight:600;white-space:nowrap">${escapeHtml(F(l.amountCentavos))}</span></div>`;
+        }).join("") +
+        `</div>`
+      : "";
+
+    const allocationNote = allocations.length
+      ? `<p class="text-muted" style="font-size:12px;margin:var(--space-2) 0 0">` +
+        `${allocations.length} line(s) totalling ${escapeHtml(F(allocationTotal))} are allocations from owned stock — ` +
+        `they count against this job's profit but never left the cash drawer, which is why profit and net cash differ.</p>`
+      : "";
+
+    host.innerHTML = summary + txns + costs + allocationNote;
+  }
+
+  function loadCosting(orderId) {
+    const host = document.getElementById("costing-body");
+    if (!host) return;
+    if (!isAdmin) {
+      host.innerHTML = `<p class="text-muted" style="margin:0;font-size:13px">Job profit and margin are Admin-only.</p>`;
+      return;
+    }
+    KCMPS_DASH.getJobCosting(orderId).then((c) => {
+      if (!document.getElementById("costing-body")) return;
+      if (c.forbidden) {
+        host.innerHTML = `<p class="text-muted" style="margin:0;font-size:13px">Job profit and margin are Admin-only.</p>`;
+        return;
+      }
+      if (c.notFound) {
+        host.innerHTML = `<p class="q-empty" style="margin:0;font-size:13px">No money logged against this job yet.</p>`;
+        return;
+      }
+      renderCostingInto(host, c);
+    }).catch(() => {
+      // A costing outage must never look like a broken ticket — every other
+      // card on this page is still correct and usable.
+      host.innerHTML = `<p class="text-muted" style="margin:0;font-size:13px">Couldn’t load this job’s costing right now.</p>`;
+    });
+  }
+
   let messagePollTimer = null;
   function renderMessages(messages) {
     const list = document.getElementById("message-list");
@@ -506,6 +621,15 @@
       )).join("") : '<p class="q-empty">No recorded transitions yet.</p>') +
       `</div></div>` +
 
+      // Job money. Rendered as a shell and filled asynchronously by
+      // loadCosting() below — the costing API is a separate request and
+      // must never delay or break the rest of the ticket. Sits between the
+      // timeline and Tags; Tags stays last on the page (owner, 2026-08-08).
+      `<div class="card" style="margin-bottom:var(--space-4)">` +
+      `<h3 style="margin-top:0">Job money</h3>` +
+      `<div id="costing-body"><p class="text-muted" style="margin:0;font-size:13px">Loading…</p></div>` +
+      `</div>` +
+
       renderTags(order);
 
     document.getElementById("search-spacemail-btn").addEventListener("click", () => {
@@ -535,6 +659,7 @@
     });
     wireMessages(order);
     wireTags(order);
+    loadCosting(order.orderId);
 
     const formHost = document.getElementById("action-form");
     const errorHost = document.getElementById("action-error");

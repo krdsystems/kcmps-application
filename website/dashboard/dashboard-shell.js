@@ -879,19 +879,64 @@
       });
     }
 
+    /* Desktop placement. The panel stays position:fixed (so it can never be
+       clipped by an ancestor), which means it must be RE-placed whenever the
+       page moves — the original positioned once on open and then visibly
+       detached from its field on the first scroll. Reposition was chosen
+       over close-on-scroll: the list can be longer than the viewport, and
+       losing a half-typed search to a stray wheel tick is worse than a panel
+       that follows.
+
+       top must be the plain viewport-relative rect.bottom, never
+       window.scrollY + rect.bottom (that math is only correct for
+       position:absolute; see CLAUDE.md's .design-popup gotcha — adding
+       scrollY here would put the panel offscreen on any page scrolled past
+       the top). */
     function positionDesktop() {
-      if (!opts.trigger) return;
+      if (!opts.trigger || !root) return;
       const rect = opts.trigger.getBoundingClientRect();
       const panel = root.querySelector(".cbx-panel");
-      // position: fixed — top must be the plain viewport-relative
-      // rect.bottom, never window.scrollY + rect.bottom (that math is only
-      // correct for position:absolute; see CLAUDE.md's .design-popup
-      // gotcha — adding scrollY here would put the panel offscreen on any
-      // page scrolled past the top).
       panel.style.position = "fixed";
-      panel.style.top = Math.round(rect.bottom + 6) + "px";
-      panel.style.left = Math.round(rect.left) + "px";
-      panel.style.width = Math.max(280, Math.round(rect.width)) + "px";
+      // Width matches the field it belongs to — it is a dropdown, not a
+      // dialog. The 220px floor only engages on an unusually narrow field,
+      // where matching exactly would truncate every option.
+      const w = Math.max(220, Math.round(rect.width));
+      panel.style.width = w + "px";
+      panel.style.left = Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - w - 8))) + "px";
+
+      // Flip above the field when there isn't room beneath it.
+      const panelH = panel.offsetHeight || 320;
+      const below = window.innerHeight - rect.bottom - 6;
+      if (below < panelH && rect.top - 6 > below) {
+        panel.style.top = Math.round(Math.max(8, rect.top - 6 - panelH)) + "px";
+      } else {
+        panel.style.top = Math.round(rect.bottom + 6) + "px";
+      }
+    }
+
+    /* Desktop-only listeners, attached on open and removed on close so a
+       closed picker costs nothing. Capture-phase scroll catches scrolling
+       ancestors, not just the window; capture-phase pointerdown is what
+       replaces the old full-viewport scrim as the click-away affordance
+       (the scrim made the whole page feel modal even though it was
+       transparent). */
+    function onReposition() { if (!isMobile) positionDesktop(); }
+    function onOutsidePointer(e) {
+      if (!root || !root.classList.contains("is-open")) return;
+      const panel = root.querySelector(".cbx-panel");
+      if (panel.contains(e.target)) return;
+      if (opts.trigger && opts.trigger.contains(e.target)) return;
+      close();
+    }
+    function bindDesktopListeners() {
+      window.addEventListener("scroll", onReposition, true);
+      window.addEventListener("resize", onReposition);
+      document.addEventListener("pointerdown", onOutsidePointer, true);
+    }
+    function unbindDesktopListeners() {
+      window.removeEventListener("scroll", onReposition, true);
+      window.removeEventListener("resize", onReposition);
+      document.removeEventListener("pointerdown", onOutsidePointer, true);
     }
 
     function renderList(query) {
@@ -976,11 +1021,35 @@
       if (!root) build();
       isMobile = mq();
       root.className = "cbx-root is-open" + (isMobile ? " is-mobile" : " is-desktop");
-      document.body.style.overflow = "hidden";
+      const panelEl = root.querySelector(".cbx-panel");
+      /* Mobile is a real full-screen sheet, so it stays a modal dialog and
+         keeps the body scroll lock. Desktop is a dropdown attached to a
+         field: locking the page's scroll and claiming aria-modal there is
+         what made it read as a blocking panel. */
+      if (isMobile) {
+        panelEl.setAttribute("role", "dialog");
+        panelEl.setAttribute("aria-modal", "true");
+      } else {
+        // No dialog role on desktop — the inner .cbx-list is already the
+        // listbox the combobox input owns; a wrapping dialog would only add
+        // a second, misleading landmark.
+        panelEl.removeAttribute("role");
+        panelEl.removeAttribute("aria-modal");
+      }
+      document.body.style.overflow = isMobile ? "hidden" : "";
       if (opts.banner) setBanner(opts.banner);
       input.value = initialQuery || "";
       renderList(input.value);
-      if (!isMobile) positionDesktop();
+      if (!isMobile) {
+        positionDesktop();
+        bindDesktopListeners();
+      } else {
+        /* Clear any inline placement left by a previous desktop open —
+           the sheet's `inset: 0` loses to an inline top/left/width, so a
+           window resized from desktop to phone width would otherwise show
+           the sheet still pinned at the old dropdown's coordinates. */
+        panelEl.style.top = panelEl.style.left = panelEl.style.width = panelEl.style.position = "";
+      }
       /* Mobile: do NOT focus the search input at all. Deferring the focus
          by two frames (what this did originally) still ends with the
          keyboard open, just slightly later — and the keyboard then covers
@@ -1000,6 +1069,7 @@
     function close() {
       if (!root) return;
       root.classList.remove("is-open");
+      unbindDesktopListeners();
       document.body.style.overflow = "";
       if (opts.trigger) opts.trigger.focus();
     }

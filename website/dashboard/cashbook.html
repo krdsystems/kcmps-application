@@ -202,6 +202,16 @@
   /* ---- month strip: in / out / net ---- */
   async function renderMonth() {
     const m = await D.getCashbookMonth(D.manilaMonthOf(selectedDay));
+    // Month totals are Admin-only on the server. For a Staff-role user
+    // that is a normal permission boundary, not a failure — show why and
+    // leave the rest of the page (which they CAN use) working, rather
+    // than rendering three zeroes that look like a quiet month.
+    if (m.forbidden) {
+      $("cb-monthstrip").innerHTML =
+        `<div class="cb-ms-caption" style="grid-column:1/-1">` +
+        `Month totals are visible to Admins only. Your day view below is complete.</div>`;
+      return;
+    }
     const netCls = m.netCentavos > 0 ? "pos" : m.netCentavos < 0 ? "neg" : "";
     $("cb-monthstrip").innerHTML =
       `<div><div class="cb-ms-label">In</div><div class="cb-ms-value pos">${D.formatCentavos(m.inCentavos)}</div></div>` +
@@ -252,9 +262,21 @@
     // say about tomorrow.
     $("cb-next").disabled = selectedDay >= D.manilaToday();
 
-    $("cb-txlist").innerHTML = day.transactions.length
+    // The server re-sums this day's rows on every read and reports whether
+    // the stored counter agrees. If it ever doesn't, say so loudly — a
+    // total that silently disagrees with the rows printed under it is the
+    // one failure mode that makes a cash book worse than no cash book.
+    const recon = day.reconciles === false
+      ? `<div class="card" style="border-color:var(--danger,#b3261e);margin-bottom:var(--space-3)">` +
+        `<p style="margin:0"><strong>These totals don't match the rows below.</strong> ` +
+        `The stored day total is ${escapeHtml(D.formatCentavos(day.netCentavos))} net but the ` +
+        `transactions listed sum to ${escapeHtml(D.formatCentavos((day.computed && day.computed.netCentavos) || 0))}. ` +
+        `Don't reconcile the drawer against this figure &mdash; report it.</p></div>`
+      : "";
+
+    $("cb-txlist").innerHTML = recon + (day.transactions.length
       ? day.transactions.map(txRow).join("")
-      : `<p class="q-empty">Nothing logged on this day yet.</p>`;
+      : `<p class="q-empty">Nothing logged on this day yet.</p>`);
 
     $("cb-txlist").querySelectorAll("[data-void]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -325,6 +347,14 @@
 
   async function renderJobs() {
     const clients = await D.getJobCostingList();
+    // Per-client aggregation needs GSI2, which isn't provisioned (plan §7,
+    // Phase 4). Say that plainly instead of showing an empty list that
+    // reads as "no job has any money against it" — which would be false.
+    if (clients.unavailable) {
+      $("cb-jobs").innerHTML =
+        `<div class="card"><p class="q-empty">${escapeHtml(clients.unavailableReason || "Per-client job totals aren't available yet.")}</p></div>`;
+      return;
+    }
     if (!clients.length) {
       $("cb-jobs").innerHTML = `<div class="card"><p class="q-empty">No job has money against it yet. Link a transaction to an order ID and it appears here.</p></div>`;
       return;
@@ -343,7 +373,29 @@
   }
 
   async function refreshAll() {
-    await Promise.all([renderMonth(), renderDay(), renderJobs()]);
+    // Loading state — the mock resolved instantly off localStorage, a real
+    // round trip does not, and a blank list reads as "nothing logged today"
+    // rather than "still fetching".
+    if (!$("cb-txlist").dataset.loaded) {
+      $("cb-txlist").innerHTML = `<p class="q-empty">Loading&hellip;</p>`;
+    }
+    try {
+      // allSettled, not all: a 403 on one panel must not blank the others.
+      const results = await Promise.allSettled([renderMonth(), renderDay(), renderJobs()]);
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) throw failed.reason;
+      $("cb-txlist").dataset.loaded = "1";
+    } catch (err) {
+      // 401 already raised the shell's session-guard overlay inside
+      // apiFetch; everything else (offline, 5xx, DNS) lands here. Never
+      // leave a stale or empty ledger looking like real data.
+      showInlineError($("cb-error"), err.message || "Couldn't reach the server.");
+      if (!$("cb-txlist").dataset.loaded) {
+        $("cb-txlist").innerHTML =
+          `<div class="card"><p class="q-empty"><strong>Couldn't load the cash book.</strong><br>` +
+          `${escapeHtml(err.message || "Check your connection and refresh.")}</p></div>`;
+      }
+    }
   }
 
   /* ---- chips ---- */

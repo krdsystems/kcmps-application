@@ -186,7 +186,6 @@
       // orders, this one IS seeded — it's a mock-data preview page whose
       // whole point is the owner's worked totebag example, and an empty
       // ledger would demonstrate nothing.
-      cashbook: buildCashbookSeed(),
       seededAt: nowIso(),
     };
   }
@@ -256,7 +255,11 @@
        (transactions, costLines, jobs) sit under ONE guard on purpose: a
        partial backfill could produce cost lines with no job to attribute
        them to, which reads as data loss rather than a missing feature. */
-    if (state.cashbook === undefined) { state.cashbook = buildCashbookSeed(); dirty = true; }
+    // The cashbook mock collection is GONE — the Cash Book reads the real
+    // backend now (backend/cashbook/). A pre-existing blob may still carry
+    // a stale `cashbook` key; it is simply never read, and is left in place
+    // rather than triggering a STORAGE_KEY bump that would throw away every
+    // tester's unrelated in-progress mock state.
     if (dirty) save(state);
     return state;
   }
@@ -1317,13 +1320,28 @@
   }
 
   /* ============================================================
-     CASH BOOK + JOB COSTING  (MOCK — no backend exists yet)
+     CASH BOOK + JOB COSTING  (LIVE — backend/cashbook/, staging 2026-08-19)
      ============================================================
-     Frontend prototype for docs/cashbook-job-costing-plan-2026-08-18.md.
-     Everything below reads/writes the localStorage blob, but every
-     signature and return shape mirrors what the real API will hand back
-     (§4 of the plan) so cashbook.html never changes when the Lambdas land
-     — the same "one seam" contract the rest of this file follows.
+     Real backend for docs/cashbook-job-costing-plan-2026-08-18.md Phase 1.
+     Every function below is a fetch() against the same API_BASE (and the
+     same hostname branch, and the same JWT helper) as getAllOrders/
+     setOrderTags/etc. — the localStorage prototype this replaced is gone,
+     seed and all, so a stale mock can never shadow real money.
+
+     The migration was exactly what the seam promised: function names and
+     return shapes are unchanged and cashbook.html's data access did not
+     move. Only two page changes were needed, both for states the mock
+     could not produce — a 403 (month totals and job costing are
+     Admin-only now) and the reconciliation banner.
+
+     API ROUTES  (auth per the owner's O1 decision)
+       GET  /cashbook/categories                 isStaff
+       GET  /cashbook/day/{day}                  isStaff
+       GET  /cashbook/month/{month}              ADMIN
+       POST /cashbook/transactions               isStaff
+       POST /cashbook/transactions/{id}/void     ADMIN
+       POST /orders/{orderId}/costs              isStaff
+       GET  /orders/{orderId}/costing            ADMIN
 
      Four rules from the plan are load-bearing here, not stylistic:
 
@@ -1340,11 +1358,15 @@
         approach as backend/lib/business-hours.js, which is why no timezone
         library is needed.
 
-     D2 APPEND-ONLY. There is no edit and no delete. voidTransaction()
-        writes a REVERSING entry and flags the original `voided: true`;
-        the original row is never mutated beyond that flag. Rollups are
-        recomputed from non-voided rows, so a void can never leave a total
-        disagreeing with the rows that produced it.
+     D2 APPEND-ONLY. There is no edit and no delete. A void writes a
+        REVERSING entry and flags the original `voided: true`. This is now
+        enforced SERVER-SIDE in one transaction (double-void guard,
+        reversal filed in the ORIGINAL day's partition, both rollups
+        negated together), and the day read returns `reconciles` so a
+        total that disagrees with its own rows is visible instead of
+        silent. Nothing on this side re-computes a rollup any more —
+        a second local copy of that arithmetic is exactly how two answers
+        drift apart.
 
      T2 EVERY COST LINE CARRIES affectsCash. Job profit counts ALL cost
         lines; the cash book counts only affectsCash:true ones. Today every
@@ -1437,53 +1459,91 @@
   }
 
   /* ---- categories + methods (§8 "Must have") ----
-     Config-shaped, NOT hardcoded into the page: the real backend serves
-     these from CONFIG#TXN_CATEGORIES and Settings will edit them. The page
-     only ever reads getCashbookCategories()/getCashbookMethods(), so the
-     swap is a body change here. */
+     Config, NOT hardcoded: the real source is GET /cashbook/categories,
+     which serves CONFIG#TXN_CATEGORIES and falls back to the seed list in
+     backend/lib/cashbook.js's DEFAULT_TXN_CATEGORIES.
+
+     WHY THERE IS STILL A LOCAL LIST HERE. cashbook.html calls
+     renderCategories()/renderMethods() SYNCHRONOUSLY on first paint,
+     before any await — so getCashbookCategories() has to stay synchronous
+     or the chips render empty. The list below is therefore a cache
+     PRE-SEEDED WITH THE SERVER'S OWN DEFAULTS (kept byte-identical to
+     DEFAULT_TXN_CATEGORIES — same ids, same labels, same `sign: -1` on
+     refund), then overwritten by primeCashbookCategories() the moment the
+     real response lands. Today no CONFIG#TXN_CATEGORIES item exists, so
+     the server serves exactly this list and the first paint is already
+     correct; if Settings ever writes a different one, the next render
+     picks it up.
+
+     The ids changed in the mock->real swap (merch-order/print-office/
+     design-service/walk-in collapsed into `sale`, other-in/other-out into
+     `other_income`/`misc`). The SERVER owns this vocabulary — it validates
+     every categoryId on write — so the mock's finer split could not be
+     kept without inventing a second vocabulary that the backend would
+     reject. Nothing in cashbook.html hardcodes an id; it renders whatever
+     this returns. */
   const CASHBOOK_CATEGORIES = {
     in: [
-      { id: "merch-order", label: "Merch order" },
-      { id: "print-office", label: "Print / office" },
-      { id: "design-service", label: "Design service" },
-      { id: "walk-in", label: "Walk-in" },
+      { id: "sale", label: "Sale" },
+      { id: "other_income", label: "Other income" },
       // F1: the sign is owned by the category, not by staff typing a
-      // minus — staff always type a positive amount, and
-      // logCashbookTransaction() negates it because this category says
-      // to. Generic on purpose so a future sign-carrying category (e.g. a
-      // chargeback) works the same way with no new code path.
+      // minus — staff always type a positive amount. The SERVER re-applies
+      // this sign on every write regardless of what the client sends
+      // (backend review finding B5), so this flag is a display/UX hint
+      // here, never the enforcement point.
       { id: "refund", label: "Refund (negative revenue)", sign: -1 },
-      { id: "other-in", label: "Other" },
     ],
     out: [
       { id: "materials", label: "Materials" },
-      { id: "supplies", label: "Supplies" },
       { id: "labor", label: "Labor" },
       { id: "service", label: "Outsourced service" },
-      { id: "transport", label: "Transport" },
-      { id: "utilities", label: "Utilities" },
+      { id: "supplies", label: "Shop supplies" },
       { id: "rent", label: "Rent" },
+      { id: "utilities", label: "Utilities" },
+      { id: "transport", label: "Transport / delivery" },
       { id: "equipment", label: "Equipment" },
-      { id: "other-out", label: "Other" },
+      { id: "misc", label: "Miscellaneous" },
     ],
   };
-  const CASHBOOK_METHODS = [
+  let CASHBOOK_METHODS = [
     { id: "cash", label: "Cash" },
     { id: "gcash", label: "GCash" },
     { id: "bank", label: "Bank" },
     { id: "card", label: "Card" },
   ];
+
+  // Replaces the cache above from the live config. Fire-and-forget and
+  // deliberately silent: a failure here must not break the page, because
+  // the pre-seeded list is already the same data the server would return.
+  let cashbookCategoriesPrimed = false;
+  async function primeCashbookCategories() {
+    if (cashbookCategoriesPrimed) return;
+    try {
+      const res = await apiFetch("/cashbook/categories");
+      if (!res || !Array.isArray(res.categories) || !res.categories.length) return;
+      const next = { in: [], out: [] };
+      res.categories.forEach((c) => {
+        if (c.direction !== "in" && c.direction !== "out") return;
+        const entry = { id: c.id, label: c.label };
+        if (c.sign === -1) entry.sign = -1;
+        next[c.direction].push(entry);
+      });
+      if (next.in.length && next.out.length) {
+        CASHBOOK_CATEGORIES.in = next.in;
+        CASHBOOK_CATEGORIES.out = next.out;
+      }
+      if (Array.isArray(res.paymentMethods) && res.paymentMethods.length) {
+        const labels = { cash: "Cash", gcash: "GCash", bank: "Bank", card: "Card" };
+        CASHBOOK_METHODS = res.paymentMethods.map((id) => ({ id, label: labels[id] || id }));
+      }
+      cashbookCategoriesPrimed = true;
+    } catch { /* keep the pre-seeded defaults — see above */ }
+  }
+
   function getCashbookCategories() {
     return { in: CASHBOOK_CATEGORIES.in.slice(), out: CASHBOOK_CATEGORIES.out.slice() };
   }
   function getCashbookMethods() { return CASHBOOK_METHODS.slice(); }
-  // Looks a category up by id within one direction's list, returning its
-  // full config entry (not just the label) — used by logCashbookTransaction
-  // to read `sign` (F1).
-  function categoryDef(direction, id) {
-    const list = CASHBOOK_CATEGORIES[direction] || [];
-    return list.find((c) => c.id === id) || null;
-  }
   // F3: voidCashbookTransaction() writes a reversal that carries the SAME
   // category id but the FLIPPED direction (a reversed expense is an "in"
   // row) — so a lookup scoped to only the reversal's own direction misses
@@ -1503,242 +1563,180 @@
     const hit = CASHBOOK_METHODS.find((m) => m.id === id);
     return hit ? hit.label : id || "—";
   }
-  // F2: trims and collapses internal whitespace so "Acme Corp" and
-  // "Acme  Corp " group together instead of being treated as two clients.
-  function normalizeClientName(name) {
-    if (!name) return null;
-    const n = String(name).trim().replace(/\s+/g, " ");
-    return n || null;
-  }
-
-  /* ---- seed: the owner's real totebag job (plan §5) ----
-     Seeded so the prototype is meaningful on first load rather than an
-     empty page. Amounts are the owner's actual figures; the 150 qty is
-     illustrative (the plan says so) and exists to make the per-unit
-     economics — the number that answers "should we take the next job like
-     this" — real rather than notional.
-
-     WHY amountCentavos IS AUTHORITATIVE AND unit cost IS DERIVED: the
-     owner's totals and the illustrative qty don't divide cleanly for every
-     line (₱1,960 ÷ 150 = ₱13.0666…, which the plan rounds to ₱13.07 for
-     display; ₱13.07 × 150 = ₱1,960.50, not ₱1,960). Storing a rounded
-     unitCostCentavos and multiplying it back would silently change the
-     owner's real total, and would break the ₱11,540 profit the whole demo
-     turns on. So the TOTAL is stored and the unit is computed for display
-     only. The real backend should store both (plan §4) because a staffer
-     will type qty × unit there and the product will be exact by
-     construction — this is a seed-data accommodation, noted rather than
-     hidden.
-
-     Seed timestamps are anchored to the Manila day the blob was first
-     created. A tester returning days later sees an empty "today" and has
-     to page back — correct for an append-only ledger (rewriting history so
-     it always looks like today is exactly what an append-only record must
-     never do). */
-  const CASHBOOK_DEMO_ORDER = {
-    orderId: "ORD-DEMO-TOTEBAG",
-    jobLabel: "Totebag order — 150 pcs, 1-colour DTF",
-    clientName: "Bayanihan Co-op",
-    qty: 150,
-  };
-
-  function buildCashbookSeed() {
-    const today = manilaToday();
-    const yesterday = manilaShiftDay(today, -1);
-    const txns = [];
-    const costs = [];
-    let n = 0;
-    const seedId = (prefix) => prefix + "-DEMO-" + String(++n).padStart(3, "0");
-
-    // 1. The job's revenue.
-    txns.push({
-      txnId: seedId("TXN"), direction: "in", amountCentavos: 3500000,
-      category: "merch-order", method: "gcash",
-      orderId: CASHBOOK_DEMO_ORDER.orderId, clientName: CASHBOOK_DEMO_ORDER.clientName,
-      note: "Totebag order — 150 pcs, paid in full on collection",
-      occurredAt: manilaIsoAt(today, "09:40"), actorName: "Ken",
-      source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId: null,
-    });
-
-    // 2. The job's four cost lines. Each affectsCash:true line ALSO writes
-    //    the matching cash-out transaction — one source array so the cost
-    //    view and the cash view can never disagree about the same money.
-    [
-      { label: "Totebag blanks", category: "materials", qty: 150, amountCentavos: 1950000, method: "cash", time: "10:05", note: "Supplier pickup, Divisoria" },
-      { label: "DTF transfers", category: "materials", qty: 150, amountCentavos: 196000, method: "gcash", time: "10:20", note: "Outsourced print (see plan O2)" },
-      { label: "Rush fee", category: "service", qty: null, amountCentavos: 50000, method: "gcash", time: "11:00", note: "Supplier rush charge" },
-      { label: "Labor", category: "labor", qty: null, amountCentavos: 150000, method: "cash", time: "17:30", note: "Piece-rate, paid on completion (D7)" },
-    ].forEach((c) => {
-      const costId = seedId("COST");
-      const txnId = c.affectsCash === false ? null : seedId("TXN");
-      costs.push({
-        costId, orderId: CASHBOOK_DEMO_ORDER.orderId, label: c.label, category: c.category,
-        qty: c.qty, amountCentavos: c.amountCentavos,
-        affectsCash: c.affectsCash !== false, // T2 — defaults true
-        incurredAt: manilaIsoAt(today, c.time), actorName: "Ken", source: "manual",
-        txnId, voided: false,
-      });
-      if (txnId) {
-        txns.push({
-          txnId, direction: "out", amountCentavos: c.amountCentavos,
-          category: c.category, method: c.method,
-          orderId: CASHBOOK_DEMO_ORDER.orderId, clientName: CASHBOOK_DEMO_ORDER.clientName,
-          note: c.label + " — " + c.note,
-          occurredAt: manilaIsoAt(today, c.time), actorName: "Ken",
-          source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
-        });
-      }
-    });
-
-    // 3. Ordinary shop traffic, so the day list isn't one job's five rows.
-    [
-      { direction: "in", amountCentavos: 18500, category: "walk-in", method: "cash", note: "Photocopying — 74 pages B/W", time: "08:15", day: today, actorName: "Mika" },
-      { direction: "in", amountCentavos: 125000, category: "print-office", method: "gcash", note: "Tarpaulin 3x5 ft, 1 pc", time: "14:10", day: today, actorName: "Mika" },
-      { direction: "out", amountCentavos: 240000, category: "supplies", method: "cash", note: "Bond paper, 10 reams", time: "15:25", day: today, actorName: "Ken" },
-      { direction: "in", amountCentavos: 32000, category: "walk-in", method: "cash", note: "Photocopying + lamination", time: "16:40", day: yesterday, actorName: "Mika" },
-      { direction: "out", amountCentavos: 85000, category: "transport", method: "cash", note: "Grab — courier drop, 2 orders", time: "17:05", day: yesterday, actorName: "Mika" },
-    ].forEach((t) => {
-      txns.push({
-        txnId: seedId("TXN"), direction: t.direction, amountCentavos: t.amountCentavos,
-        category: t.category, method: t.method, orderId: null, clientName: null,
-        note: t.note, occurredAt: manilaIsoAt(t.day, t.time), actorName: t.actorName,
-        source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId: null,
-      });
-    });
-
-    return {
-      transactions: txns,
-      costLines: costs,
-      jobs: [Object.assign({}, CASHBOOK_DEMO_ORDER)],
-      seededAt: nowIso(),
-    };
-  }
-
   /* ---- reads ---- */
-  function cashbookState() {
-    const state = load();
-    return state.cashbook;
-  }
-  // A voided row and its reversal both stay visible in the LIST (that is the
-  // point of an append-only record) but neither counts toward a total: the
-  // original is excluded because it was voided, the reversal because
-  // excluding the pair together is the same arithmetic as netting them and
-  // is far easier to read in a rollup.
-  function countsTowardTotals(t) { return !t.voided && !t.reversesTxnId; }
-
-  function rollup(txns) {
-    let inC = 0, outC = 0;
-    txns.forEach((t) => {
-      if (!countsTowardTotals(t)) return;
-      if (t.direction === "in") inC += t.amountCentavos;
-      else outC += t.amountCentavos;
-    });
-    return { inCentavos: inC, outCentavos: outC, netCentavos: inC - outC };
-  }
-
   // Newest-first, matching the plan's mobile list order.
   function sortNewestFirst(list) {
     return list.slice().sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
   }
 
-  async function getCashbookDay(dayKey) {
-    const key = dayKey || manilaToday();
-    const all = cashbookState().transactions;
-    const rows = sortNewestFirst(all.filter((t) => manilaDayOf(t.occurredAt) === key));
-    return Object.assign({ dayKey: key, dayLabel: manilaDayLabel(key), isToday: key === manilaToday(), transactions: rows }, rollup(rows));
+  /* ---- LIVE BACKEND (backend/cashbook/, staging 2026-08-19) ----
+     Everything below this point is real fetch(). The seam's function
+     names and return shapes are unchanged; only the bodies moved.
+
+     Field-name translation happens HERE and nowhere else, so cashbook.html
+     keeps reading `t.category` / `t.method` while the API speaks
+     `categoryId` / `paymentMethod`. One adapter, one place to change. */
+  function normalizeTxnRow(r) {
+    return {
+      txnId: r.txnId,
+      direction: r.direction,
+      // Already integer centavos on the wire — never re-derived from a
+      // float anywhere on this path (D3).
+      amountCentavos: r.amountCentavos,
+      category: r.categoryId,
+      method: r.paymentMethod,
+      orderId: r.orderId || null,
+      // The API has no client entity (plan §7 — no Client/CRM record, no
+      // GSI2). Kept on the shape so the page's grouping code still reads.
+      clientName: null,
+      note: r.note || "",
+      occurredAt: r.occurredAt,
+      actorName: r.actorName || null,
+      source: r.source || "manual",
+      voided: !!r.voided,
+      voidReason: r.voidReason || null,
+      reversesTxnId: r.reversesTxnId || null,
+      costId: (r.costRef && r.costRef.costSk) || null,
+    };
   }
 
+  async function getCashbookDay(dayKey) {
+    const key = dayKey || manilaToday();
+    primeCashbookCategories();
+    const res = await apiFetch("/cashbook/day/" + encodeURIComponent(key));
+    const rows = sortNewestFirst((res.rows || []).map(normalizeTxnRow));
+    const roll = res.rollup || {};
+    return {
+      dayKey: res.day || key,
+      dayLabel: manilaDayLabel(key),
+      isToday: key === manilaToday(),
+      transactions: rows,
+      inCentavos: roll.cashInCentavos || 0,
+      outCentavos: roll.cashOutCentavos || 0,
+      netCentavos: roll.netCentavos || 0,
+      txnCount: roll.txnCount || 0,
+      // The server re-sums the day's rows on every read and reports
+      // whether the stored counter agrees. Surfaced rather than swallowed:
+      // a total that silently disagrees with the rows under it is worse
+      // than no total. cashbook.html renders a banner when this is false.
+      reconciles: res.reconciles !== false,
+      computed: res.computed || null,
+    };
+  }
+
+  // Admin-only on the server. A non-Admin staffer gets `forbidden: true`
+  // instead of an exception, so the month strip can render a short
+  // explanation and the DAY view (which they are allowed to see) keeps
+  // working — the 403 is a legitimate permission boundary, not an error.
   async function getCashbookMonth(monthKey) {
     const key = monthKey || manilaMonthOf(manilaToday());
-    const rows = cashbookState().transactions.filter((t) => manilaMonthOf(manilaDayOf(t.occurredAt)) === key);
-    return Object.assign(
-      { monthKey: key, monthLabel: manilaMonthLabel(key), txnCount: rows.filter(countsTowardTotals).length },
-      rollup(rows)
-    );
+    let res;
+    try {
+      res = await apiFetch("/cashbook/month/" + encodeURIComponent(key));
+    } catch (err) {
+      if (err && err.status === 403) {
+        return { monthKey: key, monthLabel: manilaMonthLabel(key), forbidden: true,
+          txnCount: 0, inCentavos: 0, outCentavos: 0, netCentavos: 0 };
+      }
+      throw err;
+    }
+    const roll = res.rollup || {};
+    return {
+      monthKey: res.month || key,
+      monthLabel: manilaMonthLabel(key),
+      txnCount: roll.txnCount || 0,
+      inCentavos: roll.cashInCentavos || 0,
+      outCentavos: roll.cashOutCentavos || 0,
+      netCentavos: roll.netCentavos || 0,
+      forbidden: false,
+    };
   }
 
   /* ---- job costing (plan §5) ----
-     profitCentavos counts EVERY cost line (affectsCash or not).
-     cashOutCentavos counts only affectsCash:true ones. Today they agree;
-     see T2 for why both are computed anyway. */
-  function costingFor(orderId, state) {
-    const cb = state || cashbookState();
-    // F2: a manual entry can carry `clientName` (see logCashbookTransaction)
-    // without ever creating a `cb.jobs` record. The old fallback discarded
-    // that entirely (`clientName: null`), silently dumping the job under
-    // "Unassigned" even though the staffer explicitly typed a client. Derive
-    // both clientName and a better label from the order's own transactions
-    // before falling back to the bare orderId.
-    let job = cb.jobs.find((j) => j.orderId === orderId);
-    if (!job) {
-      const linked = cb.transactions.filter((t) => t.orderId === orderId);
-      const withClient = linked.find((t) => normalizeClientName(t.clientName));
-      const withNote = linked.find((t) => (t.note || "").trim());
-      job = {
-        orderId,
-        jobLabel: withNote ? withNote.note.trim() : orderId,
-        clientName: withClient ? normalizeClientName(withClient.clientName) : null,
-        qty: null,
-      };
+     GET /orders/{orderId}/costing — ADMIN-ONLY on the server (owner's O1
+     decision). All the arithmetic now happens server-side in
+     backend/lib/cashbook.js's jobCosting(); this only translates field
+     names and re-derives the per-unit ratios as EXACT divisions so the
+     display rounds once at the end (the API rounds them to whole centavos
+     for its own response, which is fine for it and too coarse for a
+     "₱76.9333/bag" readout).
+
+     A 403 returns `forbidden: true` rather than throwing, so a Staff-role
+     user sees an explanation instead of a broken panel. */
+  async function getJobCosting(orderId) {
+    let res;
+    try {
+      res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/costing");
+    } catch (err) {
+      if (err && err.status === 403) return { orderId, forbidden: true };
+      if (err && err.status === 404) return { orderId, notFound: true };
+      throw err;
     }
-    const revenueRows = cb.transactions.filter((t) => t.orderId === orderId && t.direction === "in" && countsTowardTotals(t));
-    const revenueCentavos = revenueRows.reduce((sum, t) => sum + t.amountCentavos, 0);
-    const lines = cb.costLines.filter((c) => c.orderId === orderId && !c.voided);
-    const totalCostCentavos = lines.reduce((sum, c) => sum + c.amountCentavos, 0);
-    const cashCostCentavos = lines.reduce((sum, c) => sum + (c.affectsCash ? c.amountCentavos : 0), 0);
-    const profitCentavos = revenueCentavos - totalCostCentavos;
-    const qty = job.qty && job.qty > 0 ? job.qty : null;
+    const sum = res.summary || {};
+    const qty = (sum.perUnit && sum.perUnit.units) || null;
+    const revenueCentavos = sum.revenueCentavos || 0;
+    const totalCostCentavos = sum.costCentavos || 0;
+    const profitCentavos = sum.profitCentavos || 0;
+    // The API has no job label and no client name — there is no Client
+    // entity (plan §7). Fall back to the order id, and let a cost line's
+    // own label carry the human meaning.
     return {
-      orderId, jobLabel: job.jobLabel, clientName: job.clientName, qty,
-      revenueCentavos, totalCostCentavos, cashCostCentavos, profitCentavos,
-      // Net cash is revenue actually received minus only the cash cost
-      // lines — identical to profit today, deliberately computed apart.
-      netCashCentavos: revenueCentavos - cashCostCentavos,
-      // Derived display floats. Never stored, never fed back into money math.
+      orderId: res.orderId || orderId,
+      forbidden: false,
+      jobLabel: orderId,
+      clientName: null,
+      qty,
+      revenueCentavos,
+      totalCostCentavos,
+      cashCostCentavos: sum.cashCostCentavos || 0,
+      profitCentavos,
+      netCashCentavos: sum.netCashCentavos || 0,
+      // Derived display float. Never stored, never fed back into money math.
       marginPct: revenueCentavos > 0 ? (profitCentavos / revenueCentavos) * 100 : null,
-      // Per-unit figures are CENTAVOS-VALUED but not integers (₱76.9333/bag
-      // is a real per-unit number, not a rounding error) — they are
-      // formatted, never accumulated. Kept as exact ratios so the display
-      // rounds once, at the end.
+      // Exact ratios, formatted (never accumulated) — same rule as before.
       perUnit: qty ? {
         revenueCentavos: revenueCentavos / qty,
         costCentavos: totalCostCentavos / qty,
         profitCentavos: profitCentavos / qty,
       } : null,
-      costLines: lines.slice().sort((a, b) => new Date(a.incurredAt) - new Date(b.incurredAt)).map((c) => Object.assign({}, c, {
-        // Same derived-unit rule as the seed's header comment.
-        unitCostCentavos: c.qty && c.qty > 0 ? c.amountCentavos / c.qty : null,
-        categoryLabel: cashbookCategoryLabel("out", c.category),
-      })),
+      costLines: (res.costLines || [])
+        .filter((c) => !c.voided)
+        .sort((a, b) => new Date(a.incurredAt) - new Date(b.incurredAt))
+        .map((c) => ({
+          costId: c.costId,
+          orderId: c.orderId,
+          label: c.label,
+          category: c.categoryId,
+          categoryLabel: c.categoryLabel || cashbookCategoryLabel("out", c.categoryId),
+          qty: c.qty,
+          unitCostCentavos: c.unitCostCentavos != null ? c.unitCostCentavos
+            : (c.qty && c.qty > 0 ? c.amountCentavos / c.qty : null),
+          amountCentavos: c.amountCentavos,
+          affectsCash: c.affectsCash !== false,
+          incurredAt: c.incurredAt,
+          actorName: c.actorName || null,
+          voided: !!c.voided,
+        })),
     };
   }
 
-  async function getJobCosting(orderId) { return costingFor(orderId); }
+  /* Every job that has money against it, grouped by client.
 
-  // Every job that has any money against it, grouped by client — the
-  // client-side aggregation the plan's §7 "Now" row calls for (there is no
-  // real Client entity and no GSI2, so grouping happens here).
+     UNAVAILABLE ON THE REAL BACKEND, deliberately, and this is a real gap
+     rather than an oversight: answering "every job with money against it"
+     needs either a table scan or GSI2, and GSI2 is not provisioned — it is
+     the plan's own Phase 4 (§7), costed separately. The mock could do it
+     only because it held the entire ledger in one localStorage blob.
+
+     Returns an EMPTY array carrying an `unavailable` flag rather than
+     throwing or inventing a partial answer from whichever day happens to
+     be loaded — a client total that silently covers one day would be
+     read as a client total. cashbook.html renders the explanation. */
   async function getJobCostingList() {
-    const cb = cashbookState();
-    const ids = new Set(cb.jobs.map((j) => j.orderId));
-    cb.transactions.forEach((t) => { if (t.orderId) ids.add(t.orderId); });
-    cb.costLines.forEach((c) => { if (c.orderId) ids.add(c.orderId); });
-    const jobs = Array.from(ids).map((id) => costingFor(id, cb));
-    const byClient = {};
-    jobs.forEach((j) => {
-      // F2: normalize before grouping so "Acme Corp" and "Acme  Corp " (or
-      // trailing whitespace from a typed field) don't split into two rows.
-      const key = normalizeClientName(j.clientName) || "Unassigned";
-      if (!byClient[key]) byClient[key] = { clientName: key, jobs: [], revenueCentavos: 0, totalCostCentavos: 0, profitCentavos: 0 };
-      const c = byClient[key];
-      c.jobs.push(j);
-      c.revenueCentavos += j.revenueCentavos;
-      c.totalCostCentavos += j.totalCostCentavos;
-      c.profitCentavos += j.profitCentavos;
-    });
-    return Object.values(byClient).map((c) => Object.assign(c, {
-      marginPct: c.revenueCentavos > 0 ? (c.profitCentavos / c.revenueCentavos) * 100 : null,
-    }));
+    const out = [];
+    out.unavailable = true;
+    out.unavailableReason = "Per-client job totals need the GSI2 index (plan §7, Phase 4). Open a job by order ID to see its costing.";
+    return out;
   }
 
   /* ---- writes (append-only) ---- */
@@ -1746,28 +1744,43 @@
     return prefix + "-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
   }
 
-  /* Logs one cash movement.
-     `amountPesos` is the ONLY float that enters — converted once, here
-     (F5's qty/unitCostPesos path is the other; see below). An expense
-     linked to an order also writes the matching COST# line, so the job
-     view sees it without staff entering the same money twice. That
-     mirrors the real backend's co-located ORDER#/COST# write (plan §4);
-     here the two objects are appended in one save() so they cannot land
-     half-written.
+  /* Logs one cash movement, against the real backend.
 
-     F1: sign is owned by the CATEGORY, never by staff typing a minus.
-     Staff always type/derive a positive amount; if the chosen category has
-     `sign: -1` (currently only `refund`), the stored txn amountCentavos is
-     negated. Cost lines never carry this sign — they're always a positive
-     magnitude, matching how costingFor() sums them.
+     TWO ROUTES, chosen by what is being logged — the page's single form
+     still calls this one function:
+       - an expense tied to an order  -> POST /orders/{orderId}/costs,
+         which writes the COST# line AND (when affectsCash) the matching
+         TXN# row + rollups in ONE server-side transaction. That is why
+         staff never enter the same money twice.
+       - anything else                -> POST /cashbook/transactions.
 
-     F5: `affectsCash` (an allocation from stock already owned, not a real
-     cash movement) means NO cash transaction is written at all — only the
-     COST# line, mirroring the seed's `txnId: null` shape. When qty AND
-     unitCostPesos are both given, the amount is their EXACT product
-     (integer centavos, no rounding-then-remultiply — see the doc's §4
-     amendment); when only the plain amount is given, that total stays
-     authoritative and unit cost is derived for display elsewhere. */
+     IDEMPOTENCY. The id is generated HERE, client-side, before the
+     request — that is what makes a double-tap or a retry safe. The server
+     keys the row on it and refuses a duplicate inside the same
+     transaction as the rollup ADDs, so counters can never double-bump.
+     A replay comes back 200 with the ORIGINAL row, not an error.
+
+     SIGN IS NOT SET HERE. The mock negated a refund locally; the server
+     now owns that (backend review finding B5) and re-applies the
+     category's sign to whatever arrives. Staff still type a positive
+     amount, and this sends a positive amount.
+
+     pesosToCentavos() remains the ONLY float->int conversion, applied once
+     at the input edge. Nothing below adds or multiplies pesos. */
+  function newIdempotencyId() {
+    // Key-safe charset, 8-64 chars, alphanumeric first — matches the
+    // server's IDEMPOTENCY_RE. Crypto-random when available so two
+    // devices logging at the same millisecond can't collide.
+    let rand;
+    try {
+      const buf = new Uint8Array(8);
+      (global.crypto || {}).getRandomValues(buf);
+      rand = Array.from(buf, (b) => b.toString(36)).join("").slice(0, 10);
+    } catch { rand = Math.random().toString(36).slice(2, 12); }
+    if (!rand) rand = Math.random().toString(36).slice(2, 12);
+    return ("t" + Date.now().toString(36) + "." + rand).slice(0, 64);
+  }
+
   async function logCashbookTransaction(input) {
     const direction = input.direction === "out" ? "out" : "in";
 
@@ -1791,88 +1804,91 @@
       throw new Error("Enter an amount greater than zero.");
     }
     if (!input.category) throw new Error("Pick a category.");
-    if (!input.method) throw new Error("Pick a payment method.");
 
-    const catDef = categoryDef(direction, input.category);
-    const sign = catDef && catDef.sign === -1 ? -1 : 1;
-    const storedAmountCentavos = amountCentavos * sign;
-
-    const state = load();
-    const cb = state.cashbook;
     const orderId = (input.orderId || "").trim() || null;
-    const clientName = (input.clientName || "").trim() || null;
     const note = (input.note || "").trim();
     const affectsCash = input.affectsCash !== false; // T2 — defaults true
-    const occurredAt = nowIso();
+    const idempotencyId = newIdempotencyId();
 
-    let costId = null;
-    let txnId = affectsCash ? newCashbookId("TXN") : null;
+    // An allocation (affectsCash:false) is a JOB COST, not a cash
+    // movement, so it only exists against an order. The mock silently
+    // wrote nothing at all in this case and handed back a stand-in that
+    // looked like a saved row; say so instead.
+    if (!affectsCash && !orderId) {
+      throw new Error("An allocation that doesn't move cash has to be linked to an order — it's a job cost, not a cash entry.");
+    }
+    if (affectsCash && !input.method) throw new Error("Pick a payment method.");
 
+    /* ---- expense against a job -> the costs route ---- */
     if (direction === "out" && orderId) {
-      costId = newCashbookId("COST");
-      cb.costLines.push({
-        costId, orderId, label: note || cashbookCategoryLabel("out", input.category),
-        category: input.category, qty, unitCostCentavos, amountCentavos,
+      const body = {
+        idempotencyId,
+        label: note || cashbookCategoryLabel("out", input.category),
+        categoryId: input.category,
         affectsCash,
-        incurredAt: occurredAt, actorName: input.actorName || "Staff", source: "manual",
-        txnId, voided: false,
+        note,
+      };
+      if (affectsCash) body.paymentMethod = input.method;
+      if (hasQtyUnit) { body.qty = qty; body.unitCostCentavos = unitCostCentavos; }
+      else { body.amountCentavos = amountCentavos; }
+
+      const res = await apiFetch("/orders/" + encodeURIComponent(orderId) + "/costs", {
+        method: "POST", body: JSON.stringify(body),
       });
+      const cost = res.cost || {};
+      const txn = res.transaction ? normalizeTxnRow(res.transaction) : null;
+      // affectsCash:false never creates a txn row — cashbook.html only
+      // reads occurredAt/orderId off the return in that case, to jump to
+      // the right day.
+      return txn || {
+        txnId: null, direction: "out", amountCentavos: cost.amountCentavos || amountCentavos,
+        occurredAt: cost.incurredAt, orderId, costId: cost.costId || null,
+        wroteTransaction: false,
+      };
     }
 
-    let txn = null;
-    if (affectsCash) {
-      txn = {
-        txnId, direction, amountCentavos: storedAmountCentavos,
-        category: input.category, method: input.method,
-        orderId, clientName,
+    /* ---- everything else -> the ledger route ---- */
+    const res = await apiFetch("/cashbook/transactions", {
+      method: "POST",
+      body: JSON.stringify({
+        idempotencyId,
+        categoryId: input.category,
+        amountCentavos,          // positive; the server applies the sign
+        paymentMethod: input.method,
+        orderId,
         note,
-        occurredAt, actorName: input.actorName || "Staff",
-        source: "manual", voided: false, voidReason: null, reversesTxnId: null, costId,
-      };
-      cb.transactions.push(txn);
-    }
-    save(state);
-    // affectsCash:false never creates a txn row (F5) — callers (cashbook.html)
-    // only read `occurredAt`/`orderId` off the return value in that case, to
-    // jump to the right day, so a minimal stand-in is enough.
-    return txn || { txnId: null, direction, amountCentavos: storedAmountCentavos, occurredAt, orderId, costId };
+      }),
+    });
+    const txn = normalizeTxnRow(res.transaction || {});
+    // Trap 1: the server warns (never rejects) when this order already
+    // carries a system-posted payment transaction, so staff can see they
+    // may be double-counting.
+    if (res.warning) txn.warning = res.warning;
+    txn.idempotentReplay = !!res.idempotentReplay;
+    return txn;
   }
 
-  /* D2: a correction is a REVERSAL, not an edit. The original keeps its
-     amount and its place in the day; a new opposite-direction row carries
-     the same amount and points back at it. Any linked cost line is flagged
-     voided too, so job profit follows the same correction. */
+  /* D2: a correction is a REVERSAL, not an edit — now enforced
+     server-side in ONE transaction (flag the original under a double-void
+     guard, append the reversing row into the ORIGINAL day's partition,
+     negate both rollups, flag any linked COST# line).
+
+     ADMIN-ONLY. A 403 is surfaced as a plain sentence rather than a raw
+     "Forbidden", because for a Staff-role user this is a normal
+     permission boundary, not a fault. */
   async function voidCashbookTransaction(txnId, reason, actorName) {
     const trimmed = (reason || "").trim();
     if (!trimmed) throw new Error("A void needs a reason — that's the whole audit trail.");
-    const state = load();
-    const cb = state.cashbook;
-    const original = cb.transactions.find((t) => t.txnId === txnId);
-    if (!original) throw new Error("That transaction no longer exists.");
-    if (original.voided) throw new Error("That transaction is already voided.");
-    if (original.reversesTxnId) throw new Error("A reversing entry can't itself be voided.");
-    original.voided = true;
-    original.voidReason = trimmed;
-    original.voidedBy = actorName || "Staff";
-    original.voidedAt = nowIso();
-    if (original.costId) {
-      const line = cb.costLines.find((c) => c.costId === original.costId);
-      if (line) line.voided = true;
+    try {
+      return await apiFetch("/cashbook/transactions/" + encodeURIComponent(txnId) + "/void", {
+        method: "POST", body: JSON.stringify({ reason: trimmed }),
+      });
+    } catch (err) {
+      if (err && err.status === 403) {
+        throw new Error("Only an Admin can void a transaction. Ask one of the founders to reverse this entry.");
+      }
+      throw err;
     }
-    const reversal = {
-      txnId: newCashbookId("TXN"),
-      direction: original.direction === "in" ? "out" : "in",
-      amountCentavos: original.amountCentavos,
-      category: original.category, method: original.method,
-      orderId: original.orderId, clientName: original.clientName,
-      note: "Void — " + trimmed,
-      occurredAt: nowIso(), actorName: actorName || "Staff",
-      source: "manual", voided: false, voidReason: null,
-      reversesTxnId: original.txnId, costId: null,
-    };
-    cb.transactions.push(reversal);
-    save(state);
-    return reversal;
   }
 
   /* ---- day export (plan §8 "Should have" — CSV handoff) ----
@@ -1908,76 +1924,46 @@
          day's cash net. */
   async function getCashbookDayExport(dayKey) {
     const key = dayKey || manilaToday();
-    const cb = cashbookState();
-    const costById = {};
-    cb.costLines.forEach((c) => { costById[c.costId] = c; });
-    const jobById = {};
-    cb.jobs.forEach((j) => { jobById[j.orderId] = j; });
+    // Built from the SAME live day response the screen renders, so the
+    // export can never disagree with what staff just looked at.
+    const day = await getCashbookDay(key);
 
-    const rows = sortNewestFirst(cb.transactions.filter((t) => manilaDayOf(t.occurredAt) === key))
-      .map((t) => {
-        const cost = t.costId ? costById[t.costId] : null;
-        const job = t.orderId ? jobById[t.orderId] : null;
-        // F4: a job's REVENUE row never has a linked cost line (costId is
-        // only ever set on the expense side), so qty/unit was always blank
-        // here even though the on-screen job table shows it (from the job
-        // record's qty). Fall back to the linked job's qty for "in" rows.
-        const qty = cost ? cost.qty : (t.direction === "in" && job && job.qty ? job.qty : null);
-        const unitAmountCentavos = cost && cost.qty
-          ? cost.amountCentavos / cost.qty
-          : (qty ? t.amountCentavos / qty : null);
-        const isReversal = !!t.reversesTxnId;
-        return {
-          occurredAt: t.occurredAt,
-          direction: t.direction,
-          category: cashbookCategoryLabel(t.direction, t.category),
-          label: cost ? cost.label : cashbookCategoryLabel(t.direction, t.category),
-          qty,
-          unitAmountCentavos,
-          amountCentavos: t.amountCentavos,
-          method: cashbookMethodLabel(t.method),
-          affectsCash: true,
-          orderId: t.orderId,
-          clientName: t.clientName,
-          actorName: t.actorName,
-          note: t.note,
-          voided: t.voided,
-          voidReason: t.voidReason,
-          isReversal,
-          countsTowardTotals: !t.voided && !isReversal,
-          signedAmountCentavos: (t.direction === "out" ? -1 : 1) * t.amountCentavos,
-        };
-      });
+    const rows = day.transactions.map((t) => {
+      const isReversal = !!t.reversesTxnId;
+      return {
+        occurredAt: t.occurredAt,
+        direction: t.direction,
+        category: cashbookCategoryLabel(t.direction, t.category),
+        label: t.note || cashbookCategoryLabel(t.direction, t.category),
+        // Qty/unit cost live on the COST# line, which is in the ORDER
+        // partition rather than the day partition — the day API does not
+        // carry them. Left blank rather than guessed; the job costing
+        // view is where per-unit economics are answered.
+        qty: null,
+        unitAmountCentavos: null,
+        amountCentavos: t.amountCentavos,
+        method: cashbookMethodLabel(t.method),
+        affectsCash: true,
+        orderId: t.orderId,
+        clientName: t.clientName,
+        actorName: t.actorName,
+        note: t.note,
+        voided: t.voided,
+        voidReason: t.voidReason,
+        isReversal,
+        // F4: same netting convention the rollup uses, so summing this
+        // column reproduces the day's net without double-counting a
+        // voided row and its reversal.
+        countsTowardTotals: !t.voided && !isReversal,
+        signedAmountCentavos: (t.direction === "out" ? -1 : 1) * t.amountCentavos,
+      };
+    });
 
-    // Non-cash cost lines incurred this day — never had a txn, so they're
-    // not in cb.transactions at all and must be pulled in separately.
-    cb.costLines
-      .filter((c) => !c.txnId && !c.affectsCash && manilaDayOf(c.incurredAt) === key)
-      .forEach((c) => {
-        const job = jobById[c.orderId];
-        rows.push({
-          occurredAt: c.incurredAt,
-          direction: "out",
-          category: cashbookCategoryLabel("out", c.category),
-          label: c.label,
-          qty: c.qty,
-          unitAmountCentavos: c.qty ? c.amountCentavos / c.qty : null,
-          amountCentavos: c.amountCentavos,
-          method: null,
-          affectsCash: false,
-          orderId: c.orderId,
-          clientName: job ? job.clientName : null,
-          actorName: c.actorName,
-          note: null,
-          voided: c.voided,
-          voidReason: null,
-          isReversal: false,
-          // Never a cash movement — excluded from the cash-net sum (F4).
-          countsTowardTotals: false,
-          signedAmountCentavos: -c.amountCentavos,
-        });
-      });
-
+    // NOTE: affectsCash:false cost lines are deliberately absent. They
+    // never produce a TXN# row (that is the whole point of the flag), and
+    // finding them for an arbitrary day would need a scan across every
+    // order partition. They belong to a job, not to a day's cash, and the
+    // job costing view reports them in full.
     rows.sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
     return { dayKey: key, dayLabel: manilaDayLabel(key), rows };
   }

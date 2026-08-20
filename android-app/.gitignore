@@ -1,0 +1,12 @@
+signing/
+build/
+app/build/
+.gradle/
+*.apk
+*.aab
+node_modules/
+jdk*/
+android-sdk/
+sdk/
+gradle/
+local.properties

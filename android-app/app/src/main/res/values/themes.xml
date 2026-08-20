@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.KCMPS" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/brand_navy</item>
+        <item name="android:navigationBarColor">@color/brand_navy</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/white</item>
+    </style>
+
+    <style name="Theme.KCMPS.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/brand_navy</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.KCMPS</item>
+    </style>
+</resources>

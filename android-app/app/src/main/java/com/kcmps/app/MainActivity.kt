@@ -141,6 +141,7 @@ class MainActivity : ComponentActivity() {
             loadsImagesAutomatically = true
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = true
+            userAgentString = userAgentString + " KCMPSApp/1.1"
         }
         webView.webViewClient = ScopedWebViewClient(isPopup)
         webView.webChromeClient = chromeClient

@@ -17,7 +17,11 @@
 
   var COGNITO_CONFIG = {
     domain: "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
-    clientId: "2rsbhkjooja4h5e0ijpl4siuug",
+    // From auth-refresh.js (loaded before this file on both pages): web
+    // client in browsers, the 30-day staff-app client inside the Android
+    // wrapper — logout must name the client the session was minted on.
+    // Fallback = web client, the pre-app behaviour.
+    clientId: (window.KCMPS_AUTH && window.KCMPS_AUTH.CLIENT_ID) || "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
   };
   var TOKEN_STORAGE_KEY = "kcmps_tokens";
@@ -52,6 +56,9 @@
 
   /* ---------- session ---------- */
   function loadTokens() {
+    // Through auth-refresh.js's storage seam (sessionStorage in browsers,
+    // localStorage inside the staff app); direct read is the fallback.
+    if (window.KCMPS_AUTH) return window.KCMPS_AUTH.loadTokens();
     try { var raw = sessionStorage.getItem(TOKEN_STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
     catch (e) { return null; }
   }

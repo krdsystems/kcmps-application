@@ -3463,3 +3463,47 @@ detour left benign PWA extras in `website/` (`manifest.webmanifest`, `assets/app
 theme-color/manifest tags in `index.html`) — kept, undeployed as of this entry. Logged-in
 dashboard behavior (uploads, downloads, `navigator.clipboard` click-to-copy) is untested pending
 the owner's own device — nobody's password gets typed by an agent.
+
+### 75. Messenger-style persistent sign-in for the staff app; second Cognito client; two owner ground rules (2026-08-20)
+
+The owner wanted the app to open already signed in — "remembers the sign-in by 30 days, resets
+only when the user clicks log-out." Two things stood between the WebView wrapper and that: tokens
+lived in `sessionStorage` (dies with the app process) and the refresh token itself lasted 5 days.
+
+**The web's security stance survived by splitting, not bending.** Instead of bumping the existing
+client's refresh validity (which would 6x the stolen-token window for every browser user and
+silently reverse a documented XSS tradeoff), the pool grew a second client —
+`kcmps-app-client`, `44m8ihv638uupblm8dscurgu7g`, 30-day refresh — used **only** inside the app.
+Two traps caught on the way: a managed-login-v2 client with no `ManagedLoginBranding` of its own
+renders a dead Hosted UI (this stack's first-deploy bug, nearly repeated), and the API JWT
+authorizers validate token audience, so both the staging (CloudFormation) and production (CLI,
+authorizer `sboj1n` on `6msg2uho6c`) authorizers had to accept both client ids or app logins
+would 401 on every API call while looking perfectly logged in.
+
+**App detection is one User-Agent token.** v1.1.0 of the app appends ` KCMPSApp/1.1` (both
+WebViews, since `createWebView()` builds each) and sets `android:allowBackup="false"` so the
+long-lived token can't ride out in a device backup. Web-side, `auth-refresh.js` answers
+"am I in the app?" exactly once (`IS_KCMPS_APP`, exposed on `KCMPS_AUTH`) and selects both the
+client id and the token store there: `localStorage` in the app (app-private inside the WebView
+sandbox — no shared profile, no extensions), `sessionStorage` everywhere else, same key. Every
+token read/write/clear site in the codebase (10 files) now routes through that seam; the audit
+list is in the session transcript. On cold start the app silently refreshes and lands the
+staffer on the dashboard via the existing `goToDashboardOnLogin` pref — zero taps.
+
+**"Resets only on logout" turned out to be an audit, not a rewrite**: the dashboard's
+SESSION_GUARD (PIN lock, 4-h idle) never touched tokens in the first place — only the Logout
+button (revoke + clear, kept), `requireStaffAuth`'s failed-refresh path and dashboard-data's
+survived-401 did, and those now distinguish fatal (revoked/expired grant → clear, quietly) from
+transient (offline cold start → keep the 30-day token; clearing it over a network blip is
+exactly the silent logout this feature exists to prevent). Found in passing: `privacy.html`/
+`terms.html`/`refunds.html` load `auth-refresh.js` but were missed by the 2026-08-19 CSP
+connect-src sweep — a silently-broken refresh on those pages, now fixed.
+
+**Two standing owner rules were set mid-session** (recorded in Claude's memory, to be embedded
+in every AWS-touching agent brief): agents have explicit permission to CREATE AWS resources for
+an ordered task; any DELETION of an AWS resource requires the owner's sign-off. Also new:
+`android-app/previous-apk-versions/` — superseded APKs get moved there with a version-log README
+instead of deleted (v1.0.0 and v1.0.1 restored by the owner, signature-verified).
+
+Owner-verified on a real phone before promotion was declared done: install v1.1.0 over v1.0.1,
+log in once, kill, reopen → dashboard, no taps.

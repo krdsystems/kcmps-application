@@ -1838,7 +1838,17 @@ const COGNITO_CONFIG = {
   userPoolId:  "ap-southeast-1_LHJsFdCgo",
   region:      "ap-southeast-1",
   domain:      "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
-  clientId:    "2rsbhkjooja4h5e0ijpl4siuug",
+  // Selected ONCE by auth-refresh.js (loaded above this script): the web
+  // client (2rsbhkjooja4h5e0ijpl4siuug, 5-day refresh) in any browser, the
+  // staff-app client (44m8ihv638uupblm8dscurgu7g, 30-day refresh) when the
+  // UA carries the Android wrapper's " KCMPSApp/" marker. Same pool, same
+  // Hosted UI domain, same callbacks. Every use of this id — authorize URL,
+  // code exchange, sign-up (SignUp/ConfirmSignUp/ResendConfirmationCode),
+  // logout — reads this one field, so a token can never be minted on one
+  // client and refreshed/revoked on the other. The literal fallback keeps
+  // login working (web client, session-scoped) if auth-refresh.js ever
+  // fails to load — same degradation contract as saveTokens() below.
+  clientId:    (window.KCMPS_AUTH && window.KCMPS_AUTH.CLIENT_ID) || "2rsbhkjooja4h5e0ijpl4siuug",
   // Must EXACTLY match an allowed callback/sign-out URL on the app client.
   // We use origin + "/" (not origin + pathname) so it resolves to the
   // registered root URL — https://site.kcmps.com/ in prod, http://localhost:5500/
@@ -1919,7 +1929,10 @@ function decodeJwt(token) {
    localStorage for the tokens themselves (which persists indefinitely,
    maximizing XSS exposure). The strictly safer option — refresh token in an
    httpOnly cookie via a Backend-for-Frontend — needs a server we don't have
-   as a static site. Revisit once API Gateway/Lambda exist. ---- */
+   as a static site. Revisit once API Gateway/Lambda exist.
+   Exception: inside the staff Android app (KCMPSApp/ UA) auth-refresh.js's
+   tokenStore is localStorage for Messenger-style persistence — the WebView
+   is app-private, so the browser threat model above doesn't apply. ---- */
 const TOKEN_STORAGE_KEY = "kcmps_tokens";
 /* saveTokens/clearTokens delegate to auth-refresh.js (window.KCMPS_AUTH),
    which is the single place that knows the token blob's shape. saveTokens
@@ -1932,6 +1945,11 @@ function saveTokens(tokens) {
   sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens));
 }
 function loadTokens() {
+  // Reads route through the same seam as writes: auth-refresh.js owns the
+  // store choice (sessionStorage in browsers, localStorage inside the staff
+  // Android app). Direct sessionStorage stays only as the no-auth-refresh
+  // fallback, matching saveTokens/clearTokens.
+  if (window.KCMPS_AUTH) return window.KCMPS_AUTH.loadTokens();
   const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { clearTokens(); return null; }
@@ -2554,6 +2572,57 @@ function logout() {
   }
 }
 
+/* ---- App-mode silent bootstrap (staff Android app only) ----
+   Messenger-style: on a cold app launch the persistent store still holds a
+   refresh token, but the 60-min id token is long dead. Trade it in
+   silently, then run the SAME post-login path a fresh interactive login
+   runs (renderLoggedIn + maybeGoToDashboard with its goToDashboardOnLogin
+   pref check) so a staffer lands in the dashboard with zero taps.
+
+   Gated to once per app LAUNCH via a sessionStorage flag — sessionStorage
+   dies with the WebView process, exactly the lifetime we want. Without the
+   flag, "Back to site" from the dashboard would land on index.html, which
+   would immediately bounce back to the dashboard, forever.
+
+   Failure is quiet by design: a fatal refresh rejection (refresh token
+   expired after 30 days, or revoked) clears the store inside
+   KCMPS_AUTH.refresh() and we settle into the normal logged-out UI — no
+   toast, no error. A transient failure (offline) keeps the store (see
+   auth-refresh.js's app-mode clause) and leaves the optimistic logged-in
+   chrome; the proactive poll retries. No-op in every browser. */
+const APP_BOOTSTRAP_KEY = "kcmps_app_bootstrapped";
+async function maybeBootstrapAppSession(tokens) {
+  if (!window.KCMPS_AUTH || !window.KCMPS_AUTH.IS_KCMPS_APP) return;
+  // A ?login=required arrival has its own tokens-exist redirect (straight
+  // to orders.html — see initAuth) — don't race it to a different page.
+  if (new URLSearchParams(window.location.search).get("login") === "required") return;
+  let alreadyLaunched = false;
+  try { alreadyLaunched = !!sessionStorage.getItem(APP_BOOTSTRAP_KEY); } catch { /* ignore */ }
+  if (alreadyLaunched) return;
+  try { sessionStorage.setItem(APP_BOOTSTRAP_KEY, "1"); } catch { /* ignore */ }
+
+  let blob = tokens;
+  if (window.KCMPS_AUTH.isExpired(tokens.id_token)) {
+    if (!window.KCMPS_AUTH.canRefresh()) {
+      // Legacy/partial blob with nothing to trade in — treat as signed out.
+      clearTokens();
+      renderLoggedOut();
+      return;
+    }
+    try {
+      blob = await window.KCMPS_AUTH.refresh(); // single-flight; shares the startup tick's request
+    } catch {
+      // Fatal => refresh() already cleared the store: settle logged-out,
+      // silently. Transient => store intact, keep the restored chrome and
+      // let the poll retry; don't redirect on a token we couldn't mint.
+      if (!loadTokens()) renderLoggedOut();
+      return;
+    }
+    try { renderLoggedIn(decodeJwt(blob.id_token)); } catch { return; }
+  }
+  maybeGoToDashboard(decodeJwt(blob.id_token));
+}
+
 /* ---- Entry point ---- */
 (function initAuth() {
   // Case 1: this load is the login popup redirected back with a code/error.
@@ -2572,7 +2641,10 @@ function logout() {
   if (tokens) {
     try {
       renderLoggedIn(decodeJwt(tokens.id_token));
-      log("Restored session from sessionStorage.");
+      log("Restored session from storage.");
+      // Staff-app only (no-op in browsers): silently refresh an expired
+      // cold-start session and honour goToDashboardOnLogin, once per launch.
+      maybeBootstrapAppSession(tokens);
     } catch { clearTokens(); renderLoggedOut(); }
   } else {
     renderLoggedOut();

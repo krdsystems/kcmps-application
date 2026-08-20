@@ -16,7 +16,12 @@
 (function (global) {
   const COGNITO_CONFIG = {
     domain: "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com",
-    clientId: "2rsbhkjooja4h5e0ijpl4siuug",
+    // Selected by auth-refresh.js (loaded before this file on every
+    // dashboard page): web client in browsers, the 30-day staff-app client
+    // when the UA carries " KCMPSApp/". Read from KCMPS_AUTH so this file
+    // can never disagree with the client the tokens were minted on (logout
+    // is this id's only use here). Fallback = web client, as before.
+    clientId: (global.KCMPS_AUTH && global.KCMPS_AUTH.CLIENT_ID) || "2rsbhkjooja4h5e0ijpl4siuug",
     redirectUri: window.location.origin + "/",
     staffGroupName: "Staff",
     // Any of these groups unlocks the dashboard. This list must mirror
@@ -64,6 +69,10 @@
     return JSON.parse(json);
   }
   function loadTokens() {
+    // Route through auth-refresh.js's storage seam (sessionStorage in
+    // browsers, localStorage inside the staff app). Direct sessionStorage
+    // remains only as the auth-refresh-failed-to-load fallback.
+    if (global.KCMPS_AUTH) return global.KCMPS_AUTH.loadTokens();
     const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
@@ -84,6 +93,11 @@
      path (explicit logout, expired `exp`, undecodable token), which is
      exactly when re-arming is correct. */
   function clearTokens() {
+    // Delegate so the app-mode localStorage store is cleared too — a direct
+    // sessionStorage removal would silently leave a 30-day refresh token
+    // alive in the app. KCMPS_AUTH.clearTokens() also releases
+    // SIDEBAR_AUTO_OPEN_KEY (same pair of keys, one owner).
+    if (global.KCMPS_AUTH) return global.KCMPS_AUTH.clearTokens();
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     sessionStorage.removeItem(SIDEBAR_AUTO_OPEN_KEY);
   }
@@ -112,7 +126,16 @@
       "cognito:groups": [COGNITO_CONFIG.staffGroupName],
     }));
     const fakeIdToken = header + "." + payload + ".devsig";
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ id_token: fakeIdToken, access_token: "local-dev-token", expires_in: 3600 }));
+    const blob = { id_token: fakeIdToken, access_token: "local-dev-token", expires_in: 3600 };
+    // Through the seam (clear first: saveTokens MERGES, and the seeded
+    // session must replace any leftover real blob wholesale, not blend
+    // into it). Fallback keeps the bypass alive without auth-refresh.js.
+    if (global.KCMPS_AUTH) {
+      global.KCMPS_AUTH.clearTokens();
+      global.KCMPS_AUTH.saveTokens(blob);
+    } else {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(blob));
+    }
   }
 
   // `soon: true` renders a "Soon" badge and dims the link, but still points at
@@ -204,7 +227,17 @@
          pre-refresh-feature blob, both of which fall through to the original
          behaviour below. */
       if (global.KCMPS_AUTH && global.KCMPS_AUTH.canRefresh()) {
-        global.KCMPS_AUTH.refresh().catch(() => {
+        global.KCMPS_AUTH.refresh().catch((err) => {
+          /* App mode: a TRANSIENT failure (offline at cold start — the id
+             token there is always expired by launch time) must not destroy
+             the persistent 30-day session; stay on the page with stale
+             UI-only claims and let the proactive poll / apiFetch's
+             401-retry finish the job when the network returns. A fatal
+             rejection (revoked / expired grant) has already had the store
+             cleared inside refresh(); fall through to the redirect.
+             Browser: unchanged — any failure ends the session as before. */
+          const isApp = global.KCMPS_AUTH && global.KCMPS_AUTH.IS_KCMPS_APP;
+          if (isApp && !(err && err.fatal)) return;
           clearTokens();
           window.location.replace(isLocalHost() ? "index.html" : "../index.html?login=required");
         });

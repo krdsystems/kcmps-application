@@ -31,9 +31,28 @@
    safer of the two stores even though that means closing the tab requires a
    re-login.
 
-   The Cognito app client (2rsbhkjooja4h5e0ijpl4siuug) is public — no client
-   secret — so the browser may call /oauth2/token's grant_type=refresh_token
-   directly and no backend is involved.
+   APP MODE (IS_KCMPS_APP): the staff Android app (android-app/, a WebView
+   wrapper whose User-Agent ends in " KCMPSApp/<ver>") gets Messenger-style
+   persistent sign-in instead. Detected once here off the UA and exposed on
+   KCMPS_AUTH so no other file re-derives it. In app mode ONLY:
+     - tokens live in localStorage (tokenStore below), so they survive app
+       restarts. That is acceptable there and not in a browser because the
+       WebView's storage is app-private inside the Android sandbox — there
+       is no shared browser profile, no other sites, no extensions.
+     - the client id is the dedicated app client (30-day refresh tokens);
+       browsers keep the web client (5-day). Both are public/secretless on
+       the same pool + Hosted UI domain; the API's JWT authorizer accepts
+       both audiences.
+     - a transient refresh failure (offline phone at cold start) never
+       clears the store — only a fatal 4xx (revoked/expired grant) or the
+       user's own Logout tap ends the session. In a browser the stricter
+       original behaviour is unchanged.
+   Browser behaviour must stay byte-identical: every IS_KCMPS_APP branch
+   in this codebase is additive and false in any real browser.
+
+   The Cognito app clients are public — no client secret — so the browser
+   may call /oauth2/token's grant_type=refresh_token directly and no
+   backend is involved.
 
    CSP: every page that loads this file must allow
    https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com in connect-src.
@@ -43,7 +62,26 @@
   "use strict";
 
   var DOMAIN = "https://kcmps-auth.auth.ap-southeast-1.amazoncognito.com";
-  var CLIENT_ID = "2rsbhkjooja4h5e0ijpl4siuug";
+
+  /* ---- app-mode detection + client/store selection (see header) ----
+     The ONE place the "am I inside the staff Android app?" question is
+     answered. index.html, dashboard-shell.js and orders-data.js consume
+     CLIENT_ID/IS_KCMPS_APP from KCMPS_AUTH rather than re-deriving. */
+  var IS_KCMPS_APP = /KCMPSApp\//.test((global.navigator && global.navigator.userAgent) || "");
+  var WEB_CLIENT_ID = "2rsbhkjooja4h5e0ijpl4siuug"; // kcmps-web-client, 5-day refresh
+  var APP_CLIENT_ID = "44m8ihv638uupblm8dscurgu7g"; // kcmps-app-client, 30-day refresh
+  var CLIENT_ID = IS_KCMPS_APP ? APP_CLIENT_ID : WEB_CLIENT_ID;
+
+  /* The token store: localStorage in the app (persists across app
+     restarts), sessionStorage in every browser (unchanged stance — see
+     header). Same key either way. Guarded because storage access can throw
+     under exotic privacy settings; every read/write below is ALSO wrapped,
+     matching the original code. */
+  var tokenStore = (function () {
+    try { return IS_KCMPS_APP ? global.localStorage : global.sessionStorage; }
+    catch (e) { return global.sessionStorage; }
+  })();
+
   var TOKEN_STORAGE_KEY = "kcmps_tokens";
   // Released alongside the tokens on every session-end path — see the
   // identical lines in dashboard-shell.js / index.html / dashboard-data.js.
@@ -54,7 +92,7 @@
 
   function loadTokens() {
     try {
-      var raw = global.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      var raw = tokenStore.getItem(TOKEN_STORAGE_KEY);
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
@@ -68,12 +106,22 @@
     for (k in current) if (Object.prototype.hasOwnProperty.call(current, k)) merged[k] = current[k];
     for (k in next) if (Object.prototype.hasOwnProperty.call(next, k)) merged[k] = next[k];
     if (!next.refresh_token && current.refresh_token) merged.refresh_token = current.refresh_token;
-    try { global.sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(merged)); } catch (e) { /* ignore */ }
+    try { tokenStore.setItem(TOKEN_STORAGE_KEY, JSON.stringify(merged)); } catch (e) { /* ignore */ }
     return merged;
   }
 
   function clearTokens() {
-    try { global.sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch (e) { /* ignore */ }
+    try { tokenStore.removeItem(TOKEN_STORAGE_KEY); } catch (e) { /* ignore */ }
+    // App mode: also sweep the sessionStorage copy. A pre-update app
+    // session (web client, sessionStorage) may still hold a stale blob in
+    // the same WebView process; the direct-read fallbacks in other files
+    // must never resurrect it after a logout. No-op in a browser, where
+    // tokenStore IS sessionStorage.
+    if (IS_KCMPS_APP) {
+      try { global.sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch (e) { /* ignore */ }
+    }
+    // The sidebar auto-open flag is per-tab/per-launch state, not a token —
+    // it stays in sessionStorage in BOTH modes.
     try { global.sessionStorage.removeItem(SIDEBAR_AUTO_OPEN_KEY); } catch (e) { /* ignore */ }
   }
 
@@ -152,7 +200,14 @@
       // no half-authenticated state to keep). A network blip while the
       // current token is still valid is left alone so the next attempt can
       // retry — clearing there would log people out over a dropped packet.
-      if ((err && err.fatal) || wasExpired) clearTokens();
+      //
+      // App mode: only a FATAL rejection clears. The whole point of the
+      // persistent store is that a cold app start on a dead connection
+      // (the id token is always expired by then) keeps the session and
+      // retries later — wiping a 30-day refresh token over a dropped
+      // packet would be a silent logout Messenger would never do. Browser
+      // behaviour (the wasExpired clause) is unchanged.
+      if ((err && err.fatal) || (wasExpired && !IS_KCMPS_APP)) clearTokens();
       throw err;
     }).then(function (merged) {
       inflight = null;
@@ -237,6 +292,11 @@
     TOKEN_STORAGE_KEY: TOKEN_STORAGE_KEY,
     SIDEBAR_AUTO_OPEN_KEY: SIDEBAR_AUTO_OPEN_KEY,
     REFRESH_SKEW_MS: REFRESH_SKEW_MS,
+    // App-mode facts, exposed so index.html / dashboard-shell.js /
+    // orders-data.js select the SAME client id and never re-derive the UA
+    // sniff. CLIENT_ID is already app-vs-web selected (see top of file).
+    IS_KCMPS_APP: IS_KCMPS_APP,
+    CLIENT_ID: CLIENT_ID,
     loadTokens: loadTokens,
     saveTokens: saveTokens,
     clearTokens: clearTokens,

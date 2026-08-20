@@ -8,7 +8,8 @@
       ],
       "JwtConfiguration": {
         "Audience": [
-          "2rsbhkjooja4h5e0ijpl4siuug"
+          "2rsbhkjooja4h5e0ijpl4siuug",
+          "44m8ihv638uupblm8dscurgu7g"
         ],
         "Issuer": "https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_LHJsFdCgo"
       },

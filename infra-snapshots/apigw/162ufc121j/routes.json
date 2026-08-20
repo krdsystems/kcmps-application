@@ -6,6 +6,26 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "2dnkbxg",
+      "RouteKey": "GET /owners/capital",
+      "Target": "integrations/sn1v39l"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "2nqc0ib",
+      "RouteKey": "GET /owners/capital/entries",
+      "Target": "integrations/vca6pou"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "2yz9fxn",
       "RouteKey": "GET /orders/{orderId}/messages",
       "Target": "integrations/sc4nuiv"
@@ -44,6 +64,46 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "3z994la",
+      "RouteKey": "GET /owners/goals/{goalId}",
+      "Target": "integrations/yjdgq7v"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "4znlatg",
+      "RouteKey": "PATCH /owners/goals/{goalId}",
+      "Target": "integrations/a7vtsdf"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "6azehr3",
+      "RouteKey": "POST /owners/capital/{capId}/void",
+      "Target": "integrations/t49qfp2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "7n4ylvq",
+      "RouteKey": "POST /owners/goals/{goalId}/allot",
+      "Target": "integrations/21ouoae"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "7sh0izi",
       "RouteKey": "PUT /staff/pin",
       "Target": "integrations/yfrmc8n"
@@ -56,6 +116,16 @@
       "RouteId": "8jpvwl6",
       "RouteKey": "GET /assets",
       "Target": "integrations/6qwr9l2"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "8mt92q3",
+      "RouteKey": "GET /owners/members",
+      "Target": "integrations/26fw2ui"
     },
     {
       "ApiKeyRequired": false,
@@ -95,6 +165,16 @@
       "RouteId": "a8g3l57",
       "RouteKey": "GET /mail/mailboxes",
       "Target": "integrations/yz5sfg6"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "b6xg5sc",
+      "RouteKey": "POST /owners/fund/return",
+      "Target": "integrations/zpm2uvl"
     },
     {
       "ApiKeyRequired": false,
@@ -161,6 +241,16 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "h4qwf2g",
+      "RouteKey": "POST /owners/goals/{goalId}/allotments/{allotId}/void",
+      "Target": "integrations/8ilpr7d"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "hm382xh",
       "RouteKey": "POST /orders/{orderId}/costs",
       "Target": "integrations/3yoa6rm"
@@ -174,6 +264,16 @@
       "RouteId": "hqfaly7",
       "RouteKey": "GET /cashbook/search",
       "Target": "integrations/fi906hi"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "hxtqf78",
+      "RouteKey": "GET /owners/contributors",
+      "Target": "integrations/7v7arb6"
     },
     {
       "ApiKeyRequired": false,
@@ -240,6 +340,16 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "l6fwhre",
+      "RouteKey": "POST /owners/goals",
+      "Target": "integrations/62ee46a"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "le4pjn6",
       "RouteKey": "POST /orders/{orderId}/set-on-hold",
       "Target": "integrations/w3mfjw2"
@@ -262,6 +372,16 @@
       "RouteId": "mc0byev",
       "RouteKey": "GET /cashbook/history",
       "Target": "integrations/a4u74b8"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "md3ckpd",
+      "RouteKey": "GET /owners/contributors/{contributorKey}/entries",
+      "Target": "integrations/ky3l8lj"
     },
     {
       "ApiKeyRequired": false,
@@ -381,6 +501,56 @@
       "RouteId": "slan9lk",
       "RouteKey": "GET /orders",
       "Target": "integrations/am5i45r"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "smybgtj",
+      "RouteKey": "POST /owners/fund/draw",
+      "Target": "integrations/1ugr2di"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "sw07895",
+      "RouteKey": "GET /owners/goals",
+      "Target": "integrations/emiktwi"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "tufv8e2",
+      "RouteKey": "POST /owners/fund/batches/{batchId}/void",
+      "Target": "integrations/n4i7j0p"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "uhpp8si",
+      "RouteKey": "POST /owners/capital",
+      "Target": "integrations/8qico8l"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "xc77h11",
+      "RouteKey": "GET /owners/fund",
+      "Target": "integrations/vea50dq"
     },
     {
       "ApiKeyRequired": false,

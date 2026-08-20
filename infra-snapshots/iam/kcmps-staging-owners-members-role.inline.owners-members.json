@@ -1,0 +1,25 @@
+{
+  "PolicyDocument": {
+    "Statement": [
+      {
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Effect": "Allow",
+        "Resource": "arn:aws:logs:ap-southeast-1:600929977538:*",
+        "Sid": "Logs"
+      },
+      {
+        "Action": "cognito-idp:ListUsersInGroup",
+        "Effect": "Allow",
+        "Resource": "arn:aws:cognito-idp:ap-southeast-1:600929977538:userpool/ap-southeast-1_LHJsFdCgo",
+        "Sid": "ListOwnersGroup"
+      }
+    ],
+    "Version": "2012-10-17"
+  },
+  "PolicyName": "owners-members",
+  "RoleName": "kcmps-staging-owners-members-role"
+}

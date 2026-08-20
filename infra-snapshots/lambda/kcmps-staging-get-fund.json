@@ -1,0 +1,40 @@
+{
+  "Architectures": [
+    "arm64"
+  ],
+  "CodeSize": 3147157,
+  "Description": "",
+  "Environment": {
+    "Variables": {
+      "TABLE_NAME": "kcmps-staging"
+    }
+  },
+  "EphemeralStorage": {
+    "Size": 512
+  },
+  "FunctionArn": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-fund",
+  "FunctionName": "kcmps-staging-get-fund",
+  "Handler": "index.handler",
+  "LastUpdateStatus": "Successful",
+  "LoggingConfig": {
+    "LogFormat": "Text",
+    "LogGroup": "/aws/lambda/kcmps-staging-get-fund"
+  },
+  "MemorySize": 256,
+  "PackageType": "Zip",
+  "Role": "arn:aws:iam::600929977538:role/kcmps-staging-staff-api-lambda-role",
+  "Runtime": "nodejs24.x",
+  "RuntimeVersionConfig": {
+    "RuntimeVersionArn": "arn:aws:lambda:ap-southeast-1::runtime:b34dc305914ac3e8498e1686b5137cb10bd7961175131bec68140c3205299139"
+  },
+  "SnapStart": {
+    "ApplyOn": "None",
+    "OptimizationStatus": "Off"
+  },
+  "State": "Active",
+  "Timeout": 10,
+  "TracingConfig": {
+    "Mode": "PassThrough"
+  },
+  "Version": "$LATEST"
+}

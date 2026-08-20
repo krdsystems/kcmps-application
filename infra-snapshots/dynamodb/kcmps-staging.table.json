@@ -56,7 +56,7 @@
         }
       }
     ],
-    "ItemCount": 405,
+    "ItemCount": 520,
     "KeySchema": [
       {
         "AttributeName": "PK",
@@ -81,7 +81,7 @@
     "TableArn": "arn:aws:dynamodb:ap-southeast-1:600929977538:table/kcmps-staging",
     "TableId": "434c2e4d-1663-46fd-9344-ef41c6081b24",
     "TableName": "kcmps-staging",
-    "TableSizeBytes": 199367,
+    "TableSizeBytes": 265330,
     "TableStatus": "ACTIVE",
     "WarmThroughput": {
       "ReadUnitsPerSecond": 12000,

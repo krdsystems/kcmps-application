@@ -1,6 +1,11 @@
 {
   "Groups": [
     {
+      "Description": "Owner-level capital and team-goal visibility (Owners dashboard tab). Capability group, layered on top of existing staff membership; NOT a dashboard-access grant.",
+      "GroupName": "Owners",
+      "UserPoolId": "ap-southeast-1_LHJsFdCgo"
+    },
+    {
       "Description": "Finance role.",
       "GroupName": "Finance",
       "UserPoolId": "ap-southeast-1_LHJsFdCgo"

@@ -2,7 +2,7 @@
   "Architectures": [
     "arm64"
   ],
-  "CodeSize": 3120076,
+  "CodeSize": 3119716,
   "Description": "",
   "Environment": {
     "Variables": {
@@ -25,7 +25,7 @@
   "Role": "arn:aws:iam::600929977538:role/kcmps-staging-staff-api-lambda-role",
   "Runtime": "nodejs24.x",
   "RuntimeVersionConfig": {
-    "RuntimeVersionArn": "arn:aws:lambda:ap-southeast-1::runtime:b8e18ea517c3a4b8dd61fb8536eb5cff76c10fbbc3fc766e8079f3b873f7fad3"
+    "RuntimeVersionArn": "arn:aws:lambda:ap-southeast-1::runtime:b34dc305914ac3e8498e1686b5137cb10bd7961175131bec68140c3205299139"
   },
   "SnapStart": {
     "ApplyOn": "None",

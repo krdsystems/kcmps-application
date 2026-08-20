@@ -14,6 +14,26 @@
       "DriftInformation": {
         "StackResourceDriftStatus": "NOT_CHECKED"
       },
+      "LastUpdatedTimestamp": "2026-08-20T09:03:56.673000+00:00",
+      "LogicalResourceId": "AppBranding",
+      "PhysicalResourceId": "ap-southeast-1_LHJsFdCgo|16b49da2-4765-447a-8a26-ef8c43d08b3d",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::ManagedLoginBranding"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
+      "LastUpdatedTimestamp": "2026-08-20T09:03:53.970000+00:00",
+      "LogicalResourceId": "AppClient",
+      "PhysicalResourceId": "44m8ihv638uupblm8dscurgu7g",
+      "ResourceStatus": "CREATE_COMPLETE",
+      "ResourceType": "AWS::Cognito::UserPoolClient"
+    },
+    {
+      "DriftInformation": {
+        "StackResourceDriftStatus": "NOT_CHECKED"
+      },
       "LastUpdatedTimestamp": "2026-08-05T07:16:11.945000+00:00",
       "LogicalResourceId": "Branding",
       "PhysicalResourceId": "ap-southeast-1_LHJsFdCgo|e34b7b65-6a43-4617-bf28-07ec5d72ebb1",

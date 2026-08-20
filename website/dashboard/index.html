@@ -39,7 +39,13 @@
 <script src="dashboard-shell.js"></script>
 <script>
 (() => {
-  const hasSession = !!sessionStorage.getItem("kcmps_tokens");
+  // Through auth-refresh.js's storage seam (sessionStorage in browsers,
+  // localStorage inside the staff app) — a persistent app session must
+  // count as "session exists" here or the app would bounce to the login
+  // page on every launch despite holding a live refresh token.
+  const hasSession = !!(window.KCMPS_AUTH
+    ? window.KCMPS_AUTH.loadTokens()
+    : sessionStorage.getItem("kcmps_tokens"));
   if (hasSession) {
     // A session already exists (real Cognito login OR a previously-seeded
     // local bypass) — let today.html do the real Staff-group check.

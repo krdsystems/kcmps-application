@@ -94,6 +94,14 @@ Parameters:
     Default: 2rsbhkjooja4h5e0ijpl4siuug
     Description: Existing app client (kcmps-web-client) on CognitoUserPoolId.
 
+  CognitoAppClientId:
+    Type: String
+    Default: 44m8ihv638uupblm8dscurgu7g
+    Description: >
+      The Android app's client (kcmps-app-client, 30-day refresh) on the same
+      pool — a second accepted audience so tokens minted in the staff app pass
+      the same authorizer. See user-pool-v2.cfn.yaml's AppClient.
+
   SesSenderIdentity:
     Type: String
     Default: kcmps.com
@@ -1405,7 +1413,7 @@ Resources:
       AuthorizerType: JWT
       IdentitySource: ["$request.header.Authorization"]
       JwtConfiguration:
-        Audience: [!Ref CognitoClientId]
+        Audience: [!Ref CognitoClientId, !Ref CognitoAppClientId]
         Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
 
   # -- Integrations (Lambda proxy, one per function that's API-invoked) --

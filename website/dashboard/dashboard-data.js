@@ -104,6 +104,10 @@
     : "https://6msg2uho6c.execute-api.ap-southeast-1.amazonaws.com";
   const TOKEN_STORAGE_KEY = "kcmps_tokens";
   function idToken() {
+    // Through auth-refresh.js's storage seam (sessionStorage in browsers,
+    // localStorage inside the staff app); direct read is the fallback for
+    // a page where auth-refresh.js failed to load.
+    if (global.KCMPS_AUTH) return global.KCMPS_AUTH.idToken();
     try {
       const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY);
       const tokens = raw ? JSON.parse(raw) : null;
@@ -146,11 +150,19 @@
         try { refreshed = await global.KCMPS_AUTH.refreshForRetry(); } catch { refreshed = false; }
         if (refreshed) return apiFetch(path, opts, true);
       }
-      try { sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
-      // A 401 ends the session too, so release the nav-drawer auto-open
-      // flag and let the next login re-arm it (see dashboard-shell.js's
-      // clearTokens()). Same literal — no module system to share it through.
-      try { sessionStorage.removeItem("kcmps_sidebar_auto_opened"); } catch { /* ignore */ }
+      // A 401 that SURVIVED a refresh-and-replay is direct evidence the
+      // session is unusable (not merely aged out) — that is a genuine
+      // session end even under the app's only-Logout-clears rule, so the
+      // persistent store goes too. Cleared through the seam so the app's
+      // localStorage copy doesn't outlive it; direct removals are the
+      // no-auth-refresh fallback. clearTokens() also releases the
+      // nav-drawer auto-open flag so the next login re-arms it.
+      if (global.KCMPS_AUTH) {
+        try { global.KCMPS_AUTH.clearTokens(); } catch { /* ignore */ }
+      } else {
+        try { sessionStorage.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
+        try { sessionStorage.removeItem("kcmps_sidebar_auto_opened"); } catch { /* ignore */ }
+      }
       if (global.KCMPS_DASH_SHELL && global.KCMPS_DASH_SHELL.escalateSessionGuard) {
         global.KCMPS_DASH_SHELL.escalateSessionGuard();
       }

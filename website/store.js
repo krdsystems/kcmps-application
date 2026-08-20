@@ -133,6 +133,11 @@
   // tokenUse: "id" (needs aud/cognito:groups, only on the ID token). Sending
   // the access token verifies-but-fails silently, leaving customerSub null.
   function idToken() {
+    // Through auth-refresh.js's storage seam (sessionStorage in browsers,
+    // localStorage inside the staff Android app) so checkout stays
+    // authenticated wherever the tokens actually live; the direct
+    // sessionStorage read is the auth-refresh-failed-to-load fallback.
+    if (window.KCMPS_AUTH) return window.KCMPS_AUTH.idToken();
     try {
       var raw = sessionStorage.getItem(AUTH_TOKEN_KEY);
       var tokens = raw ? JSON.parse(raw) : null;

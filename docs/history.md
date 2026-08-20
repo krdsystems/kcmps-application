@@ -3425,3 +3425,41 @@ check reported the station picker was fine when it was reading defaults rather t
 config. The checks that actually proved things were direct Lambda invokes against real data, and
 running the page's own script against stubbed data in the browser — never "the page rendered
 without errors".
+
+### 74. Staff Android app — a native WebView wrapper, after the TWA's one toast killed it (2026-08-20)
+
+The owner wanted the whole system as a sideloadable staff APK ("functions like the web, ease of
+use through the app"). Plan A was a Trusted Web Activity — zero code duplication, real Chrome
+underneath so Cognito + Google federation and uploads/downloads all just work, site updates live
+instantly. It died on a two-second detail: Chrome's one-time "Running in Chrome" first-launch
+toast is an anti-impersonation disclosure that **no flag or library call can suppress**, and the
+owner wanted a fully clean app experience, explicitly trading away Google sign-in to get it.
+
+Plan B is what shipped: `android-app/` — a single-file Kotlin app (`MainActivity.kt`, ~300 lines,
+package `com.kcmps.app`) whose WebView loads **live** `https://kcmps.com`, so the "edits are live
+on refresh" deploy model survives and the APK never needs rebuilding for site changes. The
+reasoning that made this safe came from reading the auth code first: `openLoginPopup()` already
+relays tokens through `localStorage` + `storage` events (the COOP workaround), never
+`window.opener` — and all WebViews inside one Android app share storage, so login works if
+`window.open` produces a real popup. The app therefore implements: popup windows (full-screen
+overlay + native ✕, `onCreateWindow`/`onCloseWindow`, one popup at a time), `onShowFileChooser`
+uploads, DownloadManager downloads (presigned S3 GETs), URL scoping (kcmps.com/www/dev + the
+Cognito domain in-app, everything else → system), and back = close-popup → history → exit.
+Google sign-in is dead inside it by Google's own WebView policy — username/password is the way.
+
+Two lessons paid for in the session. **Bubblewrap cannot run in a non-interactive shell** — its
+prompts hang forever at 0% CPU; the stuck `bubblewrap doctor` had to be killed from outside.
+**`WebView.restoreState()` can restore an empty back/forward list** (state saved before the first
+page ever committed — the emulator relaunched the activity 2s after a cold start) and the WebView
+then stays blank forever; v1.0.0 shipped that bug, v1.0.1 falls back to `loadUrl` whenever the
+restored list is empty. Found by actually booting the APK on the new `kcmps-test` AVD (Pixel 7 /
+API 34; SDK at `~/android-sdk`, Gradle 8.7 at `~/gradle`, system JDK 21, KVM verified) and
+screenshotting launch → login popup → Cognito Hosted UI → ✕ → back, rather than trusting
+`apksigner`/`aapt` alone.
+
+Signing: `android-app/signing/kcmps-release.keystore` (alias `kcmps`, password file alongside),
+gitignored — **the owner must back it up**; every future update needs the same key. The TWA
+detour left benign PWA extras in `website/` (`manifest.webmanifest`, `assets/app-icons/`,
+theme-color/manifest tags in `index.html`) — kept, undeployed as of this entry. Logged-in
+dashboard behavior (uploads, downloads, `navigator.clipboard` click-to-copy) is untested pending
+the owner's own device — nobody's password gets typed by an agent.

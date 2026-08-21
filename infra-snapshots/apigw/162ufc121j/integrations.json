@@ -65,10 +65,46 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "2bzkd26",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-set-order-attribution",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "2h45e8b",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-update-order-contact",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "2o13ijm",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-preview-monthly-settlement",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "3yoa6rm",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-log-job-cost",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "5oo8uqq",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-settle-month",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -96,6 +132,15 @@
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-list-designs",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "6vzopqt",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-ready-to-settle",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -132,6 +177,15 @@
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-post-capital",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "97v0w1i",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-void-settlement",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -182,6 +236,24 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "bkrdgbv",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-profit-split-config",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "buqlxwm",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-fund-extract",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "c970s21",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
@@ -191,10 +263,28 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "d7zb1yf",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-meter-readings",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "do5gbje",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-create-order",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "emf2ixl",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-settlements",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -236,6 +326,15 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "ggnj7nb",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-post-recurring",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "iasyd4q",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
@@ -263,10 +362,46 @@
     },
     {
       "ConnectionType": "INTERNET",
+      "IntegrationId": "jd67gxo",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-settlement",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "jhrq9kb",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-recurring",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
       "IntegrationId": "ky3l8lj",
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-get-contributor-entries",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "lgohm4t",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-settle-order",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "me6h377",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-meter-rates",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },
@@ -420,6 +555,15 @@
       "IntegrationMethod": "POST",
       "IntegrationType": "AWS_PROXY",
       "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-verify-payment",
+      "PayloadFormatVersion": "2.0",
+      "TimeoutInMillis": 30000
+    },
+    {
+      "ConnectionType": "INTERNET",
+      "IntegrationId": "x4jphnk",
+      "IntegrationMethod": "POST",
+      "IntegrationType": "AWS_PROXY",
+      "IntegrationUri": "arn:aws:lambda:ap-southeast-1:600929977538:function:kcmps-staging-save-recurring-template",
       "PayloadFormatVersion": "2.0",
       "TimeoutInMillis": 30000
     },

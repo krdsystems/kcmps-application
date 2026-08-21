@@ -64,6 +64,16 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "3xmtsu6",
+      "RouteKey": "PUT /owners/profit-split-config",
+      "Target": "integrations/bkrdgbv"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "3z994la",
       "RouteKey": "GET /owners/goals/{goalId}",
       "Target": "integrations/yjdgq7v"
@@ -130,6 +140,26 @@
     {
       "ApiKeyRequired": false,
       "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "8npa0af",
+      "RouteKey": "GET /cashbook/recurring",
+      "Target": "integrations/jhrq9kb"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "90vg9df",
+      "RouteKey": "PATCH /cashbook/recurring/{templateId}",
+      "Target": "integrations/x4jphnk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
       "AuthorizationType": "NONE",
       "RequestModels": {},
       "RouteId": "9flzg74",
@@ -172,9 +202,29 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "aa3h46e",
+      "RouteKey": "POST /cashbook/meters/{meterId}/readings",
+      "Target": "integrations/d7zb1yf"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "b6xg5sc",
       "RouteKey": "POST /owners/fund/return",
       "Target": "integrations/zpm2uvl"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "bamswkq",
+      "RouteKey": "POST /orders/{orderId}/contact",
+      "Target": "integrations/2h45e8b"
     },
     {
       "ApiKeyRequired": false,
@@ -205,6 +255,26 @@
       "RouteId": "c7tqair",
       "RouteKey": "GET /cashbook/month/{month}",
       "Target": "integrations/n35rl08"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "cjrkljg",
+      "RouteKey": "GET /owners/settlements",
+      "Target": "integrations/emf2ixl"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "cvimij7",
+      "RouteKey": "GET /cashbook/meter-rates",
+      "Target": "integrations/me6h377"
     },
     {
       "ApiKeyRequired": false,
@@ -251,6 +321,16 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "hdputdu",
+      "RouteKey": "POST /orders/{orderId}/attribution",
+      "Target": "integrations/2bzkd26"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "hm382xh",
       "RouteKey": "POST /orders/{orderId}/costs",
       "Target": "integrations/3yoa6rm"
@@ -261,9 +341,39 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "hm6pf0k",
+      "RouteKey": "POST /orders/{orderId}/settle",
+      "Target": "integrations/lgohm4t"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "hqfaly7",
       "RouteKey": "GET /cashbook/search",
       "Target": "integrations/fi906hi"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "hvkw0st",
+      "RouteKey": "POST /owners/fund/extract",
+      "Target": "integrations/buqlxwm"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "hw7fr0e",
+      "RouteKey": "GET /owners/settlements/monthly/preview",
+      "Target": "integrations/2o13ijm"
     },
     {
       "ApiKeyRequired": false,
@@ -284,6 +394,16 @@
       "RouteId": "i5zbmy8",
       "RouteKey": "GET /staff/pin",
       "Target": "integrations/yfrmc8n"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "i7oqh9c",
+      "RouteKey": "POST /owners/settlements/{batchId}/void",
+      "Target": "integrations/97v0w1i"
     },
     {
       "ApiKeyRequired": false,
@@ -314,6 +434,16 @@
       "RouteId": "jfx6zgs",
       "RouteKey": "GET /cashbook/day/{day}",
       "Target": "integrations/fp4cw5u"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "k2zt9qg",
+      "RouteKey": "GET /owners/profit-split-config",
+      "Target": "integrations/bkrdgbv"
     },
     {
       "ApiKeyRequired": false,
@@ -448,6 +578,16 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "oakhr7q",
+      "RouteKey": "PATCH /cashbook/meter-rates",
+      "Target": "integrations/me6h377"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "obnrs81",
       "RouteKey": "GET /mail/mailboxes/{mailboxId}/messages/{messageId}",
       "Target": "integrations/s142spk"
@@ -461,6 +601,26 @@
       "RouteId": "opc9c96",
       "RouteKey": "GET /cashbook/transactions/{txnId}",
       "Target": "integrations/03btqbg"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "qz3h1s8",
+      "RouteKey": "GET /owners/settlements/ready",
+      "Target": "integrations/6vzopqt"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "r3af741",
+      "RouteKey": "POST /cashbook/recurring/{templateId}/post",
+      "Target": "integrations/ggnj7nb"
     },
     {
       "ApiKeyRequired": false,
@@ -538,9 +698,49 @@
       "AuthorizationType": "JWT",
       "AuthorizerId": "67s34x",
       "RequestModels": {},
+      "RouteId": "udpma17",
+      "RouteKey": "POST /cashbook/recurring",
+      "Target": "integrations/x4jphnk"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
       "RouteId": "uhpp8si",
       "RouteKey": "POST /owners/capital",
       "Target": "integrations/8qico8l"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "uqxv5et",
+      "RouteKey": "POST /owners/settlements/monthly",
+      "Target": "integrations/5oo8uqq"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "va18hav",
+      "RouteKey": "GET /orders/{orderId}/settlement",
+      "Target": "integrations/jd67gxo"
+    },
+    {
+      "ApiKeyRequired": false,
+      "AuthorizationScopes": [],
+      "AuthorizationType": "JWT",
+      "AuthorizerId": "67s34x",
+      "RequestModels": {},
+      "RouteId": "vh0s5qp",
+      "RouteKey": "GET /cashbook/meters/{meterId}/readings",
+      "Target": "integrations/d7zb1yf"
     },
     {
       "ApiKeyRequired": false,

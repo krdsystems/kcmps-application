@@ -2,9 +2,9 @@
   "Stacks": [
     {
       "Capabilities": [
-        "CAPABILITY_NAMED_IAM"
+        "CAPABILITY_NAMED_IAM",
+        "CAPABILITY_AUTO_EXPAND"
       ],
-      "ChangeSetId": "arn:aws:cloudformation:ap-southeast-1:600929977538:changeSet/awscli-cloudformation-package-deploy-1787232922/3855ee93-96a9-4f33-9f59-013283875d0a",
       "CreationTime": "2026-08-05T09:07:36.720000+00:00",
       "DeploymentConfig": {
         "DisableRollback": false,
@@ -18,7 +18,7 @@
       "EnableTerminationProtection": false,
       "LastOperations": [
         {
-          "OperationId": "f8895cd3-82d3-4fb4-b791-7bc6e4c97274",
+          "OperationId": "c83bfd40-9d82-11f1-9f10-06af5f086cdd",
           "OperationType": "UPDATE_STACK"
         }
       ],
@@ -101,7 +101,7 @@
         },
         {
           "ParameterKey": "ArtifactsPrefix",
-          "ParameterValue": "owners-fund-2026-08-20"
+          "ParameterValue": "cashbook-owners-audit-2026-08-22"
         },
         {
           "ParameterKey": "EnvName",

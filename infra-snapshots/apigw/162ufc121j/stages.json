@@ -6,9 +6,9 @@
       "DefaultRouteSettings": {
         "DetailedMetricsEnabled": false
       },
-      "DeploymentId": "j6tlwr",
-      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'j6tlwr'",
-      "LastUpdatedDate": "2026-08-20T13:36:32+00:00",
+      "DeploymentId": "gr38xc",
+      "LastDeploymentStatusMessage": "Successfully deployed stage with deployment ID 'gr38xc'",
+      "LastUpdatedDate": "2026-08-21T16:33:25+00:00",
       "RouteSettings": {},
       "StageName": "$default",
       "StageVariables": {},

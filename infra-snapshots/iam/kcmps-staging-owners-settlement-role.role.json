@@ -1,0 +1,27 @@
+{
+  "Role": {
+    "Arn": "arn:aws:iam::600929977538:role/kcmps-staging-owners-settlement-role",
+    "AssumeRolePolicyDocument": {
+      "Statement": [
+        {
+          "Action": "sts:AssumeRole",
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          }
+        }
+      ],
+      "Version": "2012-10-17"
+    },
+    "CreateDate": "2026-08-21T02:36:31+00:00",
+    "Description": "",
+    "MaxSessionDuration": 3600,
+    "Path": "/",
+    "RoleId": "AROAYX2RXYTBDY3FBVYJZ",
+    "RoleLastUsed": {
+      "LastUsedDate": "2026-08-21T17:45:37+00:00",
+      "Region": "ap-southeast-1"
+    },
+    "RoleName": "kcmps-staging-owners-settlement-role"
+  }
+}
